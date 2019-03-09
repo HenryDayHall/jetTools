@@ -1,0 +1,19 @@
+\documentclass{article}
+\title{Some notes on making a tree structure RNN}
+\author{Henry}
+\date{28-2-2019}
+\usepackage{listings}
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+\section{Pilot}
+\subsection{Available inputs}
+In the jets of a root file there are Tracks and Towers.
+Each of these give P4 which is calculated from (Pt, Eta, Phi, Mass), see \lstinline{DelphesClasses.cc}.
+For Tracks there are 29 other variables, not sure how uncorrelated they are.
+For Towers there are 11 other variables, again, these may not be uncorrelated.
+For Tracks and Towers mass is \(0\).
+
+\end{document}
