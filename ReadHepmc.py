@@ -42,26 +42,45 @@ class Hepmc_event:
         self.floatVertex_columns = ["x", "y", "z", "ctau"]
         self.intParticle_columns = ["barcode", "MCPID", "status_code",
                                     "end_vertex_barcode", "start_vertex_barcode",
-                                    "n_flow_codes", "index_mother1", "index_mother2",
-                                    "index_daughter1", "index_daughter2"]
+                                    "n_flow_codes"]
         self.floatParticle_columns = ["px", "py", "pz", "energy", "generated_mass",
                                       "polarization_theta", "polarization_phi"]
 
 
     def assign_heritage(self):
-        startCol = self.intParticle_columns.index("start_vertex_barcode")
-        endCol = self.intParticle_columns.index("end_vertex_barcode")
-        daughterCols = [self.intParticle_columns.index("index_daughter1"),
-                        self.intParticle_columns.index("index_daughter2")]
-        motherCols = [self.intParticle_columns.index("index_mother1"),
-                      self.intParticle_columns.index("index_mother2")]
-        for i, particle in enumerate(self.intParticles):
-            mothers = np.nonzero(self.inParticles[:, endCol] == particle[startCol])[0]
-            assert len(mothers) < 3
-            self.inParticles[motherCols] = mothers
-            daughters = np.nonzero(self.inParticles[:, startCol] == particle[endCol])[0]
-            assert len(daughters) < 3
-            self.inParticles[daughterCols] = daughters
+        self.daughters = []
+        self.mothers = []
+        startCol = self.intParticles[:, self.intParticle_columns.index("start_vertex_barcode")]
+        endCol = self.intParticles[:, self.intParticle_columns.index("end_vertex_barcode")]
+        vertexCodes = self.intVertices[:, self.intVertex_columns.index("barcode")]
+        for i, (start, end) in enumerate(zip(startCol,endCol)):
+            if start in vertexCodes:
+                ms = list(np.nonzero(endCol == start)[0])
+            else:
+                print("This shouldn't happend... all particles sit below a vertex")
+                ms = []
+            self.mothers.append(ms)
+            if end in vertexCodes:
+                ds = list(np.nonzero(startCol == end)[0])
+            else:
+                ds = []
+            self.daughters.append(ds)
+            assert len(ms) + len(ds) > 0, f"Particle {i} isolated"
+        # now particles that are the beam particles are their own mothers
+        barcodes = list(self.intParticles[:, self.intParticle_columns.index("barcode")])
+        b1 = barcodes.index(self.event_information["barcode_beam_particle1"])
+        b2 = barcodes.index(self.event_information["barcode_beam_particle2"])
+        assert self.mothers[b1] == [b1]
+        assert self.mothers[b2] == [b2]
+        # so tidy this up
+        self.mothers[b1] = []
+        self.daughters[b1].remove(b1)
+        self.mothers[b2] = []
+        self.daughters[b2].remove(b2)
+        unused_barcode = max(barcodes) + 1
+        self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
+        self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
+        
 
 
     def read_file(self, filepath=None, event_n=0):

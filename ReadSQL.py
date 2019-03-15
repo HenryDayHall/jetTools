@@ -1,4 +1,5 @@
 import sqlite3
+from ipdb import set_trace as st
 import numpy as np
 
 def readSelected(databaseName, selectedFields, tableName="GenParticles"):
@@ -132,7 +133,11 @@ def checkReflection(databaseName=None, **kwargs):
             if c is not None:
                 assert c in IDs, f"The child {c} of {this_id} is invalid"
                 c_row = listIDs.index(c)  # find the row of the child
-                assert this_id in children[c_row], f"Child {c} of {this_id} not acknowledging parent"
+                if row == c_row:
+                    print(f"Particle {this_id} appears to be it's own daughter")
+                    print("Ignoring")
+                    continue
+                assert this_id in parents[c_row], f"Child {c} of {this_id} not acknowledging parent"
 
 def checkPIDMatch(databaseName, table1, refField, table2, PIDfield="MCPID"):
     # in table 1 we need the ref field and the pid field
