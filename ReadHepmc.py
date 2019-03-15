@@ -1,4 +1,5 @@
 import numpy as np
+from collections import Counter
 import csv
 from ipdb import set_trace as st
 
@@ -35,7 +36,8 @@ class Hepmc_event:
                                    np.nan, dtype=int)
         self.floatParticles = np.full((self.n_particles, len(self.floatParticle_columns)),
                                      np.nan, dtype=float)
-        self.colourFlow = [[] for _ in range(self.n_particles)]
+        self.colourFlow = [None for _ in range(self.n_particles)]
+        self.antiColourFlow = [None for _ in range(self.n_particles)]
 
     def _init_columns(self):
         self.intVertex_columns = ["barcode", "id", "n_orphans", "n_out", "n_weights"]
@@ -81,6 +83,30 @@ class Hepmc_event:
         self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         
+
+    def check_colour_flow(self):
+        exempt_particles = [np.nonzero(self.intParticles[:, self.intParticle_columns.index("barcode")]
+                                      == self.event_information["barcode_beam_particle1"]),
+                            np.nonzero(self.intParticles[:, self.intParticle_columns.index("barcode")]
+                                      == self.event_information["barcode_beam_particle2"])]
+        c_end = self.intParticle_columns.index("end_vertex_barcode")
+        c_start = self.intParticle_columns.index("start_vertex_barcode")
+        for barcode in self.intVertices[:, self.intParticle_columns.index("barcode")]:
+            # find the list of particles bearing this barcode
+            in_indices = np.nonzero(self.intParticles[:, c_end] == barcode)[0]
+            out_indices = np.nonzero(self.intParticles[:, c_start] == barcode)[0]
+            # tally the colour flows in and out
+            link_counter = Counter()
+            for in_index in in_indices:
+                link_counter[self.colourFlow[in_index]] += 1
+                link_counter[self.antiColourFlow[in_index]] -= 1
+            for out_index in out_indices:
+                link_counter[self.colourFlow[out_index]] -= 1
+                link_counter[self.antiColourFlow[out_index]] += 1
+            del link_counter[None]
+            for flow in link_counter:
+                assert link_counter[flow] % 2 == 0, f"Vertex barcode {barcode} has {link_counter[flow]} outgoing colour flows for colour flow {flow}"
+
 
 
     def read_file(self, filepath=None, event_n=0):
@@ -220,7 +246,13 @@ class Hepmc_event:
                 self.intParticles[particle_reached, p_barcode_index] = last_vertex_barcode
                 self.intParticles[particle_reached, p_int_table_indices] = [int(line[i]) for i in p_int_file_indices]
                 self.floatParticles[particle_reached, p_float_table_indices] = [float(line[i]) for i in p_float_file_indices]
-                self.colourFlow[particle_reached] = [int(x) for x in line[p_colour_start:]]
+                if len(line) > p_colour_start:
+                    colour_pairs = zip(line[p_colour_start::2], line[p_colour_start+1::2])
+                    for code_index, colour_code in colour_pairs:
+                        if code_index == 1:
+                            self.colourFlow[particle_reached] = colour_code
+                        elif code_index == 2:
+                            self.antiColourFlow[particle_reached] = colour_code
                 particle_reached += 1
 
 
