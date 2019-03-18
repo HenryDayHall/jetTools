@@ -13,7 +13,7 @@ class ParticleDatabase:
         self.MCPIDs = np.array([d[5] for d in fromDatabase])
 
 
-def readSelected(databaseName, selectedFields, tableName="GenParticles"):
+def readSelected(databaseName, selectedFields, tableName="GenParticles", where=None):
     """
     Read all entries of names columns from table in database
 
@@ -38,6 +38,8 @@ def readSelected(databaseName, selectedFields, tableName="GenParticles"):
     connection = sqlite3.connect(databaseName)
     cursor = connection.cursor()
     sql = "SELECT " + ", ".join(selectedFields) + " FROM " + tableName
+    if where is not None:
+        sql += " WHERE " + where
     cursor.execute(sql)
     out = cursor.fetchall()
     connection.close()
