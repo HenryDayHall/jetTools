@@ -225,8 +225,21 @@ class DotGraph:
                 if mother in shower.IDs:
                     self.addEdge(mother, this_id)
         # add the labels
-        for this_id, label in zip(shower.IDs, shower.labels):
-            self.addLabel(this_id, label)
+        outsiders = shower.outsideConnections
+        shower.findRoot()
+        root = shower.rootIndex
+        ends = shower.ends
+        for i, (this_id, label) in enumerate(zip(shower.IDs, shower.labels)):
+            colour = None
+            if i == root:
+                colour="greenyellow"
+            elif i in outsiders:
+                colour="gold"
+            shape = None
+            if i in ends:
+                shape = "diamond"
+
+            self.addNode(this_id, label, colour=colour, shape=shape)
         # add the ranks
         ranks = shower.findRanks()
         rankKeys = set(ranks)
@@ -250,7 +263,7 @@ class DotGraph:
         """
         self.__edges += f"\t{ID1} -> {ID2}\n"
 
-    def addLabel(self, ID, label):
+    def addNode(self, ID, label, colour=None, shape=None):
         """ Add a label to this graph
         
 
@@ -263,7 +276,12 @@ class DotGraph:
             label for node
 
         """
-        self.__nodes += f'\t{ID} [label="{label}"]\n'
+        self.__nodes += f'\t{ID} [label="{label}"'
+        if colour is not None:
+            self.__nodes += f' style=filled fillcolor={colour}'
+        if shape is not None:
+            self.__nodes += f' shape={shape}'
+        self.__nodes += ']\n'
 
     def addRank(self, IDs):
         """ Specify set of IDs that sit on the same rank
@@ -399,6 +417,8 @@ def main():
     # rootDB = ParticleDatabase(databaseName)
     # showers = getShowers(rootDB)
     for i, shower in enumerate(showers):
+        if 'b' not in shower.labels:
+            pass #continue
         print(f"Drawing shower {i}")
         graph = shower.graph()
         dotName = hepmc_name.split('.')[0] + str(i) + ".dot"
