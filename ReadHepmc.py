@@ -108,6 +108,13 @@ class Hepmc_event:
                 assert link_counter[flow] % 2 == 0, f"Vertex barcode {barcode} has {link_counter[flow]} outgoing colour flows for colour flow {flow}"
 
 
+    @property
+    def IDs(self):
+        return np.arange(len(self.intParticles))
+
+    @property
+    def MCPIDs(self):
+        return self.intParticles[:, self.intParticle_columns.index("MCPID")]
 
     def read_file(self, filepath=None, event_n=0):
         if filepath is not None:

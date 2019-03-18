@@ -2,6 +2,17 @@ import sqlite3
 from ipdb import set_trace as st
 import numpy as np
 
+class ParticleDatabase:
+    def __init__(self, databaseName):
+        self.databaseName = databaseName
+        fields = ["ID", "M1", "M2", "D1", "D2", "MCPID"]
+        fromDatabase = readSelected(databaseName, fields)
+        self.IDs = np.array([d[0] for d in fromDatabase])
+        self.mothers = np.array([d[1:3] for d in fromDatabase])
+        self.daughters = np.array([d[3:5] for d in fromDatabase])
+        self.MCPIDs = np.array([d[5] for d in fromDatabase])
+
+
 def readSelected(databaseName, selectedFields, tableName="GenParticles"):
     """
     Read all entries of names columns from table in database

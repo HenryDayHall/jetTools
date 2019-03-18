@@ -1,20 +1,23 @@
 import networkx as nx
 from matplotlib import pyplot as plt
-from ReadSQL import readSelected
+from ReadSQL import readSelected, ParticleDatabase
+from ReadHepmc import Hepmc_event
 import numpy as np
 from ipdb import set_trace as st
 from networkx.drawing.nx_agraph import write_dot
+from itertools import compress
+from PDGNames import IDConverter
 
 
 class Shower:
     """ Object to hold a shower of particles
     
-    only keeps a list of the particle IDs, parents, children and PDGIDs.
+    only keeps a list of the particle IDs, mothers, daughters and PDGIDs.
     """
     def __init__(self):
         self.IDs = []
-        self.parents = []
-        self.children = []
+        self.mothers = []
+        self.daughters = []
         self.labels = []
 
     @property
@@ -25,7 +28,7 @@ class Shower:
     def findRoot(self):
         """ Demand the shower identify it's root. 
         This is stored as an internal variable. """
-        roots = getRoots(self.IDs, self.parents)
+        roots = getRoots(self.IDs, self.mothers)
         assert len(roots) == 1, "There should only be one root to a shower"
         self.rootIndex = roots[0]
 
@@ -47,14 +50,13 @@ class Shower:
         ranks[currentRank] = rankN
         listIDs = list(self.IDs)  # somtimes this is an array
         hasDecendants = True
-        st()
         while hasDecendants:
             rankN += 1
-            decendantIDs = [child for index in currentRank for child in self.children[index]
-                            if child in self.IDs]
+            decendantIDs = [daughter for index in currentRank for daughter in self.daughters[index]
+                            if daughter in self.IDs]
             currentRank = []
-            for child in decendantIDs:
-                index = listIDs.index(child)
+            for daughter in decendantIDs:
+                index = listIDs.index(daughter)
                 # don't overwite a rank, so in a loop the lowers rank stands
                 # also needed to prevent perpetual loops
                 if ranks[index] == -1:
@@ -73,30 +75,43 @@ class Shower:
         dotgraph : DotGraph
             an object that can produce a string that would be in a dot file for this graph
         """
-        assert len(self.IDs) == len(self.parents)
-        assert len(self.IDs) == len(self.children)
+        assert len(self.IDs) == len(self.mothers)
+        assert len(self.IDs) == len(self.daughters)
         assert len(self.IDs) == len(self.labels)
         return DotGraph(self)
 
     @property
     def outsideConnections(self):
-        """ Not implemented
+        """ 
         Function that anouches which particles have perantage from outside this shower
         Includes the root """
-        raise NotImplementedError
+        outside_indices = []
+        for i, mothers_here in enumerate(self.mothers):
+            if not np.all([m in self.IDs for m in mothers_here]):
+                outside_indices.append(i)
+        return outside_indices
+
+    @property
+    def ends(self):
+        _ends = []
+        for i, daughters_here in enumerate(self.daughters):
+            if np.all([d == None for d in daughters_here]):
+                _ends.append(i)
+        return _ends
 
 
-def getRoots(IDs, parents):
-    """From a list of particle IDs and a list of parent IDs determin root particles
 
-    A root particle is one whos parents are both from outside the particle list.
+def getRoots(IDs, mothers):
+    """From a list of particle IDs and a list of mother IDs determin root particles
+
+    A root particle is one whos mothers are both from outside the particle list.
 
     Parameters
     ----------
     IDs : numpy array of ints
         The unique id of each particle
         
-    parents : 2D numpy array of ints
+    mothers : 2D numpy array of ints
         Each row contains the IDs of two mothers of each particle in IDs
         These can be none
 
@@ -107,15 +122,14 @@ def getRoots(IDs, parents):
 
     """
     roots = []
-    listIDs = list(IDs)  # somtimes this is an array
-    for i, pars in enumerate(parents):
-        if not (pars[0] in IDs or pars[1] in IDs):
+    for i, mothers_here in enumerate(mothers):
+        if not np.any([m in IDs for m in mothers_here]):
             roots.append(i)
     return roots
 
 
 # ignore not working
-def makeTree(IDs, parents, children, labels):
+def makeTree(IDs, mothers, daughters, labels):
     """
     It's possible this is working better than I think it is ...
     Just the data was screwy
@@ -127,11 +141,11 @@ def makeTree(IDs, parents, children, labels):
     IDs : numpy array of ints
         The unique id of each particle
         
-    parents : 2D numpy array of ints
+    mothers : 2D numpy array of ints
         Each row contains the IDs of two mothers of each particle in IDs
         These can be none
         
-    children : 2D numpy array of ints
+    daughters : 2D numpy array of ints
         Each row contains the IDs of two daughters of each particle in IDs
         These can be none
         
@@ -147,11 +161,11 @@ def makeTree(IDs, parents, children, labels):
     """
     graph =  nx.Graph()
     graph.add_nodes_from(IDs)
-    for this_id, this_parents, this_children in zip(IDs, parents, children):
-        parent_edges = [(par_id, this_id) for par_id in this_parents if par_id in IDs]
-        graph.add_edges_from(parent_edges)
-        child_edges = [(this_id, chi_id) for chi_id in this_children if chi_id in IDs]
-        graph.add_edges_from(child_edges)
+    for this_id, this_mothers, this_daughters in zip(IDs, mothers, daughters):
+        mother_edges = [(par_id, this_id) for par_id in this_mothers if par_id in IDs]
+        graph.add_edges_from(mother_edges)
+        daughter_edges = [(this_id, chi_id) for chi_id in this_daughters if chi_id in IDs]
+        graph.add_edges_from(daughter_edges)
     label_dict = {i:l for i, l in zip(IDs, labels)}
     nx.relabel_nodes(graph, label_dict)
     return graph
@@ -186,7 +200,7 @@ class DotGraph:
             self.__start += "strict "
         if graphName is not None:
             self.__start += graphName + " "
-        self.__start += " {\n"
+        self.__start += graph + " {\n"
         self.__end = "}\n"
         self.__nodes = ""
         self.__edges = ""
@@ -206,10 +220,10 @@ class DotGraph:
             
         """
         # add the edges
-        for this_id, this_parents in zip(shower.IDs, shower.parents):
-            for parent in this_parents:
-                if parent in shower.IDs:
-                    self.addEdge(parent, this_id)
+        for this_id, this_mothers in zip(shower.IDs, shower.mothers):
+            for mother in this_mothers:
+                if mother in shower.IDs:
+                    self.addEdge(mother, this_id)
         # add the labels
         for this_id, label in zip(shower.IDs, shower.labels):
             self.addLabel(this_id, label)
@@ -261,14 +275,15 @@ class DotGraph:
             IDs on a rank
 
         """
-        id_string = '; '.join(IDs) + ';'
-        self.__ranks += f'\t{{rank = same; {id_string}}}'
+        ID_strings = [str(ID) for ID in IDs]
+        id_string = '; '.join(ID_strings) + ';'
+        self.__ranks += f'\t{{rank = same; {id_string}}}\n'
 
     def __str__(self):
         fullString = self.__start + self.__nodes + self.__edges + self.__ranks + self.__end
         return fullString
 
-def getShowers(databaseName, exclude_MCPIDs=[2212, 25, 35]):
+def getShowers(particleSource, exclude_MCPIDs=[2212, 25, 35]):
     """ From each root split the decendants into showers
     Each particle can only belong to a single shower. 
 
@@ -288,30 +303,24 @@ def getShowers(databaseName, exclude_MCPIDs=[2212, 25, 35]):
         showers found in the database
 
     """
-    fields = ["ID", "M1", "M2", "D1", "D2", "MCPID"]
-    fromDatabase = readSelected(databaseName, fields)
-    IDs = np.array([d[0] for d in fromDatabase])
-    parents = np.array([d[1:3] for d in fromDatabase])
-    children = np.array([d[3:5] for d in fromDatabase])
-    labels = np.array([d[5] for d in fromDatabase])
     # remove any stop IDs
-    for exclude in exclude_MCPIDs:
-        mask = labels != exclude
-        IDs = IDs[mask]
-        parents = parents[mask]
-        children = children[mask]
-        labels = labels[mask]
+    mask = [p not in exclude_MCPIDs for p in particleSource.MCPIDs]
+    IDs = np.array(particleSource.IDs)[mask]
+    mothers = list(compress(particleSource.mothers, mask))
+    daughters = list(compress(particleSource.daughters, mask))
+    labels = np.array(particleSource.MCPIDs)[mask]
     # check that worked
     remainingPIDs = set(labels)
     for exclude in exclude_MCPIDs:
         assert exclude not in remainingPIDs
-    all_relatives = np.hstack((parents, children))
+    # now where possible convert labels to names
+    pdg = IDConverter()
+    labels = np.array([pdg[x] for x in labels])
     # now we have values for the whole event,
     # but we want to split the event into showers
     # at start all particles are allocated to a diferent shower
-    allocated = np.full_like(IDs, False)
     showers = []
-    roots = getRoots(IDs, parents)
+    roots = getRoots(IDs, mothers)
     print(f"Found {len(roots)} roots")
     listIDs = list(IDs)
     # not working, showers way too small
@@ -323,25 +332,22 @@ def getShowers(databaseName, exclude_MCPIDs=[2212, 25, 35]):
         while len(to_follow) > 0:
             next_gen = []
             for index in to_follow:
-                # be careful to prevent loops
-                next_gen += [listIDs.index(child) for child in children[index]
-                             if child in IDs]
-            # check it's not alread allocated
-            n_taken += sum(allocated[next_gen])
-            # also prevent loops
-            next_gen = [i for i in next_gen if (not allocated[i] and i not in showerIndices)]
+                # be careful not to include forbiden particles
+                next_gen += [listIDs.index(daughter) for daughter in daughters[index]
+                             if daughter in IDs]
+            # prevent loops
+            next_gen = list(set(next_gen))
+            next_gen = [i for i in next_gen if i not in showerIndices]
             showerIndices += next_gen
             assert len(set(showerIndices)) == len(showerIndices)
             # print(f"Indices in shower = {len(showerIndices)}", flush = True)
             to_follow = next_gen
-        allocated[showerIndices] = True
         newShower = Shower()
         newShower.IDs = IDs[showerIndices]
-        newShower.parents = parents[showerIndices]
-        newShower.children = children[showerIndices]
+        newShower.mothers = [mothers[i] for i in showerIndices]
+        newShower.daughters = [daughters[i] for i in showerIndices]
         newShower.labels = labels[showerIndices]
         showers.append(newShower)
-        print(f"Shower missed {n_taken} taken indices")
     return showers
 
 
@@ -384,13 +390,20 @@ def recursiveGrab(seedID, IDs, relatives):
     
 def main():
     """ Launch file, makes and saves a dot graph """
-    databaseName = "/home/henry/lazy/tag_1_delphes_events.db"
-    showers = getShowers(databaseName)
-    particles_in_shower = [s.nParticles for s in showers]
-    graph = showers[particles_in_shower.index(41)].graph()
-    dotName = databaseName.split('.')[0] + ".dot"
-    with open(dotName, 'w') as dotFile:
-        dotFile.write(str(graph))
+    databaseName = "/home/henry/lazy/29delphes_events.db"
+    hepmc_name = "/home/henry/lazy/29pythia8_events.hepmc"
+    hepmc = Hepmc_event()
+    hepmc.read_file(hepmc_name)
+    hepmc.assign_heritage()
+    showers = getShowers(hepmc)
+    # rootDB = ParticleDatabase(databaseName)
+    # showers = getShowers(rootDB)
+    for i, shower in enumerate(showers):
+        print(f"Drawing shower {i}")
+        graph = shower.graph()
+        dotName = hepmc_name.split('.')[0] + str(i) + ".dot"
+        with open(dotName, 'w') as dotFile:
+            dotFile.write(str(graph))
 
 if __name__ == '__main__':
     main()
