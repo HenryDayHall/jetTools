@@ -19,8 +19,8 @@ class Shower:
         self.mothers = []
         self.daughters = []
         self.labels = []
-        self.__makesTrack = np.array([])
-        self.__makesTower = np.array([])
+        self.__makesTrack = np.array([], dtype=int)
+        self.__makesTower = np.array([], dtype=int)
 
     @property
     def nParticles(self):
@@ -109,7 +109,7 @@ class Shower:
             raise RuntimeError("How are there more track declarations than tracks?")
         elif len(self.__makesTrack) < len(self.IDs):
             to_add = len(self.IDs) - len(self.__makesTrack)
-            self.__makesTrack = np.hstack((self.__makesTrack, np.zeros(to_add)))
+            self.__makesTrack = np.hstack((self.__makesTrack, np.zeros(to_add, dtype=int)))
         return self.__makesTrack
 
     @property
@@ -118,7 +118,7 @@ class Shower:
             raise RuntimeError("How are there more tower declarations than tracks?")
         elif len(self.__makesTower) < len(self.IDs):
             to_add = len(self.IDs) - len(self.__makesTower)
-            self.__makesTower = np.hstack((self.__makesTower, np.zeros(to_add)))
+            self.__makesTower = np.hstack((self.__makesTower, np.zeros(to_add, dtype=int)))
         return self.__makesTower
         
 def addTracksTowers(databaseName, shower):
@@ -244,6 +244,7 @@ class DotGraph:
         self.__nodes = ""
         self.__edges = ""
         self.__ranks = ""
+        self.__legend = ""
         # if a shower is given make edges from that
         if shower is not None:
             self.fromShower(shower)
@@ -268,20 +269,38 @@ class DotGraph:
         shower.findRoot()
         root = shower.rootIndex
         ends = shower.ends
+        # set up a legened
+        ID = 0
+        internal_particle = "darkolivegreen1"
+        self.addLegendNode(ID, "Internal particle", colour=internal_particle)
+        ID += 1
+        root_particle = "darkolivegreen3"
+        self.addLegendNode(ID, "Root particle", colour=root_particle)
+        ID += 1
+        outside_particle = "gold"
+        self.addLegendNode(ID, "Connected to other shower", colour=outside_particle)
+        ID += 1
+        end_shape = "diamond"
+        tower_particle = "cadetblue"
+        self.addLegendNode(ID, "Particle in tower Tw#", colour=tower_particle, shape=end_shape)
+        ID += 1
+        track_particle = "deepskyblue1"
+        self.addLegendNode(ID, "Particle creates track", colour=track_particle, shape=end_shape)
+        ID += 1
         for i, (this_id, label) in enumerate(zip(shower.IDs, shower.labels)):
-            colour = "darkolivegreen1"
+            colour = internal_particle
             if i == root:
-                colour="darkolivegreen3"
+                colour=root_particle
             elif i in outsiders:
-                colour="gold"
+                colour=outside_particle
             shape = None
             if i in ends:
-                shape = "diamond"
+                shape = end_shape
             if shower.makesTower[i] > 0:
                 label += f" Tw{shower.makesTower[i]}"
-                colour = "cadetblue"
+                colour = tower_particle
             if shower.makesTrack[i] == 1:
-                colour = "deepskyblue1"
+                colour = track_particle
 
             self.addNode(this_id, label, colour=colour, shape=shape)
         # add the ranks
@@ -341,9 +360,33 @@ class DotGraph:
         id_string = '; '.join(ID_strings) + ';'
         self.__ranks += f'\t{{rank = same; {id_string}}}\n'
 
+    def addLegendNode(self, ID, label, colour=None, shape=None):
+        """ Add a label to this graph
+        
+
+        Parameters
+        ----------
+        ID : int
+            node ID to get this label
+            
+        label : string
+            label for node
+
+        """
+        self.__legend += f'\t{ID} [label="{label}"'
+        if colour is not None:
+            self.__legend += f' style=filled fillcolor={colour}'
+        if shape is not None:
+            self.__legend += f' shape={shape}'
+        self.__legend += ']\n'
+
     def __str__(self):
         fullString = self.__start + self.__nodes + self.__edges + self.__ranks + self.__end
         return fullString
+
+    @property
+    def legend(self):
+        return self.__start + self.__legend + self.__end
 
 def getShowers(particleSource, exclude_MCPIDs=[2212, 25, 35]):
     """ From each root split the decendants into showers
@@ -467,8 +510,11 @@ def main():
         print(f"Drawing shower {i}")
         graph = shower.graph()
         dotName = hepmc_name.split('.')[0] + str(i) + ".dot"
+        legendName = hepmc_name.split('.')[0] + str(i) + "_ledg.dot"
         with open(dotName, 'w') as dotFile:
             dotFile.write(str(graph))
+        with open(legendName, 'w') as dotFile:
+            dotFile.write(graph.legend)
 
 if __name__ == '__main__':
     main()
