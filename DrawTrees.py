@@ -66,6 +66,8 @@ class Shower:
             ranks[currentRank] = rankN
             hasDecendants = len(currentRank) > 0
         assert -1 not in ranks
+        # finally, promote all end state particles to the highest rank
+        ranks[self.ends] = rankN
         self.ranks = ranks
         return ranks
 
@@ -125,6 +127,17 @@ def addTracksTowers(databaseName, shower):
         index = np.where(shower.IDs==p)[0]
         if len(index) == 1:
             shower.makesTrack[index[0]] = 1
+    towerLinks = readSelected(databaseName, ["Tower", "Particle"], tableName="TowerLinks")
+    towers = []
+    for tower, p in towerLinks:
+        p_index = np.where(shower.IDs==p)[0]
+        if tower in towers:
+            t_index = towers.index(tower)
+        else:
+            t_index = len(towers)
+            towers.append(tower)
+        if len(p_index) == 1:
+            shower.makesTower[p_index[0]] = t_index
     return shower
 
 def getRoots(IDs, mothers):
