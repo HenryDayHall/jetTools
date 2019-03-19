@@ -116,6 +116,30 @@ class Hepmc_event:
     def MCPIDs(self):
         return self.intParticles[:, self.intParticle_columns.index("MCPID")]
 
+    @property
+    def status(self):
+        return self.intParticles[:, self.intParticle_columns.index("status_code")]
+
+    @property
+    def energy(self):
+        return self.floatParticles[:, self.floatParticle_columns.index("energy")]
+
+    @property
+    def mass(self):
+        return self.floatParticles[:, self.floatParticle_columns.index("generated_mass")]
+
+    @property
+    def px(self):
+        return self.floatParticles[:, self.floatParticle_columns.index("px")]
+
+    @property
+    def py(self):
+        return self.floatParticles[:, self.floatParticle_columns.index("py")]
+
+    @property
+    def pz(self):
+        return self.floatParticles[:, self.floatParticle_columns.index("pz")]
+
     def read_file(self, filepath=None, event_n=0):
         if filepath is not None:
             self.filepath = filepath

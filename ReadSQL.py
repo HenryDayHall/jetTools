@@ -43,6 +43,7 @@ def readSelected(databaseName, selectedFields, tableName="GenParticles", where=N
     cursor.execute(sql)
     out = cursor.fetchall()
     connection.close()
+    out = np.array([list(row) for row in out])
     return out
 
 def readAll(databaseName, tableName="GenParticles"):

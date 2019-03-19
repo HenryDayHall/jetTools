@@ -19,6 +19,8 @@ class Shower:
         self.mothers = []
         self.daughters = []
         self.labels = []
+        self.__makesTrack = np.array([])
+        self.__makesTower = np.array([])
 
     @property
     def nParticles(self):
@@ -99,7 +101,31 @@ class Shower:
                 _ends.append(i)
         return _ends
 
+    @property
+    def makesTrack(self):
+        if len(self.__makesTrack) > len(self.IDs):
+            raise RuntimeError("How are there more track declarations than tracks?")
+        elif len(self.__makesTrack) < len(self.IDs):
+            to_add = len(self.IDs) - len(self.__makesTrack)
+            self.__makesTrack = np.hstack((self.__makesTrack, np.zeros(to_add)))
+        return self.__makesTrack
 
+    @property
+    def makesTower(self):
+        if len(self.__makesTower) > len(self.IDs):
+            raise RuntimeError("How are there more tower declarations than tracks?")
+        elif len(self.__makesTower) < len(self.IDs):
+            to_add = len(self.IDs) - len(self.__makesTower)
+            self.__makesTower = np.hstack((self.__makesTower, np.zeros(to_add)))
+        return self.__makesTower
+        
+def addTracksTowers(databaseName, shower):
+    trackParticles = readSelected(databaseName, ["Particle"], tableName="Tracks")
+    for p in trackParticles:
+        index = np.where(shower.IDs==p)[0]
+        if len(index) == 1:
+            shower.makesTrack[index[0]] = 1
+    return shower
 
 def getRoots(IDs, mothers):
     """From a list of particle IDs and a list of mother IDs determin root particles
@@ -230,14 +256,19 @@ class DotGraph:
         root = shower.rootIndex
         ends = shower.ends
         for i, (this_id, label) in enumerate(zip(shower.IDs, shower.labels)):
-            colour = None
+            colour = "darkolivegreen1"
             if i == root:
-                colour="greenyellow"
+                colour="darkolivegreen3"
             elif i in outsiders:
                 colour="gold"
             shape = None
             if i in ends:
                 shape = "diamond"
+            if shower.makesTower[i] > 0:
+                label += f" Tw{shower.makesTower[i]}"
+                colour = "cadetblue"
+            if shower.makesTrack[i] == 1:
+                colour = "deepskyblue1"
 
             self.addNode(this_id, label, colour=colour, shape=shape)
         # add the ranks
@@ -418,7 +449,8 @@ def main():
     # showers = getShowers(rootDB)
     for i, shower in enumerate(showers):
         if 'b' not in shower.labels:
-            pass #continue
+            continue
+        addTracksTowers(databaseName, shower)
         print(f"Drawing shower {i}")
         graph = shower.graph()
         dotName = hepmc_name.split('.')[0] + str(i) + ".dot"
