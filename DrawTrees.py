@@ -505,9 +505,10 @@ def main():
     # showers = getShowers(rootDB)
     for i, shower in enumerate(showers):
         if 'b' not in shower.labels:
-            continue
+            pass #continue
+        max_daughters = max([len(d) for d in shower.daughters])
         addTracksTowers(databaseName, shower)
-        print(f"Drawing shower {i}")
+        print(f"Drawing shower {i}, has {max_daughters} max daughters. Daughters to particles ratio = {max_daughters/len(shower.daughters)}")
         graph = shower.graph()
         dotName = hepmc_name.split('.')[0] + str(i) + ".dot"
         legendName = hepmc_name.split('.')[0] + str(i) + "_ledg.dot"

@@ -166,7 +166,7 @@ def checkPIDMatch(databaseName, table1, refField, table2, PIDfield="MCPID"):
 
 def main():
     """ """
-    databaseName = "/home/henry/lazy/tag_1_delphes_events.db"
+    databaseName = "/home/henry/lazy/29delphes_events.db"
     #makeCheckfile(databaseName)
     #checkReflection(databaseName)
     checkPIDMatch(databaseName, "Tracks", "Particle", "GenParticles")
