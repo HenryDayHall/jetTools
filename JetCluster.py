@@ -44,8 +44,8 @@ class ClusterTree:
                 distance = self.clusters[row]['pt']**self.exponent * self.deltaR
             else:
                 distance = min(self.clusters[row]['pt']**self.exponent, self.clusters[column]['pt']**self.exponent) *\
-                           ((self.clusters[row]['eta'] - self.clusters[column]['eta'])**self.exponent +
-                           (self.clusters[row]['phi'] - self.clusters[column]['phi'])**self.exponent)
+                           ((self.clusters[row]['eta'] - self.clusters[column]['eta'])**2 +
+                           (self.clusters[row]['phi'] - self.clusters[column]['phi'])**2)
             self.distances[row, column] = distance
 
     def _merge_clusters(self, cluster_index1, cluster_index2):
@@ -71,6 +71,9 @@ class ClusterTree:
         # move the first cluster to the back without replacement
         cluster = self.clusters.pop(cluster_index)
         self.clusters.append(cluster)
+        # delete the row and column
+        self.distances = np.delete(self.distances, (cluster_index), axis=0)
+        self.distances = np.delete(self.distances, (cluster_index), axis=1)
         # one less cluster avalible
         self.currently_avalible -= 1
         
@@ -174,7 +177,7 @@ def main():
     databaseName = "/home/henry/lazy/29delphes_events.db"
     fields = ["ID", "PT", "Eta", "Phi"]
     trackList = readSelected(databaseName, fields, "Tracks")
-    clusterTree = ClusterTree(trackList, deltaR=.5)
+    clusterTree = ClusterTree(trackList, deltaR=.8)
     clusterTree.pltAssignMothers()
     # test_ClusterTree()
 
