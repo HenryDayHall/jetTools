@@ -46,16 +46,17 @@ class Hepmc_event:
         self.daughters = []
         self.mothers = []
         vertexCodes = [v.hepmc_barcode for v in self.vertex_list]
-        for i, (start, end) in enumerate(zip(self.particles.start_vertex_barcodes,
-                                             self.particles.end_vertex_barcodes)):
-            if start in vertexCodes:
-                ms = list(np.nonzero(self.particles.end_vertex_barcodes == start)[0])
+        for i, particle in enumerate(self.particles.particle_list):
+            if particle.start_vertex_barcode in vertexCodes:
+                indices = np.nonzero(self.particles.end_vertex_barcodes == particle.start_vertex_barcode)[0]
+                ms = list(self.particles.global_ids[indices])
             else:
                 print("This shouldn't happend... all particles sit below a vertex")
                 ms = []
             self.mothers.append(ms)
-            if end in vertexCodes:
-                ds = list(np.nonzero(self.particles.start_vertex_barcodes == end)[0])
+            if particle.end_vertex_barcode in vertexCodes:
+                indices = np.nonzero(self.particles.start_vertex_barcodes == particle.end_vertex_barcode)[0]
+                ds = list(self.particles.global_ids[indices])
             else:
                 ds = []
             self.daughters.append(ds)
@@ -63,15 +64,15 @@ class Hepmc_event:
         # now particles that are the beam particles are their own mothers
         b1_code = self.event_information["barcode_beam_particle1"]
         b2_code = self.event_information["barcode_beam_particle2"]
-        b1_idx = np.where(self.particles.hepmc_barcode == b1_code)[0]
-        b2_idx = np.where(self.particles.hepmc_barcode == b2_code)[0]
-        assert self.mothers[b1_idx] == [b1_code]
-        assert self.mothers[b2_idx] == [b2_code]
+        b1_idx = np.where(self.particles.hepmc_barcode == b1_code)[0][0]
+        b2_idx = np.where(self.particles.hepmc_barcode == b2_code)[0][0]
+        assert self.mothers[b1_idx] == self.particles.global_ids[b1_idx]
+        assert self.mothers[b2_idx] == self.particles.global_ids[b2_idx]
         # so tidy this up
         self.mothers[b1_idx] = []
-        self.daughters[b1_idx].remove(b1_code)
+        self.daughters[b1_idx].remove(self.particles.global_ids[b1_idx])
         self.mothers[b2_idx] = []
-        self.daughters[b2_idx].remove(b2_code)
+        self.daughters[b2_idx].remove(self.particles.global_ids[b2_idx])
         unused_barcode = max(self.particles.hepmc_barcode) + 1
         #self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         #self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode

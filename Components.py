@@ -99,22 +99,22 @@ class ParticleCollection:
         self.name = kwargs.get("name", "ParticleCollection")
         self._ptetaphie = np.empty((0, 4), dtype=float)
         self.columns = ["$p_T$", "$\\eta$", "$\\phi$", "$E$"]
-        self.pts = np.empty((0, 1), dtype=float)
-        self.etas = np.empty((0, 1), dtype=float)
-        self.phis = np.empty((0, 1), dtype=float)
-        self.es = np.empty((0, 1), dtype=float)
-        self.pxs = np.empty((0, 1), dtype=float)
-        self.pys = np.empty((0, 1), dtype=float)
-        self.pzs = np.empty((0, 1), dtype=float)
-        self.ms = np.empty((0, 1), dtype=float)
-        self.pids = np.empty((0, 1), dtype=float)
-        self.sql_keys = np.empty((0, 1), dtype=float)
-        self.hepmc_barcode = np.empty((0, 1), dtype=float)
-        self.global_ids = np.empty((0, 1), dtype=float)
-        self.is_roots = np.empty((0, 1), dtype=float)
-        self.is_leafs = np.empty((0, 1), dtype=float)
-        self.start_vertex_barcodes = np.empty((0, 1), dtype=float)
-        self.end_vertex_barcodes = np.empty((0, 1), dtype=float)
+        self.pts = np.array([], dtype=float)
+        self.etas = np.array([], dtype=float)
+        self.phis = np.array([], dtype=float)
+        self.es = np.array([], dtype=float)
+        self.pxs = np.array([], dtype=float)
+        self.pys = np.array([], dtype=float)
+        self.pzs = np.array([], dtype=float)
+        self.ms = np.array([], dtype=float)
+        self.pids = np.array([], dtype=int)
+        self.sql_keys = np.array([], dtype=int)
+        self.hepmc_barcode = np.array([], dtype=int)
+        self.global_ids = np.array([], dtype=int)
+        self.is_roots = np.array([], dtype=bool)
+        self.is_leafs = np.array([], dtype=bool)
+        self.start_vertex_barcodes = np.array([], dtype=int)
+        self.end_vertex_barcodes = np.array([], dtype=int)
         self.particle_list = []
         self.addParticles(args)
         self._freeze()
@@ -125,38 +125,38 @@ class ParticleCollection:
         self._ptetaphie = np.vstack((self._ptetaphie,
                    np.array([[p.pt, p.eta, p.phi, p.e]
                               for p in self.particle_list])))
-        self.pts = np.vstack((self.pts,
-                   np.array([p.pt for p in self.particle_list]).reshape((-1, 1))))
-        self.etas = np.vstack((self.etas,
-                   np.array([p.eta for p in self.particle_list]).reshape((-1, 1))))
-        self.phis = np.vstack((self.phis,
-                   np.array([p.phi for p in self.particle_list]).reshape((-1, 1))))
-        self.es = np.vstack((self.es,
-                   np.array([p.e for p in self.particle_list]).reshape((-1, 1))))
-        self.pxs = np.vstack((self.pxs,
-                   np.array([p.px for p in self.particle_list]).reshape((-1, 1))))
-        self.pys = np.vstack((self.pys,
-                   np.array([p.py for p in self.particle_list]).reshape((-1, 1))))
-        self.pzs = np.vstack((self.pzs,
-                   np.array([p.pz for p in self.particle_list]).reshape((-1, 1))))
-        self.ms = np.vstack((self.ms,
-                   np.array([p.m for p in self.particle_list]).reshape((-1, 1))))
-        self.pids = np.vstack((self.pids,
-                   np.array([p.pid for p in self.particle_list]).reshape((-1, 1))))
-        self.sql_keys = np.vstack((self.sql_keys,
-                   np.array([p.sql_key for p in self.particle_list]).reshape((-1, 1))))
-        self.hepmc_barcode = np.vstack((self.hepmc_barcode,
-                   np.array([p.hepmc_barcode for p in self.particle_list]).reshape((-1, 1))))
-        self.global_ids = np.vstack((self.global_ids,
-                   np.array([p.global_id for p in self.particle_list]).reshape((-1, 1))))
-        self.is_roots = np.vstack((self.is_roots,
-                   np.array([p.is_root for p in self.particle_list]).reshape((-1, 1))))
-        self.is_leafs = np.vstack((self.is_leafs,
-                   np.array([p.is_leaf for p in self.particle_list]).reshape((-1, 1))))
-        self.start_vertex_barcodes = np.vstack((self.start_vertex_barcodes,
-                   np.array([p.start_vertex_barcode for p in self.particle_list]).reshape((-1, 1))))
-        self.end_vertex_barcodes = np.vstack((self.end_vertex_barcodes,
-                   np.array([p.end_vertex_barcode for p in self.particle_list]).reshape((-1, 1))))
+        self.pts = np.hstack((self.pts,
+                   np.array([p.pt for p in self.particle_list])))
+        self.etas = np.hstack((self.etas,
+                   np.array([p.eta for p in self.particle_list])))
+        self.phis = np.hstack((self.phis,
+                   np.array([p.phi for p in self.particle_list])))
+        self.es = np.hstack((self.es,
+                   np.array([p.e for p in self.particle_list])))
+        self.pxs = np.hstack((self.pxs,
+                   np.array([p.px for p in self.particle_list])))
+        self.pys = np.hstack((self.pys,
+                   np.array([p.py for p in self.particle_list])))
+        self.pzs = np.hstack((self.pzs,
+                   np.array([p.pz for p in self.particle_list])))
+        self.ms = np.hstack((self.ms,
+                   np.array([p.m for p in self.particle_list])))
+        self.pids = np.hstack((self.pids,
+                   np.array([p.pid for p in self.particle_list])))
+        self.sql_keys = np.hstack((self.sql_keys,
+                   np.array([p.sql_key for p in self.particle_list])))
+        self.hepmc_barcode = np.hstack((self.hepmc_barcode,
+                   np.array([p.hepmc_barcode for p in self.particle_list])))
+        self.global_ids = np.hstack((self.global_ids,
+                   np.array([p.global_id for p in self.particle_list])))
+        self.is_roots = np.hstack((self.is_roots,
+                   np.array([p.is_root for p in self.particle_list])))
+        self.is_leafs = np.hstack((self.is_leafs,
+                   np.array([p.is_leaf for p in self.particle_list])))
+        self.start_vertex_barcodes = np.hstack((self.start_vertex_barcodes,
+                   np.array([p.start_vertex_barcode for p in self.particle_list])))
+        self.end_vertex_barcodes = np.hstack((self.end_vertex_barcodes,
+                   np.array([p.end_vertex_barcode for p in self.particle_list])))
         self._freeze()
 
     def __getitem__(self, idx):
