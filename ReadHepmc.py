@@ -1,13 +1,14 @@
 import numpy as np
+import os
 from collections import Counter
+import Components
 import csv
 from ipdb import set_trace as st
 
 
 class Hepmc_event:
-    def __init__(self, filepath=None):
-        self.filepath=filepath
-        self._init_columns()
+    def __init__(self, filepath, lines):
+        self.filepath = filepath
         self.event_information = {"event_n": None, "n_multi_particle_inter": None,
                                   "event_scale": None, "alpha_QCD": None, "alpha_QED": None,
                                   "signal_process_id": None, "barcode_for_signal_process": None,
@@ -21,6 +22,15 @@ class Hepmc_event:
         self.cross_section = {"cross_section(pb)" : None, "error(pb)": None}
         # there are more but unfortunatly I cannot be bothered to add them right now
         self._init_tables()
+        self._parse_event(lines)
+
+    def __str__(self):
+        event_n =self.event_information['event_n'] 
+        cross_sec = self.cross_section['cross_section(pb)']
+        return f"Event; event number={event_n}, cross section={cross_sec}, number particles={self.n_particles}"
+
+    def __repr__(self):
+        return self.__str__()
 
     def _init_tables(self):
         self.n_particles = 0
@@ -28,73 +38,54 @@ class Hepmc_event:
         self._new_tables()
 
     def _new_tables(self):
-        self.intVertices = np.full((self.n_vertices, len(self.intVertex_columns)),
-                                   np.nan, dtype=int)
-        self.floatVertices = np.full((self.n_vertices, len(self.floatVertex_columns)),
-                                     np.nan, dtype=float)
-        self.intParticles = np.full((self.n_particles, len(self.intParticle_columns)),
-                                   np.nan, dtype=int)
-        self.floatParticles = np.full((self.n_particles, len(self.floatParticle_columns)),
-                                     np.nan, dtype=float)
         self.colourFlow = [None for _ in range(self.n_particles)]
         self.antiColourFlow = [None for _ in range(self.n_particles)]
-
-    def _init_columns(self):
-        self.intVertex_columns = ["barcode", "id", "n_orphans", "n_out", "n_weights"]
-        self.floatVertex_columns = ["x", "y", "z", "ctau"]
-        self.intParticle_columns = ["barcode", "MCPID", "status_code",
-                                    "end_vertex_barcode", "start_vertex_barcode",
-                                    "n_flow_codes"]
-        self.floatParticle_columns = ["px", "py", "pz", "energy", "generated_mass",
-                                      "polarization_theta", "polarization_phi"]
 
 
     def assign_heritage(self):
         self.daughters = []
         self.mothers = []
-        startCol = self.intParticles[:, self.intParticle_columns.index("start_vertex_barcode")]
-        endCol = self.intParticles[:, self.intParticle_columns.index("end_vertex_barcode")]
-        vertexCodes = self.intVertices[:, self.intVertex_columns.index("barcode")]
-        for i, (start, end) in enumerate(zip(startCol,endCol)):
+        vertexCodes = [v.hepmc_barcode for v in self.vertex_list]
+        for i, (start, end) in enumerate(zip(self.particles.start_vertex_barcodes,
+                                             self.particles.end_vertex_barcodes)):
             if start in vertexCodes:
-                ms = list(np.nonzero(endCol == start)[0])
+                ms = list(np.nonzero(self.particles.end_vertex_barcodes == start)[0])
             else:
                 print("This shouldn't happend... all particles sit below a vertex")
                 ms = []
             self.mothers.append(ms)
             if end in vertexCodes:
-                ds = list(np.nonzero(startCol == end)[0])
+                ds = list(np.nonzero(self.particles.start_vertex_barcodes == end)[0])
             else:
                 ds = []
             self.daughters.append(ds)
             assert len(ms) + len(ds) > 0, f"Particle {i} isolated"
         # now particles that are the beam particles are their own mothers
-        barcodes = list(self.intParticles[:, self.intParticle_columns.index("barcode")])
-        b1 = barcodes.index(self.event_information["barcode_beam_particle1"])
-        b2 = barcodes.index(self.event_information["barcode_beam_particle2"])
-        assert self.mothers[b1] == [b1]
-        assert self.mothers[b2] == [b2]
+        b1_code = self.event_information["barcode_beam_particle1"]
+        b2_code = self.event_information["barcode_beam_particle2"]
+        b1_idx = np.where(self.particles.hepmc_barcode == b1_code)[0]
+        b2_idx = np.where(self.particles.hepmc_barcode == b2_code)[0]
+        assert self.mothers[b1_idx] == [b1_code]
+        assert self.mothers[b2_idx] == [b2_code]
         # so tidy this up
-        self.mothers[b1] = []
-        self.daughters[b1].remove(b1)
-        self.mothers[b2] = []
-        self.daughters[b2].remove(b2)
-        unused_barcode = max(barcodes) + 1
-        self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
-        self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
+        self.mothers[b1_idx] = []
+        self.daughters[b1_idx].remove(b1_code)
+        self.mothers[b2_idx] = []
+        self.daughters[b2_idx].remove(b2_code)
+        unused_barcode = max(self.particles.hepmc_barcode) + 1
+        #self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
+        #self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         
 
     def check_colour_flow(self):
-        exempt_particles = [np.nonzero(self.intParticles[:, self.intParticle_columns.index("barcode")]
+        exempt_particles = [np.nonzero(self.particles.hepmc_barcode
                                       == self.event_information["barcode_beam_particle1"]),
-                            np.nonzero(self.intParticles[:, self.intParticle_columns.index("barcode")]
+                            np.nonzero(self.particles.hepmc_barcode
                                       == self.event_information["barcode_beam_particle2"])]
-        c_end = self.intParticle_columns.index("end_vertex_barcode")
-        c_start = self.intParticle_columns.index("start_vertex_barcode")
-        for barcode in self.intVertices[:, self.intParticle_columns.index("barcode")]:
+        for vertex in self.vertex_list:
             # find the list of particles bearing this barcode
-            in_indices = np.nonzero(self.intParticles[:, c_end] == barcode)[0]
-            out_indices = np.nonzero(self.intParticles[:, c_start] == barcode)[0]
+            in_indices = np.nonzero(self.particles.start_vertex_barcodes == vertex.hepmc_barcode)[0]
+            out_indices = np.nonzero(self.particles.end_vertex_barcodes == vertex.hepmc_barcode)[0]
             # tally the colour flows in and out
             link_counter = Counter()
             for in_index in in_indices:
@@ -105,34 +96,40 @@ class Hepmc_event:
                 link_counter[self.antiColourFlow[out_index]] += 1
             del link_counter[None]
             for flow in link_counter:
-                assert link_counter[flow] % 2 == 0, f"Vertex barcode {barcode} has {link_counter[flow]} outgoing colour flows for colour flow {flow}"
+                assert link_counter[flow] % 2 == 0, f"Vertex barcode {vertex.hepmc_barcode}" + \
+                                                    f"has {link_counter[flow]} outgoing colour" +\
+                                                    f"flows for colour flow {flow}"
 
 
     @property
     def IDs(self):
-        return np.arange(len(self.intParticles))
+        return self.particles.global_ids
 
     @property
     def MCPIDs(self):
-        return self.intParticles[:, self.intParticle_columns.index("MCPID")]
+        return self.particles.pids
 
-    def read_file(self, filepath=None, event_n=0):
-        if filepath is not None:
-            self.filepath = filepath
-        else:
-            assert self.filepath is not None
-        with open(filepath, 'r') as this_file:
-            event_lines = []
-            event_reached = -1
-            csv_reader = csv.reader(this_file, delimiter=' ', quotechar='"')
-            for line in csv_reader:
-                if len(line) == 0:
-                    continue
-                event_reached += line[0] == "E"
-                if event_reached > event_n:
-                    break
-                elif event_reached == event_n:
-                    event_lines.append(line)
+    @property
+    def energy(self):
+        return self.particles.es
+
+    @property
+    def mass(self):
+        return self.particles.ms
+
+    @property
+    def px(self):
+        return self.particles.pxs
+
+    @property
+    def py(self):
+        return self.particles.pys
+
+    @property
+    def pz(self):
+        return self.particles.pzs
+
+    def _parse_event(self, event_lines):
         # now we have a set of lines of the desired event broken into elements
         e_line=[];n_line=[]; u_line=[]; c_line=[]; h_line=[]; f_line=[]
         # they each have their own start key
@@ -174,7 +171,7 @@ class Hepmc_event:
         while(event_lines[0][0] in start_lines):
             key = event_lines[0][0]
             if key == 'E':
-                e_line = event_lines.pop(0)
+                raise ValueError("Two event lines found")
             elif key == 'N':
                 n_line = event_lines.pop(0)
             elif key == 'U':
@@ -213,46 +210,41 @@ class Hepmc_event:
         self._new_tables()
         # now go through and set things up
         # for speed reasons get lists of indices ahead of time
-        particle_reached = 0
-        vertex_reached = 0
+        particle_list = []
+        self.vertex_list = []
         # vertex
         v_file_columns = ["V", "barcode", "id", "x", "y", "z", "ctau",
                           "n_orphans", "n_out", "n_weights"]
-        v_int_file_indices = [v_file_columns.index(name) for name in self.intVertex_columns
-                              if name in v_file_columns]
-        v_float_file_indices = [v_file_columns.index(name) for name in self.floatVertex_columns
-                                if name in v_file_columns]
-        v_int_table_indices = [self.intVertex_columns.index(name) for name in v_file_columns
-                                if name in self.intVertex_columns]
-        v_float_table_indices = [self.floatVertex_columns.index(name) for name in v_file_columns
-                                if name in self.floatVertex_columns]
+        v_file_dict = {name : v_file_columns.index(name) for name in v_file_columns}
         v_barcode_index = v_file_columns.index("barcode")
         #particle
         p_file_columns = ["P", "barcode", "MCPID", "px", "py", "pz", "energy", "generated_mass",
                           "status_code", "polarization_theta", "polarization_phi",
                           "end_vertex_barcode", "n_flow_codes"]
-        p_int_file_indices = [p_file_columns.index(name) for name in self.intParticle_columns
-                              if name in p_file_columns]
-        p_float_file_indices = [p_file_columns.index(name) for name in self.floatParticle_columns
-                                if name in p_file_columns]
-        p_int_table_indices = [self.intParticle_columns.index(name) for name in p_file_columns
-                                if name in self.intParticle_columns]
-        p_float_table_indices = [self.floatParticle_columns.index(name) for name in p_file_columns
-                                if name in self.floatParticle_columns]
-        p_barcode_index = self.intParticle_columns.index("start_vertex_barcode")
+        p_file_dict = {name : p_file_columns.index(name) for name in p_file_columns}
         # at the end of each particle row there are the colour flow indices
-        p_colour_start = max(p_int_file_indices + p_float_file_indices) + 1
+        p_colour_start = len(p_file_columns)
         last_vertex_barcode = None
         for line in event_lines:
-            if line[0] == 'V':
+            if line[0] == 'V':  # new vertex
                 last_vertex_barcode = int(line[v_barcode_index])
-                self.intVertices[vertex_reached, v_int_table_indices] = [int(line[i]) for i in v_int_file_indices]
-                self.floatVertices[vertex_reached, v_float_table_indices] = [float(line[i]) for i in v_float_file_indices]
-                vertex_reached += 1
+                this_vertex = Components.MyVertex(float(line[v_file_dict['x']]), float(line[v_file_dict['y']]), float(line[v_file_dict['z']]),
+                                                  float(line[v_file_dict['ctau']]), hepmc_barcode=int(line[v_file_dict['barcode']]),
+                                                  global_id=len(self.vertex_list), n_out=int(line[v_file_dict['n_out']]),
+                                                  n_orphans=int(line[v_file_dict['n_orphans']]), n_weights=int(line[v_file_dict['n_weights']]))
+                self.vertex_list.append(this_vertex)
             elif line[0] == 'P':
-                self.intParticles[particle_reached, p_barcode_index] = last_vertex_barcode
-                self.intParticles[particle_reached, p_int_table_indices] = [int(line[i]) for i in p_int_file_indices]
-                self.floatParticles[particle_reached, p_float_table_indices] = [float(line[i]) for i in p_float_file_indices]
+                particle_reached = len(particle_list)
+                this_particle = Components.MyParticle(float(line[p_file_dict['px']]), float(line[p_file_dict['py']]),
+                                                      float(line[p_file_dict['pz']]), float(line[p_file_dict['energy']]),
+                                                      pid=int(line[p_file_dict['MCPID']]), hepmc_barcode=int(line[p_file_dict['barcode']]),
+                                                      global_id=particle_reached,
+                                                      start_vertex_barcode=last_vertex_barcode,
+                                                      end_vertex_barcode=int(line[p_file_dict['end_vertex_barcode']]),
+                                                      status=int(line[p_file_dict['status_code']]),
+                                                      generated_mass=float(line[p_file_dict['generated_mass']]))
+
+                particle_list.append(this_particle)
                 if len(line) > p_colour_start:
                     colour_pairs = zip(line[p_colour_start::2], line[p_colour_start+1::2])
                     for code_index, colour_code in colour_pairs:
@@ -260,7 +252,38 @@ class Hepmc_event:
                             self.colourFlow[particle_reached] = colour_code
                         elif code_index == 2:
                             self.antiColourFlow[particle_reached] = colour_code
-                particle_reached += 1
+        # finally, but all particles in a collection object
+        self.particles = Components.ParticleCollection(particle_list)
 
 
+def read_file(filepath, start=0, stop=np.inf):
+    assert os.path.exists(filepath), f"Can't see that file; {filepath}"
+    with open(filepath, 'r') as this_file:
+        csv_reader = csv.reader(this_file, delimiter=' ', quotechar='"')
+        event_reached = 0
+        # move to the start of the start event
+        for line in csv_reader:
+            if len(line) == 0:
+                continue
+            if line[0] == "E":
+                event_reached += 1
+                if event_reached >= start:
+                    event_lines =[line]
+                    break
+        assert len(event_lines) == 1, "Diddnt find any events!"
+        # continue till the stop event
+        events = []
+        for line in csv_reader:
+            if len(line) == 0:
+                continue
+            if line[0] == "E":
+                event = Hepmc_event(filepath, event_lines)
+                events.append(event)
+                event_reached += 1
+                event_lines = [line]
+            else:
+                event_lines.append(line)
+            if event_reached > stop:
+                break
+    return events
 
