@@ -185,7 +185,6 @@ class DotGraph:
 
     def addLegendNode(self, ID, label, colour=None, shape=None):
         """ Add a label to this graph
-        
 
         Parameters
         ----------
