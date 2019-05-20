@@ -2,7 +2,6 @@
 from ipdb import set_trace as st
 import numpy as np
 from skhep import math as hepmath
-import pyjet
 
 class MyParticle(hepmath.vectors.LorentzVector):
     """Aping genparticle."""
@@ -17,8 +16,8 @@ class MyParticle(hepmath.vectors.LorentzVector):
         self.is_leaf = kwargs.get('is_leaf', False)
         self.start_vertex_barcode = kwargs.get('start_vertex_barcode', None)
         self.end_vertex_barcode = kwargs.get('end_vertex_barcode', None)
-        self.parent_ids = []
-        self.child_ids = []
+        self.mother_ids = []
+        self.daughter_ids = []
         # status
         self.status = kwargs.get('status', None)
         self.generated_mass = kwargs.get('generated_mass', None)
@@ -109,7 +108,7 @@ class ParticleCollection:
         self.ms = np.array([], dtype=float)
         self.pids = np.array([], dtype=int)
         self.sql_keys = np.array([], dtype=int)
-        self.hepmc_barcode = np.array([], dtype=int)
+        self.hepmc_barcodes = np.array([], dtype=int)
         self.global_ids = np.array([], dtype=int)
         self.is_roots = np.array([], dtype=bool)
         self.is_leafs = np.array([], dtype=bool)
@@ -130,7 +129,7 @@ class ParticleCollection:
         self.etas = np.hstack((self.etas,
                    np.array([p.eta for p in self.particle_list])))
         self.phis = np.hstack((self.phis,
-                   np.array([p.phi for p in self.particle_list])))
+                   np.array([p.phi() for p in self.particle_list])))
         self.es = np.hstack((self.es,
                    np.array([p.e for p in self.particle_list])))
         self.pxs = np.hstack((self.pxs,
@@ -145,7 +144,7 @@ class ParticleCollection:
                    np.array([p.pid for p in self.particle_list])))
         self.sql_keys = np.hstack((self.sql_keys,
                    np.array([p.sql_key for p in self.particle_list])))
-        self.hepmc_barcode = np.hstack((self.hepmc_barcode,
+        self.hepmc_barcodes = np.hstack((self.hepmc_barcodes,
                    np.array([p.hepmc_barcode for p in self.particle_list])))
         self.global_ids = np.hstack((self.global_ids,
                    np.array([p.global_id for p in self.particle_list])))
@@ -186,6 +185,14 @@ class ParticleCollection:
         raise NotImplementedError #TODO - also any other collective properties
 
 
+class Observables:
+    def __init__(self, particle_collection, track_ids, tower_ids):
+        self.particle_collection = particle_collection
+        self.track_ids = track_ids
+        self.tower_ids = tower_ids
+
+
+# probably wont use
 class CollectionStructure:
     def __init__(self, collection, structure=None, shape=None):
         self.collection = collection

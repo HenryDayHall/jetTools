@@ -21,28 +21,26 @@ class Hepmc_event:
         self.units = {"momentum" : None, "length" : None}
         self.cross_section = {"cross_section(pb)" : None, "error(pb)": None}
         # there are more but unfortunatly I cannot be bothered to add them right now
-        self._init_tables()
+        # before parsing there are no particles or vertices in the object
+        self.n_particles = 0
+        self.n_vertices = 0
+        # set up the tables to track colour flow
+        self.colour_flow = [None for _ in range(self.n_particles)]
+        self.antiColour_flow = [None for _ in range(self.n_particles)]
+        # parse the event
         self._parse_event(lines)
+        # figure out which particles created which other particles
+        self._assign_heritage()
 
     def __str__(self):
-        event_n =self.event_information['event_n'] 
+        event_n = self.event_information['event_n']
         cross_sec = self.cross_section['cross_section(pb)']
         return f"Event; event number={event_n}, cross section={cross_sec}, number particles={self.n_particles}"
 
     def __repr__(self):
         return self.__str__()
 
-    def _init_tables(self):
-        self.n_particles = 0
-        self.n_vertices = 0
-        self._new_tables()
-
-    def _new_tables(self):
-        self.colourFlow = [None for _ in range(self.n_particles)]
-        self.antiColourFlow = [None for _ in range(self.n_particles)]
-
-
-    def assign_heritage(self):
+    def _assign_heritage(self):
         self.daughters = []
         self.mothers = []
         vertexCodes = [v.hepmc_barcode for v in self.vertex_list]
@@ -64,8 +62,8 @@ class Hepmc_event:
         # now particles that are the beam particles are their own mothers
         b1_code = self.event_information["barcode_beam_particle1"]
         b2_code = self.event_information["barcode_beam_particle2"]
-        b1_idx = np.where(self.particles.hepmc_barcode == b1_code)[0][0]
-        b2_idx = np.where(self.particles.hepmc_barcode == b2_code)[0][0]
+        b1_idx = np.where(self.particles.hepmc_barcodes == b1_code)[0][0]
+        b2_idx = np.where(self.particles.hepmc_barcodes == b2_code)[0][0]
         assert self.mothers[b1_idx] == self.particles.global_ids[b1_idx]
         assert self.mothers[b2_idx] == self.particles.global_ids[b2_idx]
         # so tidy this up
@@ -73,15 +71,15 @@ class Hepmc_event:
         self.daughters[b1_idx].remove(self.particles.global_ids[b1_idx])
         self.mothers[b2_idx] = []
         self.daughters[b2_idx].remove(self.particles.global_ids[b2_idx])
-        unused_barcode = max(self.particles.hepmc_barcode) + 1
+        unused_barcode = max(self.particles.hepmc_barcodes) + 1
         #self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         #self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         
 
     def check_colour_flow(self):
-        exempt_particles = [np.nonzero(self.particles.hepmc_barcode
+        exempt_particles = [np.nonzero(self.particles.hepmc_barcodes
                                       == self.event_information["barcode_beam_particle1"]),
-                            np.nonzero(self.particles.hepmc_barcode
+                            np.nonzero(self.particles.hepmc_barcodes
                                       == self.event_information["barcode_beam_particle2"])]
         for vertex in self.vertex_list:
             # find the list of particles bearing this barcode
@@ -90,45 +88,17 @@ class Hepmc_event:
             # tally the colour flows in and out
             link_counter = Counter()
             for in_index in in_indices:
-                link_counter[self.colourFlow[in_index]] += 1
-                link_counter[self.antiColourFlow[in_index]] -= 1
+                link_counter[self.colour_flow[in_index]] += 1
+                link_counter[self.antiColour_flow[in_index]] -= 1
             for out_index in out_indices:
-                link_counter[self.colourFlow[out_index]] -= 1
-                link_counter[self.antiColourFlow[out_index]] += 1
+                link_counter[self.colour_flow[out_index]] -= 1
+                link_counter[self.antiColour_flow[out_index]] += 1
             del link_counter[None]
             for flow in link_counter:
                 assert link_counter[flow] % 2 == 0, f"Vertex barcode {vertex.hepmc_barcode}" + \
                                                     f"has {link_counter[flow]} outgoing colour" +\
                                                     f"flows for colour flow {flow}"
 
-
-    @property
-    def IDs(self):
-        return self.particles.global_ids
-
-    @property
-    def MCPIDs(self):
-        return self.particles.pids
-
-    @property
-    def energy(self):
-        return self.particles.es
-
-    @property
-    def mass(self):
-        return self.particles.ms
-
-    @property
-    def px(self):
-        return self.particles.pxs
-
-    @property
-    def py(self):
-        return self.particles.pys
-
-    @property
-    def pz(self):
-        return self.particles.pzs
 
     def _parse_event(self, event_lines):
         # now we have a set of lines of the desired event broken into elements
@@ -208,7 +178,6 @@ class Hepmc_event:
         # not the number of events is know we can set up the tables
         self.n_particles = n_particles
         self.n_vertices = n_vertices
-        self._new_tables()
         # now go through and set things up
         # for speed reasons get lists of indices ahead of time
         particle_list = []
@@ -250,9 +219,9 @@ class Hepmc_event:
                     colour_pairs = zip(line[p_colour_start::2], line[p_colour_start+1::2])
                     for code_index, colour_code in colour_pairs:
                         if code_index == 1:
-                            self.colourFlow[particle_reached] = colour_code
+                            self.colour_flow[particle_reached] = colour_code
                         elif code_index == 2:
-                            self.antiColourFlow[particle_reached] = colour_code
+                            self.antiColour_flow[particle_reached] = colour_code
         # finally, but all particles in a collection object
         self.particles = Components.ParticleCollection(particle_list)
 
@@ -269,7 +238,7 @@ def read_file(filepath, start=0, stop=np.inf):
             if line[0] == "E":
                 event_reached += 1
                 if event_reached >= start:
-                    event_lines =[line]
+                    event_lines = [line]
                     break
         assert len(event_lines) == 1, "Diddnt find any events!"
         # continue till the stop event

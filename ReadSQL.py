@@ -13,7 +13,7 @@ class ParticleDatabase:
         self.MCPIDs = np.array([d[5] for d in fromDatabase])
 
 
-def readSelected(databaseName, selectedFields, tableName="GenParticles"):
+def readSelected(databaseName, selectedFields, tableName="GenParticles", where=None, field_in_list=None):
     """
     Read all entries of names columns from table in database
 
@@ -38,9 +38,21 @@ def readSelected(databaseName, selectedFields, tableName="GenParticles"):
     connection = sqlite3.connect(databaseName)
     cursor = connection.cursor()
     sql = "SELECT " + ", ".join(selectedFields) + " FROM " + tableName
+    # if there are conditonals add them here
+    where_components = []
+    if where is not None:
+        where_components += where
+    if field_in_list is not None:
+        column = field_in_list[0]
+        in_list = ', '.join(field_in_list[1])
+        where_components.append(column + " IN (" + in_list + ")")
+    if len(where_components) > 0:
+        sql += " WHERE " + ' AND '.join(where_components)
+    # now execute
     cursor.execute(sql)
     out = cursor.fetchall()
     connection.close()
+    out = np.array([list(row) for row in out])
     return out
 
 def readAll(databaseName, tableName="GenParticles"):
@@ -160,10 +172,27 @@ def checkPIDMatch(databaseName, table1, refField, table2, PIDfield="MCPID"):
     for foreignKey, PID in out1:
         assert PID == out2[foreignKey], f"Error, track PID mismatch for particle {foreignKey}"
 
+#    def __init__(self, database_name, shower):
+#        track_particles = ReadSQL.readSelected(database_name, ["Particle"], tableName="Tracks")
+#        for p in track_particles:
+#            index = np.where(shower.global_ids==p)[0]
+#            if len(index) == 1:
+#                shower.makes_track[index[0]] = 1
+#        towerLinks = ReadSQL.readSelected(database_name, ["Tower", "Particle"], tableName="TowerLinks")
+#        towers = []
+#        for tower, p in towerLinks:
+#            p_index = np.where(shower.global_ids==p)[0]
+#            if tower in towers:
+#                t_index = towers.index(tower)
+#            else:
+#                t_index = len(towers)
+#                towers.append(tower)
+#            if len(p_index) == 1:
+#                shower.makes_tower[p_index[0]] = t_index
 
 def main():
     """ """
-    databaseName = "/home/henry/lazy/tag_1_delphes_events.db"
+    databaseName = "/home/henry/lazy/29delphes_events.db"
     #makeCheckfile(databaseName)
     #checkReflection(databaseName)
     checkPIDMatch(databaseName, "Tracks", "Particle", "GenParticles")

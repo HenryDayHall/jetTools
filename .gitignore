@@ -1,0 +1,14 @@
+# graph files
+*.dot
+*.pdf
+images/
+# python stuff
+__pycache__/
+# other peoples code
+glouppe/
+pyjet_examples/
+pyTorchTree/
+# backups
+*.bk
+# swap files
+*.swp
