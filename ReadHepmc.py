@@ -72,6 +72,14 @@ class Hepmc_event:
         self.mothers[b2_idx] = []
         self.daughters[b2_idx].remove(self.particles.global_ids[b2_idx])
         unused_barcode = max(self.particles.hepmc_barcodes) + 1
+        # put these result into the partices
+        for particle, mothers, daughters in zip(self.particles.particle_list,
+                                                self.mothers, self.daughters):
+            particle.mother_ids = mothers
+            particle.is_root = mothers == []
+            particle.daughters_ids = daughters
+            particle.is_leaf = daughters == []
+        self.particles.updateParticles()
         #self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         #self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
         
@@ -200,7 +208,7 @@ class Hepmc_event:
                 last_vertex_barcode = int(line[v_barcode_index])
                 this_vertex = Components.MyVertex(float(line[v_file_dict['x']]), float(line[v_file_dict['y']]), float(line[v_file_dict['z']]),
                                                   float(line[v_file_dict['ctau']]), hepmc_barcode=int(line[v_file_dict['barcode']]),
-                                                  global_id=len(self.vertex_list), n_out=int(line[v_file_dict['n_out']]),
+                                                  global_vertex_id=len(self.vertex_list), n_out=int(line[v_file_dict['n_out']]),
                                                   n_orphans=int(line[v_file_dict['n_orphans']]), n_weights=int(line[v_file_dict['n_weights']]))
                 self.vertex_list.append(this_vertex)
             elif line[0] == 'P':
@@ -231,6 +239,7 @@ def read_file(filepath, start=0, stop=np.inf):
     with open(filepath, 'r') as this_file:
         csv_reader = csv.reader(this_file, delimiter=' ', quotechar='"')
         event_reached = 0
+        event_lines = []
         # move to the start of the start event
         for line in csv_reader:
             if len(line) == 0:

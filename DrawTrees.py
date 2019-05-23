@@ -59,9 +59,9 @@ class DotGraph:
             
         """
         # add the edges
-        for this_id, this_mothers in zip(shower.IDs, shower.mothers):
+        for this_id, this_mothers in zip(shower.global_ids, shower.mothers):
             for mother in this_mothers:
-                if mother in shower.IDs:
+                if mother in shower.global_ids:
                     self.addEdge(mother, this_id)
         # add the labels
         outsiders = shower.outsideConnections
@@ -86,7 +86,7 @@ class DotGraph:
         track_particle = "deepskyblue1"
         self.addLegendNode(ID, "Particle creates track", colour=track_particle, shape=end_shape)
         ID += 1
-        for i, (this_id, label) in enumerate(zip(shower.IDs, shower.labels)):
+        for i, (this_id, label) in enumerate(zip(shower.global_ids, shower.labels)):
             colour = internal_particle
             if i in roots:
                 colour=root_particle
@@ -107,21 +107,21 @@ class DotGraph:
         rankKeys = sorted(list(set(ranks)))
         for key in rankKeys:
             mask = ranks == key
-            rankIDs = np.array(shower.IDs)[mask]
+            rankIDs = np.array(shower.global_ids)[mask]
             self.addRank(rankIDs)
         if jet is not None:
             # add the highest shower rank t all the jet ranks
             jet_cluster = "coral"
             self.addLegendNode(ID, f"Jet cluster", colour=jet_cluster)
             jet.addObsLevel()
-            jet.addGlobalID(max(shower.IDs))
+            jet.addGlobalID(max(shower.global_ids))
             adjusted_jet_rank = jet.ranks + max(ranks)
             for index, (this_id, this_mother) in enumerate(zip(jet.IDs, jet.mothers)):
                 # add the edges
                 if this_mother >= 0:
                     self.addEdge(this_id, this_mother)
                 # if needed add the node
-                if jet.IDs[index] in shower.IDs:
+                if jet.IDs[index] in shower.global_ids:
                     continue
                 else:
                     self.addNode(this_id, f"jet", colour=jet_cluster, shape=None)

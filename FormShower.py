@@ -154,8 +154,10 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
     # remove any stop pids
     mask = [p not in exclude_pids for p in particle_collection.pids]
     global_ids = particle_collection.global_ids[mask]
-    mothers = list(itertools.compress(particle_collection.mothers, mask))
-    daughters = list(itertools.compress(particle_collection.daughters, mask))
+    mother_ids = [p.mother_ids for p in particle_collection.particle_list]
+    mother_ids = list(itertools.compress(mother_ids, mask))
+    daughter_ids = [p.daughter_ids for p in particle_collection.particle_list]
+    daughter_ids = list(itertools.compress(daughter_ids, mask))
     pids = particle_collection.pids[mask]
     # check that worked
     remaining_pids = set(pids)
@@ -168,7 +170,7 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
     # but we want to split the event into showers
     # at start all particles are allocated to a diferent shower
     showers = []
-    roots = getRoots(global_ids, mothers)
+    roots = getRoots(global_ids, mother_ids)
     print(f"Found {len(roots)} roots")
     list_global_ids = list(global_ids)
     for i, root in enumerate(roots):
@@ -179,7 +181,7 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
             next_gen = []
             for index in to_follow:
                 # be careful not to include forbiden particles
-                next_gen += [list_global_ids.index(daughter) for daughter in daughters[index]
+                next_gen += [list_global_ids.index(daughter) for daughter in daughter_ids[index]
                              if daughter in global_ids]
             # prevent loops
             next_gen = list(set(next_gen))
@@ -189,7 +191,8 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
             to_follow = next_gen
         assert len(set(shower_indices)) == len(shower_indices)
         new_shower = Shower(particle_collection, global_ids[shower_indices],
-                            mothers[shower_indices], daughters[shower_indices],
+                            [mother_ids[s] for s in shower_indices], 
+                            [daughter_ids[s] for s in shower_indices],
                             labels[shower_indices])
         showers.append(new_shower)
     return showers
