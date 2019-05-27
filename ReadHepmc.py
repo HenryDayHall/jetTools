@@ -259,10 +259,17 @@ def read_file(filepath, start=0, stop=np.inf):
                 event = Hepmc_event(filepath, event_lines)
                 events.append(event)
                 event_reached += 1
+                if os.path.exists('stop'):
+                    print(f"Event reached = {event_reached}")
                 event_lines = [line]
             else:
                 event_lines.append(line)
             if event_reached > stop:
                 break
     return events
+
+def main():
+    filepath = "/home/henry/lazy/29pythia8_events.hepmc"
+    event = read_file(filepath, 0, 1)[0]
+    return event
 

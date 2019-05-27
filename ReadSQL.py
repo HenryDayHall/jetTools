@@ -1,19 +1,11 @@
 import sqlite3
+import Components
+import ReadHepmc
 from ipdb import set_trace as st
 import numpy as np
 
-class ParticleDatabase:
-    def __init__(self, databaseName):
-        self.databaseName = databaseName
-        fields = ["ID", "M1", "M2", "D1", "D2", "MCPID"]
-        fromDatabase = readSelected(databaseName, fields)
-        self.IDs = np.array([d[0] for d in fromDatabase])
-        self.mothers = np.array([d[1:3] for d in fromDatabase])
-        self.daughters = np.array([d[3:5] for d in fromDatabase])
-        self.MCPIDs = np.array([d[5] for d in fromDatabase])
 
-
-def readSelected(databaseName, selectedFields, tableName="GenParticles", where=None, field_in_list=None):
+def read_selected(databaseName, selectedFields, tableName="GenParticles", where=None, field_in_list=None):
     """
     Read all entries of names columns from table in database
 
@@ -55,7 +47,8 @@ def readSelected(databaseName, selectedFields, tableName="GenParticles", where=N
     out = np.array([list(row) for row in out])
     return out
 
-def readAll(databaseName, tableName="GenParticles"):
+
+def read_all(databaseName, tableName="GenParticles"):
     """
     REad all the data from a table in a database
 
@@ -74,129 +67,127 @@ def readAll(databaseName, tableName="GenParticles"):
         list where each item is a record.
 
     """
-    out = readSelected(databaseName, '*', tableName)
+    out = read_selected(databaseName, '*', tableName)
     return out
 
 
-def makeCheckfile(databaseName):
-    """
-    Pakes a csv file of all the data in the database,
-    with format as close as possible to the c++ output.
-    
-
-    Parameters
-    ----------
-    databaseName : string
-        file name os the database to be read.
-
-    """
-    fields = ["MCPID", "Status", "IsPU", "Charge", "Mass", "E", "Px", "Py", "Pz", "P", "PT", "Eta", "Phi", "Rapidity", "CtgTheta", "D0", "DZ", "T", "X", "Y", "Z"]
-    out = readSelected(databaseName, fields)
-    cppOut = [', '.join((cppLike(x) for x in line)) for line in out]
-    testName = databaseName.split('.')[0] + "_python.txt"
-    with open(testName, 'w') as outFile:
-        for line in cppOut:
-            outFile.write(str(line) + "\n")
-    print(f"Written to {testName}")
-
-def cppLike(x):
-    """
-    Format a number to be closer to the format of a c++ print
-    
-
-    Parameters
-    ----------
-    x : float or int
-        number to be printed
-        
-
-    Returns
-    -------
-    : str
-        the c++ like string format
-
-    """
-    if x == 0:
-        x = abs(x)
-    if x == int(x):
-        return str(int(x))
-    else:
-        return str(x)
+def trackTowerCreators(databaseName, fields):
+    creators = []
+    trackParticleIDs = read_selected(databaseName, ["Particle"], tableName="Tracks")
+    trackParticleIDs = [str(p[0]) for p in trackParticleIDs]
+    trackParticles = read_selected(databaseName, selectedFields=fields, field_in_list=("ID", trackParticleIDs))
+    trackParticles = np.hstack((np.zeros((trackParticles.shape[0], 1)), trackParticles))
+    towerParticleIDs = read_selected(databaseName, ["Particle"], tableName="TowerLinks")
+    towerParticleIDs = [str(p[0]) for p in towerParticleIDs if str(p[0]) not in trackParticleIDs]
+    towerParticles = read_selected(databaseName, selectedFields=fields, field_in_list=("ID", towerParticleIDs))
+    towerParticles = np.hstack((np.ones((towerParticles.shape[0], 1)), towerParticles))
+    theCreators = np.vstack((trackParticles, towerParticles))
+    return theCreators
 
 
-def checkReflection(databaseName=None, **kwargs):
-    """
-    Check for agreement between parent and child fields
+def trackTowerDict(databaseName):
+    tracksList = read_selected(databaseName, ["ID", "Particle"], tableName="Tracks")
+    trackDict = {int(tID) : int(pID) for (tID, pID) in tracksList}
+    towerList = read_selected(databaseName, ["ID", "Particle"], tableName="TowerLinks")
+    towerDict = {int(tID) : int(pID) for (tID, pID) in towerList}
+    return trackDict, towerDict
 
-    Parameters
-    ----------
-    databaseName : str
-        path and file name of the database to be read
-        
+def read_tracks_towers(particle_collection, database_name):
+    # get the sql keys and check the pids match
+    particle_data = read_selected(database_name, ['ID', 'MCPID'], "GenParticles")
+    assert len(particle_data) == len(particle_collection), "Difernet number of particles in .db and .hepc"
+    sql_pids = np.array([int(line[1]) for line in particle_data], dtype=int)
+    np.testing.assert_array_equal(sql_pids, particle_collection.pids, 
+                                  "Particle pids dont match")
+    sql_particle_keys = np.array([int(line[0]) for line in particle_data], dtype=int)
+    sql_pkeys_list = sql_particle_keys.tolist()
+    for particle_n, key in enumerate(sql_particle_keys):
+        particle_collection.particle_list[particle_n].sql_key = key
+    particle_collection.updateParticles()
+    np.testing.assert_array_equal(sql_particle_keys, particle_collection.sql_keys,
+                                  "Error setting sql keys in the particle collection")
+    # make a list of tracks
+    track_list = []
+    track_data = read_selected(database_name, ['ID', 'MCPID', 'Particle', 'Charge', 'P', 'PT',
+                                              'Eta', 'Phi', 'CtgTheta', 'EtaOuter', 'PhiOuter',
+                                              'T', 'X', 'Y', 'Z', 'Xd', 'Yd', 'Zd', 'L', 'D0',
+                                              'DZ', 'TOuter', 'XOuter', 'YOuter', 'ZOuter'],
+                                "Tracks")
+    track_id = 0
+    for line in track_data:
+        pkey = int(line[2])
+        p_idx = np.where(particle_collection.sql_keys==pkey)[0][0]
+        particle = particle_collection.particle_list[p_idx]
+        track = Components.MyTrack(global_track_id=track_id,
+                                   pid=int(line[1]),
+                                   sql_key=int(line[0]),
+                                   particle_sql_key=pkey,
+                                   particle=particle,
+                                   charge=float(line[3]),
+                                   p=float(line[4]),
+                                   pT=float(line[5]),
+                                   eta=float(line[6]),
+                                   phi=float(line[7]),
+                                   ctgTheta=float(line[8]),
+                                   etaOuter=float(line[9]),
+                                   phiOuter=float(line[10]),
+                                   t=float(line[11]),
+                                   x=float(line[12]),
+                                   y=float(line[13]),
+                                   z=float(line[14]),
+                                   xd=float(line[15]),
+                                   yd=float(line[16]),
+                                   zd=float(line[17]),
+                                   l=float(line[18]),
+                                   d0=float(line[19]),
+                                   dZ=float(line[20]),
+                                   t_outer=float(line[21]),
+                                   x_outer=float(line[22]),
+                                   y_outer=float(line[23]),
+                                   z_outer=float(line[24]))
+        track_id += 1
+        track_list.append(track)
+    # make list of towers
+    tower_list = []
+    tower_data = read_selected(database_name, ['ID', 'T', 'NTimeHits', 'Eem', 'Ehad',
+                                              'Edge1', 'Edge2', 'Edge3', 'Edge4',
+                                              'E', 'ET', 'Eta', 'Phi'],
+                               "Towers")
+    link_data = read_selected(database_name, ['Tower', 'Particle'], "TowerLinks")
+    link_data = np.array(link_data, dtype=int)
+    tower_id = 0
+    for line in tower_data:
+        tkey = int(line[0])
+        pkeys = [link[1] for link in link_data if link[0]==tkey]
+        p_idxs = np.where(np.isin(particle_collection.sql_keys, pkeys))[0]
+        particles = [particle_collection.particle_list[i] for i in p_idxs]
+        tower = Components.MyTower(global_tower_id=tower_id,
+                                   pids=[p.pid for p in particles],
+                                   sql_key=int(line[0]),
+                                   particles_sql_keys=pkeys,
+                                   particles=particles,
+                                   t=float(line[1]),
+                                   nTimesHits=int(line[2]),
+                                   eem=float(line[3]),
+                                   ehad=float(line[4]),
+                                   edges=[float(edge) for edge in line[5:9]],
+                                   e=float(line[9]),
+                                   et=float(line[10]),
+                                   eta=float(line[11]),
+                                   phi=float(line[12]))
+        tower_list.append(tower)
+        tower_id += 1
+    return track_list, tower_list
 
-    """
-    if databaseName is not None:
-        fields = ["ID", "M1", "M2", "D1", "D2"]
-        fromDatabase = readSelected(databaseName, fields)
-        IDs = np.array([d[0] for d in fromDatabase])
-        parents = np.array([d[1:3] for d in fromDatabase])
-        children = np.array([d[3:5] for d in fromDatabase])
-    else:
-        IDs = kwargs.get('IDs')
-        parents = kwargs.get('parents')
-        children = kwargs.get('children')
-    listIDs = list(IDs)
-    for row, this_id in enumerate(IDs):
-        for p in parents[row]:
-            if p is not None:
-                assert p in IDs, f"The parent {p} of {this_id} is invalid"
-                p_row = listIDs.index(p)  # find the row of the parent
-                assert this_id in children[p_row], f"Parent {p} of {this_id} not acknowledging child"
-        for c in children[row]:
-            if c is not None:
-                assert c in IDs, f"The child {c} of {this_id} is invalid"
-                c_row = listIDs.index(c)  # find the row of the child
-                if row == c_row:
-                    print(f"Particle {this_id} appears to be it's own daughter")
-                    print("Ignoring")
-                    continue
-                assert this_id in parents[c_row], f"Child {c} of {this_id} not acknowledging parent"
 
-def checkPIDMatch(databaseName, table1, refField, table2, PIDfield="MCPID"):
-    # in table 1 we need the ref field and the pid field
-    out1 = readSelected(databaseName, [refField, PIDfield], table1)
-    # in table2 we need the ID field and the pid field
-    out2 = readSelected(databaseName, ["ID", PIDfield], table2)
-    # convert the second table to a dict
-    out2 = dict(out2)
-    for foreignKey, PID in out1:
-        assert PID == out2[foreignKey], f"Error, track PID mismatch for particle {foreignKey}"
-
-#    def __init__(self, database_name, shower):
-#        track_particles = ReadSQL.readSelected(database_name, ["Particle"], tableName="Tracks")
-#        for p in track_particles:
-#            index = np.where(shower.global_ids==p)[0]
-#            if len(index) == 1:
-#                shower.makes_track[index[0]] = 1
-#        towerLinks = ReadSQL.readSelected(database_name, ["Tower", "Particle"], tableName="TowerLinks")
-#        towers = []
-#        for tower, p in towerLinks:
-#            p_index = np.where(shower.global_ids==p)[0]
-#            if tower in towers:
-#                t_index = towers.index(tower)
-#            else:
-#                t_index = len(towers)
-#                towers.append(tower)
-#            if len(p_index) == 1:
-#                shower.makes_tower[p_index[0]] = t_index
 
 def main():
     """ """
-    databaseName = "/home/henry/lazy/29delphes_events.db"
-    #makeCheckfile(databaseName)
-    #checkReflection(databaseName)
-    checkPIDMatch(databaseName, "Tracks", "Particle", "GenParticles")
+    hepmc_name = "/home/henry/lazy/29pythia8_events.hepmc"
+    database_name = "/home/henry/lazy/29delphes_events.db"
+    event = ReadHepmc.read_file(hepmc_name, 0, 1)[0]
+    track_list, tower_list = read_tracks_towers(event.particles, database_name)
+    return event, track_list, tower_list
 
 if __name__ == '__main__':
-    #main()
-    pass
+    main()

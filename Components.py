@@ -250,17 +250,17 @@ class MyTrack(hepmath.vectors.LorentzVector):
             self.global_id = None
         # kinematics
         self.charge = kwargs.get('charge', None)
-        self.p = kwargs.get('p', None)
-        self.pT = kwargs.get('pT', None)
-        self.eta = kwargs.get('eta', None)
-        self.phi = kwargs.get('phi', None)
+        self._p = kwargs.get('p', None)
+        self._pT = kwargs.get('pT', None)
+        self._eta = kwargs.get('eta', None)
+        self._phi = kwargs.get('phi', None)
         self.ctgTheta = kwargs.get('ctgTheta', None)
         self.etaOuter = kwargs.get('etaOuter', None)
         self.phiOuter = kwargs.get('phiOuter', None)
         self.t = kwargs.get('t', None)
-        self.x = kwargs.get('x', None)
-        self.y = kwargs.get('y', None)
-        self.z = kwargs.get('z', None)
+        self._x = kwargs.get('x', None)
+        self._y = kwargs.get('y', None)
+        self._z = kwargs.get('z', None)
         self.xd = kwargs.get('xd', None)
         self.yd = kwargs.get('yd', None)
         self.zd = kwargs.get('zd', None)
@@ -286,9 +286,9 @@ class Observables:
                 tracks = []
             if towers is None:
                 towers = []
-            self.objects = np.array(tracks + towers)
-            self.global_track_ids = np.array([t.global_id for t in tracks])
-            self.global_tower_ids = np.array([t.global_id for t in towers])
+            self.objects = tracks + towers
+            self.global_track_ids = np.array([t.global_track_id for t in tracks])
+            self.global_tower_ids = np.array([t.global_tower_id for t in towers])
             self.pts = np.array([t.pt for t in tracks] +
                                 [t.et for t in towers])
         elif particle_collection is not None:
@@ -297,7 +297,7 @@ class Observables:
         else:
             raise ValueError("Need to provide particles, tracks or towers.")
         self.etas = np.array([t.eta for t in self.objects])
-        self.phis = np.array([t.phi for t in self.objects])
+        self.phis = np.array([t.phi() for t in self.objects])
         self.es = np.array([t.e for t in self.objects])
         self.global_ids = None
         self.__get_globalids(particle_collection, tracks, towers)
@@ -311,10 +311,14 @@ class Observables:
         else:
             ids = []
             if tracks is not None:
-                ids += list(tracks.global_ids)
+                ids += [t.global_id for t in tracks]
             if towers is not None:
-                ids += list(towers.global_ids)
+                for t in towers:
+                    ids += t.global_ids
             self.global_ids = np.array(ids)
+
+    def __len__(self):
+        return len(self.objects)
 
 
 # probably wont use
