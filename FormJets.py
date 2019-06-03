@@ -8,13 +8,12 @@ class PsudoJets:
         self.deltaR = deltaR
         self.exponent_multiplyer = exponent_multiplyer
         self.exponent = 2 * exponent_multiplyer
-        self.observables = observables
         # make a table of ints and a table of floats
         # lists not arrays, becuase they will grow
         # int columns
-        # psudojet_id obs_index mother daughter1 daughter2 rank
+        # psudojet_id global_obs_id mother daughter1 daughter2 rank
         self.psudojet_id_col = 0
-        self.obs_index_col = 1
+        self.obs_id_col = 1
         self.mother_col = 2
         self.daughter1_col = 3
         self.daughter2_col = 4
@@ -30,7 +29,7 @@ class PsudoJets:
             self._ints = kwargs['ints']
             self._floats = kwargs['floats']
         else:
-            self._ints = [[i, i, -1, -1, -1, -1] for i in range(len(observables))]
+            self._ints = [[i, oid, -1, -1, -1, -1] for i, oid in enumerate(observables.global_obs_ids)]
             self._floats = np.hstack((observables.pts.reshape((-1, 1)),
                                       observables.etas.reshape((-1, 1)),
                                       observables.phis.reshape((-1, 1)),
@@ -43,6 +42,26 @@ class PsudoJets:
         # as we go note the root notes of the psudojets
         self.root_psudojetIDs = []
 
+    @property
+    def global_obs_ids(self):
+        return np.array([ints[self.obs_id_col] for ints in self._ints])
+
+    @property
+    def global_jet_ids(self):
+        return np.array([ints[self.psudojet_id_col] for ints in self._ints])
+
+    @property
+    def ranks(self):
+        return np.array([ints[self.rank_col] for ints in self._ints])
+
+    @property
+    def distances(self):
+        return np.array([floats[self.join_distance_col] for floats in self._floats])
+
+    @property
+    def mothers(self):
+        return np.array([ints[self.mother_col] for ints in self._ints])
+
     def split(self):
         self.grouped_psudojets = [self.get_decendants(lastOnly=False, psudojetID=psudojetID)
                                   for psudojetID in self.root_psudojetIDs]
@@ -51,11 +70,10 @@ class PsudoJets:
             group_idx = [self.idx_from_ID(ID) for ID in group]
             ints = [self._ints[i] for i in group_idx]
             floats = [self._floats[i] for i in group_idx]
-            jet = PsudoJets(self.observables, self.deltaR, self.exponent_multiplyer,
+            jet = PsudoJets(self.deltaR, self.exponent_multiplyer,
                             ints=ints, floats=floats)
             self.JetList.append(jet)
         return self.JetList
-
     
     def _calculate_distances(self):
         # this is caluculating all the distances
@@ -144,11 +162,13 @@ class PsudoJets:
                 self._merge_psudojets(row, column, self._distances[row, column])
 
     def plt_assign_mothers(self):
+        # dendogram < this should be
         plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
         etas = [p[self.eta_col] for p in self._floats]
         phis = [p[self.phi_col] for p in self._floats]
         es = [p[self.energy_col] for p in self._floats]
-        plt.scatter(etas, phis, es, marker='D', c='w')
+        pts = [1/p[self.pt_col]**2 for p in self._floats]
+        plt.scatter(etas, phis, pts, marker='D', c='w')
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.ylabel(r"$\phi$ - barrel angle")
@@ -173,7 +193,8 @@ class PsudoJets:
                 detas = [self._floats[d][self.eta_col] for d in decendents_idx]
                 dphis = [self._floats[d][self.phi_col] for d in decendents_idx]
                 des = [self._floats[d][self.energy_col] for d in decendents_idx]
-                plt.scatter(detas, dphis, des, marker='D')
+                dpts = [1/self._floats[d][self.pt_col]**2 for d in decendents_idx]
+                plt.scatter(detas, dphis, dpts, marker='D')
                 print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} psudojets unfinished")
                 plt.pause(0.05)
                 input("Press enter for next psudojet")
@@ -233,12 +254,12 @@ class PsudoJets:
             
 
     def _combine(self, psudojet_index1, psudojet_index2, distance):
-        new_id = len(self._ints)
+        new_id = max([ints[self.psudojet_id_col] for ints in self._ints]) + 1
         self._ints[psudojet_index1][self.mother_col] = new_id
         self._ints[psudojet_index2][self.mother_col] = new_id
         rank = max(self._ints[psudojet_index1][self.rank_col],
-                   self._ints[psudojet_index1][self.rank_col]) + 1
-        # psudojet_id obs_index mother daughter1 daughter2 rank
+                   self._ints[psudojet_index2][self.rank_col]) + 1
+        # psudojet_id global_obs_id mother daughter1 daughter2 rank
         ints = [new_id, -1, -1,
                 self._ints[psudojet_index1][self.psudojet_id_col],
                 self._ints[psudojet_index2][self.psudojet_id_col],

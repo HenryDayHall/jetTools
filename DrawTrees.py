@@ -1,7 +1,5 @@
-import networkx as nx
-from matplotlib import pyplot as plt
-from ReadSQL import readSelected, ParticleDatabase
 from ReadHepmc import Hepmc_event
+import Components
 import numpy as np
 from ipdb import set_trace as st
 from networkx.drawing.nx_agraph import write_dot
@@ -46,9 +44,11 @@ class DotGraph:
         self.__legend = ""
         # if a shower is given make edges from that
         if shower is not None:
-            self.fromShower(shower)
+            observables = kwargs.get('observables', None)
+            jet = kwargs.get('jet', None)
+            self.fromShower(shower, observables, jet)
 
-    def fromShower(self, shower, jet=None):
+    def fromShower(self, shower, observables=None, jet=None):
         """ Construct the graph from a shower object
         
 
@@ -64,28 +64,21 @@ class DotGraph:
                 if mother in shower.global_ids:
                     self.addEdge(mother, this_id)
         # add the labels
-        outsiders = shower.outsideConnections
-        shower.findRoot()
+        outsiders = shower.outside_connections
         roots = shower.roots
-        ends = shower.ends
+        shower_leaf_global_ids = shower.global_ids[shower.ends]
         # set up a legened
-        ID = 0
+        legened_id = 0
         internal_particle = "darkolivegreen1"
-        self.addLegendNode(ID, "Internal particle", colour=internal_particle)
-        ID += 1
+        self.addLegendNode(legened_id, "Internal particle", colour=internal_particle)
+        legened_id += 1
         root_particle = "darkolivegreen3"
-        self.addLegendNode(ID, "Root particle", colour=root_particle)
-        ID += 1
+        self.addLegendNode(legened_id, "Root particle", colour=root_particle)
+        legened_id += 1
         outside_particle = "gold"
-        self.addLegendNode(ID, "Connected to other shower", colour=outside_particle)
-        ID += 1
-        end_shape = "diamond"
-        tower_particle = "cadetblue"
-        self.addLegendNode(ID, "Particle in tower Tw#", colour=tower_particle, shape=end_shape)
-        ID += 1
-        track_particle = "deepskyblue1"
-        self.addLegendNode(ID, "Particle creates track", colour=track_particle, shape=end_shape)
-        ID += 1
+        self.addLegendNode(legened_id, "Connected to other shower", colour=outside_particle)
+        legened_id += 1
+        # add the shower particles in
         for i, (this_id, label) in enumerate(zip(shower.global_ids, shower.labels)):
             colour = internal_particle
             if i in roots:
@@ -93,46 +86,105 @@ class DotGraph:
             elif i in outsiders:
                 colour=outside_particle
             shape = None
-            if i in ends:
-                shape = end_shape
-            if shower.makesTower[i] > 0:
-                label += f" Tw{shower.makesTower[i]}"
-                colour = tower_particle
-            if shower.makesTrack[i] == 1:
-                colour = track_particle
-
             self.addNode(this_id, label, colour=colour, shape=shape)
         # add the ranks
-        ranks = shower.findRanks()
-        rankKeys = sorted(list(set(ranks)))
-        for key in rankKeys:
+        ranks = shower.find_ranks()
+        rank_keys = sorted(list(set(ranks)))
+        for key in rank_keys:
             mask = ranks == key
-            rankIDs = np.array(shower.global_ids)[mask]
-            self.addRank(rankIDs)
+            rank_ids = np.array(shower.global_ids)[mask]
+            self.addRank(rank_ids)
+        first_obs_id = np.max(shower.global_ids) + 1
+        obs_rank = max(ranks) + 1
+        obs_draw_map = {}
+        if observables is not None:
+            # make an observable layer
+            # observable part of legend
+            observable_shape = "diamond"
+            if observables.has_tracksTowers:
+                tower_particle = "cadetblue"
+                self.addLegendNode(legened_id, "Tower", colour=tower_particle, shape=observable_shape)
+                legened_id += 1
+                track_particle = "deepskyblue1"
+                self.addLegendNode(legened_id, "Track", colour=track_particle, shape=observable_shape)
+                legened_id += 1
+            else:
+                self.addLegendNode(legened_id, "Observable", colour=internal_particle, shape=observable_shape)
+                legened_id += 1
+            # start by deciding which observabels are actually used
+            used_obs_ids = []
+            # in the shower 
+            used_obs_ids += [oid for gid, oid in observables.global_to_obs.items()
+                             if gid in shower_leaf_global_ids]
+            if jet is not None:
+                used_obs_ids += [oid for oid in jet.global_obs_ids if oid > -1]
+            for oid, obj in zip(observables.global_obs_ids, observables.objects):
+                if oid not in used_obs_ids:
+                    continue
+                draw_id = oid + first_obs_id
+                obs_draw_map[oid] = draw_id
+                name = "Observable"
+                colour = internal_particle
+                shape = observable_shape
+                if type(obj) == Components.MyTrack:
+                    name = "Track"
+                    colour = track_particle
+                    if obj.global_id in shower.global_ids:
+                        self.addEdge(obj.global_id, draw_id)
+                    self.addNode(draw_id, name, colour, shape)
+                elif type(obj) == Components.MyTower:
+                    name = "Tower"
+                    colour = tower_particle
+                    for global_id in obj.global_ids:
+                        if global_id in shower.global_ids:
+                            self.addEdge(global_id, draw_id)
+                    self.addNode(draw_id, name, colour, shape)
+                else:
+                    self.addEdge(obj.global_id, draw_id)
+                    self.addNode(draw_id, name, colour, shape)
+            
+            self.addRank(list(obs_draw_map.values()))
+        first_jet_id = int(np.max(list(obs_draw_map.values()),
+                                  initial=first_obs_id)) + 1
+             
         if jet is not None:
+            # jet ids must be created,
+            # some will corrispond to the observations (may not be the full set)
+            # others will be generated statig from the max of the obs ids
+            free_id = first_jet_id
+            jet_draw_map = {}
+            for global_jet_id, obs_id in zip(jet.global_jet_ids, jet.global_obs_ids):
+                if obs_id == -1:
+                    jet_draw_map[global_jet_id] = free_id
+                    free_id += 1
+                else:
+                    jet_draw_map[global_jet_id] = obs_draw_map[obs_id]
+            jet_draw_ids = np.array(list(jet_draw_map.values()))
+            
             # add the highest shower rank t all the jet ranks
             jet_cluster = "coral"
-            self.addLegendNode(ID, f"Jet cluster", colour=jet_cluster)
-            jet.addObsLevel()
-            jet.addGlobalID(max(shower.global_ids))
-            adjusted_jet_rank = jet.ranks + max(ranks)
-            for index, (this_id, this_mother) in enumerate(zip(jet.IDs, jet.mothers)):
+            self.addLegendNode(legened_id, f"Psudojet (join distance)", colour=jet_cluster)
+            for index, (draw_id, mother_jid, distance) in enumerate(zip(jet_draw_ids, jet.mothers, jet.distances)):
                 # add the edges
-                if this_mother >= 0:
-                    self.addEdge(this_id, this_mother)
+                if mother_jid >= 0:
+                    mother_draw_id = jet_draw_map[mother_jid]
+                    if (mother_draw_id in jet_draw_ids
+                        or mother_draw_id in obs_draw_map.values()):
+                        self.addEdge(draw_id, mother_draw_id)
                 # if needed add the node
-                if jet.IDs[index] in shower.global_ids:
+                if draw_id in obs_draw_map.values():
                     continue
                 else:
-                    self.addNode(this_id, f"jet", colour=jet_cluster, shape=None)
+                    self.addNode(draw_id, f"jet {distance:.2e}", colour=jet_cluster, shape=None)
             # add the ranks
-            rankKeys = sorted(list(set(adjusted_jet_rank)))
-            for key in rankKeys:
+            adjusted_jet_rank = jet.ranks + max(ranks)
+            rank_keys = sorted(list(set(adjusted_jet_rank)))
+            for key in rank_keys:
                 if key == max(ranks):
-                    continue  # skip this as it's in the shower
+                    continue  # skip draw as it's in the obs
                 mask = adjusted_jet_rank == key
-                rankIDs = jet.IDs[mask]
-                self.addRank(rankIDs)
+                rank_ids = jet_draw_ids[mask]
+                self.addRank(rank_ids)
 
     def addEdge(self, ID1, ID2):
         """ Add an edge to this graph

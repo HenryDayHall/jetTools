@@ -92,6 +92,7 @@ def trackTowerDict(databaseName):
     towerDict = {int(tID) : int(pID) for (tID, pID) in towerList}
     return trackDict, towerDict
 
+
 def read_tracks_towers(particle_collection, database_name):
     # get the sql keys and check the pids match
     particle_data = read_selected(database_name, ['ID', 'MCPID'], "GenParticles")
@@ -180,13 +181,12 @@ def read_tracks_towers(particle_collection, database_name):
     return track_list, tower_list
 
 
-
 def main():
     """ """
     hepmc_name = "/home/henry/lazy/29pythia8_events.hepmc"
     database_name = "/home/henry/lazy/29delphes_events.db"
     event = ReadHepmc.read_file(hepmc_name, 0, 1)[0]
-    track_list, tower_list = read_tracks_towers(event.particles, database_name)
+    track_list, tower_list = read_tracks_towers(event, database_name)
     return event, track_list, tower_list
 
 if __name__ == '__main__':

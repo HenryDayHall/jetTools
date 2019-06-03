@@ -212,6 +212,7 @@ class MyTower(hepmath.vectors.LorentzVector):
     def __init__(self, *args, global_tower_id, **kwargs):
         # IDs
         self.global_tower_id = global_tower_id
+        self._global_obs_id = None
         self.pids = kwargs.get('pids', None)
         self.sql_key = kwargs.get('sql_key', None)
         self.particles_sql_key = kwargs.get('particles_sql_key', None)
@@ -235,11 +236,23 @@ class MyTower(hepmath.vectors.LorentzVector):
             super().__init__()
             self.setptetaphie(et, eta, phi, e)
 
+    @property
+    def global_obs_id(self):
+        return self._global_obs_id
+
+    @global_obs_id.setter
+    def global_obs_id(self, value):
+        if self.particles is not None:
+            for particle in self.particles:
+                particle.global_obs_id = value
+        self._global_obs_id = value
+
 
 class MyTrack(hepmath.vectors.LorentzVector):
     def __init__(self, *args, global_track_id, **kwargs):
         # IDs
         self.global_track_id = global_track_id
+        self._global_obs_id = None
         self.pid = kwargs.get('pid', None)
         self.sql_key = kwargs.get('sql_key', None)
         self.particle_sql_key = kwargs.get('particle_sql_key', None)
@@ -278,44 +291,61 @@ class MyTrack(hepmath.vectors.LorentzVector):
             super().__init__(x_outer, y_outer, z_outer, t_outer)
 
 
+    @property
+    def global_obs_id(self):
+        return self._global_obs_id
+
+    @global_obs_id.setter
+    def global_obs_id(self, value):
+        if self.particle is not None:
+            self.particle.global_obs_id = value
+        self._global_obs_id = value
+
+
 class Observables:
     def __init__(self, particle_collection=None, tracks=None, towers=None):
         self.has_tracksTowers = tracks is not None or towers is not None
+        global_obs_ids = []
+        self.global_to_obs = {}
+        self.obs_to_global = {}
         if self.has_tracksTowers:
             if tracks is None:
                 tracks = []
             if towers is None:
                 towers = []
             self.objects = tracks + towers
-            self.global_track_ids = np.array([t.global_track_id for t in tracks])
-            self.global_tower_ids = np.array([t.global_tower_id for t in towers])
             self.pts = np.array([t.pt for t in tracks] +
                                 [t.et for t in towers])
+            # fill maps
+            obs_id = 0
+            for track in tracks:
+                global_obs_ids.append(obs_id)
+                self.obs_to_global[obs_id] = track.global_id
+                self.global_to_obs[track.global_id] = obs_id
+                obs_id += 1
+            for tower in towers:
+                global_obs_ids.append(obs_id)
+                self.obs_to_global[obs_id] = tower.global_ids
+                for global_id in tower.global_ids:
+                    self.global_to_obs[global_id] = obs_id
+                obs_id += 1
         elif particle_collection is not None:
             self.objects = [p for p in particle_collection.particle_list if p.is_leaf]
             self.pts = np.array([p.pt for p in self.objects])
+            # fill maps
+            obs_id = 0
+            for particle in self.objects:
+                global_obs_ids.append(obs_id)
+                self.obs_to_global[obs_id] = particle.global_id
+                self.global_to_obs[particle.global_id] = obs_id
+                obs_id += 1
         else:
             raise ValueError("Need to provide particles, tracks or towers.")
+        self.global_obs_ids = np.array(global_obs_ids)
         self.etas = np.array([t.eta for t in self.objects])
         self.phis = np.array([t.phi() for t in self.objects])
         self.es = np.array([t.e for t in self.objects])
-        self.global_ids = None
-        self.__get_globalids(particle_collection, tracks, towers)
-        self.min_id = np.min(self.global_ids)
-        self.max_id = np.max(self.global_ids)
         self.jet_allocation = None
-
-    def __get_globalids(self, particle_collection, tracks, towers):
-        if particle_collection is not None:
-            self.global_ids = particle_collection.global_ids
-        else:
-            ids = []
-            if tracks is not None:
-                ids += [t.global_id for t in tracks]
-            if towers is not None:
-                for t in towers:
-                    ids += t.global_ids
-            self.global_ids = np.array(ids)
 
     def __len__(self):
         return len(self.objects)

@@ -6,7 +6,7 @@ import csv
 from ipdb import set_trace as st
 
 
-class Hepmc_event:
+class Hepmc_event(Components.ParticleCollection):
     def __init__(self, filepath, lines):
         self.filepath = filepath
         self.event_information = {"event_n": None, "n_multi_particle_inter": None,
@@ -41,20 +41,21 @@ class Hepmc_event:
         return self.__str__()
 
     def _assign_heritage(self):
+        self._unfreeze()
         self.daughters = []
         self.mothers = []
         vertexCodes = [v.hepmc_barcode for v in self.vertex_list]
-        for i, particle in enumerate(self.particles.particle_list):
+        for i, particle in enumerate(self.particle_list):
             if particle.start_vertex_barcode in vertexCodes:
-                indices = np.nonzero(self.particles.end_vertex_barcodes == particle.start_vertex_barcode)[0]
-                ms = list(self.particles.global_ids[indices])
+                indices = np.nonzero(self.end_vertex_barcodes == particle.start_vertex_barcode)[0]
+                ms = list(self.global_ids[indices])
             else:
                 print("This shouldn't happend... all particles sit below a vertex")
                 ms = []
             self.mothers.append(ms)
             if particle.end_vertex_barcode in vertexCodes:
-                indices = np.nonzero(self.particles.start_vertex_barcodes == particle.end_vertex_barcode)[0]
-                ds = list(self.particles.global_ids[indices])
+                indices = np.nonzero(self.start_vertex_barcodes == particle.end_vertex_barcode)[0]
+                ds = list(self.global_ids[indices])
             else:
                 ds = []
             self.daughters.append(ds)
@@ -62,37 +63,35 @@ class Hepmc_event:
         # now particles that are the beam particles are their own mothers
         b1_code = self.event_information["barcode_beam_particle1"]
         b2_code = self.event_information["barcode_beam_particle2"]
-        b1_idx = np.where(self.particles.hepmc_barcodes == b1_code)[0][0]
-        b2_idx = np.where(self.particles.hepmc_barcodes == b2_code)[0][0]
-        assert self.mothers[b1_idx] == self.particles.global_ids[b1_idx]
-        assert self.mothers[b2_idx] == self.particles.global_ids[b2_idx]
+        b1_idx = np.where(self.hepmc_barcodes == b1_code)[0][0]
+        b2_idx = np.where(self.hepmc_barcodes == b2_code)[0][0]
+        assert self.mothers[b1_idx] == self.global_ids[b1_idx]
+        assert self.mothers[b2_idx] == self.global_ids[b2_idx]
         # so tidy this up
         self.mothers[b1_idx] = []
-        self.daughters[b1_idx].remove(self.particles.global_ids[b1_idx])
+        self.daughters[b1_idx].remove(self.global_ids[b1_idx])
         self.mothers[b2_idx] = []
-        self.daughters[b2_idx].remove(self.particles.global_ids[b2_idx])
-        unused_barcode = max(self.particles.hepmc_barcodes) + 1
+        self.daughters[b2_idx].remove(self.global_ids[b2_idx])
+        unused_barcode = max(self.hepmc_barcodes) + 1
         # put these result into the partices
-        for particle, mothers, daughters in zip(self.particles.particle_list,
+        for particle, mothers, daughters in zip(self.particle_list,
                                                 self.mothers, self.daughters):
             particle.mother_ids = mothers
             particle.is_root = mothers == []
-            particle.daughters_ids = daughters
+            particle.daughter_ids = daughters
             particle.is_leaf = daughters == []
-        self.particles.updateParticles()
-        #self.intParticles[b1, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
-        #self.intParticles[b2, self.intParticle_columns.index("start_vertex_barcode")] = unused_barcode
-        
+        self._freeze()
+        self.updateParticles()
 
     def check_colour_flow(self):
-        exempt_particles = [np.nonzero(self.particles.hepmc_barcodes
+        exempt_particles = [np.nonzero(self.hepmc_barcodes
                                       == self.event_information["barcode_beam_particle1"]),
-                            np.nonzero(self.particles.hepmc_barcodes
+                            np.nonzero(self.hepmc_barcodes
                                       == self.event_information["barcode_beam_particle2"])]
         for vertex in self.vertex_list:
             # find the list of particles bearing this barcode
-            in_indices = np.nonzero(self.particles.start_vertex_barcodes == vertex.hepmc_barcode)[0]
-            out_indices = np.nonzero(self.particles.end_vertex_barcodes == vertex.hepmc_barcode)[0]
+            in_indices = np.nonzero(self.start_vertex_barcodes == vertex.hepmc_barcode)[0]
+            out_indices = np.nonzero(self.end_vertex_barcodes == vertex.hepmc_barcode)[0]
             # tally the colour flows in and out
             link_counter = Counter()
             for in_index in in_indices:
@@ -230,8 +229,8 @@ class Hepmc_event:
                             self.colour_flow[particle_reached] = colour_code
                         elif code_index == 2:
                             self.antiColour_flow[particle_reached] = colour_code
-        # finally, but all particles in a collection object
-        self.particles = Components.ParticleCollection(particle_list)
+        # finally, initilise the ParticleCollection
+        super().__init__(particle_list)
 
 
 def read_file(filepath, start=0, stop=np.inf):

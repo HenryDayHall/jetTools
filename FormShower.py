@@ -1,4 +1,5 @@
 """ Tools to turn clusters of particles into showers """
+from ipdb import set_trace as st
 import networkx
 import PDGNames
 import ReadSQL
@@ -13,9 +14,8 @@ class Shower:
     
     only keeps a list of the particle global_ids, mothers, daughters and PDGglobal_ids.
     """
-    def __init__(self, particle_collection, global_ids, mothers, daughters, labels):
+    def __init__(self, global_ids, mothers, daughters, labels):
         self.amalgam = False
-        self.particle_collection = particle_collection
         self.global_ids = global_ids
         self.mothers = mothers
         self.daughters = daughters
@@ -190,7 +190,7 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
             # print(f"Indices in shower = {len(shower_indices)}", flush = True)
             to_follow = next_gen
         assert len(set(shower_indices)) == len(shower_indices)
-        new_shower = Shower(particle_collection, global_ids[shower_indices],
+        new_shower = Shower(global_ids[shower_indices],
                             [mother_ids[s] for s in shower_indices], 
                             [daughter_ids[s] for s in shower_indices],
                             labels[shower_indices])
