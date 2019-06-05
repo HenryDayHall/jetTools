@@ -1,7 +1,14 @@
 """Low level components, format apes that of root """
+import contextlib
+import os
 from ipdb import set_trace as st
 import numpy as np
 from skhep import math as hepmath
+
+
+def safe_convert(cls, string):
+    if string == "None": return None
+    else: return cls(string)
 
 class MyParticle(hepmath.vectors.LorentzVector):
     """Aping genparticle."""
@@ -51,6 +58,64 @@ class MyParticle(hepmath.vectors.LorentzVector):
                 self.setptetaphie(pt, eta, phi, e)
             else:
                 self.setptetaphie(pt, eta, phi, 0.)
+
+    def __str__(self):
+        return f"MyParticle[{self.global_id}] pid;{self.pid} energy;{self.e:.2e}"
+
+    def __repr__(self):
+        body_content = [self.global_id,
+                        self.pid,
+                        self.sql_key,
+                        self.hepmc_barcode,
+                        self.is_root,
+                        self.is_leaf,
+                        self.start_vertex_barcode,
+                        self.end_vertex_barcode,
+                        self.status,
+                        self.generated_mass,
+                        self.px,
+                        self.py,
+                        self.pz,
+                        self.e]
+        body = ','.join([repr(x) for x in body_content])
+        mothers = ','.join([repr(m) for m in self.mother_ids])
+        daughters = ','.join([repr(m) for m in self.daughter_ids])
+        rep = "|".join([MyParticle.__name__, body, mothers, daughters])
+        return rep
+    repr_body = ','.join(["global_id", "pid", "sql_key", "hepmc_barcode",
+                          "is_root", "is_leaf",
+                          "start_vertex_barcode", "end_vertex_barcode",
+                          "status", "generated_mass",
+                          "px", "py", "pz", "e"])
+    repr_format = '|'.join(["MyParticle", repr_body,
+                            'mothers', 'daughters'])
+
+    @classmethod
+    def from_repr(cls, rep):
+        if rep == '': return None
+        name, body, mothers, daughters = rep.split('|')
+        assert name == cls.__name__
+        body_parts = body.split(',')
+        global_id = int(body_parts[0])
+        class_dict = {"pid": safe_convert(int, body_parts[1]),
+                      "sql_key": safe_convert(int, body_parts[2]),
+                      "hepmc_barcode": safe_convert(int, body_parts[3]),
+                      "is_root": safe_convert(bool, body_parts[4]),
+                      "is_leaf": safe_convert(bool, body_parts[5]),
+                      "start_vertex_barcode": safe_convert(int, body_parts[6]),
+                      "end_vertex_barcode": safe_convert(int, body_parts[7]),
+                      "status": safe_convert(int, body_parts[8]),
+                      "generated_mass": safe_convert(float, body_parts[9]),
+                      "px": safe_convert(float, body_parts[10]),
+                      "py": safe_convert(float, body_parts[11]),
+                      "pz": safe_convert(float, body_parts[12]),
+                      "e": safe_convert(float, body_parts[13])}
+        new_particle = cls(global_id=global_id, **class_dict)
+        if mothers != '':
+            new_particle.mother_ids = [int(m) for m in mothers.split(',')]
+        if daughters != '':
+            new_particle.daughter_ids = [int(d) for d in daughters.split(',')]
+        return new_particle
 
 
 class MyVertex(hepmath.vectors.LorentzVector):
@@ -215,7 +280,6 @@ class MyTower(hepmath.vectors.LorentzVector):
         self._global_obs_id = None
         self.pids = kwargs.get('pids', None)
         self.sql_key = kwargs.get('sql_key', None)
-        self.particles_sql_key = kwargs.get('particles_sql_key', None)
         self.particles = kwargs.get('particles', None)
         if self.particles is not None:
             self.global_ids = np.array([p.global_id for p in self.particles])
@@ -247,12 +311,67 @@ class MyTower(hepmath.vectors.LorentzVector):
                 particle.global_obs_id = value
         self._global_obs_id = value
 
+    def __str__(self):
+        return f"MyTower[{self.global_tower_id}] energy;{self.e:.2e}"
+
+    def __repr__(self):
+        body_content = [self.global_tower_id,
+                        self.sql_key,
+                        self.t,
+                        self.nTimeHits,
+                        self.eem,
+                        self.ehad,
+                        self.edges[0],
+                        self.edges[1],
+                        self.edges[2],
+                        self.edges[3],
+                        self.et,
+                        self.eta,
+                        self.phi(),
+                        self.e]
+        # | and , are used inside MyPaticle string rep
+        # so diferent deliminators are needed here
+        body = '&'.join([repr(x) for x in body_content])
+        particles = '&'.join([repr(p) for p in self.particles])
+        rep = "!".join([MyTower.__name__, body, particles])
+        return rep
+    repr_body = '&'.join(["global_tower_id", "sql_key",
+                          "t", "nTimeHits", "eem", "ehad",
+                          "edges[0]", "edges[1]", "edges[2]", "edges[3]",
+                          "et", "eta", "phi", "e"])
+    repr_format = '!'.join(["MyTower", repr_body, "particles"])
+
+    @classmethod
+    def from_repr(cls, rep):
+        if rep == '': return None
+        name, body, particles = rep.split('!')
+        assert name == cls.__name__
+        if particles != '':
+            particles = [MyParticle.from_repr(p) for p in particles.split('&')]
+        body_parts = body.split('&')
+        global_tower_id = int(body_parts[0])
+        class_dict = {"sql_key": safe_convert(int, body_parts[1]),
+                      "t": safe_convert(float, body_parts[2]),
+                      "nTimesHits": safe_convert(int, body_parts[3]),
+                      "eem": safe_convert(bool, body_parts[4]),
+                      "ehad": safe_convert(bool, body_parts[5]),
+                      "edges": [safe_convert(float, body_parts[6]),
+                                safe_convert(float, body_parts[7]),
+                                safe_convert(float, body_parts[8]),
+                                safe_convert(float, body_parts[9]),],
+                      "particles": particles,
+                      "et": safe_convert(float, body_parts[10]),
+                      "eta": safe_convert(float, body_parts[11]),
+                      "phi": safe_convert(float, body_parts[12]),
+                      "e": safe_convert(float, body_parts[13])}
+        new_tower = cls(global_tower_id=global_tower_id, **class_dict)
+        return new_tower
+
 
 class MyTrack(hepmath.vectors.LorentzVector):
     def __init__(self, *args, global_track_id, **kwargs):
         # IDs
         self.global_track_id = global_track_id
-        self._global_obs_id = None
         self.pid = kwargs.get('pid', None)
         self.sql_key = kwargs.get('sql_key', None)
         self.particle_sql_key = kwargs.get('particle_sql_key', None)
@@ -290,16 +409,88 @@ class MyTrack(hepmath.vectors.LorentzVector):
             z_outer = kwargs['z_outer']
             super().__init__(x_outer, y_outer, z_outer, t_outer)
 
+    def __str__(self):
+        return f"MyTrack[{self.global_track_id}] energy;{self.e:.2e}"
 
-    @property
-    def global_obs_id(self):
-        return self._global_obs_id
+    def __repr__(self):
+        body_content = [self.global_track_id,
+                        self.pid,
+                        self.sql_key,
+                        self.particle_sql_key,
+                        self.particle,
+                        self.charge,
+                        self._p,
+                        self._pT,
+                        self._eta,
+                        self._phi,
+                        self.ctgTheta,
+                        self.etaOuter,
+                        self.phiOuter,
+                        self.t,
+                        self._x,
+                        self._y,
+                        self._z,
+                        self.xd,
+                        self.yd,
+                        self.zd,
+                        self.l,
+                        self.d0,
+                        self.dZ,
+                        self.t,
+                        self.x,
+                        self.y,
+                        self.z]
+        # | and , are used inside MyPaticle string rep
+        # so diferent deliminators are needed here
+        body = '&'.join([repr(x) for x in body_content])
+        rep = "!".join([MyTrack.__name__, body])
+        return rep
 
-    @global_obs_id.setter
-    def global_obs_id(self, value):
-        if self.particle is not None:
-            self.particle.global_obs_id = value
-        self._global_obs_id = value
+    repr_body = '&'.join(["global_track_id",
+                          "pid", "sql_key", "particle_sql_key",
+                          MyParticle.repr_format, "charge",
+                          "_p", "_pT", "_eta", "_phi",
+                          "ctgTheta", "etaOuter", "phiOuter",
+                          "t", "_x", "_y", "_z",
+                          "xd", "yd", "zd", "l",
+                          "d0", "dZ",
+                          "t", "x", "y", "z"])
+    repr_format = '!'.join(["MyTrack", repr_body])
+    @classmethod
+    def from_repr(cls, rep):
+        if rep == '': return None
+        name, body = rep.split('!')
+        assert name == cls.__name__
+        body_parts = body.split('&')
+        global_track_id = int(body_parts[0])
+        class_dict = {'pid': safe_convert(int, body_parts[1]),
+                      'sql_key': safe_convert(int, body_parts[2]),
+                      'particle_sql_key': safe_convert(int, body_parts[3]),
+                      'particle': MyParticle.from_repr(body_parts[4]),
+                      'charge': safe_convert(float, body_parts[5]),
+                      'p': safe_convert(float, body_parts[6]),
+                      'pT': safe_convert(float, body_parts[7]),
+                      'eta': safe_convert(float, body_parts[8]),
+                      'phi': safe_convert(float, body_parts[9]),
+                      'ctgTheta': safe_convert(float, body_parts[10]),
+                      'etaOuter': safe_convert(float, body_parts[11]),
+                      'phiOuter': safe_convert(float, body_parts[12]),
+                      't': safe_convert(float, body_parts[13]),
+                      'x': safe_convert(float, body_parts[14]),
+                      'y': safe_convert(float, body_parts[15]),
+                      'z': safe_convert(float, body_parts[16]),
+                      'xd': safe_convert(float, body_parts[17]),
+                      'yd': safe_convert(float, body_parts[18]),
+                      'zd': safe_convert(float, body_parts[19]),
+                      'l': safe_convert(float, body_parts[20]),
+                      'd0': safe_convert(float, body_parts[21]),
+                      'dZ': safe_convert(float, body_parts[22]),
+                      't_outer': safe_convert(float, body_parts[23]),
+                      'x_outer': safe_convert(float, body_parts[24]),
+                      'y_outer': safe_convert(float, body_parts[25]),
+                      'z_outer': safe_convert(float, body_parts[26])}
+        new_track = cls(global_track_id=global_track_id, **class_dict)
+        return new_track
 
 
 class Observables:
@@ -345,11 +536,82 @@ class Observables:
         self.etas = np.array([t.eta for t in self.objects])
         self.phis = np.array([t.phi() for t in self.objects])
         self.es = np.array([t.e for t in self.objects])
-        self.jet_allocation = None
+        self.pxs = np.array([t.px for t in self.objects])
+        self.pys = np.array([t.py for t in self.objects])
+        self.pzs = np.array([t.pz for t in self.objects])
+        self.jet_allocation = np.full_like(self.global_obs_ids, np.nan)
 
     def __len__(self):
         return len(self.objects)
 
+    def write(self, dir_name):
+        # make the directory if it dosn't exist
+        os.makedirs(dir_name, exist_ok=True)
+        file_name = os.path.join(dir_name, "observables.dat")
+        summary_file_name = os.path.join(dir_name, "summary_observables.csv")
+        # remove a summary file if it exists
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(summary_file_name)
+        # if there are already obesrvables in that file
+        # move them to a backup
+        if os.path.exists(file_name):
+            backup_format = file_name + ".bk{}"
+            backup_number = 1
+            while os.path.exists(backup_format.format(backup_number)):
+                backup_number += 1
+            print(f"Moving previous observables file to backup number {backup_number}")
+            if backup_number > 3:
+                print("Maybe you should tidy up....")
+            os.rename(file_name, backup_format.format(backup_number))
+        # write the objects
+        with open(file_name, 'w') as obj_file:
+            # some headers
+            obj_file.writelines([MyParticle.repr_format + '\n',
+                                 MyTrack.repr_format + '\n',
+                                 MyTower.repr_format + '\n'])
+            # content
+            obj_file.writelines([repr(obj) + '\n' for obj in self.objects])
+        # write the summaries
+        summary_cols = ["global_obs_id", "pt",
+                        "eta", "phi", "e", 
+                        "px", "py", "pz",
+                        "jet_allocation"]
+        summary = np.hstack((self.global_obs_ids.reshape((-1, 1)),
+                            self.pts.reshape((-1, 1)),
+                            self.etas.reshape((-1, 1)),
+                            self.phis.reshape((-1, 1)),
+                            self.es.reshape((-1, 1)),
+                            self.pxs.reshape((-1, 1)),
+                            self.pys.reshape((-1, 1)),
+                            self.pzs.reshape((-1, 1)),
+                            self.jet_allocation.reshape((-1, 1))))
+        np.savetxt(summary_file_name, summary,
+                   header=' '.join(summary_cols))
+
+    @classmethod
+    def from_file(cls, dir_name):
+        file_name = os.path.join(dir_name, "observables.dat")
+        particles = []
+        tracks = []
+        towers = []
+        with open(file_name, 'r') as obj_file:
+            # skip the 3 header lines
+            for _ in range(3):
+                next(obj_file)
+            for line in obj_file:
+                line = line[:-1]  # kill the newline
+                if line.startswith("MyParticle"):
+                    particles.append(MyParticle.from_repr(line))
+                elif line.startswith("MyTrack"):
+                    tracks.append(MyTrack.from_repr(line))
+                elif line.startswith("MyTower"):
+                    towers.append(MyTower.from_repr(line))
+        if len(tracks) + len(towers) > 0:
+            return cls(tracks=tracks, towers=towers)
+        if len(particles) > 0:
+            return cls(particle_collection=particles)
+        raise ValueError(f"File {file_name} dosent contain observables.")
+            
 
 # probably wont use
 class CollectionStructure:

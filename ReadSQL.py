@@ -187,7 +187,8 @@ def main():
     database_name = "/home/henry/lazy/29delphes_events.db"
     event = ReadHepmc.read_file(hepmc_name, 0, 1)[0]
     track_list, tower_list = read_tracks_towers(event, database_name)
-    return event, track_list, tower_list
+    observations = Components.Observables(tracks=track_list, towers=tower_list)
+    return event, track_list, tower_list, observations
 
 if __name__ == '__main__':
     main()
