@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
 
@@ -61,6 +62,29 @@ class PsudoJets:
     @property
     def mothers(self):
         return np.array([ints[self.mother_col] for ints in self._ints])
+
+    def write(self, dir_name, note="No note given."):
+        # the directory should exist becuase we expect the observables to be written first
+        assert os.path.exists(dir_name), "Write the observables first"
+        iname_format = os.path.join(dir_name, "psuedojets_ints{}.csv")
+        fname_format = os.path.join(dir_name, "psuedojets_floats{}.csv")
+        name_number = 1
+        # find a filename that is not taken (warning; race conditions here)
+        while os.path.exists(iname_format.format(name_number)):
+            name_number += 1
+        ifile_name = iname_format.format(name_number)
+        ffile_name = fname_format.format(name_number)
+        # if the int file is free the float file should be too
+        assert not os.path.exists(ffile_name), "How do you have unmatched int and float files?"
+        int_columns = ["psudojet_id", "global_obs_id", "mother", "daughter1", "daughter2", "rank"]
+        int_header = ' '.join([note, "Columns;", *int_columns])
+        np.savetxt(ifile_name, self._ints,
+                   header=int_header, fmt='%d')
+        float_columns = ["pt", "eta", "phi", "energy", "join_distance"]
+        float_header = ' '.join([note, "Columns;", *float_columns])
+        np.savetxt(ffile_name, self._floats,
+                   header=float_header)
+
 
     def split(self):
         self.grouped_psudojets = [self.get_decendants(lastOnly=False, psudojetID=psudojetID)
