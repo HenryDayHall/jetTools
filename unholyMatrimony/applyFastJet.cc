@@ -52,17 +52,17 @@ std::istream& operator>>(std::istream& str, CSVRow& data)
 }   
 // ~~~~~~~~~~~~~~~~~~~~~~`
 
-int _traverse(PseudoJet root, int next_global_id,
-              vector<vector<int>>& ints, vector<vector<double>>& doubles){
+int _traverse(PseudoJet root,
+              vector<vector<int>>& ints, vector<vector<double>>& doubles,
+              int& free_id){
     vector<PseudoJet> stack;
     vector<int> stack_idx;
     // add the first item to the stack
     stack.push_back(root);
     int mother_id = -1;
-    int free_id = next_global_id;
     
-    int daughter1_id = next_global_id + 1;
-    int daughter2_id = next_global_id + 2;
+    int daughter1_id;
+    int daughter2_id;
 
     // has form {my_id, mother_id, daughter1_id, daughter2_id}
     int this_id = free_id++;
@@ -76,10 +76,11 @@ int _traverse(PseudoJet root, int next_global_id,
     while (stack.empty() == false){
         idx_here = stack_idx.back();
         this_id = ints[idx_here][0];
-        daughter1_id = free_id++;
-        daughter2_id = free_id++;
         // check for children
         if (stack.back().has_pieces()){
+            daughter1_id = free_id++;
+            daughter2_id = free_id++;
+
             vector<PseudoJet> pieces = stack.back().pieces();
             // remove that vector
             stack.pop_back();
@@ -143,14 +144,13 @@ static void fj(vector<double>& a, // a = flat vector of observations
         /// the methods to access them
 
     // Store results
-    int next_global_id = 0;
+    int free_id = 0;
 
     for (unsigned int j = 0; j < jets.size(); j++) {
         vector<vector<int>> ints_here;
         vector<vector<double>> doubles_here;
-        int success = _traverse(jets[j], next_global_id, ints_here, doubles_here);
+        int success = _traverse(jets[j], ints_here, doubles_here, free_id);
         ints.insert(ints.end(), ints_here.begin(), ints_here.end());
-        next_global_id = ints.size() + 1;
         doubles.insert(doubles.end(), doubles_here.begin(), doubles_here.end());
         masses.push_back(jets[j].m());
         pts.push_back(jets[j].pt());
@@ -206,7 +206,7 @@ int main(int argc, char * argv[]) {
                        << std::endl;
 
    // Write out
-   for(int i =0; i < ints.size(); i=i+4){
+   for(int i =0; i < ints.size(); i++){
        int_file << ints[i][0] << sep 
                 << ints[i][1] << sep
                 << ints[i][2] << sep
