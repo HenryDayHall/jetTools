@@ -52,60 +52,67 @@ std::istream& operator>>(std::istream& str, CSVRow& data)
 }   
 // ~~~~~~~~~~~~~~~~~~~~~~`
 
-void _traverse_rec(PseudoJet root, int parent_id, bool is_left,
-                  vector<int>& tree, vector<double>& content){
-    // id for the root
-    int id = tree.size() / 2;
-    // the divide by 2 come from the fact that each new node
-    // adds 2 children to the tree
-    // so the id of the nth node is tree.size()/2
+int _traverse(PseudoJet root, int next_global_id,
+              vector<vector<int>>& ints, vector<vector<double>>& doubles){
+    vector<PseudoJet> stack;
+    vector<int> stack_idx;
+    // add the first item to the stack
+    stack.push_back(root);
+    int mother_id = -1;
+    int free_id = next_global_id;
+    
+    int daughter1_id = next_global_id + 1;
+    int daughter2_id = next_global_id + 2;
 
-    // if this isn't the root
-    if (parent_id >= 0) {
-        if (is_left) {
-            tree[2 * parent_id] = id;
+    // has form {my_id, mother_id, daughter1_id, daughter2_id}
+    int this_id = free_id++;
+    vector<int> root_ints = {this_id, mother_id, -1, -1};
+    ints.push_back(root_ints);
+    vector<double> root_doubles = {root.pt(), root.eta(), root.phi(), root.e()};
+    doubles.push_back(root_doubles);
+    stack_idx.push_back(0); // says where the stack item is in terms of ints/floats idx
+    int idx_here = stack_idx.back();
+    
+    while (stack.empty() == false){
+        idx_here = stack_idx.back();
+        this_id = ints[idx_here][0];
+        daughter1_id = free_id++;
+        daughter2_id = free_id++;
+        // check for children
+        if (stack.back().has_pieces()){
+            vector<PseudoJet> pieces = stack.back().pieces();
+            // remove that vector
+            stack.pop_back();
+            stack_idx.pop_back();
+            // add the new kids
+            ints[idx_here][2] = daughter1_id;
+            vector<int> daughter1_ints = {daughter1_id, this_id, -1, -1};
+            ints.push_back(daughter1_ints);
+            vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].eta(), pieces[0].phi(), pieces[0].e()};
+            doubles.push_back(daughter1_doubles);
+            stack_idx.push_back(ints.size() - 1);
+            stack.push_back(pieces[0]);
+
+            ints[idx_here][3] = daughter2_id;
+            vector<int> daughter2_ints = {daughter2_id, this_id, -1, -1};
+            ints.push_back(daughter2_ints);
+            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].eta(), pieces[1].phi(), pieces[1].e()};
+            doubles.push_back(daughter2_doubles);
+            stack_idx.push_back(ints.size() - 1);
+            stack.push_back(pieces[1]);
+            // add the daughter ids to the parent
         } else {
-            tree[2 * parent_id + 1] = id;
+            // we can remove that item now
+            stack.pop_back(); 
+            stack_idx.pop_back();
         }
+       
     }
-
-    // there are two pottential children here, give them each space on the tree
-    tree.push_back(-1);
-    tree.push_back(-1);
-    content.push_back(root.px());
-    content.push_back(root.py());
-    content.push_back(root.pz());
-    content.push_back(root.e());
-    content.push_back(root.user_index());  // remove this for jet studies  << only original comment
-
-    // Doc for has_pieces
-      /// returns true if a jet has pieces
-      ///
-      /// By default a single particle or a jet coming from a
-      /// ClusterSequence have no pieces and this methos will return false.
-      ///
-      /// In practice, this is equivalent to have an structure of type
-      /// CompositeJetStructure.
-    if (root.has_pieces()) {
-        vector<PseudoJet> pieces = root.pieces();
-        // this will decend the left edge until root.has_pieces == False
-        //
-        _traverse_rec(pieces[0], id, true, tree, content);
-        _traverse_rec(pieces[1], id, false, tree, content);
-    }
-}
-
-pair< vector<int>, vector<double> > _traverse(PseudoJet root){
-    vector<int> tree;
-    vector<double> content;
-    //        entry-pt parent-id is_left storage storage
-    _traverse_rec(root, -1, false, tree, content);
-    return make_pair(tree, content);
+    return 0;
 }
 
 static void fj(vector<double>& a, // a = flat vector of observations
-               vector< vector<int> >& trees,  // for geometry results
-               vector< vector<double> >& contents, //  for kinematics results
+               vector<vector<int>>& ints, vector<vector<double>>& doubles,
                vector< double >& masses,  // per jet results
                vector< double >& pts,  // per jet results
                double R=1.0, int algorithm=0) {
@@ -136,10 +143,15 @@ static void fj(vector<double>& a, // a = flat vector of observations
         /// the methods to access them
 
     // Store results
+    int next_global_id = 0;
+
     for (unsigned int j = 0; j < jets.size(); j++) {
-        pair< vector<int>, vector<double> > p = _traverse(jets[j]);
-        trees.push_back(p.first);
-        contents.push_back(p.second);
+        vector<vector<int>> ints_here;
+        vector<vector<double>> doubles_here;
+        int success = _traverse(jets[j], next_global_id, ints_here, doubles_here);
+        ints.insert(ints.end(), ints_here.begin(), ints_here.end());
+        next_global_id = ints.size() + 1;
+        doubles.insert(doubles.end(), doubles_here.begin(), doubles_here.end());
         masses.push_back(jets[j].m());
         pts.push_back(jets[j].pt());
     }
@@ -147,9 +159,13 @@ static void fj(vector<double>& a, // a = flat vector of observations
 
 
 int main(int argc, char * argv[]) {
-    // the arguments should be the name of the csv containing the observations
-    char * file_name(argv[1]);
-    std::ifstream file(file_name);
+    // the argument shoulf be the directory of the files
+    std::string dir_name(argv[1]);
+    if(dir_name.back() != '/'){
+        dir_name = dir_name + "/";
+    }
+    std::string input_name = dir_name + "summary_observables.csv";
+    std::ifstream file(input_name);
     CSVRow row;
     vector<double> a;
     // first row is a header
@@ -161,13 +177,45 @@ int main(int argc, char * argv[]) {
         a.push_back(std::stod(row[7]));  //pz
         a.push_back(std::stod(row[4]));  //e
     }
-   vector< vector<int> > trees;  // for geometry results
-   vector< vector<double> > contents; //  for kinematics results
+   vector< vector<int> > ints;  // for geometry results
+   vector< vector<double> > doubles; //  for kinematics results
    vector< double > masses;  // per jet results
    vector< double > pts;  // per jet results
 
    // run the algorithm
-   fj(a, trees, contents, masses, pts);
+   fj(a, ints, doubles , masses, pts);
 
-   // This format is horrible
+   std::cout << "Read " << ints.size()/4 << " particles\n";
+
+   //prepare to write
+   string sep = " ";
+
+   string i_output_name = dir_name + "fastjet_ints.csv";
+   std::ofstream int_file(i_output_name);
+   int_file << "# " << "global_id" << sep
+                    << "mother_id" << sep
+                    << "daughter1_id" << sep
+                    << "daughter2_id"
+                    << std::endl;
+   string d_output_name = dir_name + "fastjet_doubles.csv";
+   std::ofstream double_file(d_output_name);
+   double_file << "# " << "pt" << sep
+                       << "eta" << sep
+                       << "phi" << sep
+                       << "e"
+                       << std::endl;
+
+   // Write out
+   for(int i =0; i < ints.size(); i=i+4){
+       int_file << ints[i][0] << sep 
+                << ints[i][1] << sep
+                << ints[i][2] << sep
+                << ints[i][3]
+                << std::endl;
+       double_file << doubles[i][0] << sep 
+                   << doubles[i][1] << sep
+                   << doubles[i][2] << sep
+                   << doubles[i][3]
+                   << std::endl;
+   }
 }
