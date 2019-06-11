@@ -96,8 +96,8 @@ class PsudoJets:
                    header=float_header)
 
     @classmethod
-    def read(cls, dir_name, save_number=1, class_format=True):
-        if class_format:
+    def read(cls, dir_name, save_number=1, fastjet_format=True):
+        if not fastjet_format:
             ifile_name = os.path.join(dir_name, f"psuedojets_ints{save_number}.csv")
             ffile_name = os.path.join(dir_name, f"psuedojets_floats{save_number}.csv")
             # first line will be the note, tech specs and columns
@@ -113,9 +113,34 @@ class PsudoJets:
             deltaR = float(header[1].split('=')[1])
             exponent_multiplyer = float(header[2].split('=')[1])
             # the floats and ints
-            ints = np.genfromtxt(ifile_name, skip_header=1)
+            ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
             floats = np.genfromtxt(ffile_name, skip_header=1)
-            return cls(ints=ints, floats=floats, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
+        else:  #  fastjet format
+            ifile_name = os.path.join(dir_name, f"fastjet_ints.csv")
+            ffile_name = os.path.join(dir_name, f"fastjet_floats.csv")
+            # first line will be the tech specs and columns
+            with open(ifile_name, 'r') as ifile:
+                header = ifile.readline()[1:]
+            header = header.split(' ')
+            deltaR = float(header[1].split('=')[1])
+            algorithm_name = header[2]
+            if algorithm_name == 'kt_algorithm':
+                exponent_multiplyer = 1
+            elif algorithm_name == 'cambridge_algorithm':
+                exponent_multiplyer = 0
+            elif algorithm_name == 'antikt_algorithm':
+                exponent_multiplyer = -1
+            else:
+                raise ValueError(f"Algorithm {algorithm_name} not recognised")
+            fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
+            fast_floats = np.genfromtxt(ifile_name, skip_header=1)
+            assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
+            ints = np.full((len(fast_ints), 6), -1, dtype=int)
+            ints[:, [0, 2, 3, 4]] = fast_ints
+            floats = np.full((len(fast_floats), 5), -1, dtype=float)
+            floats[:, :4] = fast_floats
+        return cls(ints=ints, floats=floats, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
+
 
     def split(self):
         self.grouped_psudojets = [self.get_decendants(lastOnly=False, psudojetID=psudojetID)

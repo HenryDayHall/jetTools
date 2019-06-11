@@ -183,7 +183,10 @@ int main(int argc, char * argv[]) {
    vector< double > pts;  // per jet results
 
    // run the algorithm
-   fj(a, ints, doubles , masses, pts);
+   double R = 1.;
+   int algorithm = 0;
+   string algorithm_name = algorithm == 0 ? "kt_algorithm" : (algorithm == 1 ? "antikt_algorithm" : "cambridge_algorithm");
+   fj(a, ints, doubles , masses, pts, R, algorithm);
 
    std::cout << "Read " << ints.size()/4 << " particles\n";
 
@@ -192,7 +195,10 @@ int main(int argc, char * argv[]) {
 
    string i_output_name = dir_name + "fastjet_ints.csv";
    std::ofstream int_file(i_output_name);
-   int_file << "# " << "global_id" << sep
+   int_file << "# " << "deltaR=" << R << sep
+                    << algorithm_name << sep
+                    << "Coulmns;" << sep
+                    << "global_id" << sep
                     << "mother_id" << sep
                     << "daughter1_id" << sep
                     << "daughter2_id"
