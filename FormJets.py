@@ -5,7 +5,7 @@ from ipdb import set_trace as st
 
 
 class PsudoJets:
-    def __init__(self, observables=None, deltaR=.4, exponent_multiplyer=-1, **kwargs):
+    def __init__(self, observables=None, deltaR=1., exponent_multiplyer=-1, **kwargs):
         self.deltaR = deltaR
         self.exponent_multiplyer = exponent_multiplyer
         self.exponent = 2 * exponent_multiplyer
@@ -15,6 +15,9 @@ class PsudoJets:
         if 'ints' in kwargs:
             self._ints = kwargs['ints']
             self._floats = kwargs['floats']
+            if isinstance(self._ints, np.ndarray):
+                self._ints = self._ints.tolist()
+                self._floats = self._floats.tolist()
         else:
             assert observables is not None, "Must give observables or floats and ints"
             self._ints = [[i, oid, -1, -1, -1, -1] for i, oid in enumerate(observables.global_obs_ids)]
@@ -50,6 +53,34 @@ class PsudoJets:
     def _calculate_currently_avalible(self):
         # keep track of how many clusters don't yet have a mother
         self.currently_avalible = sum([p[self.mother_col]==-1 for p in self._ints])
+
+    @property
+    def pt(self):
+        leaf_pts = [floats[self.pt_col] for floats, ints in zip(self._floats, self._ints)
+                    if ints[self.daughter1_col] == -1 and
+                       ints[self.daughter2_col] == -1]
+        return sum(leaf_pts)
+
+    @property
+    def eta(self):
+        leaf_etas = [floats[self.eta_col] for floats, ints in zip(self._floats, self._ints)
+                     if ints[self.daughter1_col] == -1 and
+                        ints[self.daughter2_col] == -1]
+        return np.average(leaf_etas)
+
+    @property
+    def phi(self):
+        leaf_phis = [floats[self.phi_col] for floats, ints in zip(self._floats, self._ints)
+                     if ints[self.daughter1_col] == -1 and
+                        ints[self.daughter2_col] == -1]
+        return np.average(leaf_phis)
+
+    @property
+    def e(self):
+        leaf_es = [floats[self.energy_col] for floats, ints in zip(self._floats, self._ints)
+                   if ints[self.daughter1_col] == -1 and
+                      ints[self.daughter2_col] == -1]
+        return np.average(leaf_es)
 
     @property
     def global_obs_ids(self):
@@ -95,6 +126,17 @@ class PsudoJets:
         np.savetxt(ffile_name, self._floats,
                    header=float_header)
 
+    def _calculate_roots(self):
+        # should only bee needed for reading from file
+        assert self.currently_avalible == 0, "Assign mothers before you calculate roots"
+        psudojet_ids = [ints[self.psudojet_id_col] for ints in self._ints]
+        mother_ids = [ints[self.mother_col] for ints in self._ints]
+        for mid, pid in zip(mother_ids, psudojet_ids):
+            if (mid == -1 or
+                mid not in psudojet_ids or
+                mid == pid):
+                self.root_psudojetIDs.append(pid)
+
     @classmethod
     def read(cls, dir_name, save_number=1, fastjet_format=True):
         if not fastjet_format:
@@ -117,7 +159,7 @@ class PsudoJets:
             floats = np.genfromtxt(ffile_name, skip_header=1)
         else:  #  fastjet format
             ifile_name = os.path.join(dir_name, f"fastjet_ints.csv")
-            ffile_name = os.path.join(dir_name, f"fastjet_floats.csv")
+            ffile_name = os.path.join(dir_name, f"fastjet_doubles.csv")
             # first line will be the tech specs and columns
             with open(ifile_name, 'r') as ifile:
                 header = ifile.readline()[1:]
@@ -133,25 +175,32 @@ class PsudoJets:
             else:
                 raise ValueError(f"Algorithm {algorithm_name} not recognised")
             fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
-            fast_floats = np.genfromtxt(ifile_name, skip_header=1)
+            fast_floats = np.genfromtxt(ffile_name, skip_header=1)
             assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
             ints = np.full((len(fast_ints), 6), -1, dtype=int)
-            ints[:, [0, 2, 3, 4]] = fast_ints
+            ints[:, :5] = fast_ints
             floats = np.full((len(fast_floats), 5), -1, dtype=float)
             floats[:, :4] = fast_floats
-        return cls(ints=ints, floats=floats, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
+        new_psudojet = cls(ints=ints, floats=floats, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
+        new_psudojet.currently_avalible = 0
+        new_psudojet._calculate_roots()
+        return new_psudojet
 
 
     def split(self):
+        assert self.currently_avalible == 0, "Need to assign_mothers before splitting"
         self.grouped_psudojets = [self.get_decendants(lastOnly=False, psudojetID=psudojetID)
                                   for psudojetID in self.root_psudojetIDs]
         self.JetList = []
-        for group in self.grouped_psudojets:
+        for root in self.root_psudojetIDs:
+            group = self.get_decendants(lastOnly=False, psudojetID=root)
             group_idx = [self.idx_from_ID(ID) for ID in group]
             ints = [self._ints[i] for i in group_idx]
             floats = [self._floats[i] for i in group_idx]
-            jet = PsudoJets(self.deltaR, self.exponent_multiplyer,
+            jet = PsudoJets(deltaR=self.deltaR, exponent_multiplyer=self.exponent_multiplyer,
                             ints=ints, floats=floats)
+            jet.currently_avalible = 0
+            jet.root_psudojetIDs = [root]
             self.JetList.append(jet)
         return self.JetList
     

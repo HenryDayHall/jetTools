@@ -64,9 +64,9 @@ int _traverse(PseudoJet root,
     int daughter1_id;
     int daughter2_id;
 
-    // has form {my_id, mother_id, daughter1_id, daughter2_id}
     int this_id = free_id++;
-    vector<int> root_ints = {this_id, mother_id, -1, -1};
+    // has form {my_id, global_obs_id, mother_id, daughter1_id, daughter2_id}
+    vector<int> root_ints = {this_id, root.user_index(), mother_id, -1, -1};
     ints.push_back(root_ints);
     vector<double> root_doubles = {root.pt(), root.eta(), root.phi(), root.e()};
     doubles.push_back(root_doubles);
@@ -86,16 +86,16 @@ int _traverse(PseudoJet root,
             stack.pop_back();
             stack_idx.pop_back();
             // add the new kids
-            ints[idx_here][2] = daughter1_id;
-            vector<int> daughter1_ints = {daughter1_id, this_id, -1, -1};
+            ints[idx_here][3] = daughter1_id;
+            vector<int> daughter1_ints = {daughter1_id, pieces[0].user_index(), this_id, -1, -1};
             ints.push_back(daughter1_ints);
             vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].eta(), pieces[0].phi(), pieces[0].e()};
             doubles.push_back(daughter1_doubles);
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[0]);
 
-            ints[idx_here][3] = daughter2_id;
-            vector<int> daughter2_ints = {daughter2_id, this_id, -1, -1};
+            ints[idx_here][4] = daughter2_id;
+            vector<int> daughter2_ints = {daughter2_id, pieces[1].user_index(), this_id, -1, -1};
             ints.push_back(daughter2_ints);
             vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].eta(), pieces[1].phi(), pieces[1].e()};
             doubles.push_back(daughter2_doubles);
@@ -120,10 +120,11 @@ static void fj(vector<double>& a, // a = flat vector of observations
     // Extract particles from array
     vector<fastjet::PseudoJet> particles;
 
-    for (unsigned int i = 0; i < a.size(); i += 4) {
+    for (unsigned int i = 0; i < a.size(); i += 5) {
         //                               px    py      pz      e
-        fastjet::PseudoJet p = PseudoJet(a[i], a[i+1], a[i+2], a[i+3]);
-        p.set_user_index((int) i / 4);
+        fastjet::PseudoJet p = PseudoJet(a[i+1], a[i+2], a[i+3], a[i+4]);
+        // this is the global_obs_id
+        p.set_user_index((int) a[i]);
         particles.push_back(p);
     }
 
@@ -159,6 +160,13 @@ static void fj(vector<double>& a, // a = flat vector of observations
 
 
 int main(int argc, char * argv[]) {
+    if(argc != 4){
+        std::cout << "The arguments should be "
+                  << "<folder name> "
+                  << "<deltaR> "
+                  << "<algorithm_num>" << std::endl;
+        return 1;
+    }
     // the argument shoulf be the directory of the files
     std::string dir_name(argv[1]);
     if(dir_name.back() != '/'){
@@ -172,6 +180,7 @@ int main(int argc, char * argv[]) {
     file >> row;
     while(file >> row) {
         // these values come from the observabels/summary file
+        a.push_back(std::stod(row[0]));  //global_obs_id
         a.push_back(std::stod(row[5]));  //px
         a.push_back(std::stod(row[6]));  //py
         a.push_back(std::stod(row[7]));  //pz
@@ -183,8 +192,8 @@ int main(int argc, char * argv[]) {
    vector< double > pts;  // per jet results
 
    // run the algorithm
-   double R = 1.;
-   int algorithm = 0;
+   double R = atof(argv[2]);
+   int algorithm = atoi(argv[3]);
    string algorithm_name = algorithm == 0 ? "kt_algorithm" : (algorithm == 1 ? "antikt_algorithm" : "cambridge_algorithm");
    fj(a, ints, doubles , masses, pts, R, algorithm);
 
@@ -197,8 +206,9 @@ int main(int argc, char * argv[]) {
    std::ofstream int_file(i_output_name);
    int_file << "# " << "deltaR=" << R << sep
                     << algorithm_name << sep
-                    << "Coulmns;" << sep
-                    << "global_id" << sep
+                    << "Columns;" << sep
+                    << "psudojet_id" << sep
+                    << "global_obs_id" << sep
                     << "mother_id" << sep
                     << "daughter1_id" << sep
                     << "daughter2_id"
@@ -216,7 +226,8 @@ int main(int argc, char * argv[]) {
        int_file << ints[i][0] << sep 
                 << ints[i][1] << sep
                 << ints[i][2] << sep
-                << ints[i][3]
+                << ints[i][3] << sep
+                << ints[i][4]
                 << std::endl;
        double_file << doubles[i][0] << sep 
                    << doubles[i][1] << sep
