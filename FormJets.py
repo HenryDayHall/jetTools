@@ -5,12 +5,32 @@ from ipdb import set_trace as st
 
 
 class PsudoJets:
-    def __init__(self, observables, deltaR=.4, exponent_multiplyer=-1, **kwargs):
+    def __init__(self, observables=None, deltaR=.4, exponent_multiplyer=-1, **kwargs):
         self.deltaR = deltaR
         self.exponent_multiplyer = exponent_multiplyer
         self.exponent = 2 * exponent_multiplyer
         # make a table of ints and a table of floats
         # lists not arrays, becuase they will grow
+        self._set_column_numbers()
+        if 'ints' in kwargs:
+            self._ints = kwargs['ints']
+            self._floats = kwargs['floats']
+        else:
+            assert observables is not None, "Must give observables or floats and ints"
+            self._ints = [[i, oid, -1, -1, -1, -1] for i, oid in enumerate(observables.global_obs_ids)]
+            self._floats = np.hstack((observables.pts.reshape((-1, 1)),
+                                      observables.etas.reshape((-1, 1)),
+                                      observables.phis.reshape((-1, 1)),
+                                      observables.es.reshape((-1, 1)),
+                                      np.zeros((len(observables), 1)))).tolist()
+        # keep track of how many clusters don't yet have a mother
+        self._calculate_currently_avalible()
+        self._distances = None
+        self._calculate_distances()
+        # as we go note the root notes of the psudojets
+        self.root_psudojetIDs = []
+
+    def _set_column_numbers(self):
         # int columns
         # psudojet_id global_obs_id mother daughter1 daughter2 rank
         self.psudojet_id_col = 0
@@ -26,22 +46,10 @@ class PsudoJets:
         self.phi_col = 2
         self.energy_col = 3
         self.join_distance_col = 4
-        if 'ints' in kwargs:
-            self._ints = kwargs['ints']
-            self._floats = kwargs['floats']
-        else:
-            self._ints = [[i, oid, -1, -1, -1, -1] for i, oid in enumerate(observables.global_obs_ids)]
-            self._floats = np.hstack((observables.pts.reshape((-1, 1)),
-                                      observables.etas.reshape((-1, 1)),
-                                      observables.phis.reshape((-1, 1)),
-                                      observables.es.reshape((-1, 1)),
-                                      np.zeros((len(observables), 1)))).tolist()
+
+    def _calculate_currently_avalible(self):
         # keep track of how many clusters don't yet have a mother
         self.currently_avalible = sum([p[self.mother_col]==-1 for p in self._ints])
-        self._distances = None
-        self._calculate_distances()
-        # as we go note the root notes of the psudojets
-        self.root_psudojetIDs = []
 
     @property
     def global_obs_ids(self):
@@ -64,6 +72,8 @@ class PsudoJets:
         return np.array([ints[self.mother_col] for ints in self._ints])
 
     def write(self, dir_name, note="No note given."):
+        note.replace('|', '!')  # because | will be used as a seperator
+        technical_specs = f"|deltaR={self.deltaR}|exponent_multiplyer={self.exponent_multiplyer}|"
         # the directory should exist becuase we expect the observables to be written first
         assert os.path.exists(dir_name), "Write the observables first"
         iname_format = os.path.join(dir_name, "psuedojets_ints{}.csv")
@@ -77,14 +87,35 @@ class PsudoJets:
         # if the int file is free the float file should be too
         assert not os.path.exists(ffile_name), "How do you have unmatched int and float files?"
         int_columns = ["psudojet_id", "global_obs_id", "mother", "daughter1", "daughter2", "rank"]
-        int_header = ' '.join([note, "Columns;", *int_columns])
+        int_header = ' '.join([note, technical_specs, "Columns;", *int_columns])
         np.savetxt(ifile_name, self._ints,
                    header=int_header, fmt='%d')
         float_columns = ["pt", "eta", "phi", "energy", "join_distance"]
-        float_header = ' '.join([note, "Columns;", *float_columns])
+        float_header = ' '.join([note, technical_specs, "Columns;", *float_columns])
         np.savetxt(ffile_name, self._floats,
                    header=float_header)
 
+    @classmethod
+    def read(cls, dir_name, save_number=1, class_format=True):
+        if class_format:
+            ifile_name = os.path.join(dir_name, f"psuedojets_ints{save_number}.csv")
+            ffile_name = os.path.join(dir_name, f"psuedojets_floats{save_number}.csv")
+            # first line will be the note, tech specs and columns
+            with open(ifile_name, 'r') as ifile:
+                header = ifile.readline()[1:]
+            with open(ffile_name, 'r') as ffile:
+                header2 = ffile.readline()[1:]
+            header = header.split('|')
+            header2 = header2.split('|')
+            assert header[0] == header2[0], f"Notes should match for {ifile_name, ffile_name}"
+            print(f"Note; {header[0]}")
+            # now pull the tech specs
+            deltaR = float(header[1].split('=')[1])
+            exponent_multiplyer = float(header[2].split('=')[1])
+            # the floats and ints
+            ints = np.genfromtxt(ifile_name, skip_header=1)
+            floats = np.genfromtxt(ffile_name, skip_header=1)
+            return cls(ints=ints, floats=floats, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
 
     def split(self):
         self.grouped_psudojets = [self.get_decendants(lastOnly=False, psudojetID=psudojetID)
@@ -305,9 +336,18 @@ class PsudoJets:
         # one scheme (recombination schemes) look this up get fastjet manuel to see how it does for each algorithm
         return ints, floats
 
+    def __len__(self):
+        return len(self._ints)
+
 
 def main():
-    pass
+    import ReadSQL
+    event, tracks, towers, observables = ReadSQL.main()
+    psudojet = PsudoJets(observables)
+    psudojet.assign_mothers()
+    jets = psudojet.split()
+    return jets
+    
 
 
 if __name__ == '__main__':
