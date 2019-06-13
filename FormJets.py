@@ -1,7 +1,9 @@
 import numpy as np
+import subprocess
 import os
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
+from skhep import math as hepmath
 
 
 class PsudoJets:
@@ -67,6 +69,18 @@ class PsudoJets:
                      if ints[self.daughter1_col] == -1 and
                         ints[self.daughter2_col] == -1]
         return np.average(leaf_etas)
+
+    @property
+    def obs_etas(self):
+        etas = [floats[self.eta_col] for floats, ints in zip(self._floats, self._ints)
+                     if ints[self.obs_id_col] != -1]
+        return etas
+
+    @property
+    def obs_phis(self):
+        phis = [floats[self.phi_col] for floats, ints in zip(self._floats, self._ints)
+                     if ints[self.obs_id_col] != -1]
+        return phis
 
     @property
     def phi(self):
@@ -138,7 +152,7 @@ class PsudoJets:
                 self.root_psudojetIDs.append(pid)
 
     @classmethod
-    def read(cls, dir_name, save_number=1, fastjet_format=True):
+    def read(cls, dir_name, save_number=1, fastjet_format=False):
         if not fastjet_format:
             ifile_name = os.path.join(dir_name, f"psuedojets_ints{save_number}.csv")
             ffile_name = os.path.join(dir_name, f"psuedojets_floats{save_number}.csv")
@@ -176,11 +190,18 @@ class PsudoJets:
                 raise ValueError(f"Algorithm {algorithm_name} not recognised")
             fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
             fast_floats = np.genfromtxt(ffile_name, skip_header=1)
-            assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
-            ints = np.full((len(fast_ints), 6), -1, dtype=int)
-            ints[:, :5] = fast_ints
-            floats = np.full((len(fast_floats), 5), -1, dtype=float)
-            floats[:, :4] = fast_floats
+            if len(fast_ints.shape) > 1:
+                num_rows = fast_ints.shape[0]
+                assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
+            elif len(fast_ints) > 0:
+                num_rows = 1
+            else:
+                num_rows = 0
+            ints = np.full((num_rows, 6), -1, dtype=int)
+            floats = np.full((num_rows, 5), -1, dtype=float)
+            if len(fast_ints) > 0:
+                ints[:, :5] = fast_ints
+                floats[:, :4] = fast_floats
         new_psudojet = cls(ints=ints, floats=floats, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
         new_psudojet.currently_avalible = 0
         new_psudojet._calculate_roots()
@@ -217,6 +238,8 @@ class PsudoJets:
             for column in range(self.currently_avalible):
                 if column > row:
                     continue  # we only need a triangular matrix due to symmetry
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
                 elif column == row:
                     distance = self._floats[row][pt_col]**exponent * deltaR
                 else:
@@ -402,11 +425,17 @@ class PsudoJets:
         eta2 = self._floats[psudojet_index2][self.eta_col]
         phi1 = self._floats[psudojet_index1][self.phi_col]
         phi2 = self._floats[psudojet_index2][self.phi_col]
-        floats = [pt1 + pt2,
-                  (pt1*eta1 + pt2*eta2)/(pt1+pt2),
-                  (pt1*phi1 + pt2*phi2)/(pt1+pt2),
-                  e1 + e2,
-                  distance]
+        # floats = [pt1 + pt2,
+        #           (pt1*eta1 + pt2*eta2)/(pt1+pt2),
+        #           (pt1*phi1 + pt2*phi2)/(pt1+pt2),
+        #           e1 + e2,
+        #           distance]
+        temp_vector1 = hepmath.LorentzVector()
+        temp_vector1.setptetaphie(pt1, eta1, phi1, e1)
+        temp_vector2 = hepmath.LorentzVector()
+        temp_vector2.setptetaphie(pt2, eta2, phi2, e2)
+        comb = temp_vector1 + temp_vector2
+        floats = [comb.pt, comb.eta, comb.phi(), comb.e, distance]
         # one scheme (recombination schemes) look this up get fastjet manuel to see how it does for each algorithm
         return ints, floats
 
@@ -414,15 +443,63 @@ class PsudoJets:
         return len(self._ints)
 
 
+def run_FastJet(dir_name, deltaR, exponent_multiplyer):
+    if exponent_multiplyer == -1:
+        # antikt algorithm
+        algorithm_num = 1
+    elif exponent_multiplyer == 0:
+        algorithm_num = 2
+    elif exponent_multiplyer == 1:
+        algorithm_num = 0
+    else:
+        raise ValueError(f"exponent_multiplyer should be -1, 0 or 1, found {exponent_multiplyer}")
+    program_name = "unholyMatrimony/applyFastJet"
+    subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)])
+    fastjets = PsudoJets.read(dir_name, fastjet_format=True)
+    return fastjets
+
+
 def main():
+    # colourmap
+    colours = plt.get_cmap('gist_rainbow')
     import ReadSQL
+    # get some psudo jets
     event, tracks, towers, observables = ReadSQL.main()
     psudojet = PsudoJets(observables)
     psudojet.assign_mothers()
-    jets = psudojet.split()
-    return jets
+    pjets = psudojet.split()
+    # plot the psudojets
+    psudo_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets))]
+    for c, pjet in zip(psudo_colours, pjets):
+        obs_idx = [ints[pjet.obs_id_col] != -1 for ints in pjet._ints]
+        plt.scatter(np.array(pjet._floats)[obs_idx, pjet.eta_col],
+                    np.array(pjet._floats)[obs_idx, pjet.phi_col],
+                    c=[c], marker='v', s=30, alpha=0.6)
+        #plt.scatter([psudojet.eta], [psudojet.phi], c='black', marker='o', s=10)
+        #plt.scatter([psudojet.eta], [psudojet.phi], c='red', marker='o', s=9)
+    plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PsudoJets")
+    # get soem fast jets
+    directory = "./test/"
+    fastjets = PsudoJets.read(directory, fastjet_format=True)
+    # plot the fastjet
+    fjets = fastjets.split()
+    psudo_colours = [colours(i) for i in np.linspace(0.6, 1., len(fjets))]
+    for c, fjet in zip(psudo_colours, fjets):
+        obs_idx = [ints[fjet.obs_id_col] != -1 for ints in fjet._ints]
+        plt.scatter(np.array(fjet._floats)[obs_idx, fjet.eta_col],
+                    np.array(fjet._floats)[obs_idx, fjet.phi_col],
+                    c=[c], marker='^', s=25, alpha=0.6)
+        #plt.scatter([jet.eta], [jet.phi], c=['black'], marker='o', s=10)
+        #plt.scatter([jet.eta], [jet.phi], c=[colour], marker='o', s=9)
+    plt.scatter([], [], c=[c], marker='^', s=25, alpha=0.6, label="FastJets")
+    plt.legend()
+    plt.title("Jets")
+    plt.xlabel("eta")
+    plt.ylabel("phi")
+    plt.show()
+    return pjets
     
 
 
 if __name__ == '__main__':
-    pass #main()
+    main()

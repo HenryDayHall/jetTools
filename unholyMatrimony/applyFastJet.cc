@@ -68,7 +68,7 @@ int _traverse(PseudoJet root,
     // has form {my_id, global_obs_id, mother_id, daughter1_id, daughter2_id}
     vector<int> root_ints = {this_id, root.user_index(), mother_id, -1, -1};
     ints.push_back(root_ints);
-    vector<double> root_doubles = {root.pt(), root.eta(), root.phi(), root.e()};
+    vector<double> root_doubles = {root.pt(), root.eta(), root.phi_std(), root.e()};
     doubles.push_back(root_doubles);
     stack_idx.push_back(0); // says where the stack item is in terms of ints/floats idx
     int idx_here = stack_idx.back();
@@ -89,7 +89,7 @@ int _traverse(PseudoJet root,
             ints[idx_here][3] = daughter1_id;
             vector<int> daughter1_ints = {daughter1_id, pieces[0].user_index(), this_id, -1, -1};
             ints.push_back(daughter1_ints);
-            vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].eta(), pieces[0].phi(), pieces[0].e()};
+            vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].eta(), pieces[0].phi_std(), pieces[0].e()};
             doubles.push_back(daughter1_doubles);
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[0]);
@@ -97,7 +97,7 @@ int _traverse(PseudoJet root,
             ints[idx_here][4] = daughter2_id;
             vector<int> daughter2_ints = {daughter2_id, pieces[1].user_index(), this_id, -1, -1};
             ints.push_back(daughter2_ints);
-            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].eta(), pieces[1].phi(), pieces[1].e()};
+            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].eta(), pieces[1].phi_std(), pieces[1].e()};
             doubles.push_back(daughter2_doubles);
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[1]);
@@ -112,6 +112,20 @@ int _traverse(PseudoJet root,
     return 0;
 }
 
+int print_tree(PseudoJet node, string prefix, bool is_left){
+    std::cout << prefix << (is_left ? "|--" : "\\--");
+    if( node.has_pieces()){
+        std::cout << "\\" << std::endl;
+        string new_prefix = prefix + (is_left ? "|  " : "   ");
+        vector<PseudoJet> pieces = node.pieces();
+        print_tree(pieces[0], new_prefix, true);
+        print_tree(pieces[1], new_prefix, false);
+    }else{
+        std::cout << node.user_index() << std::endl;
+    }
+
+}
+
 static void fj(vector<double>& a, // a = flat vector of observations
                vector<vector<int>>& ints, vector<vector<double>>& doubles,
                vector< double >& masses,  // per jet results
@@ -120,11 +134,23 @@ static void fj(vector<double>& a, // a = flat vector of observations
     // Extract particles from array
     vector<fastjet::PseudoJet> particles;
 
+    string n_output_name = "fastjet_njets.csv";
+    std::ofstream n_file(n_output_name, std::ios_base::app);
+    string sep = " ";
     for (unsigned int i = 0; i < a.size(); i += 5) {
         //                               px    py      pz      e
         fastjet::PseudoJet p = PseudoJet(a[i+1], a[i+2], a[i+3], a[i+4]);
         // this is the global_obs_id
         p.set_user_index((int) a[i]);
+        std::cout << "Particle " << i/5 << " pt=" << p.pt() << " eta=" << p.eta() << " phi=" << p.phi_std() << " e=" << p.e() << std::endl;
+        n_file << p.px() << sep
+             << p.py() << sep
+             << p.pz() << sep
+             << p.e() << sep
+             << p.pt()  << sep
+             << p.eta()  << sep
+             << p.phi_std() << sep
+             << p.m() << sep;
         particles.push_back(p);
     }
 
@@ -148,6 +174,12 @@ static void fj(vector<double>& a, // a = flat vector of observations
     int free_id = 0;
 
     for (unsigned int j = 0; j < jets.size(); j++) {
+        /*
+        std::cout << "~~~~~~~~~~~~~~~" << std::endl;
+        std::cout << "Jet number " << j << std::endl;
+        print_tree(jets[j], "", false);
+        std::cout << "~~~~~~~~~~~~~~~" << std::endl;
+        */
         vector<vector<int>> ints_here;
         vector<vector<double>> doubles_here;
         int success = _traverse(jets[j], ints_here, doubles_here, free_id);
@@ -156,6 +188,9 @@ static void fj(vector<double>& a, // a = flat vector of observations
         masses.push_back(jets[j].m());
         pts.push_back(jets[j].pt());
     }
+    n_file << jets.size() << std::endl;
+    std::cout << "\t\tNumber jets = " << jets.size() << "\n\n";
+
 }
 
 
@@ -197,7 +232,7 @@ int main(int argc, char * argv[]) {
    string algorithm_name = algorithm == 0 ? "kt_algorithm" : (algorithm == 1 ? "antikt_algorithm" : "cambridge_algorithm");
    fj(a, ints, doubles , masses, pts, R, algorithm);
 
-   std::cout << "Read " << ints.size()/4 << " particles\n";
+   //std::cout << "Read " << ints.size()/4 << " particles\n";
 
    //prepare to write
    string sep = " ";

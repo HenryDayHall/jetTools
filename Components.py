@@ -208,42 +208,43 @@ class ParticleCollection:
     def addParticles(self, *args):
         self._unfreeze()
         new_particles = args[0][0]
-        self.particle_list += new_particles
-        self._ptetaphie = np.vstack((self._ptetaphie,
-                   np.array([[p.pt, p.eta, p.phi(), p.e]
-                              for p in new_particles])))
-        self.pts = np.hstack((self.pts,
-                   np.array([p.pt for p in new_particles])))
-        self.etas = np.hstack((self.etas,
-                   np.array([p.eta for p in new_particles])))
-        self.phis = np.hstack((self.phis,
-                   np.array([p.phi() for p in new_particles])))
-        self.es = np.hstack((self.es,
-                   np.array([p.e for p in new_particles])))
-        self.pxs = np.hstack((self.pxs,
-                   np.array([p.px for p in new_particles])))
-        self.pys = np.hstack((self.pys,
-                   np.array([p.py for p in new_particles])))
-        self.pzs = np.hstack((self.pzs,
-                   np.array([p.pz for p in new_particles])))
-        self.ms = np.hstack((self.ms,
-                   np.array([p.m for p in new_particles])))
-        self.pids = np.hstack((self.pids,
-                   np.array([p.pid for p in new_particles])))
-        self.sql_keys = np.hstack((self.sql_keys,
-                   np.array([p.sql_key for p in new_particles])))
-        self.hepmc_barcodes = np.hstack((self.hepmc_barcodes,
-                   np.array([p.hepmc_barcode for p in new_particles])))
-        self.global_ids = np.hstack((self.global_ids,
-                   np.array([p.global_id for p in new_particles])))
-        self.is_roots = np.hstack((self.is_roots,
-                   np.array([p.is_root for p in new_particles])))
-        self.is_leafs = np.hstack((self.is_leafs,
-                   np.array([p.is_leaf for p in new_particles])))
-        self.start_vertex_barcodes = np.hstack((self.start_vertex_barcodes,
-                   np.array([p.start_vertex_barcode for p in new_particles])))
-        self.end_vertex_barcodes = np.hstack((self.end_vertex_barcodes,
-                   np.array([p.end_vertex_barcode for p in new_particles])))
+        if len(new_particles) > 0:
+            self.particle_list += new_particles
+            self._ptetaphie = np.vstack((self._ptetaphie,
+                       np.array([[p.pt, p.eta, p.phi(), p.e]
+                                  for p in new_particles])))
+            self.pts = np.hstack((self.pts,
+                       np.array([p.pt for p in new_particles])))
+            self.etas = np.hstack((self.etas,
+                       np.array([p.eta for p in new_particles])))
+            self.phis = np.hstack((self.phis,
+                       np.array([p.phi() for p in new_particles])))
+            self.es = np.hstack((self.es,
+                       np.array([p.e for p in new_particles])))
+            self.pxs = np.hstack((self.pxs,
+                       np.array([p.px for p in new_particles])))
+            self.pys = np.hstack((self.pys,
+                       np.array([p.py for p in new_particles])))
+            self.pzs = np.hstack((self.pzs,
+                       np.array([p.pz for p in new_particles])))
+            self.ms = np.hstack((self.ms,
+                       np.array([p.m for p in new_particles])))
+            self.pids = np.hstack((self.pids,
+                       np.array([p.pid for p in new_particles])))
+            self.sql_keys = np.hstack((self.sql_keys,
+                       np.array([p.sql_key for p in new_particles])))
+            self.hepmc_barcodes = np.hstack((self.hepmc_barcodes,
+                       np.array([p.hepmc_barcode for p in new_particles])))
+            self.global_ids = np.hstack((self.global_ids,
+                       np.array([p.global_id for p in new_particles])))
+            self.is_roots = np.hstack((self.is_roots,
+                       np.array([p.is_root for p in new_particles])))
+            self.is_leafs = np.hstack((self.is_leafs,
+                       np.array([p.is_leaf for p in new_particles])))
+            self.start_vertex_barcodes = np.hstack((self.start_vertex_barcodes,
+                       np.array([p.start_vertex_barcode for p in new_particles])))
+            self.end_vertex_barcodes = np.hstack((self.end_vertex_barcodes,
+                       np.array([p.end_vertex_barcode for p in new_particles])))
         self._freeze()
 
     def __getitem__(self, idx):
@@ -585,8 +586,12 @@ class Observables:
                             self.pys.reshape((-1, 1)),
                             self.pzs.reshape((-1, 1)),
                             self.jet_allocation.reshape((-1, 1))))
-        np.savetxt(summary_file_name, summary,
-                   header=' '.join(summary_cols))
+        if len(summary) > 0:
+            np.savetxt(summary_file_name, summary,
+                       header=' '.join(summary_cols))
+        else:
+            with open(summary_file_name, 'w') as summary_file:
+                summary_file.write('# ' + ' '.join(summary_cols) + '\n')
 
     @classmethod
     def from_file(cls, dir_name):
@@ -608,11 +613,21 @@ class Observables:
                     towers.append(MyTower.from_repr(line))
         if len(tracks) + len(towers) > 0:
             return cls(tracks=tracks, towers=towers)
-        if len(particles) > 0:
+        else:
+            particles = ParticleCollection(particles)
             return cls(particle_collection=particles)
-        raise ValueError(f"File {file_name} dosent contain observables.")
             
-
+def make_observables(pts, etas, phis, es, dir_name="./tmp"):
+    num_obs = len(pts)
+    particle_list = []
+    for i in range(num_obs):
+        particle = MyParticle(global_id=i, pt=pts[i], eta=etas[i], phi=phis[i], e=es[i],
+                              is_leaf=True)
+        particle_list.append(particle)
+    collection = ParticleCollection(particle_list)
+    observables = Observables(collection)
+    observables.write(dir_name)
+    
 # probably wont use
 class CollectionStructure:
     def __init__(self, collection, structure=None, shape=None):
