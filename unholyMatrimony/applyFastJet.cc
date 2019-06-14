@@ -1,5 +1,6 @@
 // compile me with 
 // g++ applyFastJet.cc -o applyFastJet `/usr/local/bin/fastjet-config --cxxflags --libs --plugins`
+// which will execute
 // g++ applyFastJet.cc -o applyFastJet -I/usr/local/include -Wl,-rpath,/usr/local/lib -lm -L/usr/local/lib -lfastjettools -lfastjet -lfastjetplugins -lsiscone_spherical -lsiscone
 //
 #include <iostream>

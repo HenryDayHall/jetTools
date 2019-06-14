@@ -8,7 +8,7 @@ import matplotlib
 from ipdb import set_trace as st
 import numpy as np
 import operator
-from unholyMatrimony import TreeWalker
+import TreeWalker
 import Components
 import FormJets
 
