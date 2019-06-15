@@ -1,0 +1,297 @@
+# Jets are formed using applyFastJet.cc
+# this takes in the jets, clusters them and writes to the text form of parentedTree
+# read in the data
+# make the jets into parented trees 
+# there should be a Jet class that is an extention of ParentedTree from nltk
+# use Scikit learn RobustScalar to rescale the data
+import numpy as np
+from matplotlib import pyplot as plt
+from ipdb import set_trace as st
+import os
+
+class TreeWalker:
+    def __init__(self, jet, node_id):
+        self.jet = jet
+        self.id = node_id
+        psudojet_ids = [ints[jet.psudojet_id_col] for ints in jet._ints]
+        node_index = psudojet_ids.index(node_id)
+        self.global_obs_id = jet._ints[node_index][jet.obs_id_col]
+        self.left_id = jet._ints[node_index][jet.daughter1_col]
+        self.right_id = jet._ints[node_index][jet.daughter2_col]
+        self.label = jet.distances
+        self.is_leaf = (self.left_id not in psudojet_ids) and (self.right_id not in psudojet_ids)
+        self.leaf = [jet._floats[node_index][i] for i in
+                      [jet.pt_col, jet.eta_col, jet.phi_col, jet.energy_col]]
+        self.pt = self.leaf[0]
+        self.eta = self.leaf[1]
+        self.phi = self.leaf[2]
+        self.e = self.leaf[3]
+        self.size = self.pt
+        green = (0.2, 0.9, 0.15, 1.)
+        blue = (0.1, 0.5, 0.85, 1.)
+        self.colour = green if self.is_leaf else blue
+        self._decendants = None
+
+    @property
+    def left(self):
+        return TreeWalker(self.jet, self.left_id)
+
+    @property
+    def right(self):
+        return TreeWalker(self.jet, self.right_id)
+
+    @property
+    def decendants(self):
+        if self._decendants is None:
+            if self.is_leaf:
+                self._decendants = set([self.global_obs_id])
+            else:
+                left_decendants = self.left.decendants
+                right_decendants = self.right.decendants
+                self._decendants = left_decendants.union(right_decendants)
+        return self._decendants
+
+# how abut a graph of average join properties
+def join_behaviors(root):
+    if root.is_leaf:
+        return [], []
+    else:
+        # the phi coordinate is modular
+        phi_step = root.left.phi - root.right.phi
+        adjusted_phi_step = ((phi_step+np.pi)%(2*np.pi)) - np.pi
+        modular_jump = abs(phi_step) > np.pi
+        displacement = [root.left.eta - root.right.eta,
+                        adjusted_phi_step,
+                        root.left.pt - root.right.pt]
+        displacement_left, jump_left  = join_behaviors(root.left)
+        displacement_right, jump_right = join_behaviors(root.right)
+        all_dsiplacement = displacement_left + displacement_right + [displacement]
+        all_jump = jump_left + jump_right + [modular_jump]
+        return all_dsiplacement, all_jump
+
+
+# its impossible to to this properly retrospectivly... 
+# the clustering has time order to it
+def tree_motion(start, root, steps_between):
+    if root.is_leaf:
+        location = [[[start[0]], [start[1]]]]*(steps_between+1)
+        size = [[root.size]]*(steps_between+1)
+        colour = [[root.colour]]*(steps_between+1)
+        return location, size, colour
+    else:
+        # find out what is beflow this point
+        next_left = [root.left.eta, root.left.phi]
+        below_left, below_left_size, below_left_colour = tree_motion(next_left, root.left, steps_between)
+        next_right = [root.right.eta, root.right.phi]
+        below_right, below_right_size, below_right_colour = tree_motion(next_right, root.right, steps_between)
+        # if either were leaves pad to the right depth
+        if len(below_left) < len(below_right):
+            pad_height = int(len(below_right)-len(below_left))
+            pad = pad_height * [below_left[-1]]
+            below_left += pad
+            pad_colour = pad_height * [below_left_colour[-1]]
+            below_left_colour += pad_colour
+            pad_size = pad_height * [below_left_size[-1]]
+            below_left_size += pad_size
+        elif len(below_right) < len(below_left):
+            pad_height = int(len(below_left)-len(below_right))
+            pad = pad_height * [below_right[-1]]
+            below_right += pad
+            pad_colour = pad_height * [below_right_colour[-1]]
+            below_right_colour += pad_colour
+            pad_size = pad_height * [below_right_size[-1]]
+            below_right_size += pad_size
+        assert len(below_left) == len(below_right)
+        levels = [[r_eta+l_eta, r_phi+l_phi] for (r_eta, r_phi), (l_eta, l_phi)
+                  in zip(below_left, below_right)]
+        sizes = [l_size + r_size for l_size, r_size in zip(below_left_size, below_right_size)]
+        colours = [l_col + r_col for l_col, r_col in zip(below_left_colour, below_right_colour)]
+        # now make the this level
+        eta_left = np.linspace(next_left[0], start[0], steps_between)
+        eta_right = np.linspace(next_right[0], start[0], steps_between)
+        # this coordinate is cyclic
+        # so this next bit is a shuffle to get it to link by the shortest route
+        distance = next_left[1] - start[1]
+        if distance > np.pi:
+            adjusted_next_left = -next_left[1]
+        elif distance < -np.pi:
+            adjusted_next_left = next_left[1] + 2*np.pi
+        else:
+            adjusted_next_left = next_left[1]
+        phi_left = np.linspace(adjusted_next_left, start[1], steps_between)
+        phi_left = ((phi_left+np.pi)%(2*np.pi)) - np.pi
+        distance = next_right[1] - start[1]
+        if distance > np.pi:
+            adjusted_next_right = -next_right[1]
+        elif distance < -np.pi:
+            adjusted_next_right = next_right[1] + 2*np.pi
+        else:
+            adjusted_next_right = next_right[1]
+        phi_right = np.linspace(adjusted_next_right, start[1], steps_between)
+        phi_right = ((phi_right+np.pi)%(2*np.pi)) - np.pi
+        this_level = [[[eleft, eright], [pleft, pright]]
+                      for eleft, eright, pleft, pright in
+                      zip(eta_left, eta_right, phi_left, phi_right)]
+        this_level += [[[root.eta], [root.phi]]]
+        # add all the motion together
+        levels += this_level
+        # pick size
+        l_size = root.left.size; r_size = root.right.size
+        this_size = [[l_size, r_size]]*steps_between + [[root.size]]
+        sizes += this_size
+        l_colour = root.left.colour; r_colour = root.right.colour
+        this_colour = [[l_colour, r_colour]]*steps_between + [[(*root.colour[:3], 0.5)]]
+        colours += this_colour
+        return levels, sizes, colours
+
+
+def plot_motions(motions, sizes, colours, dir_name, step_interval):
+    os.mkdir(dir_name)
+    # get the right x limits
+    for motion in motions:
+        plt.scatter(*motion[0])
+    xlim = plt.gca().get_xlim()
+    ylim = plt.gca().get_ylim()
+    # some motions may be shorter than others, extend the short ones
+    max_len = max([len(m) for m in motions])
+    for motion, size, colour in zip(motions, sizes, colours):
+        deficit = max_len - len(motion)
+        motion += [motion[-1]]*deficit
+        size += [size[-1]]*deficit
+        colour += [colour[-1]]*deficit
+    # figure out how much padding we will need on the name
+    end_extend = 10
+    last_num = str(max_len+end_extend)
+    pad_length = len(last_num)
+    name_format = os.path.join(dir_name, f"frame{{:0{pad_length}d}}.png")
+    # loop over the frames
+    for level_n in range(max_len):
+        plt.cla()
+        for motion, size, colour in zip(motions, sizes, colours):
+            level = motion[level_n]
+            c = colour[level_n]
+            s = size[level_n]
+            plt.scatter(*level, c=c, s=np.sqrt(s), alpha=0.5)
+        plt.xlabel("$\\eta$")
+        plt.ylabel("$\\phi$")
+        plt.xlim(xlim)
+        plt.ylim(ylim)
+        plt.savefig(name_format.format(level_n))
+    # save the last image a few times
+    for j in range(level_n, level_n+end_extend):
+        plt.savefig(name_format.format(j))
+
+        
+def quick_vid():
+    import FormJets
+    save_name = "homepic" 
+    assert not os.path.exists(save_name)
+    jet = FormJets.PsudoJets.read("test")
+    walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+    steps_between = 10
+    motion, size, colour = tree_motion(walker.leaf[1:3], walker, steps_between)
+    plot_motions([motion], [size], [colour], save_name, steps_between)
+
+
+def whole_event():
+    import FormJets
+    import Components
+    obs_dir = "test"
+    fast_save_name = "fasteventpic"
+    home_save_name = "homeeventpic"
+    assert not os.path.exists(fast_save_name)
+    assert not os.path.exists(home_save_name)
+    observables = Components.Observables.from_file(obs_dir)
+    deltaR = 1.
+    exponent_multiplyer = -1
+    steps_between = 10
+    print("Starting fastjet")
+    fast_jets = FormJets.run_FastJet(obs_dir, deltaR, exponent_multiplyer)
+    fast_jets = fast_jets.split()
+    motions = []; colours = []; sizes = []
+    for i, jet in enumerate(fast_jets):
+        print(f"Getting fast motion. Jet {i}")
+        fast_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+        motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
+        motions.append(motion); sizes.append(size); colours.append(color)
+    print("Plotting fast jets")
+    plot_motions(motions, sizes, colours, fast_save_name, steps_between)
+    home_jets = FormJets.PsudoJets(observables, deltaR, exponent_multiplyer)
+    home_jets.assign_mothers()
+    home_jets = home_jets.split()
+    motions = []; colours = []; sizes = []
+    for i, jet in enumerate(home_jets):
+        print(f"Getting home motion. Jet {i}")
+        home_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+        motion, size, color = tree_motion(home_walker.leaf[1:3], home_walker, steps_between)
+        motions.append(motion); sizes.append(size); colours.append(color)
+    print("Plotting home jets")
+    plot_motions(motions, sizes, colours, home_save_name, steps_between)
+    print("Done!")
+
+
+def whole_event_behavior():
+    import FormJets
+    import Components
+    obs_dir = "test"
+    observables = Components.Observables.from_file(obs_dir)
+    deltaR = 1.
+    exponent_multiplyer = -1
+    steps_between = 10
+    print("Starting fastjet")
+    fast_jets = FormJets.run_FastJet(obs_dir, deltaR, exponent_multiplyer)
+    fast_jets = fast_jets.split()
+    fast_behavior = []
+    fast_jump = []
+    for i, jet in enumerate(fast_jets):
+        print(f"Getting fast behavior. Jet {i}")
+        fast_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+        jet_behavior, jet_jump = join_behaviors(fast_walker)
+        fast_behavior += jet_behavior
+        fast_jump += jet_jump
+    fast_behavior = np.array(fast_behavior)
+    fast_jump = np.array(fast_jump)
+    home_jets = FormJets.PsudoJets(observables, deltaR, exponent_multiplyer)
+    home_jets.assign_mothers()
+    home_jets = home_jets.split()
+    home_behavior = []
+    home_jump = []
+    for i, jet in enumerate(home_jets):
+        print(f"Getting home behavior. Jet {i}")
+        home_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+        jet_behavior, jet_jump = join_behaviors(home_walker)
+        home_behavior += jet_behavior
+        home_jump += jet_jump
+    home_behavior = np.array(home_behavior)
+    home_jump = np.array(home_jump)
+    print("Done!")
+    plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
+    plt.scatter(home_behavior[home_jump, 0], home_behavior[home_jump, 1], c= home_behavior[home_jump, 2], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
+    plt.scatter(fast_behavior[~fast_jump, 0], fast_behavior[~fast_jump, 1], c= fast_behavior[~fast_jump, 2], cmap='viridis', marker='P', label="Fast jet")
+    plt.scatter(home_behavior[~home_jump, 0], home_behavior[~home_jump, 1], c= home_behavior[~home_jump, 2], cmap='viridis', marker='o', label="Home jet")
+    plt.legend()
+    # colourbar
+    plt.colorbar(label="$p_T$ difference")
+    # title
+    if exponent_multiplyer == -1:
+        algorithm = "anti-kt"
+    elif exponent_multiplyer == 0:
+        algorithm = "cambridge-aachen"
+    else:
+        algorithm = "kt"
+    plt.title(f"Displacement between joined tracks. Algorithm = {algorithm}, R={deltaR}")
+    # plot a circle at deltaR
+    xs = np.cos(np.linspace(0, 2*np.pi, 50))*deltaR
+    ys = np.sin(np.linspace(0, 2*np.pi, 50))*deltaR
+    plt.plot(xs, ys, c='k')
+    # axis
+    plt.xlabel("$\\eta$")
+    plt.ylabel("$\\phi$")
+    plt.axis('equal')
+    plt.show()
+
+if __name__ == '__main__':
+    #quick_vid()
+    #whole_event()
+    whole_event_behavior()
+
