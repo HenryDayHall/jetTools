@@ -90,6 +90,16 @@ class MyParticle(hepmath.vectors.LorentzVector):
     repr_format = '|'.join(["MyParticle", repr_body,
                             'mothers', 'daughters'])
 
+    def rapidity(self):
+        """ overwrite the method in LorentzVector with a more robust method """
+        if self.perp2 == 0 and self.e == abs(self.pz):
+            large_num = 10**10
+            return np.sign(self.pz)*large_num + self.pz
+        m2 = max(self.m2, 0.)
+        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
+        return -np.sign(self.pz) * mag_rap
+
+
     @classmethod
     def from_repr(cls, rep):
         if rep == '': return None
@@ -301,6 +311,29 @@ class MyTower(hepmath.vectors.LorentzVector):
             super().__init__()
             self.setptetaphie(et, eta, phi, e)
 
+    def rapidity(self):
+        """ overwrite the method in LorentzVector with a more robust method """
+        if self.perp2 == 0 and self.e == abs(self.pz):
+            large_num = 10**10
+            return np.sign(self.pz)*large_num + self.pz
+        m2 = max(self.m2, 0.)
+        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
+        return -np.sign(self.pz) * mag_rap
+  #      try:
+  #          return super(MyTower, self).rapidity
+  #      except ValueError:
+  #          return 0.
+  #      if self.pz == 0:
+  #          return 0.
+  #      elif self.e == self.pz:
+  #          return np.inf
+  #      elif self.e < abs(self.pz):
+  #          error = f"Tower; e {self.e} should never be smaller that pz {self.pz}"
+  #          print(error)
+  #          return np.nan
+  #      else:
+  #          return 0.5*np.log((self.e + self.pz)/(self.e - self.pz))
+
     @property
     def global_obs_id(self):
         return self._global_obs_id
@@ -409,6 +442,15 @@ class MyTrack(hepmath.vectors.LorentzVector):
             y_outer = kwargs['y_outer']
             z_outer = kwargs['z_outer']
             super().__init__(x_outer, y_outer, z_outer, t_outer)
+
+    def rapidity(self):
+        """ overwrite the method in LorentzVector with a more robust method """
+        if self.perp2 == 0 and self.e == abs(self.pz):
+            large_num = 10**10
+            return np.sign(self.pz)*large_num + self.pz
+        m2 = max(self.m2, 0.)
+        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
+        return -np.sign(self.pz) * mag_rap
 
     def __str__(self):
         return f"MyTrack[{self.global_track_id}] energy;{self.e:.2e}"
@@ -535,6 +577,7 @@ class Observables:
             raise ValueError("Need to provide particles, tracks or towers.")
         self.global_obs_ids = np.array(global_obs_ids)
         self.etas = np.array([t.eta for t in self.objects])
+        self.raps = np.array([t.rapidity() for t in self.objects])
         self.phis = np.array([t.phi() for t in self.objects])
         self.es = np.array([t.e for t in self.objects])
         self.pxs = np.array([t.px for t in self.objects])
@@ -574,12 +617,13 @@ class Observables:
             obj_file.writelines([repr(obj) + '\n' for obj in self.objects])
         # write the summaries
         summary_cols = ["global_obs_id", "pt",
-                        "eta", "phi", "e", 
+                        "eta", "rap", "phi", "e", 
                         "px", "py", "pz",
                         "jet_allocation"]
         summary = np.hstack((self.global_obs_ids.reshape((-1, 1)),
                             self.pts.reshape((-1, 1)),
                             self.etas.reshape((-1, 1)),
+                            self.raps.reshape((-1, 1)),
                             self.phis.reshape((-1, 1)),
                             self.es.reshape((-1, 1)),
                             self.pxs.reshape((-1, 1)),
@@ -627,6 +671,7 @@ def make_observables(pts, etas, phis, es, dir_name="./tmp"):
     collection = ParticleCollection(particle_list)
     observables = Observables(collection)
     observables.write(dir_name)
+    return observables
     
 # probably wont use
 class CollectionStructure:

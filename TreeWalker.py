@@ -7,7 +7,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
+from skhep import math as hepmath
 import os
+import csv
 
 class TreeWalker:
     def __init__(self, jet, node_id):
@@ -51,6 +53,18 @@ class TreeWalker:
                 self._decendants = left_decendants.union(right_decendants)
         return self._decendants
 
+    @property
+    def safe_rap(self):
+        obs = hepmath.LorentzVector()
+        obs.setptetaphie(self.pt, self.eta, self.phi, self.e)
+        if obs.perp2 == 0:
+            large_num = 10**10
+            return np.sign(obs.pz)*large_num + obs.pz
+        m2 = max(obs.m2, 0.)
+        mag_rap = 0.5*np.log((obs.perp2 + m2)/((obs.e + abs(obs.pz))**2))
+        return -np.sign(obs.pz) * mag_rap
+
+
 # how abut a graph of average join properties
 def join_behaviors(root):
     if root.is_leaf:
@@ -61,6 +75,7 @@ def join_behaviors(root):
         adjusted_phi_step = ((phi_step+np.pi)%(2*np.pi)) - np.pi
         modular_jump = abs(phi_step) > np.pi
         displacement = [root.left.eta - root.right.eta,
+                        root.left.safe_rap - root.right.safe_rap,
                         adjusted_phi_step,
                         root.left.pt - root.right.pt]
         displacement_left, jump_left  = join_behaviors(root.left)
@@ -193,7 +208,7 @@ def quick_vid():
     plot_motions([motion], [size], [colour], save_name, steps_between)
 
 
-def whole_event():
+def whole_event(nodisplay=False):
     import FormJets
     import Components
     obs_dir = "test"
@@ -214,8 +229,25 @@ def whole_event():
         fast_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
         motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
         motions.append(motion); sizes.append(size); colours.append(color)
-    print("Plotting fast jets")
-    plot_motions(motions, sizes, colours, fast_save_name, steps_between)
+    if nodisplay:
+        for i, motion in enumerate(motions):
+            motions_file_name = f"fast_motions{i}.csv"
+            with open(motions_file_name, 'w') as mfile:
+                writer = csv.writer(mfile)
+                writer.writerows(motion)
+        for i, colour in enumerate(colours):
+            colours_file_name = f"fast_colours{i}.csv"
+            with open(colours_file_name, 'w') as mfile:
+                writer = csv.writer(mfile)
+                writer.writerows(colour)
+        for i, size in enumerate(sizes):
+            sizes_file_name = f"fast_sizes{i}.csv"
+            with open(sizes_file_name, 'w') as mfile:
+                writer = csv.writer(mfile)
+                writer.writerows(size)
+    else:
+        print("Plotting fast jets")
+        plot_motions(motions, sizes, colours, fast_save_name, steps_between)
     home_jets = FormJets.PsudoJets(observables, deltaR, exponent_multiplyer)
     home_jets.assign_mothers()
     home_jets = home_jets.split()
@@ -225,12 +257,29 @@ def whole_event():
         home_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
         motion, size, color = tree_motion(home_walker.leaf[1:3], home_walker, steps_between)
         motions.append(motion); sizes.append(size); colours.append(color)
-    print("Plotting home jets")
-    plot_motions(motions, sizes, colours, home_save_name, steps_between)
+    if nodisplay:
+        for i, motion in enumerate(motions):
+            motions_file_name = f"home_motions{i}.csv"
+            with open(motions_file_name, 'w') as mfile:
+                writer = csv.writer(mfile)
+                writer.writerows(motion)
+        for i, colour in enumerate(colours):
+            colours_file_name = f"home_colours{i}.csv"
+            with open(colours_file_name, 'w') as mfile:
+                writer = csv.writer(mfile)
+                writer.writerows(colour)
+        for i, size in enumerate(sizes):
+            sizes_file_name = f"home_sizes{i}.csv"
+            with open(sizes_file_name, 'w') as mfile:
+                writer = csv.writer(mfile)
+                writer.writerows(size)
+    else:
+        print("Plotting home jets")
+        plot_motions(motions, sizes, colours, home_save_name, steps_between)
     print("Done!")
 
 
-def whole_event_behavior():
+def whole_event_behavior(nodisplay=False):
     import FormJets
     import Components
     obs_dir = "test"
@@ -265,10 +314,20 @@ def whole_event_behavior():
     home_behavior = np.array(home_behavior)
     home_jump = np.array(home_jump)
     print("Done!")
-    plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
-    plt.scatter(home_behavior[home_jump, 0], home_behavior[home_jump, 1], c= home_behavior[home_jump, 2], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
-    plt.scatter(fast_behavior[~fast_jump, 0], fast_behavior[~fast_jump, 1], c= fast_behavior[~fast_jump, 2], cmap='viridis', marker='P', label="Fast jet")
-    plt.scatter(home_behavior[~home_jump, 0], home_behavior[~home_jump, 1], c= home_behavior[~home_jump, 2], cmap='viridis', marker='o', label="Home jet")
+    if nodisplay:
+        np.savetxt("fast_jump.csv", fast_jump)
+        np.savetxt("fast_behavior.csv", fast_behavior)
+        np.savetxt("home_jump.csv", home_jump)
+        np.savetxt("home_behavior.csv", home_behavior)
+    else:
+        plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR)
+
+def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR):
+    use_rapidity = 1
+    plt.scatter(fast_behavior[fast_jump, use_rapidity], fast_behavior[fast_jump, 2], c= fast_behavior[fast_jump, 3], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
+    plt.scatter(home_behavior[home_jump, use_rapidity], home_behavior[home_jump, 2], c= home_behavior[home_jump, 3], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
+    plt.scatter(fast_behavior[~fast_jump, use_rapidity], fast_behavior[~fast_jump, 2], c= fast_behavior[~fast_jump, 3], cmap='viridis', marker='P', label="Fast jet")
+    plt.scatter(home_behavior[~home_jump, use_rapidity], home_behavior[~home_jump, 2], c= home_behavior[~home_jump, 3], cmap='viridis', marker='o', label="Home jet")
     plt.legend()
     # colourbar
     plt.colorbar(label="$p_T$ difference")
@@ -285,7 +344,10 @@ def whole_event_behavior():
     ys = np.sin(np.linspace(0, 2*np.pi, 50))*deltaR
     plt.plot(xs, ys, c='k')
     # axis
-    plt.xlabel("$\\eta$")
+    if use_rapidity:
+        plt.xlabel("rapidity")
+    else:
+        plt.xlabel("$\\eta$")
     plt.ylabel("$\\phi$")
     plt.axis('equal')
     plt.show()

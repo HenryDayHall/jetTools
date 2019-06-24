@@ -453,7 +453,7 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer):
         algorithm_num = 0
     else:
         raise ValueError(f"exponent_multiplyer should be -1, 0 or 1, found {exponent_multiplyer}")
-    program_name = "unholyMatrimony/applyFastJet"
+    program_name = "./applyFastJet"
     subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)])
     fastjets = PsudoJets.read(dir_name, fastjet_format=True)
     return fastjets
