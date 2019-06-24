@@ -23,12 +23,12 @@ class TreeWalker:
         self.label = jet.distances
         self.is_leaf = (self.left_id not in psudojet_ids) and (self.right_id not in psudojet_ids)
         self.leaf = [jet._floats[node_index][i] for i in
-                      [jet.pt_col, jet.eta_col, jet.phi_col, jet.energy_col]]
+                      [jet.pt_col, jet.rap_col, jet.phi_col, jet.energy_col]]
         self.pt = self.leaf[0]
-        self.eta = self.leaf[1]
+        self.rap = self.leaf[1]
         self.phi = self.leaf[2]
         self.e = self.leaf[3]
-        self.size = self.pt
+        self.size = self.e
         green = (0.2, 0.9, 0.15, 1.)
         blue = (0.1, 0.5, 0.85, 1.)
         self.colour = green if self.is_leaf else blue
@@ -53,18 +53,6 @@ class TreeWalker:
                 self._decendants = left_decendants.union(right_decendants)
         return self._decendants
 
-    @property
-    def safe_rap(self):
-        obs = hepmath.LorentzVector()
-        obs.setptetaphie(self.pt, self.eta, self.phi, self.e)
-        if obs.perp2 == 0:
-            large_num = 10**10
-            return np.sign(obs.pz)*large_num + obs.pz
-        m2 = max(obs.m2, 0.)
-        mag_rap = 0.5*np.log((obs.perp2 + m2)/((obs.e + abs(obs.pz))**2))
-        return -np.sign(obs.pz) * mag_rap
-
-
 # how abut a graph of average join properties
 def join_behaviors(root):
     if root.is_leaf:
@@ -74,8 +62,7 @@ def join_behaviors(root):
         phi_step = root.left.phi - root.right.phi
         adjusted_phi_step = ((phi_step+np.pi)%(2*np.pi)) - np.pi
         modular_jump = abs(phi_step) > np.pi
-        displacement = [root.left.eta - root.right.eta,
-                        root.left.safe_rap - root.right.safe_rap,
+        displacement = [root.left.rap - root.right.rap,
                         adjusted_phi_step,
                         root.left.pt - root.right.pt]
         displacement_left, jump_left  = join_behaviors(root.left)
@@ -95,9 +82,9 @@ def tree_motion(start, root, steps_between):
         return location, size, colour
     else:
         # find out what is beflow this point
-        next_left = [root.left.eta, root.left.phi]
+        next_left = [root.left.rap, root.left.phi]
         below_left, below_left_size, below_left_colour = tree_motion(next_left, root.left, steps_between)
-        next_right = [root.right.eta, root.right.phi]
+        next_right = [root.right.rap, root.right.phi]
         below_right, below_right_size, below_right_colour = tree_motion(next_right, root.right, steps_between)
         # if either were leaves pad to the right depth
         if len(below_left) < len(below_right):
@@ -117,13 +104,13 @@ def tree_motion(start, root, steps_between):
             pad_size = pad_height * [below_right_size[-1]]
             below_right_size += pad_size
         assert len(below_left) == len(below_right)
-        levels = [[r_eta+l_eta, r_phi+l_phi] for (r_eta, r_phi), (l_eta, l_phi)
+        levels = [[r_rap+l_rap, r_phi+l_phi] for (r_rap, r_phi), (l_rap, l_phi)
                   in zip(below_left, below_right)]
         sizes = [l_size + r_size for l_size, r_size in zip(below_left_size, below_right_size)]
         colours = [l_col + r_col for l_col, r_col in zip(below_left_colour, below_right_colour)]
         # now make the this level
-        eta_left = np.linspace(next_left[0], start[0], steps_between)
-        eta_right = np.linspace(next_right[0], start[0], steps_between)
+        rap_left = np.linspace(next_left[0], start[0], steps_between)
+        rap_right = np.linspace(next_right[0], start[0], steps_between)
         # this coordinate is cyclic
         # so this next bit is a shuffle to get it to link by the shortest route
         distance = next_left[1] - start[1]
@@ -146,8 +133,8 @@ def tree_motion(start, root, steps_between):
         phi_right = ((phi_right+np.pi)%(2*np.pi)) - np.pi
         this_level = [[[eleft, eright], [pleft, pright]]
                       for eleft, eright, pleft, pright in
-                      zip(eta_left, eta_right, phi_left, phi_right)]
-        this_level += [[[root.eta], [root.phi]]]
+                      zip(rap_left, rap_right, phi_left, phi_right)]
+        this_level += [[[root.rap], [root.phi]]]
         # add all the motion together
         levels += this_level
         # pick size
@@ -187,7 +174,7 @@ def plot_motions(motions, sizes, colours, dir_name, step_interval):
             c = colour[level_n]
             s = size[level_n]
             plt.scatter(*level, c=c, s=np.sqrt(s), alpha=0.5)
-        plt.xlabel("$\\eta$")
+        plt.xlabel("$rapidity$")
         plt.ylabel("$\\phi$")
         plt.xlim(xlim)
         plt.ylim(ylim)
@@ -323,11 +310,10 @@ def whole_event_behavior(nodisplay=False):
         plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR)
 
 def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR):
-    use_rapidity = 1
-    plt.scatter(fast_behavior[fast_jump, use_rapidity], fast_behavior[fast_jump, 2], c= fast_behavior[fast_jump, 3], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
-    plt.scatter(home_behavior[home_jump, use_rapidity], home_behavior[home_jump, 2], c= home_behavior[home_jump, 3], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
-    plt.scatter(fast_behavior[~fast_jump, use_rapidity], fast_behavior[~fast_jump, 2], c= fast_behavior[~fast_jump, 3], cmap='viridis', marker='P', label="Fast jet")
-    plt.scatter(home_behavior[~home_jump, use_rapidity], home_behavior[~home_jump, 2], c= home_behavior[~home_jump, 3], cmap='viridis', marker='o', label="Home jet")
+    plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
+    plt.scatter(home_behavior[home_jump, 0], home_behavior[home_jump, 1], c= home_behavior[home_jump, 2], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
+    plt.scatter(fast_behavior[~fast_jump, 0], fast_behavior[~fast_jump, 1], c= fast_behavior[~fast_jump, 2], cmap='viridis', marker='P', label="Fast jet")
+    plt.scatter(home_behavior[~home_jump, 0], home_behavior[~home_jump, 1], c= home_behavior[~home_jump, 2], cmap='viridis', marker='o', label="Home jet")
     plt.legend()
     # colourbar
     plt.colorbar(label="$p_T$ difference")
@@ -344,10 +330,7 @@ def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump
     ys = np.sin(np.linspace(0, 2*np.pi, 50))*deltaR
     plt.plot(xs, ys, c='k')
     # axis
-    if use_rapidity:
-        plt.xlabel("rapidity")
-    else:
-        plt.xlabel("$\\eta$")
+    plt.xlabel("rapidity")
     plt.ylabel("$\\phi$")
     plt.axis('equal')
     plt.show()

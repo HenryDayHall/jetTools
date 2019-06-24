@@ -24,7 +24,7 @@ class PsudoJets:
             assert observables is not None, "Must give observables or floats and ints"
             self._ints = [[i, oid, -1, -1, -1, -1] for i, oid in enumerate(observables.global_obs_ids)]
             self._floats = np.hstack((observables.pts.reshape((-1, 1)),
-                                      observables.etas.reshape((-1, 1)),
+                                      observables.raps.reshape((-1, 1)),
                                       observables.phis.reshape((-1, 1)),
                                       observables.es.reshape((-1, 1)),
                                       np.zeros((len(observables), 1)))).tolist()
@@ -47,7 +47,7 @@ class PsudoJets:
         # float columns
         # pt eta phi energy join_distance
         self.pt_col = 0
-        self.eta_col = 1
+        self.rap_col = 1
         self.phi_col = 2
         self.energy_col = 3
         self.join_distance_col = 4
@@ -64,15 +64,15 @@ class PsudoJets:
         return sum(leaf_pts)
 
     @property
-    def eta(self):
-        leaf_etas = [floats[self.eta_col] for floats, ints in zip(self._floats, self._ints)
+    def rap(self):
+        leaf_etas = [floats[self.rap_col] for floats, ints in zip(self._floats, self._ints)
                      if ints[self.daughter1_col] == -1 and
                         ints[self.daughter2_col] == -1]
         return np.average(leaf_etas)
 
     @property
-    def obs_etas(self):
-        etas = [floats[self.eta_col] for floats, ints in zip(self._floats, self._ints)
+    def obs_raps(self):
+        etas = [floats[self.rap_col] for floats, ints in zip(self._floats, self._ints)
                      if ints[self.obs_id_col] != -1]
         return etas
 
@@ -135,7 +135,7 @@ class PsudoJets:
         int_header = ' '.join([note, technical_specs, "Columns;", *int_columns])
         np.savetxt(ifile_name, self._ints,
                    header=int_header, fmt='%d')
-        float_columns = ["pt", "eta", "phi", "energy", "join_distance"]
+        float_columns = ["pt", "rapidity", "phi", "energy", "join_distance"]
         float_header = ' '.join([note, technical_specs, "Columns;", *float_columns])
         np.savetxt(ffile_name, self._floats,
                    header=float_header)
@@ -230,7 +230,7 @@ class PsudoJets:
         self._distances = np.full((self.currently_avalible, self.currently_avalible), np.inf)
         # for speed, make local variables
         pt_col  = self.pt_col 
-        eta_col = self.eta_col
+        rap_col = self.rap_col
         phi_col = self.phi_col
         exponent = self.exponent
         deltaR = self.deltaR
@@ -246,7 +246,7 @@ class PsudoJets:
                     angular_diffrence = self._floats[row][phi_col] - self._floats[column][phi_col]
                     angular_distance = min(abs(angular_diffrence), abs(2*np.pi - angular_diffrence))
                     distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
-                               ((self._floats[row][eta_col] - self._floats[column][eta_col])**2 +
+                               ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
                                (angular_distance)**2)
                 self._distances[row, column] = distance
 
@@ -262,7 +262,7 @@ class PsudoJets:
                 angular_diffrence = self._floats[row][self.phi_col] - self._floats[column][self.phi_col]
                 angular_distance = min(abs(angular_diffrence), abs(2*np.pi - angular_diffrence))
                 distance = min(self._floats[row][self.pt_col]**self.exponent, self._floats[column][self.pt_col]**self.exponent) *\
-                           ((self._floats[row][self.eta_col] - self._floats[column][self.eta_col])**2 +
+                           ((self._floats[row][self.rap_col] - self._floats[column][self.rap_col])**2 +
                            (angular_distance)**2)
             self._distances[row, column] = distance
 
@@ -316,11 +316,11 @@ class PsudoJets:
     def plt_assign_mothers(self):
         # dendogram < this should be
         plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
-        etas = [p[self.eta_col] for p in self._floats]
+        raps = [p[self.rap_col] for p in self._floats]
         phis = [p[self.phi_col] for p in self._floats]
         es = [p[self.energy_col] for p in self._floats]
         pts = [1/p[self.pt_col]**2 for p in self._floats]
-        plt.scatter(etas, phis, pts, marker='D', c='w')
+        plt.scatter(raps, phis, pts, marker='D', c='w')
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.ylabel(r"$\phi$ - barrel angle")
@@ -342,11 +342,11 @@ class PsudoJets:
             if row == column:
                 decendents = self.get_decendants(lastOnly=True, psudojet_idx=row)
                 decendents_idx = [self.idx_from_ID(d) for d in decendents]
-                detas = [self._floats[d][self.eta_col] for d in decendents_idx]
+                draps = [self._floats[d][self.rap_col] for d in decendents_idx]
                 dphis = [self._floats[d][self.phi_col] for d in decendents_idx]
                 des = [self._floats[d][self.energy_col] for d in decendents_idx]
                 dpts = [1/self._floats[d][self.pt_col]**2 for d in decendents_idx]
-                plt.scatter(detas, dphis, dpts, marker='D')
+                plt.scatter(draps, dphis, dpts, marker='D')
                 print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} psudojets unfinished")
                 plt.pause(0.05)
                 input("Press enter for next psudojet")
@@ -421,21 +421,34 @@ class PsudoJets:
         pt2 = self._floats[psudojet_index2][self.pt_col]
         e1 = self._floats[psudojet_index1][self.energy_col]
         e2 = self._floats[psudojet_index2][self.energy_col]
-        eta1 = self._floats[psudojet_index1][self.eta_col]
-        eta2 = self._floats[psudojet_index2][self.eta_col]
+        rap1 = self._floats[psudojet_index1][self.rap_col]
+        rap2 = self._floats[psudojet_index2][self.rap_col]
         phi1 = self._floats[psudojet_index1][self.phi_col]
         phi2 = self._floats[psudojet_index2][self.phi_col]
+        # do not try to be clever with the angles.....
+        # just do it all explicitly
+        phi_shift = phi2 - phi1
+        if phi_shift > np.pi: phi_shift -= 2.*np.pi
+        elif phi_shift < -np.pi: phi_shift += 2.*np.pi
+        mid_phi = phi1 + phi_shift/2.
+        if mid_phi > np.pi: mid_phi -= 2.*np.pi
+        elif mid_phi < -np.pi: mid_phi += 2.*np.pi
+        floats = [pt1 + pt2,
+                  (rap1+rap2)/2,
+                  mid_phi,
+                  e1 + e2,
+                  distance]
         # floats = [pt1 + pt2,
         #           (pt1*eta1 + pt2*eta2)/(pt1+pt2),
         #           (pt1*phi1 + pt2*phi2)/(pt1+pt2),
         #           e1 + e2,
         #           distance]
-        temp_vector1 = hepmath.LorentzVector()
-        temp_vector1.setptetaphie(pt1, eta1, phi1, e1)
-        temp_vector2 = hepmath.LorentzVector()
-        temp_vector2.setptetaphie(pt2, eta2, phi2, e2)
-        comb = temp_vector1 + temp_vector2
-        floats = [comb.pt, comb.eta, comb.phi(), comb.e, distance]
+        #temp_vector1 = hepmath.LorentzVector()
+        #temp_vector1.setptetaphie(pt1, eta1, phi1, e1)
+        #temp_vector2 = hepmath.LorentzVector()
+        #temp_vector2.setptetaphie(pt2, eta2, phi2, e2)
+        #comb = temp_vector1 + temp_vector2
+        #floats = [comb.pt, comb.eta, comb.phi(), comb.e, distance]
         # one scheme (recombination schemes) look this up get fastjet manuel to see how it does for each algorithm
         return ints, floats
 
