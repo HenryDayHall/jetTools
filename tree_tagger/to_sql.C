@@ -115,7 +115,11 @@ void PrintParticle(GenParticle &particle, int verbosity, string &out) {
         stream << particle.T << ", ";
         stream << particle.X << ", ";
         stream << particle.Y << ", ";
-        stream << particle.Z;
+        stream << particle.Z << ", ";
+        stream << particle.P4()[0] << ", ";
+        stream << particle.P4()[1] << ", ";
+        stream << particle.P4()[2] << ", ";
+        stream << particle.P4()[3];
     }else if( verbosity == 0) {
         stream << "PID = " << particle.PID << "; ";
         stream << "E = " << particle.E << "; ";
@@ -205,7 +209,11 @@ void PrintTrack(Track &track, int verbosity, string &out) {
         stream << track.ErrorCtgTheta << ", ";
         stream << track.ErrorT << ", ";
         stream << track.ErrorD0 << ", ";
-        stream << track.ErrorDZ;
+        stream << track.ErrorDZ << ", ";
+        stream << track.P4()[0] << ", ";
+        stream << track.P4()[1] << ", ";
+        stream << track.P4()[2] << ", ";
+        stream << track.P4()[3];
     } else if(verbosity == 0) {
         stream << "PID = " << track.PID << "; track.P4() = " << string_from_TLVec(track.P4()) << endl;
     } else if(verbosity == 1) {
@@ -283,7 +291,12 @@ void PrintTower(Tower &tower, int verbosity, string &out) {
         stream << tower.Edges[0] << ", ";
         stream << tower.Edges[1] << ", ";
         stream << tower.Edges[2] << ", ";
-        stream << tower.Edges[3];
+        stream << tower.Edges[3] << ", ";
+        stream << tower.P4()[0] << ", ";
+        stream << tower.P4()[1] << ", ";
+        stream << tower.P4()[2] << ", ";
+        stream << tower.P4()[3];
+
     }else if(verbosity == 1) {
         stream << "ET = " << tower.ET << "; ";
         stream << "Eta = " << tower.Eta << "; ";
@@ -426,6 +439,10 @@ sqlite3 * CreateDatabase(const char *rootFile){
           "X REAL," // particle vertex position (x component) | hepevt.vhep[number][0]
           "Y REAL," // particle vertex position (y component) | hepevt.vhep[number][1]
           "Z REAL," // particle vertex position (z component) | hepevt.vhep[number][2]
+          "P4_0 REAL,"
+          "P4_1 REAL,"
+          "P4_2 REAL,"
+          "P4_3 REAL,"
           "Jet INT," // forigen key from the jets list (may be null)
           "Event INT NOT NULL,"  //forign key from the events list, never null
           "FOREIGN KEY(Jet) REFERENCES Jets(ID),"
@@ -473,6 +490,10 @@ sqlite3 * CreateDatabase(const char *rootFile){
           "ErrorT REAL," // time measurement error
           "ErrorD0 REAL," // track transverse impact parameter error
           "ErrorDZ REAL," // track longitudinal impact parameter error
+          "P4_0 REAL,"
+          "P4_1 REAL,"
+          "P4_2 REAL,"
+          "P4_3 REAL,"
           "Particle INTEGER," // reference to generated particle
           "VertexIndex INTEGER," // reference to vertex TODO should this be a forign key??
           "Jet INT," // forigen key from the jets list (may be null)
@@ -501,6 +522,10 @@ sqlite3 * CreateDatabase(const char *rootFile){
           "Edge2 REAL," // calorimeter tower edges
           "Edge3 REAL," // calorimeter tower edges
           "Edge4 REAL," // calorimeter tower edges
+          "P4_0 REAL,"
+          "P4_1 REAL,"
+          "P4_2 REAL,"
+          "P4_3 REAL,"
           "Jet INT," // forigen key from the jets list (may be null)
           "Event INT NOT NULL,"  //forign key from th:we events list, never null
           "FOREIGN KEY(Jet) REFERENCES Jets(ID),"
@@ -603,7 +628,7 @@ void AddParticle(GenParticle &particle, int SQLkey, int eventKey, sqlite3 * db){
     /* Insert the particle, create a statment*/
     std::stringstream glue;
     glue << "INSERT INTO GenParticles(";
-    glue << "ID, MCPID, Status, IsPU, Charge, Mass, E, Px, Py, Pz, P, PT, Eta, Phi, Rapidity, CtgTheta, D0, DZ, T, X, Y, Z, Event)";
+    glue << "ID, MCPID, Status, IsPU, Charge, Mass, E, Px, Py, Pz, P, PT, Eta, Phi, Rapidity, CtgTheta, D0, DZ, T, X, Y, Z, P4_0, P4_1, P4_2, P4_3, Event)";
     glue << " VALUES (" << SQLkey << ", ";
     string particle_print = "";
     PrintParticle(particle, -1, particle_print);
@@ -628,7 +653,7 @@ void AddTrack(Track &track, std::map<string, int> &particle_to_SQLkey, int SQLke
     glue << "INSERT INTO Tracks(";
     glue << "ID, MCPID, Charge, P, PT, Eta, Phi, CtgTheta, EtaOuter, PhiOuter, ";
     glue << "T, X, Y, Z, TOuter, XOuter, YOuter, ZOuter, Xd, Yd, Zd, L, D0, DZ, ";
-    glue << "ErrorP, ErrorPT, ErrorPhi, ErrorCtgTheta, ErrorT, ErrorD0, ErrorDZ, ";
+    glue << "ErrorP, ErrorPT, ErrorPhi, ErrorCtgTheta, ErrorT, ErrorD0, ErrorDZ, P4_0, P4_1, P4_2, P4_3, ";
     glue << "Particle, Event)";
     glue << " VALUES (" << SQLkey << ", ";
     string track_print = "";
@@ -656,7 +681,7 @@ void AddTower(Tower &tower, std::map<string, int> &particle_to_SQLkey, int SQLke
     /* Insert the tower, create a statment*/
     std::stringstream glue;
     glue << "INSERT INTO Towers(";
-    glue << "ID, ET, Eta, Phi, E, T, NTimeHits, Eem, Ehad, Edge1, Edge2, Edge3, Edge4, Event)";
+    glue << "ID, ET, Eta, Phi, E, T, NTimeHits, Eem, Ehad, Edge1, Edge2, Edge3, Edge4, P4_0, P4_1, P4_2, P4_3, Event)";
     glue << " VALUES (" << SQLkey << ", ";
     string tower_print = "";
     PrintTower(tower, -1, tower_print);

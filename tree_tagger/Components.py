@@ -335,17 +335,6 @@ class MyTrack(SafeLorentz):
             z_outer = kwargs['z_outer']
             super().__init__(x_outer, y_outer, z_outer, t_outer)
 
-    def rapidity(self):
-        """ overwrite the method in LorentzVector with a more robust method """
-        if self.perp2 == 0 and self.e == abs(self.pz):
-            large_num = 10**10
-            return np.sign(self.pz)*large_num + self.pz
-        if self.pz == 0.:
-            return 0.
-        m2 = max(self.m2, 0.)
-        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
-        return -np.sign(self.pz) * mag_rap
-
     def __str__(self):
         return f"MyTrack[{self.global_track_id}] energy;{self.e:.2e}"
 
@@ -689,7 +678,7 @@ class Observables:
         else:
             particles = ParticleCollection(*particles)
             return cls(particle_collection=particles)
-            
+
 
 def make_observables(pts, etas, phis, es, dir_name="./tmp"):
     num_obs = len(pts)

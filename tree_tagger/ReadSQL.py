@@ -33,7 +33,7 @@ def read_selected(databaseName, selectedFields, tableName="GenParticles", where=
     # if there are conditonals add them here
     where_components = []
     if where is not None:
-        where_components += where
+        where_components.append(where)
     if field_in_list is not None:
         column = field_in_list[0]
         in_list = ', '.join(field_in_list[1])
@@ -185,8 +185,8 @@ def read_tracks_towers(particle_collection, database_name, event_n):
 
 def main():
     """ """
-    hepmc_name = "/home/henry/lazy/29pythia8_events.hepmc"
-    database_name = "/home/henry/lazy/29delphes_events.db"
+    hepmc_name = "/home/henry/lazy/h1bBatch2.hepmc"
+    database_name = "/home/henry/lazy/h1bBatch2.db"
     event = ReadHepmc.read_file(hepmc_name, 0, 1)[0]
     track_list, tower_list = read_tracks_towers(event, database_name, 0)
     observations = Components.Observables(tracks=track_list, towers=tower_list)

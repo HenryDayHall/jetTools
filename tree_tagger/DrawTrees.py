@@ -1,5 +1,4 @@
-from ReadHepmc import Hepmc_event
-import Components
+from tree_tagger import Components
 import numpy as np
 from ipdb import set_trace as st
 from networkx.drawing.nx_agraph import write_dot
@@ -163,7 +162,7 @@ class DotGraph:
             
             # add the highest shower rank t all the jet ranks
             jet_cluster = "coral"
-            self.addLegendNode(legened_id, f"Psudojet (join distance)", colour=jet_cluster)
+            self.addLegendNode(legened_id, f"PsudoJet (join distance)", colour=jet_cluster)
             for index, (draw_id, mother_jid, distance) in enumerate(zip(jet_draw_ids, jet.mothers, jet.distances)):
                 # add the edges
                 if mother_jid >= 0:
@@ -263,41 +262,55 @@ class DotGraph:
         return self.__start + self.__legend + self.__end
 
 
-def quickPlot():
-    import JetCluster
-    diag_hits, showers, matched_jets = JetCluster.make_showerClusterGrid();
-    shower1 = showers[-1]; shower2 = showers[-2]; jet = matched_jets[-1];
-    #shower1.amalgamate(shower2)
-    graph = DotGraph()
-    graph.fromShower(shower1, jet)
-    graph.fromShower(shower1)
-    with open("singleShowerJet.dot", 'w') as f:
-        f.write(str(graph))
-
     
 def main():
     """ Launch file, makes and saves a dot graph """
-    databaseName = "/home/henry/lazy/29delphes_events.db"
-    hepmc_name = "/home/henry/lazy/29pythia8_events.hepmc"
-    hepmc = Hepmc_event()
-    hepmc.read_file(hepmc_name)
-    hepmc.assign_heritage()
-    showers = getShowers(hepmc)
-    # rootDB = ParticleDatabase(databaseName)
-    # showers = getShowers(rootDB)
+    from tree_tagger import ReadSQL
+    event, tracks, towers, obs = ReadSQL.main()
+    from tree_tagger import FormShower
+    from tree_tagger import FormJets
+    showers = FormShower.get_showers(event)
+    jets = FormJets.PsudoJets(obs)
+    jets.assign_mothers()
+    jets = jets.split()
     for i, shower in enumerate(showers):
-        if 'b' not in shower.labels:
-            pass #continue
+        shower_roots = [shower.labels[i] for i in shower.roots]
+        if 'b' not in shower_roots:
+            continue
+        print(f"Shower roots {shower.roots}")
         max_daughters = max([len(d) for d in shower.daughters])
-        addTracksTowers(databaseName, shower)
+        end_ids = [shower.global_ids[e] for e in shower.ends]
         print(f"Drawing shower {i}, has {max_daughters} max daughters. Daughters to particles ratio = {max_daughters/len(shower.daughters)}")
-        graph = shower.graph()
-        dotName = hepmc_name.split('.')[0] + str(i) + ".dot"
-        legendName = hepmc_name.split('.')[0] + str(i) + "_ledg.dot"
+        # pick the jet with largest overlap
+        largest_overlap = 0
+        picked_jet = jets[0]
+        for jet in jets:
+            obs_ids = [oid for oid in jet.global_obs_ids if not oid == -1]
+            matches_here = 0
+            for ob_oid, ob in zip(obs.global_obs_ids, obs.objects):
+                if isinstance(ob, Components.MyTrack):
+                    # it's a track obs
+                                                      # the track is in the jet
+                    if (ob_oid in obs_ids  
+                        and ob.global_id in end_ids):  # the track is in the shower
+                        matches_here += 1
+                else: # it's a tower
+                    if ob_oid in obs_ids:   # the tower is in the jet
+                        for gid in ob.global_ids:     # for each particle in the tower
+                            if gid in end_ids:       # the particle is in the shower
+                                matches_here += 1
+            if matches_here > largest_overlap:
+                largest_overlap = matches_here
+                picked_jet = jet
+        print(f"A jet contains {largest_overlap} out of {len(end_ids)} end products")
+        graph = DotGraph(shower=shower, jet=picked_jet, observables=obs)
+        base_name = "all_obs_plot"
+        dotName = base_name + str(i) + ".dot"
+        legendName = base_name + str(i) + "_ledg.dot"
         with open(dotName, 'w') as dotFile:
             dotFile.write(str(graph))
         with open(legendName, 'w') as dotFile:
             dotFile.write(graph.legend)
 
 if __name__ == '__main__':
-    pass #main()
+    main()

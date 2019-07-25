@@ -65,16 +65,16 @@ class PsudoJets:
 
     @property
     def rap(self):
-        leaf_etas = [floats[self.rap_col] for floats, ints in zip(self._floats, self._ints)
+        leaf_raps = [floats[self.rap_col] for floats, ints in zip(self._floats, self._ints)
                      if ints[self.daughter1_col] == -1 and
                         ints[self.daughter2_col] == -1]
-        return np.average(leaf_etas)
+        return np.average(leaf_raps)
 
     @property
     def obs_raps(self):
-        etas = [floats[self.rap_col] for floats, ints in zip(self._floats, self._ints)
+        raps = [floats[self.rap_col] for floats, ints in zip(self._floats, self._ints)
                      if ints[self.obs_id_col] != -1]
-        return etas
+        return raps
 
     @property
     def obs_phis(self):
@@ -466,7 +466,7 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False):
         algorithm_num = 0
     else:
         raise ValueError(f"exponent_multiplyer should be -1, 0 or 1, found {exponent_multiplyer}")
-    program_name = "./applyFastJet"
+    program_name = "./tree_tagger/applyFastJet"
     if capture_out:
         out = subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)],
                              stdout=subprocess.PIPE)
@@ -519,6 +519,29 @@ def main():
     plt.show()
     return pjets
     
+
+def truth_tag(jets, tag_particles, delta_r):
+    delta_r2 = delta_r**2
+    jet_raps = np.array([j.rap for j in jets])
+    jet_phis = np.array([j.phi for j in jets])
+    selected_idx = np.array([-1 for _ in tag_particles])
+    for i, particle in enumerate(tag_particles):
+        p_rap = particle.rapidity()
+        p_phi = particle.phi()
+        jet_dist2 = np.full_like(jet_raps, np.inf)
+        # if a jet is int eh delta r square calculate the distance
+        for r, p in zip(jet_raps, jet_phis):
+             if (abs(r - p_rap) < delta_r and 
+                 abs(p - p_phi) < delta_r):
+                # calculate the distance
+                jet_dist2[i] = (r - p_rap)**2 + (p - p_phi)**2
+        if np.any(jet_dist2 < delta_r2):
+            selected_idx[i] = np.argmin(jet_dist2)
+    return selected_idx
+
+
+                        
+
 
 
 if __name__ == '__main__':
