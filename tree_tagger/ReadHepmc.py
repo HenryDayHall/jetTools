@@ -1,7 +1,7 @@
 import numpy as np
 import os
 from collections import Counter
-import Components
+from tree_tagger import Components
 import csv
 from ipdb import set_trace as st
 
@@ -230,7 +230,7 @@ class Hepmc_event(Components.ParticleCollection):
                         elif code_index == 2:
                             self.antiColour_flow[particle_reached] = colour_code
         # finally, initilise the ParticleCollection
-        super().__init__(particle_list)
+        super().__init__(*particle_list)
 
 
 def read_file(filepath, start=0, stop=np.inf):
@@ -266,6 +266,8 @@ def read_file(filepath, start=0, stop=np.inf):
             if event_reached > stop:
                 break
     return events
+
+
 
 def main():
     filepath = "/home/henry/lazy/29pythia8_events.hepmc"

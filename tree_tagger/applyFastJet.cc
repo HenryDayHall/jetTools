@@ -136,24 +136,24 @@ static void fj(vector<double>& a, // a = flat vector of observations
     // Extract particles from array
     vector<fastjet::PseudoJet> particles;
 
-    string n_output_name = "fastjet_njets.csv";
-    std::ofstream n_file(n_output_name, std::ios_base::app);
+    //string n_output_name = "fastjet_njets.csv";
+    //std::ofstream n_file(n_output_name, std::ios_base::app);
     string sep = " ";
     for (unsigned int i = 0; i < a.size(); i += 5) {
         //                               px    py      pz      e
         fastjet::PseudoJet p = PseudoJet(a[i+1], a[i+2], a[i+3], a[i+4]);
         // this is the global_obs_id
         p.set_user_index((int) a[i]);
-        std::cout << "Particle " << i/5 << " pt=" << p.pt() << " eta=" << p.eta() << " phi=" << p.phi_std() << " e=" << p.e() << std::endl;
-        n_file << p.px() << sep
-             << p.py() << sep
-             << p.pz() << sep
-             << p.e() << sep
-             << p.pt()  << sep
-             << p.eta()  << sep
-             << p.phi_std() << sep
-             << p.m() << sep
-             << p.rap() << sep;
+        //std::cout << "Particle " << i/5 << " pt=" << p.pt() << " eta=" << p.eta() << " phi=" << p.phi_std() << " e=" << p.e() << std::endl;
+        //n_file << p.px() << sep
+        //     << p.py() << sep
+        //     << p.pz() << sep
+        //     << p.e() << sep
+        //     << p.pt()  << sep
+        //     << p.eta()  << sep
+        //     << p.phi_std() << sep
+        //     << p.m() << sep
+        //     << p.rap() << sep;
         particles.push_back(p);
     }
 
@@ -176,6 +176,10 @@ static void fj(vector<double>& a, // a = flat vector of observations
     // Store results
     int free_id = 0;
 
+    if(jets.size() > 0){
+        std::cout << jets[0].exclusive_subdmerge(1) << std::endl;
+    }
+
     for (unsigned int j = 0; j < jets.size(); j++) {
         /*
         std::cout << "~~~~~~~~~~~~~~~" << std::endl;
@@ -191,8 +195,8 @@ static void fj(vector<double>& a, // a = flat vector of observations
         masses.push_back(jets[j].m());
         pts.push_back(jets[j].pt());
     }
-    n_file << jets.size() << std::endl;
-    std::cout << "\t\tNumber jets = " << jets.size() << "\n\n";
+    //n_file << jets.size() << std::endl;
+    //std::cout << "\t\tNumber jets = " << jets.size() << "\n\n";
 
 }
 

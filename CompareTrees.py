@@ -116,12 +116,12 @@ def plot_psudofast(dir_name="./test/", lines=False, deltaR=1., exponent_multiply
     psudo_colours = [colours(i) for i in np.linspace(0, 0.4, len(psudojets))]
     for c, pjet in zip(psudo_colours, psudojets):
         if lines:
-            c_eta = pjet.eta
+            c_rap = pjet.rap
             c_phi = pjet.phi
-            for eta, phi in zip(pjet.obs_etas, pjet.obs_phis):
-                plt.plot([eta, c_eta], [phi, c_phi], c=c)
+            for rap, phi in zip(pjet.obs_raps, pjet.obs_phis):
+                plt.plot([rap, c_rap], [phi, c_phi], c=c)
         else:
-            plt.scatter(pjet.obs_etas, pjet.obs_phis,
+            plt.scatter(pjet.obs_raps, pjet.obs_phis,
                         c=[c], marker='v', s=30, alpha=0.6)
     plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PsudoJets")
     # get soem fast jets
@@ -130,17 +130,17 @@ def plot_psudofast(dir_name="./test/", lines=False, deltaR=1., exponent_multiply
     psudo_colours = [colours(i) for i in np.linspace(0.6, 1., len(fastjets))]
     for c, fjet in zip(psudo_colours, fastjets):
         if lines:
-            c_eta = fjet.eta
+            c_rap = fjet.rap
             c_phi = fjet.phi
-            for eta, phi in zip(fjet.obs_etas, fjet.obs_phis):
-                plt.plot([eta, c_eta], [phi, c_phi], c=c)
+            for rap, phi in zip(fjet.obs_raps, fjet.obs_phis):
+                plt.plot([rap, c_rap], [phi, c_phi], c=c)
         else:
-            plt.scatter(fjet.obs_etas, fjet.obs_phis,
+            plt.scatter(fjet.obs_raps, fjet.obs_phis,
                         c=[c], marker='^', s=25, alpha=0.6)
     plt.scatter([], [], c=[c], marker='^', s=25, alpha=0.6, label="FastJets")
     plt.legend()
     plt.title("Jets")
-    plt.xlabel("eta")
+    plt.xlabel("rap")
     plt.ylabel("phi")
     plt.show()
 
@@ -151,11 +151,11 @@ def find_tree_prox(dir_name):
     psudojets = psudojets.split()
     fastjets = FormJets.run_FastJet(dir_name, 1., 1)
     fastjets = fastjets.split()
-    fast_coordinates = np.array([[j.phi, j.eta] for j in fastjets])
+    fast_coordinates = np.array([[j.phi, j.rap] for j in fastjets])
     means = np.mean(fast_coordinates, axis=0)
     fast_coordinates /= means
     for psudojet in psudojets:
-        psudo_coord = [psudojet.phi, psudojet.eta]
+        psudo_coord = [psudojet.phi, psudojet.rap]
         # normalise points
         psudo_coord /= means
         # pick closest match
@@ -210,13 +210,24 @@ def get_psudoFast(dir_name, deltaR, exponent_multiplyer):
 
 
 def safe_rap(obs):
-    if obs.perp2 == 0:
+    if obs.perp2 == 0 and obs.e == abs(obs.pz):
         large_num = 10**10
         return np.sign(obs.pz)*large_num + obs.pz
+    if obs.pz == 0.:
+        return 0.
     m2 = max(obs.m2, 0.)
     mag_rap = 0.5*np.log((obs.perp2 + m2)/((obs.e + abs(obs.pz))**2))
     return -np.sign(obs.pz) * mag_rap
 
+# not working, fine for valid rapidities, dosn;t replicate the behavior forbad rapidities
+def safe_eta(rap, pt, e):
+    if rap == 0.:
+        return 0.
+    #pz = e*(1 - np.exp(2*rap))/(1 + np.exp(2*rap))
+    pz = e* np.tanh(rap)
+    mag_p = np.sqrt(pt*pt + pz*pz)
+    eta = 0.5*np.log((mag_p + pz)/(mag_p - pz))
+    return eta, pz
 
 def three_way_comp():
     dir_name = "./test/"
@@ -247,39 +258,12 @@ def three_way_comp():
     plt.show()
     return rapidities, towers
 
-
-    
-
-#void PseudoJet::_set_rap_phi() const {
-#
-#  if (_kt2 == 0.0) {
-#    _phi = 0.0; } 
-#  else {
-#    _phi = atan2(this->py(),this->px());
-#  }
-#  if (_phi < 0.0) {_phi += twopi;}
-#  if (_phi >= twopi) {_phi -= twopi;} // can happen if phi=-|eps<1e-15|?
-#  if (this->E() == abs(this->pz()) && _kt2 == 0) {
-#    // Point has infinite rapidity -- convert that into a very large
-#    // number, but in such a way that different 0-pt momenta will have
-#    // different rapidities (so as to lift the degeneracy between
-#    // them) [this can be relevant at parton-level]
-#    double MaxRapHere = MaxRap + abs(this->pz());
-#    if (this->pz() >= 0.0) {_rap = MaxRapHere;} else {_rap = -MaxRapHere;}
-#  } else {
-#    // get the rapidity in a way that's modestly insensitive to roundoff
-#    // error when things pz,E are large (actually the best we can do without
-#    // explicit knowledge of mass)
-#    double effective_m2 = max(0.0,m2()); // force non tachyonic mass
-#    double E_plus_pz    = _E + abs(_pz); // the safer of p+, p-
-#    // p+/p- = (p+ p-) / (p-)^2 = (kt^2+m^2)/(p-)^2
-#    _rap = 0.5*log((_kt2 + effective_m2)/(E_plus_pz*E_plus_pz));
-#    if (_pz > 0) {_rap = - _rap;}
-#  }
-#
-#}
-
-    
+# probably a sig fig issue
+def tachyons_in_obs(dir_name="./test/"):
+    observables = Components.Observables.from_file(dir_name)
+    is_tach = [obj.e**2 < obj.pt**2 + obj.pz**2 for obj in observables.objects]
+    print(f"fraction tachyions = {sum(is_tach)/len(is_tach)}")
+    return is_tach
 
 
 def test_tach_theory():
@@ -291,7 +275,7 @@ def test_tach_theory():
     etas = np.random.uniform(-5., 5., (n_pts, 2))
     phis =  np.random.uniform(-np.pi, np.pi, (n_pts, 2))
     es = np.random.uniform(0., 1000., (n_pts, 2))
-    pts = es * np.random.uniform(0., 1.1, (n_pts, 2)) 
+    pts = es * np.random.uniform(0., 2., (n_pts, 2)) 
     is_tach = []
     agree_join = []
     psudo_join = []
@@ -303,7 +287,7 @@ def test_tach_theory():
                                                       dir_name)
             tach = observables.es**2 < observables.pxs**2 + observables.pys**2 + observables.pzs**2
             raps.append([safe_rap(observables.objects[0]),
-                        safe_rap(observables.objects[1])])
+                         safe_rap(observables.objects[1])])
 
             is_tach.append(np.any(tach))
             psudojets, fastjets = get_psudoFast(dir_name, deltaR, exponent_multiplier)
@@ -319,19 +303,32 @@ def test_tach_theory():
     eta_dis = etas[:, 0] - etas[:, 1]
     phi_dis = phis[:, 0] - phis[:, 1]
     rap_dis = raps[:, 0] - raps[:, 1]
-    plt.scatter(rap_dis[is_tach], phi_dis[is_tach], c=agree_join[is_tach],
+    return is_tach, agree_join, fast_join, psudo_join, (eta_dis, phi_dis, rap_dis)
+# remeber that is everything has the same value tey al come out red....
+def plt_test_tach_theory(is_tach, agree_join, fast_join, psudo_join, dis, deltaR=1., exponent_multiplier=1): 
+    (eta_dis, phi_dis, rap_dis) = dis
+    colour_name = "agree join"
+    if "fast" in colour_name:
+        colour=fast_join
+    elif "home" in colour_name:
+        colour= psudo_join
+    elif "agree" in colour_name:
+        colour = agree_join
+    plt.scatter(rap_dis[is_tach], phi_dis[is_tach], c=colour[is_tach],
                 marker="P", cmap='RdYlGn', label="is tachyonic")
-    plt.scatter(rap_dis[~is_tach], phi_dis[~is_tach], c=agree_join[~is_tach],
+    plt.scatter(rap_dis[~is_tach], phi_dis[~is_tach], c=colour[~is_tach],
                 marker="o", cmap='RdYlGn', label="Real mass")
+    # plot a circle at deltaR
+    xs = np.cos(np.linspace(0, 2*np.pi, 50))*deltaR
+    ys = np.sin(np.linspace(0, 2*np.pi, 50))*deltaR
+    plt.plot(xs, ys, c='k')
     plt.xlabel("rap displacement")
     plt.xlim(-5, 5); plt.ylim(-np.pi, np.pi)
     plt.ylabel("$\\phi$ displacement")
     plt.legend()
-    plt.title(f"Agree join? R={deltaR}, exponMul={exponent_multiplier}")
+    plt.title(f"Colour={colour_name} R={deltaR}, exponMul={exponent_multiplier}")
     plt.show()
             
-
-
 
 def speed_test():
     print("Running a speed test")
@@ -382,21 +379,47 @@ def speed_test():
 
 def coord_check():
     observables = Components.Observables.from_file("test")
-    program = "unholyMatrimony/particle_print"
+    program = "./particle_print"
     found_out = []
     expected_out = []
-    for particle in observables.objects:
+    # also do a sweep
+    pt = 10.
+    e = 100.
+    phi_axis_test= True
+    phi = 0.
+    n_pts = 100
+    ones = np.ones(n_pts)
+    with TestDir("test") as dir_name:
+        coords = [pt*ones, np.linspace(-5., 5., n_pts), phi*ones, e*ones]
+        observables2 = Components.make_observables(*coords, dir_name)
+    all_objs = observables.objects + observables2.objects
+    for particle in all_objs:
         out = subprocess.run([program, str(particle.px),
                                        str(particle.py),
                                        str(particle.pz),
                                        str(particle.e)],
                              stdout=subprocess.PIPE)
         out = [float(x) for x in out.stdout.split()]
+        rap = safe_rap(particle)
         e_out = [particle.px, particle.py, particle.pz, particle.e,
-                        particle.pt, particle.eta, particle.phi(), particle.m]
+                        particle.pt, particle.eta, particle.phi(), particle.m, rap]
         found_out.append(out[:len(e_out)])
         expected_out.append(e_out)
-        # np.testing.assert_allclose(out, e_out, rtol=0.01)
+        np.testing.assert_allclose(out, e_out, rtol=0.01, atol=0.001)
+        # check the invese eta works
+        # broken
+        s_eta, s_pz = safe_eta(rap, particle.pt, particle.e)
+        other_rap = 0.5*np.log((particle.e + particle.pz)/(particle.e - particle.pz))
+        print(f"e {particle.e}, {out[3]}")
+        print(f"rap {other_rap}, {rap}, {out[8]}")
+        print(f"eta {s_eta}, {particle.eta}, {out[5]}")
+        print(f"pz {s_pz}, {particle.pz}, {out[2]}")
+        if abs(particle.pz) < particle.e :
+            print("valid combo \n")
+            np.testing.assert_allclose(s_eta, particle.eta, atol =0.001)
+            np.testing.assert_allclose(s_eta, out[5], atol =0.001)
+        else:
+            print()
     found_out = np.array(found_out)
     expected_out = np.array(expected_out)
     average = np.average((found_out + expected_out)/2, axis=0)
@@ -479,7 +502,7 @@ def plot_rapidity_psudorapidity(plt_col, etas, observable_sets, pt_set, e_set, o
 
 
 def simple_test():
-    trivial_tests = False
+    trivial_tests = True
     if trivial_tests:
         with TestDir("test") as dir_name:
             print("Test to see if an empty observables list creates no jets")
@@ -502,32 +525,44 @@ def simple_test():
     expected_join_distance = 1.
     # start along the phi axis
     phi_axis_test= True
+    fast_distances = []
+    psudo_distances = []
+    rapidity0 = []
+    rapidity1 = []
     if phi_axis_test:
         print("Make two points and move them together until they merge")
         phi = 0.
         eta1 = 0.
         for eta2 in np.linspace(-5., 5., 200):
-            should_join = eta2 < expected_join_distance
             with TestDir("test") as dir_name:
                 coords = [[pt, pt], [eta1, eta2], [phi, phi], [e, e]]
-                Components.make_observables(*coords, dir_name)
-                psudojets, fastjets = get_psudoFast(dir_name, deltaR, exponent_multiplier)
-                # if should_join:
-                #     assert len(psudojets) == 1, f"Expect merge at {coords} but have {len(psudojets)} jets"
-                #     assert len(fastjets) == 1, f"Expect merge at {coords} but have {len(fastjets)} jets" 
-                # else:
-                #     assert len(psudojets) == 2, f"Expect no merge at {coords} but have {len(psudojets)} jets"
-                #     assert len(fastjets) == 2, f"Expect no merge at {coords} but have {len(fastjets)} jets"
-    # eta axis
-    eta_axis_test = False
-    if eta_axis_test:
+                observables = Components.make_observables(*coords, dir_name)
+                psudojets, fastjets, psudo_d, fast_d = compare_distances(dir_name, deltaR, exponent_multiplier, observables)
+                # calcuate the safe rapidity
+                rap0 = safe_rap(observables.objects[0])
+                rap1 = safe_rap(observables.objects[1])
+                should_join = abs(rap0 - rap1) < expected_join_distance
+                fast_distances.append(fast_d)
+                psudo_distances.append(psudo_d)
+                rapidity0.append(rap0)
+                rapidity1.append(rap1)
+                if should_join:
+                    print(f"Psudo distance = {psudo_d}, fast distance = {fast_d}")
+                    assert len(psudojets) == 1, f"Expect merge at {coords} but have {len(psudojets)} jets"
+                    # assert len(fastjets) == 1, f"Expect merge at {coords} but have {len(fastjets)} jets" 
+                else:
+                    assert len(psudojets) == 2, f"Expect no merge at {coords} but have {len(psudojets)} jets"
+                    # assert len(fastjets) == 2, f"Expect no merge at {coords} but have {len(fastjets)} jets"
+    # rap axis
+    rap_axis_test = False
+    if rap_axis_test:
         phi1 = 0.
-        eta = 0.
+        rap = 0.
         for phi2 in np.linspace(0., 2*np.pi, 30):
             # remeber to account for cyclic behavior
             should_join = phi2 < expected_join_distance or (np.pi*2 - phi2) < expected_join_distance
             with TestDir("test") as dir_name:
-                coords = [[pt, pt], [eta, eta], [phi1, phi2], [e, e]]
+                coords = [[pt, pt], [rap, rap], [phi1, phi2], [e, e]]
                 Components.make_observables(*coords, dir_name)
                 psudojets, fastjets = get_psudoFast(dir_name, deltaR, exponent_multiplier)
                 if should_join:
@@ -536,6 +571,7 @@ def simple_test():
                 else:
                     assert len(psudojets) == 2, f"Expect no merge at {coords} but have {len(psudojets)} jets"
                     assert len(fastjets) == 2, f"Expect no merge at {coords} but have {len(fastjets)} jets"
+    return fast_distances, psudo_distances, rapidity0, rapidity1
 
 def joins(eta, phi, pt=100., e=.1, deltaR=1., exponent_multiplier=-1):
     """ find out if the discribed jet would be joined with a jet at the origin under fastjet of psudojet """
@@ -546,10 +582,7 @@ def joins(eta, phi, pt=100., e=.1, deltaR=1., exponent_multiplier=-1):
         return len(psudojets) == 1, len(fastjets) == 1
 
 
-
-
-
-def plot_joins():
+def plot_joins(pt=10., e=100.):
     recalculate = InputTools.yesNo_question("Recalculate points? ")
     eta_lims = (-5, 5)
     phi_lims = (-np.pi, np.pi)
@@ -561,7 +594,7 @@ def plot_joins():
         psudo_join = np.zeros((n_pts, n_pts))
         for neta, eta in enumerate(etas):
             for nphi, phi in enumerate(phis):
-                psu, fas = joins(eta, phi, pt=1., e=.1)
+                psu, fas = joins(eta, phi, pt=pt, e=e)
                 fast_join[nphi, neta] = fas
                 psudo_join[nphi, neta] = psu
         np.savetxt("fast_joins.csv", fast_join)
@@ -588,7 +621,7 @@ def plot_joins():
     plt.legend(handles=legend_elements)
     plt.xlabel("$\\eta$")
     plt.ylabel("$\\phi$")
-    plt.title("Behavor comparison")
+    plt.title(f"Behavor comparison; pt={pt}, e={e}")
     plt.show()
 
 def area_heatmap(*heat_arrays):
@@ -622,6 +655,25 @@ def colour_average(colours, weights):
     newrgba = np.sqrt(np.sum(w_rgb**2, axis=0))
     newalpha = np.average([c[-1] for c in colours])
     return (*newrgba, newalpha)
+
+def compare_distances(dir_name, deltaR, exponent_multiplyer, observables=None):
+    if observables is None:
+        observables = Components.Observables.from_file(dir_name)
+    psudojets = FormJets.PsudoJets(observables, deltaR=deltaR,
+                                   exponent_multiplyer=exponent_multiplyer)
+    row, column = np.unravel_index(np.argmin(psudojets._distances), psudojets._distances.shape)
+    psudo_merge = row != column
+    psudo_d = psudojets._distances[row, column]
+
+    psudojets.assign_mothers()
+    psudojets = psudojets.split()
+    fastjets, out = FormJets.run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=True)
+    lines = out.split('\n')
+    fast_d = float(lines[-2])
+    if len(lines) > 2:
+        print(lines[0])
+    fastjets = fastjets.split()
+    return psudojets, fastjets, psudo_d, fast_d
 
 
 if __name__ == '__main__':

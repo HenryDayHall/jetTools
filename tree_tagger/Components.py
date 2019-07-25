@@ -4,13 +4,62 @@ import os
 from ipdb import set_trace as st
 import numpy as np
 from skhep import math as hepmath
+from tree_tagger import Constants
 
 
 def safe_convert(cls, string):
+    """ Safe conversion out of strings
+    designed to deal with None gracefully, and identify sensible bools
+
+    Parameters
+    ----------
+    cls : class
+        the class to convert to
+    string : str
+        the string that needs converting
+
+    Returns
+    -------
+    : object
+        converted object, either None type or type cls
+    """
     if string == "None": return None
+    elif cls == bool: 
+        return Constants.lowerCase_truthies.get(string.lower(), True)
     else: return cls(string)
 
-class MyParticle(hepmath.vectors.LorentzVector):
+
+class SafeLorentz(hepmath.LorentzVector):
+    """ Like the hepmath lorentz vector class,
+        but with some substritutions for robust behavior """
+        
+    def rapidity(self):
+        """ overwrite the method in LorentzVector with a more robust method """
+        if self.perp2 == 0 and self.e == abs(self.pz):
+            large_num = 10**10
+            return np.sign(self.pz)*large_num + self.pz
+        if self.pz == 0.:
+            return 0.
+        m2 = max(self.m2, 0.)
+        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
+        return -np.sign(self.pz) * mag_rap
+
+    @property
+    def et(self):
+        if self.p == 0:
+            return 0
+        else:
+            return super(SafeLorentz, self).et
+
+    def setptetaphie(self, pt, eta, phi, e):
+        # the default method, but using numpy to deal with possible infinity in pz
+        inputs = [pt*np.cos(phi), pt*np.sin(phi),
+                  pt*np.nan_to_num(np.sinh(eta), False),
+                  e]
+        self.setpxpypze(*inputs)
+
+
+class MyParticle(SafeLorentz):
     """Aping genparticle."""
     def __init__(self, *args, global_id, **kwargs):
         # IDs
@@ -30,6 +79,8 @@ class MyParticle(hepmath.vectors.LorentzVector):
         self.generated_mass = kwargs.get('generated_mass', None)
         # knimatics
         if len(args) == 4:
+            # has format x y z t
+            # or px py pz e
             super().__init__(*args)
         elif 'px' in kwargs:
             px = kwargs['px']
@@ -90,19 +141,10 @@ class MyParticle(hepmath.vectors.LorentzVector):
     repr_format = '|'.join(["MyParticle", repr_body,
                             'mothers', 'daughters'])
 
-    def rapidity(self):
-        """ overwrite the method in LorentzVector with a more robust method """
-        if self.perp2 == 0 and self.e == abs(self.pz):
-            large_num = 10**10
-            return np.sign(self.pz)*large_num + self.pz
-        m2 = max(self.m2, 0.)
-        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
-        return -np.sign(self.pz) * mag_rap
-
 
     @classmethod
     def from_repr(cls, rep):
-        if rep == '': return None
+        if rep == '' or rep == 'None': return None
         name, body, mothers, daughters = rep.split('|')
         assert name == cls.__name__
         body_parts = body.split(',')
@@ -128,7 +170,7 @@ class MyParticle(hepmath.vectors.LorentzVector):
         return new_particle
 
 
-class MyVertex(hepmath.vectors.LorentzVector):
+class MyVertex(SafeLorentz):
     """Aping GenVertex."""
     def __init__(self, *args, global_vertex_id, **kwargs):
         # IDs
@@ -141,13 +183,251 @@ class MyVertex(hepmath.vectors.LorentzVector):
         self.n_orphans = kwargs.get('n_orphans', None)
         # location
         if len(args) == 4:
+            self.ctau = args[3]
             super().__init__(*args)
         elif 'x' in kwargs:
-            self.x = kwargs.get('x', None)
-            self.y = kwargs.get('y', None)
-            self.z = kwargs.get('z', None)
+            x = kwargs.get('x', None)
+            y = kwargs.get('y', None)
+            z = kwargs.get('z', None)
             self.ctau = kwargs.get('ctau', None)
-            super(kwargs['x'], kwargs['y'], kwargs['z'], kwargs['ctau'])
+            super().__init__(x, y, z, self.ctau)
+
+
+class MyTower(SafeLorentz):
+    def __init__(self, *args, global_tower_id, **kwargs):
+        # IDs
+        self.global_tower_id = global_tower_id
+        self._global_obs_id = None
+        self.sql_key = kwargs.get('sql_key', None)
+        self.particles = kwargs.get('particles', [])
+        if self.particles is not None:
+            self.global_ids = np.array([p.global_id for p in self.particles])
+        else:
+            self.global_ids = None
+        self._t = kwargs.get('t', None)  # may differ from the Lorentz vector t, so hide it.
+        self.nTimeHits = kwargs.get('nTimeHits', None)
+        self.eem = kwargs.get('eem', None)
+        self.ehad = kwargs.get('ehad', None)
+        self.edges = kwargs.get('edges', [None, None, None, None])
+        if len(args) == 4:
+            # x y z t
+            super().__init__(*args)
+        elif 'e' in kwargs:
+            e = kwargs['e']
+            et = kwargs['et']
+            eta = kwargs['eta']
+            phi = kwargs['phi']
+            super().__init__()
+            self.setptetaphie(et, eta, phi, e)
+
+    @property
+    def global_obs_id(self):
+        return self._global_obs_id
+
+    @global_obs_id.setter
+    def global_obs_id(self, value):
+        if self.particles is not None:
+            for particle in self.particles:
+                particle.global_obs_id = value
+        self._global_obs_id = value
+
+    def __str__(self):
+        return f"MyTower[{self.global_tower_id}] energy;{self.e:.2e}"
+
+    def __repr__(self):
+        body_content = [self.global_tower_id,
+                        self.sql_key,
+                        self._t,
+                        self.nTimeHits,
+                        self.eem,
+                        self.ehad,
+                        self.edges[0],
+                        self.edges[1],
+                        self.edges[2],
+                        self.edges[3],
+                        self.px,
+                        self.py,
+                        self.pz,
+                        self.e]
+        # | and , are used inside MyPaticle string rep
+        # so diferent deliminators are needed here
+        body = '&'.join([repr(x) for x in body_content])
+        particles = '&'.join([repr(p) for p in self.particles])
+        rep = "!".join([MyTower.__name__, body, particles])
+        return rep
+    repr_body = '&'.join(["global_tower_id", "sql_key",
+                          "_t", "nTimeHits", "eem", "ehad",
+                          "edges[0]", "edges[1]", "edges[2]", "edges[3]",
+                          "px", "py", "pz", "e"])
+    # need to use px, py, pz, e as angle and pt will break for massive particles along the beamline
+    repr_format = '!'.join(["MyTower", repr_body, "particles"])
+
+    @classmethod
+    def from_repr(cls, rep):
+        if rep == '': return None
+        name, body, particles = rep.split('!')
+        assert name == cls.__name__
+        if particles != '':
+            particles = [MyParticle.from_repr(p) for p in particles.split('&')]
+        else:
+            particles = []
+        body_parts = body.split('&')
+        global_tower_id = int(body_parts[0])
+        # need to use px, py, pz, e as angle and pt will break for massive particles along the beamline
+        class_dict = {"sql_key": safe_convert(int, body_parts[1]),
+                      "t": safe_convert(float, body_parts[2]),
+                      "nTimesHits": safe_convert(int, body_parts[3]),
+                      "eem": safe_convert(bool, body_parts[4]),
+                      "ehad": safe_convert(bool, body_parts[5]),
+                      "edges": [safe_convert(float, body_parts[6]),
+                                safe_convert(float, body_parts[7]),
+                                safe_convert(float, body_parts[8]),
+                                safe_convert(float, body_parts[9]),],
+                      "particles": particles,
+                      "px": safe_convert(float, body_parts[10]),  # these kwargs wont be used
+                      "py": safe_convert(float, body_parts[11]),  # but they should be safely ignored
+                      "pz": safe_convert(float, body_parts[12]),
+                      "e": safe_convert(float, body_parts[13])}
+        new_tower = cls(class_dict['px'], class_dict['py'], class_dict['pz'], 
+                        class_dict['e'], global_tower_id=global_tower_id, **class_dict)
+        return new_tower
+
+
+class MyTrack(SafeLorentz):
+    def __init__(self, *args, global_track_id, **kwargs):
+        # IDs
+        self.global_track_id = global_track_id
+        self.pid = kwargs.get('pid', None)
+        self.sql_key = kwargs.get('sql_key', None)
+        self.particle_sql_key = kwargs.get('particle_sql_key', None)
+        self.particle = kwargs.get('particle', None)
+        if self.particle is not None:
+            self.global_id = self.particle.global_id
+        else:
+            self.global_id = None
+        # kinematics
+        self.charge = kwargs.get('charge', None)
+        # tracks are always constructed base on outers, so store the momentum info seperatly
+        self._p = kwargs.get('p', None)
+        self._pT = kwargs.get('pT', None)
+        self._eta = kwargs.get('eta', None)
+        self._phi = kwargs.get('phi', None)
+        self.ctgTheta = kwargs.get('ctgTheta', None)
+        self.etaOuter = kwargs.get('etaOuter', None)
+        self.phiOuter = kwargs.get('phiOuter', None)
+        self._t = kwargs.get('t', None)
+        self._x = kwargs.get('x', None)
+        self._y = kwargs.get('y', None)
+        self._z = kwargs.get('z', None)
+        self.xd = kwargs.get('xd', None)
+        self.yd = kwargs.get('yd', None)
+        self.zd = kwargs.get('zd', None)
+        self.l = kwargs.get('l', None)
+        self.d0 = kwargs.get('d0', None)
+        self.dZ = kwargs.get('dZ', None)
+        # don't bother with the errors for now
+        if len(args) == 4:
+            super().__init__(*args)
+        elif 't_outer' in kwargs:
+            t_outer = kwargs['t_outer']
+            x_outer = kwargs['x_outer']
+            y_outer = kwargs['y_outer']
+            z_outer = kwargs['z_outer']
+            super().__init__(x_outer, y_outer, z_outer, t_outer)
+
+    def rapidity(self):
+        """ overwrite the method in LorentzVector with a more robust method """
+        if self.perp2 == 0 and self.e == abs(self.pz):
+            large_num = 10**10
+            return np.sign(self.pz)*large_num + self.pz
+        if self.pz == 0.:
+            return 0.
+        m2 = max(self.m2, 0.)
+        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
+        return -np.sign(self.pz) * mag_rap
+
+    def __str__(self):
+        return f"MyTrack[{self.global_track_id}] energy;{self.e:.2e}"
+
+    def __repr__(self):
+        body_content = [self.global_track_id,
+                        self.pid,
+                        self.sql_key,
+                        self.particle_sql_key,
+                        self.particle,
+                        self.charge,
+                        self._p,
+                        self._pT,
+                        self._eta,
+                        self._phi,
+                        self.ctgTheta,
+                        self.etaOuter,
+                        self.phiOuter,
+                        self._t,
+                        self._x,
+                        self._y,
+                        self._z,
+                        self.xd,
+                        self.yd,
+                        self.zd,
+                        self.l,
+                        self.d0,
+                        self.dZ,
+                        self.t,
+                        self.x,
+                        self.y,
+                        self.z]
+        # | and , are used inside MyPaticle string rep
+        # so diferent deliminators are needed here
+        body = '&'.join([repr(x) for x in body_content])
+        rep = "!".join([MyTrack.__name__, body])
+        return rep
+
+    repr_body = '&'.join(["global_track_id",
+                          "pid", "sql_key", "particle_sql_key",
+                          MyParticle.repr_format, "charge",
+                          "_p", "_pT", "_eta", "_phi",
+                          "ctgTheta", "etaOuter", "phiOuter",
+                          "_t", "_x", "_y", "_z",
+                          "xd", "yd", "zd", "l",
+                          "d0", "dZ",
+                          "t", "x", "y", "z"])
+    repr_format = '!'.join(["MyTrack", repr_body])
+    @classmethod
+    def from_repr(cls, rep):
+        if rep == '' or rep == 'None': return None
+        name, body = rep.split('!')
+        assert name == cls.__name__
+        body_parts = body.split('&')
+        global_track_id = int(body_parts[0])
+        class_dict = {'pid': safe_convert(int, body_parts[1]),
+                      'sql_key': safe_convert(int, body_parts[2]),
+                      'particle_sql_key': safe_convert(int, body_parts[3]),
+                      'particle': MyParticle.from_repr(body_parts[4]),
+                      'charge': safe_convert(float, body_parts[5]),
+                      'p': safe_convert(float, body_parts[6]),
+                      'pT': safe_convert(float, body_parts[7]),
+                      'eta': safe_convert(float, body_parts[8]),
+                      'phi': safe_convert(float, body_parts[9]),
+                      'ctgTheta': safe_convert(float, body_parts[10]),
+                      'etaOuter': safe_convert(float, body_parts[11]),
+                      'phiOuter': safe_convert(float, body_parts[12]),
+                      't': safe_convert(float, body_parts[13]),
+                      'x': safe_convert(float, body_parts[14]),
+                      'y': safe_convert(float, body_parts[15]),
+                      'z': safe_convert(float, body_parts[16]),
+                      'xd': safe_convert(float, body_parts[17]),
+                      'yd': safe_convert(float, body_parts[18]),
+                      'zd': safe_convert(float, body_parts[19]),
+                      'l': safe_convert(float, body_parts[20]),
+                      'd0': safe_convert(float, body_parts[21]),
+                      'dZ': safe_convert(float, body_parts[22]),
+                      't_outer': safe_convert(float, body_parts[23]),
+                      'x_outer': safe_convert(float, body_parts[24]),
+                      'y_outer': safe_convert(float, body_parts[25]),
+                      'z_outer': safe_convert(float, body_parts[26])}
+        new_track = cls(global_track_id=global_track_id, **class_dict)
+        return new_track
 
 
 class ParticleCollection:
@@ -190,7 +470,7 @@ class ParticleCollection:
         self.start_vertex_barcodes = np.array([], dtype=int)
         self.end_vertex_barcodes = np.array([], dtype=int)
         self.particle_list = []
-        self.addParticles(args)
+        self.addParticles(*args)
         self._freeze()
     
     def updateParticles(self):
@@ -216,8 +496,9 @@ class ParticleCollection:
         self._freeze()
 
     def addParticles(self, *args):
+        if len(args) == 0: return  # no particles to add
         self._unfreeze()
-        new_particles = args[0][0]
+        new_particles = args
         if len(new_particles) > 0:
             self.particle_list += new_particles
             self._ptetaphie = np.vstack((self._ptetaphie,
@@ -282,258 +563,6 @@ class ParticleCollection:
 
     def collective_eta(self):
         raise NotImplementedError #TODO - also any other collective properties
-
-
-class MyTower(hepmath.vectors.LorentzVector):
-    def __init__(self, *args, global_tower_id, **kwargs):
-        # IDs
-        self.global_tower_id = global_tower_id
-        self._global_obs_id = None
-        self.pids = kwargs.get('pids', None)
-        self.sql_key = kwargs.get('sql_key', None)
-        self.particles = kwargs.get('particles', None)
-        if self.particles is not None:
-            self.global_ids = np.array([p.global_id for p in self.particles])
-        else:
-            self.global_ids = None
-        self.t = kwargs.get('t', None)
-        self.nTimeHits = kwargs.get('nTimeHits', None)
-        self.eem = kwargs.get('eem', None)
-        self.ehad = kwargs.get('ehad', None)
-        self.edges = kwargs.get('edges', None)
-        if len(args) == 4:
-            super().__init__(*args)
-        elif 'e' in kwargs:
-            e = kwargs['e']
-            et = kwargs['et']
-            eta = kwargs['eta']
-            phi = kwargs['phi']
-            super().__init__()
-            self.setptetaphie(et, eta, phi, e)
-
-    def rapidity(self):
-        """ overwrite the method in LorentzVector with a more robust method """
-        if self.perp2 == 0 and self.e == abs(self.pz):
-            large_num = 10**10
-            return np.sign(self.pz)*large_num + self.pz
-        m2 = max(self.m2, 0.)
-        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
-        return -np.sign(self.pz) * mag_rap
-  #      try:
-  #          return super(MyTower, self).rapidity
-  #      except ValueError:
-  #          return 0.
-  #      if self.pz == 0:
-  #          return 0.
-  #      elif self.e == self.pz:
-  #          return np.inf
-  #      elif self.e < abs(self.pz):
-  #          error = f"Tower; e {self.e} should never be smaller that pz {self.pz}"
-  #          print(error)
-  #          return np.nan
-  #      else:
-  #          return 0.5*np.log((self.e + self.pz)/(self.e - self.pz))
-
-    @property
-    def global_obs_id(self):
-        return self._global_obs_id
-
-    @global_obs_id.setter
-    def global_obs_id(self, value):
-        if self.particles is not None:
-            for particle in self.particles:
-                particle.global_obs_id = value
-        self._global_obs_id = value
-
-    def __str__(self):
-        return f"MyTower[{self.global_tower_id}] energy;{self.e:.2e}"
-
-    def __repr__(self):
-        body_content = [self.global_tower_id,
-                        self.sql_key,
-                        self.t,
-                        self.nTimeHits,
-                        self.eem,
-                        self.ehad,
-                        self.edges[0],
-                        self.edges[1],
-                        self.edges[2],
-                        self.edges[3],
-                        self.et,
-                        self.eta,
-                        self.phi(),
-                        self.e]
-        # | and , are used inside MyPaticle string rep
-        # so diferent deliminators are needed here
-        body = '&'.join([repr(x) for x in body_content])
-        particles = '&'.join([repr(p) for p in self.particles])
-        rep = "!".join([MyTower.__name__, body, particles])
-        return rep
-    repr_body = '&'.join(["global_tower_id", "sql_key",
-                          "t", "nTimeHits", "eem", "ehad",
-                          "edges[0]", "edges[1]", "edges[2]", "edges[3]",
-                          "et", "eta", "phi", "e"])
-    repr_format = '!'.join(["MyTower", repr_body, "particles"])
-
-    @classmethod
-    def from_repr(cls, rep):
-        if rep == '': return None
-        name, body, particles = rep.split('!')
-        assert name == cls.__name__
-        if particles != '':
-            particles = [MyParticle.from_repr(p) for p in particles.split('&')]
-        body_parts = body.split('&')
-        global_tower_id = int(body_parts[0])
-        class_dict = {"sql_key": safe_convert(int, body_parts[1]),
-                      "t": safe_convert(float, body_parts[2]),
-                      "nTimesHits": safe_convert(int, body_parts[3]),
-                      "eem": safe_convert(bool, body_parts[4]),
-                      "ehad": safe_convert(bool, body_parts[5]),
-                      "edges": [safe_convert(float, body_parts[6]),
-                                safe_convert(float, body_parts[7]),
-                                safe_convert(float, body_parts[8]),
-                                safe_convert(float, body_parts[9]),],
-                      "particles": particles,
-                      "et": safe_convert(float, body_parts[10]),
-                      "eta": safe_convert(float, body_parts[11]),
-                      "phi": safe_convert(float, body_parts[12]),
-                      "e": safe_convert(float, body_parts[13])}
-        new_tower = cls(global_tower_id=global_tower_id, **class_dict)
-        return new_tower
-
-
-class MyTrack(hepmath.vectors.LorentzVector):
-    def __init__(self, *args, global_track_id, **kwargs):
-        # IDs
-        self.global_track_id = global_track_id
-        self.pid = kwargs.get('pid', None)
-        self.sql_key = kwargs.get('sql_key', None)
-        self.particle_sql_key = kwargs.get('particle_sql_key', None)
-        self.particle = kwargs.get('particle', None)
-        if self.particle is not None:
-            self.global_id = self.particle.global_id
-        else:
-            self.global_id = None
-        # kinematics
-        self.charge = kwargs.get('charge', None)
-        self._p = kwargs.get('p', None)
-        self._pT = kwargs.get('pT', None)
-        self._eta = kwargs.get('eta', None)
-        self._phi = kwargs.get('phi', None)
-        self.ctgTheta = kwargs.get('ctgTheta', None)
-        self.etaOuter = kwargs.get('etaOuter', None)
-        self.phiOuter = kwargs.get('phiOuter', None)
-        self.t = kwargs.get('t', None)
-        self._x = kwargs.get('x', None)
-        self._y = kwargs.get('y', None)
-        self._z = kwargs.get('z', None)
-        self.xd = kwargs.get('xd', None)
-        self.yd = kwargs.get('yd', None)
-        self.zd = kwargs.get('zd', None)
-        self.l = kwargs.get('l', None)
-        self.d0 = kwargs.get('d0', None)
-        self.dZ = kwargs.get('dZ', None)
-        # don't bother with the errors for now
-        if len(args) == 4:
-            super().__init__(*args)
-        elif 't_outer' in kwargs:
-            t_outer = kwargs['t_outer']
-            x_outer = kwargs['x_outer']
-            y_outer = kwargs['y_outer']
-            z_outer = kwargs['z_outer']
-            super().__init__(x_outer, y_outer, z_outer, t_outer)
-
-    def rapidity(self):
-        """ overwrite the method in LorentzVector with a more robust method """
-        if self.perp2 == 0 and self.e == abs(self.pz):
-            large_num = 10**10
-            return np.sign(self.pz)*large_num + self.pz
-        m2 = max(self.m2, 0.)
-        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
-        return -np.sign(self.pz) * mag_rap
-
-    def __str__(self):
-        return f"MyTrack[{self.global_track_id}] energy;{self.e:.2e}"
-
-    def __repr__(self):
-        body_content = [self.global_track_id,
-                        self.pid,
-                        self.sql_key,
-                        self.particle_sql_key,
-                        self.particle,
-                        self.charge,
-                        self._p,
-                        self._pT,
-                        self._eta,
-                        self._phi,
-                        self.ctgTheta,
-                        self.etaOuter,
-                        self.phiOuter,
-                        self.t,
-                        self._x,
-                        self._y,
-                        self._z,
-                        self.xd,
-                        self.yd,
-                        self.zd,
-                        self.l,
-                        self.d0,
-                        self.dZ,
-                        self.t,
-                        self.x,
-                        self.y,
-                        self.z]
-        # | and , are used inside MyPaticle string rep
-        # so diferent deliminators are needed here
-        body = '&'.join([repr(x) for x in body_content])
-        rep = "!".join([MyTrack.__name__, body])
-        return rep
-
-    repr_body = '&'.join(["global_track_id",
-                          "pid", "sql_key", "particle_sql_key",
-                          MyParticle.repr_format, "charge",
-                          "_p", "_pT", "_eta", "_phi",
-                          "ctgTheta", "etaOuter", "phiOuter",
-                          "t", "_x", "_y", "_z",
-                          "xd", "yd", "zd", "l",
-                          "d0", "dZ",
-                          "t", "x", "y", "z"])
-    repr_format = '!'.join(["MyTrack", repr_body])
-    @classmethod
-    def from_repr(cls, rep):
-        if rep == '': return None
-        name, body = rep.split('!')
-        assert name == cls.__name__
-        body_parts = body.split('&')
-        global_track_id = int(body_parts[0])
-        class_dict = {'pid': safe_convert(int, body_parts[1]),
-                      'sql_key': safe_convert(int, body_parts[2]),
-                      'particle_sql_key': safe_convert(int, body_parts[3]),
-                      'particle': MyParticle.from_repr(body_parts[4]),
-                      'charge': safe_convert(float, body_parts[5]),
-                      'p': safe_convert(float, body_parts[6]),
-                      'pT': safe_convert(float, body_parts[7]),
-                      'eta': safe_convert(float, body_parts[8]),
-                      'phi': safe_convert(float, body_parts[9]),
-                      'ctgTheta': safe_convert(float, body_parts[10]),
-                      'etaOuter': safe_convert(float, body_parts[11]),
-                      'phiOuter': safe_convert(float, body_parts[12]),
-                      't': safe_convert(float, body_parts[13]),
-                      'x': safe_convert(float, body_parts[14]),
-                      'y': safe_convert(float, body_parts[15]),
-                      'z': safe_convert(float, body_parts[16]),
-                      'xd': safe_convert(float, body_parts[17]),
-                      'yd': safe_convert(float, body_parts[18]),
-                      'zd': safe_convert(float, body_parts[19]),
-                      'l': safe_convert(float, body_parts[20]),
-                      'd0': safe_convert(float, body_parts[21]),
-                      'dZ': safe_convert(float, body_parts[22]),
-                      't_outer': safe_convert(float, body_parts[23]),
-                      'x_outer': safe_convert(float, body_parts[24]),
-                      'y_outer': safe_convert(float, body_parts[25]),
-                      'z_outer': safe_convert(float, body_parts[26])}
-        new_track = cls(global_track_id=global_track_id, **class_dict)
-        return new_track
 
 
 class Observables:
@@ -658,9 +687,10 @@ class Observables:
         if len(tracks) + len(towers) > 0:
             return cls(tracks=tracks, towers=towers)
         else:
-            particles = ParticleCollection(particles)
+            particles = ParticleCollection(*particles)
             return cls(particle_collection=particles)
             
+
 def make_observables(pts, etas, phis, es, dir_name="./tmp"):
     num_obs = len(pts)
     particle_list = []
@@ -668,7 +698,7 @@ def make_observables(pts, etas, phis, es, dir_name="./tmp"):
         particle = MyParticle(global_id=i, pt=pts[i], eta=etas[i], phi=phis[i], e=es[i],
                               is_leaf=True)
         particle_list.append(particle)
-    collection = ParticleCollection(particle_list)
+    collection = ParticleCollection(*particle_list)
     observables = Observables(collection)
     observables.write(dir_name)
     return observables

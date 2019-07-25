@@ -1,6 +1,6 @@
 import sqlite3
-import Components
-import ReadHepmc
+from tree_tagger import Components
+from tree_tagger import ReadHepmc
 from ipdb import set_trace as st
 import numpy as np
 
@@ -71,31 +71,32 @@ def read_all(databaseName, tableName="GenParticles"):
     return out
 
 
-def trackTowerCreators(databaseName, fields):
+def trackTowerCreators(databaseName, fields, event_condition):
     creators = []
-    trackParticleIDs = read_selected(databaseName, ["Particle"], tableName="Tracks")
+    trackParticleIDs = read_selected(databaseName, ["Particle"], tableName="Tracks", where=event_condition)
     trackParticleIDs = [str(p[0]) for p in trackParticleIDs]
-    trackParticles = read_selected(databaseName, selectedFields=fields, field_in_list=("ID", trackParticleIDs))
+    trackParticles = read_selected(databaseName, selectedFields=fields, field_in_list=("ID", trackParticleIDs), where=event_condition)
     trackParticles = np.hstack((np.zeros((trackParticles.shape[0], 1)), trackParticles))
-    towerParticleIDs = read_selected(databaseName, ["Particle"], tableName="TowerLinks")
+    towerParticleIDs = read_selected(databaseName, ["Particle"], tableName="TowerLinks", where=event_condition)
     towerParticleIDs = [str(p[0]) for p in towerParticleIDs if str(p[0]) not in trackParticleIDs]
-    towerParticles = read_selected(databaseName, selectedFields=fields, field_in_list=("ID", towerParticleIDs))
+    towerParticles = read_selected(databaseName, selectedFields=fields, field_in_list=("ID", towerParticleIDs), where=event_condition)
     towerParticles = np.hstack((np.ones((towerParticles.shape[0], 1)), towerParticles))
     theCreators = np.vstack((trackParticles, towerParticles))
     return theCreators
 
 
-def trackTowerDict(databaseName):
-    tracksList = read_selected(databaseName, ["ID", "Particle"], tableName="Tracks")
+def trackTowerDict(databaseName, event_condition):
+    tracksList = read_selected(databaseName, ["ID", "Particle"], tableName="Tracks", where=event_condition)
     trackDict = {int(tID) : int(pID) for (tID, pID) in tracksList}
-    towerList = read_selected(databaseName, ["ID", "Particle"], tableName="TowerLinks")
+    towerList = read_selected(databaseName, ["ID", "Particle"], tableName="TowerLinks", where=event_condition)
     towerDict = {int(tID) : int(pID) for (tID, pID) in towerList}
     return trackDict, towerDict
 
 
-def read_tracks_towers(particle_collection, database_name):
+def read_tracks_towers(particle_collection, database_name, event_n):
+    event_condition = f"EVENT = {event_n}"
     # get the sql keys and check the pids match
-    particle_data = read_selected(database_name, ['ID', 'MCPID'], "GenParticles")
+    particle_data = read_selected(database_name, ['ID', 'MCPID'], "GenParticles", where=event_condition)
     assert len(particle_data) == len(particle_collection), "Difernet number of particles in .db and .hepc"
     sql_pids = np.array([int(line[1]) for line in particle_data], dtype=int)
     np.testing.assert_array_equal(sql_pids, particle_collection.pids, 
@@ -113,7 +114,7 @@ def read_tracks_towers(particle_collection, database_name):
                                               'Eta', 'Phi', 'CtgTheta', 'EtaOuter', 'PhiOuter',
                                               'T', 'X', 'Y', 'Z', 'Xd', 'Yd', 'Zd', 'L', 'D0',
                                               'DZ', 'TOuter', 'XOuter', 'YOuter', 'ZOuter'],
-                                "Tracks")
+                                "Tracks", where=event_condition)
     track_id = 0
     for line in track_data:
         pkey = int(line[2])
@@ -153,8 +154,9 @@ def read_tracks_towers(particle_collection, database_name):
     tower_data = read_selected(database_name, ['ID', 'T', 'NTimeHits', 'Eem', 'Ehad',
                                               'Edge1', 'Edge2', 'Edge3', 'Edge4',
                                               'E', 'ET', 'Eta', 'Phi'],
-                               "Towers")
-    link_data = read_selected(database_name, ['Tower', 'Particle'], "TowerLinks")
+                               "Towers", where=event_condition)
+    link_data = read_selected(database_name, ['Tower', 'Particle'], "TowerLinks",
+                              where=event_condition)
     link_data = np.array(link_data, dtype=int)
     tower_id = 0
     for line in tower_data:
@@ -186,7 +188,7 @@ def main():
     hepmc_name = "/home/henry/lazy/29pythia8_events.hepmc"
     database_name = "/home/henry/lazy/29delphes_events.db"
     event = ReadHepmc.read_file(hepmc_name, 0, 1)[0]
-    track_list, tower_list = read_tracks_towers(event, database_name)
+    track_list, tower_list = read_tracks_towers(event, database_name, 0)
     observations = Components.Observables(tracks=track_list, towers=tower_list)
     return event, track_list, tower_list, observations
 
