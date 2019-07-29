@@ -268,7 +268,6 @@ def read_file(filepath, start=0, stop=np.inf):
     return events
 
 
-
 def main():
     filepath = "/home/henry/lazy/29pythia8_events.hepmc"
     event = read_file(filepath, 0, 1)[0]
