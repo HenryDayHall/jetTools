@@ -36,6 +36,7 @@ class Run:
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
     setting_names = ["net_type", "data_folder",  # nature of the net itself
+                     "database_name", "hepmc_name", # input location
                      "weight_decay", # minor net parameters
                      "batch_size", "loss_type", "inital_lr",  # training parameters
                      "auc", "lowest_loss", "notes"] # results
@@ -45,6 +46,8 @@ class Run:
     loss_functions = ["BCE"]
     # the tests for identifying the arguments
     arg_tests = {"data_folder"   : os.path.exists,
+                 "database_name" : os.path.exists,
+                 "hepmc_name"  : os.path.exists,
                  "batch_size"  : lambda s: str_is_type(int, s),
                  "inital_lr"   : lambda s: str_is_type(float, s),
                  "weight_decay": lambda s: str_is_type(float, s),
@@ -55,6 +58,8 @@ class Run:
                  "notes"       : lambda s: True}
 
     arg_convert = {"data_folder"   : lambda s: s,
+                   "database_name" : lambda s: s,
+                   "hepmc_name"  : lambda s: s,
                    "batch_size"  : lambda s: int(s),
                    "inital_lr"   : lambda s: float(s),
                    "weight_decay": lambda s: float(s),
@@ -64,7 +69,9 @@ class Run:
                    "lowest_loss" : lambda s: None if s is None else float(s),
                    "notes"       : lambda s: s}
 
-    arg_defaults = {"data_folder"   : "CSVv2_all_jets.h5",
+    arg_defaults = {"data_folder"   : "tst",
+                    "database_name" : "/home/henry/lazy/h1bBatch2.db",
+                    "hepmc_name"  : "/home/henry/lazy/h1bBatch2.hepmc",
                     "time"        : 3000,
                     "batch_size"  : 1000,
                     "inital_lr"   : 0.1,
@@ -252,7 +259,7 @@ class Run:
         info_line = list(filter(None, info_line))
         # if the info line looks like a dict
         # then we can just read it
-        info_line = ' '.join(info_line)
+        info_line = ''.join(info_line)
         args = literal_eval(info_line)
         assert isinstance(args, dict)
         # and convert he values

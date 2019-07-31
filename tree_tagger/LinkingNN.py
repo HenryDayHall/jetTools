@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 import numpy as np
 from ipdb import set_trace as st
-from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework
+from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework, CustomDataloader
 
 
 class Latent_projector(nn.Sequential):
@@ -32,7 +32,7 @@ class Latent_projector(nn.Sequential):
                   nn.Linear(hidden_size, latent_dimension),
                   nn.LeakyReLU(leaky_gradient)]
         super(Latent_projector, self).__init__(*layers)
-        self.layers = layers
+        self.layers = [l for l in layers if hasattr(l, 'weight')]
     
     def get_weights(self):
         weights = []
@@ -46,15 +46,6 @@ class Latent_projector(nn.Sequential):
             bias.append(layer.bias.data)
         return bias
 
-class Track_projector(Latent_projector):
-    def __init__(self, latent_dimension=30):
-        input_size = 20
-        super(Tower_projector, self).__init__(input_size, latent_dimension)
-
-class Tower_projector(Latent_projector):
-    def __init__(self, latent_dimension=30):
-        input_size = 10
-        super(Tower_projector, self).__init__(input_size, latent_dimension)
 
 def forward(event_data, nets, criterion, device):
     towers_data, tracks_data, proximities, MC_truth = event_data
@@ -78,12 +69,15 @@ def batch_forward(events_data, nets, criterion, device):
 def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
     # get the closeast tower fro each track
-    closest_tower = LinkingFramework.high_dim_proximity(tracks_projection.numpy(), towers_projection.numpy())
+    np_tracks_proj = np.array([t.detach().numpy() for t in tracks_projection])
+    np_towers_proj = np.array([t.detach().numpy() for t in towers_projection])
+    closest_tower = LinkingFramework.high_dim_proximity(np_tracks_proj, np_towers_proj)
     for closest_n, (track_n, tower_n) in zip(closest_tower, MC_truth.items()):
-        # penalise for distance to mc truth partner
         track_p = tracks_projection[track_n]
-        tower_p = towers_projection[tower_n]
-        loss += torch.sum((track_p - tower_p)**2)
+        if tower_n is not None:
+            # penalise for distance to mc truth partner
+            tower_p = towers_projection[tower_n]
+            loss += torch.sum((track_p - tower_p)**2)
         # add a penalty if the closes tower is not the MC truth partner
         if closest_n != tower_n:
             close_p = towers_projection[closest_n]
@@ -93,12 +87,12 @@ def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth)
 # this should allow for some of the tracks never making towers?
 def prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
-    for track_n, tower_indices in proximities:
+    for track_n, tower_indices in enumerate(proximities):
         track_p = tracks_projection[track_n]
         for tower_n in tower_indices:
             tower_p = towers_projection[tower_n]
             loss_here = (track_p - tower_p)**2
-            static_sum = np.sum(loss_here.numpy())
+            static_sum = np.sum(loss_here.detach().numpy())
             loss += torch.mean(loss_here)/static_sum
     return loss
 
@@ -110,7 +104,7 @@ def single_pass(nets, run, dataloader, validation_events, test_events, device, c
     last_time = time.time()
     epoch_reached = len(run)
     # need one batch to get an loss
-    event_data = next(dataloader.__iter__())
+    event_data = next(dataloader.__iter__())[0] # only want one event
     # find loss
     training_loss = forward(event_data, nets, criterion, device).item()
     # validation loss
@@ -156,7 +150,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
     weight_decay = run.settings['weight_decay']
     sampler = dataloader.batch_sampler
     val_i = validation_sampler.validation_indices
-    validation_events = dataset[val_i]
+    validation_events = [dataset[i] for i in val_i]
     test_events = dataset.test_events
     validation_criterion = test_criterion
     run.column_headings = ["time_stamps", "training_loss", "validation_loss", "test_loss", "mag_weights", "batch_size", "learning_rates", "weight_decay"]
@@ -194,7 +188,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
         training_loss = float(sum_loss) * dataset_inv_size
         # get new validation setup
         val_i = validation_sampler.validation_indices
-        validation_events = dataset[val_i]
+        validation_events = [dataset[i] for i in val_i]
         # if this is the best seen so far, save it
         if test_loss < run.settings['lowest_loss']:
             run.set_best_net(net.state_dict(), test_loss)
@@ -223,18 +217,21 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
 
 
 def begin_training(run):
+    torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
     # Device configuration
-    if run.settings['device_type'] == 'gpu':
-        if torch.cuda.is_available():
-            device = torch.device('cuda')
-        else:
-            raise ValueError("Error, requested gpu but cuda not avalible")
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
     else:
         device = torch.device('cpu')
     assert run.settings['net_type'] == "trackTower_projectors"
+    # create the dataset
+    dataset = Datasets.TracksTowersDataset(hepmc_name=run.settings["hepmc_name"],
+                                           database_name=run.settings["database_name"])
     criterion = prox_criterion
-    nets = [Tower_projector(), Track_projector()]
+    latent_dimension = 5
+    nets = [Latent_projector(dataset.tower_dimensions, latent_dimension),
+            Latent_projector(dataset.track_dimensions, latent_dimension)]
     # if the run is not empty there should be a previous net, load that
     if not run.empty_run:
         for state_dict, net in zip(run.last_nets, nets):
@@ -249,15 +246,13 @@ def begin_training(run):
                 m.bias.data.fill_(0.01)
         net.apply(init_weights)
     test_criterion = truth_criterion
-    # create the dataset
-    dataset = Datasets.TracksTowersDataset(run.settings["data_folder"])
     # the nature of the data loader depends if we need to reweight
-    sampler = RandomSampler(len(dataset))
+    sampler = RandomSampler(dataset)
     # this sampler then gets put inside a sampler that can split the data into a validation set
-    validation_sampler = CustomSampler.ValidationRandomSampler(sampler, n_folds=7)
+    validation_sampler = CustomSampler.ValidationRandomSampler(sampler, n_folds=3)
     # this gets wrapped in a batch sampler so the sample size can change
     batch_sampler = BatchSampler(validation_sampler, run.settings['batch_size'], False)
-    dataloader = DataLoader(dataset, batch_sampler=batch_sampler, pin_memory=False)
+    dataloader = CustomDataloader.ArbitaryDataloader(dataset, batch_sampler=batch_sampler)
     dataset_inv_size = 1./len(dataset)
     # create optimisers and an adaptive learning rate
     optimisers = []

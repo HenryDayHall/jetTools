@@ -4,18 +4,39 @@ from torch.utils.data import Dataset
 from torch import nn
 from ipdb import set_trace as st
 import numpy as np
-from tree_tagger import Components
+from tree_tagger import Components, ReadSQL, ReadHepmc, LinkingFramework
+import torch
+
+TEST_DS="/home/henry/lazy/h1bBatch2.db"
+TEST_HEPMC="/home/henry/lazy/h1bBatch2.hepmc"
 
 class TracksTowersDataset(Dataset):
-    def __init__(self, folder_name):
-        observables = Components.Observables.from_file(folder_name)
-        tracks_list = observables.tracks_list
+    def __init__(self, folder_name=None, database_name=TEST_DS, hepmc_name=TEST_HEPMC, num_events=10):
+        # read in from file
+        tracks_list_per_event, towers_list_per_event = [], []
+        if folder_name is not None:
+            raise NotImplementedError
+            #observables = Components.Observables.from_file(folder_name)
+            #tracks_list = observables.tracks_list
+        else:
+            start_event = 0
+            hepmc_events = ReadHepmc.read_file(hepmc_name, start_event, start_event+num_events)
+            for event_n, event in enumerate(hepmc_events):
+                track_list, tower_list = ReadSQL.read_tracks_towers(event, database_name, event_n)
+                tracks_list_per_event.append(track_list)
+                towers_list_per_event.append(tower_list)
         all_events = []
+        # process the events
         for tracks_list, towers_list in zip(tracks_list_per_event, towers_list_per_event):
+            tracks_near_tower, towers_near_track = LinkingFramework.tower_track_proximity(towers_list, tracks_list)
+            MCtruth = LinkingFramework.MC_truth_links(towers_list, tracks_list)
             event_info = gen_overall_data(tracks_list, towers_list)
             track_data = gen_track_data(tracks_list, event_info)
+            track_data = torch.from_numpy(track_data)
             tower_data = gen_tower_data(towers_list, event_info)
-            all_events.append([track_data, tower_data])
+            tower_data = torch.from_numpy(tower_data)
+            all_events.append([tower_data, track_data, towers_near_track, MCtruth])
+        all_events = np.array(all_events)
         total_events = len(all_events)
         # shuffle the events
         random.shuffle(all_events)
@@ -31,12 +52,22 @@ class TracksTowersDataset(Dataset):
         return self._len
 
     def __getitem__(self, idx):
-        """ return a single event """
+        """ return events in numpy style """
         return self._events[idx]
 
     @property
     def test_events(self):
         return self._test_events
+
+    @property
+    def track_dimensions(self):
+        _, tracks, _, _ = self[0]
+        return tracks.shape[1]
+
+    @property
+    def tower_dimensions(self):
+        towers, _,  _, _ = self[0]
+        return towers.shape[1]
 
 def gen_overall_data(tracks_list, towers_list):
     info = []
@@ -58,9 +89,9 @@ def gen_overall_data(tracks_list, towers_list):
     tower_pts = [t.pt for t in towers_list]
     info.append(np.mean(tower_pts))
     info.append(np.std(tower_pts))
-    track_phis = [t.phi for t in tracks_list]
+    track_phis = [t.phi() for t in tracks_list]
     info.append(np.std(track_phis))
-    tower_phis = [t.phi for t in towers_list]
+    tower_phis = [t.phi() for t in towers_list]
     info.append(np.std(tower_phis))
     return info
     
@@ -93,9 +124,9 @@ def gen_track_data(tracks_list, event_info):
     
 
 def gen_tower_data(towers_list, event_info):
-    data = np.empty((len(towers_list), len(event_info) + 12))
+    data = np.empty((len(towers_list), len(event_info) + 11))
     for i, tower in enumerate(towers_list):
-        data[i] = [tower.nTimeHits,
+        data[i] = [# tower.nTimeHits,  # appears to be blank
                    tower.eem,
                    tower.ehad,
                    tower.edges[0],
@@ -105,7 +136,7 @@ def gen_tower_data(towers_list, event_info):
                    tower._t,
                    tower.et,
                    tower.eta,
-                   tower.phi,
+                   tower.phi(),
                    tower.e] + event_info
     return data
 
