@@ -555,7 +555,8 @@ class ParticleCollection:
 
 
 class Observables:
-    def __init__(self, particle_collection=None, tracks=None, towers=None):
+    def __init__(self, particle_collection=None, tracks=None, towers=None, event_num=None):
+        self.event_num = event_num
         self.has_tracksTowers = tracks is not None or towers is not None
         global_obs_ids = []
         self.global_to_obs = {}
@@ -565,6 +566,8 @@ class Observables:
                 tracks = []
             if towers is None:
                 towers = []
+            self.tracks_list = tracks
+            self.towers_list = towers
             self.objects = tracks + towers
             self.pts = np.array([t.pt for t in tracks] +
                                 [t.et for t in towers])
@@ -609,8 +612,12 @@ class Observables:
     def write(self, dir_name):
         # make the directory if it dosn't exist
         os.makedirs(dir_name, exist_ok=True)
-        file_name = os.path.join(dir_name, "observables.dat")
-        summary_file_name = os.path.join(dir_name, "summary_observables.csv")
+        if self.event_num is None:
+            event_str = ''
+        else:
+            event_str = str(event_num)
+        file_name = os.path.join(dir_name, f"observables{event_str}.dat")
+        summary_file_name = os.path.join(dir_name, "summary_observables{event_str}.csv")
         # remove a summary file if it exists
         with contextlib.suppress(FileNotFoundError):
             os.remove(summary_file_name)
@@ -656,8 +663,12 @@ class Observables:
                 summary_file.write('# ' + ' '.join(summary_cols) + '\n')
 
     @classmethod
-    def from_file(cls, dir_name):
-        file_name = os.path.join(dir_name, "observables.dat")
+    def from_file(cls, dir_name, event_num=None):
+        if event_num is None:
+            event_str = ''
+        else:
+            event_str = str(event_num)
+        file_name = os.path.join(dir_name, f"observables{event_num}.dat")
         particles = []
         tracks = []
         towers = []
@@ -674,10 +685,10 @@ class Observables:
                 elif line.startswith("MyTower"):
                     towers.append(MyTower.from_repr(line))
         if len(tracks) + len(towers) > 0:
-            return cls(tracks=tracks, towers=towers)
+            return cls(tracks=tracks, towers=towers, event_num=event_num)
         else:
             particles = ParticleCollection(*particles)
-            return cls(particle_collection=particles)
+            return cls(particle_collection=particles, event_num=event_num)
 
 
 def make_observables(pts, etas, phis, es, dir_name="./tmp"):

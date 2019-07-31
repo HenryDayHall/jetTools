@@ -1,4 +1,5 @@
 """ module to contain the framework for linking towers and tracks """
+from ipdb import set_trace as st
 import itertools
 import operator
 import numpy as np
@@ -6,9 +7,6 @@ import numpy as np
 def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperation):
     """ Function to create a list of proximate particles in the other list
         for both lists. L2 norm. """
-
-    list1 = [[] for _ in etas_1]
-    list2 = [[] for _ in etas_2]
 
     # start by binning the data on the scale of the seperation
     eps = 0.001
@@ -66,10 +64,10 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
         # add everything in the same bin
         proximates = [obj[0] for obj in bins_2[phi_bin][eta_bin]]
         surrounding = []
-        for idx in itertools.product((eta_bin-1, eta_bin, eta_bin+1),
-                                     (phi_bin-1, phi_bin, phi_bin+1)):
-            if idx != (eta_bin, phi_bin):
-                surrounding += bins_2[idx[1]][idx[2]]
+        for idx in itertools.product((phi_bin-1, phi_bin, phi_bin+1),
+                                     (eta_bin-1, eta_bin, eta_bin+1)):
+            if idx != (phi_bin, eta_bin):
+                surrounding += bins_2[idx[0]][idx[1]]
         # go through the surroundings deciding which to add
         for obj in surrounding:
             # calculate the L2 norm with the rescaled coordinates
@@ -77,11 +75,24 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
             normed_dist = (eta - obj[1])**2 + (phi - obj[2])**2
             if normed_dist < 1:
                 proximates.append(obj[0])
-                proximates_1.append(proximates)
+        proximates_1.append(proximates)
         # put this index in the appropreate parts of the other list
         for index_2 in proximates:
             proximates_2[index_2].append(index)
+            # wrong right
     return proximates_1, proximates_2
+
+
+def tower_track_proximity(tower_list, track_list):
+    division = 6
+    eta_seperation = 5/division
+    phi_seperation = 2*np.pi/division
+    track_etas = np.array([t.eta for t in track_list])
+    track_phis = np.array([t.phi() for t in track_list])
+    tower_etas = np.array([t.eta for t in tower_list])
+    tower_phis = np.array([t.phi() for t in tower_list])
+    tracks_near_tower, towers_near_track = proximity_lists(tower_etas, tower_phis, track_etas, track_phis, eta_seperation, phi_seperation)
+    return tracks_near_tower, towers_near_track
 
 
 
@@ -90,14 +101,26 @@ def MC_truth_links(tower_list, track_list):
     links = {}
     for j, track in enumerate(track_list):
         gid = track.global_id
-        linked = next([i for i, tower in enumerate(tower_list)
-                       if gid in tower.global_ids],
+        linked = next((i for i, tower in enumerate(tower_list)
+                       if gid in tower.global_ids),
                       None)
         links[j] = linked
     return links
 
 
-
-
-
+def high_dim_proximity(list_1, list_2):
+    """ findes the closest neighbour for each item of list_1 in list_2, in high dimensions """
+    # standard euclidean brute force
+    # make matrices
+    diffs = list_2[:, ...] - list_1[:, None]
+    # in the diffs matrix the zeroth axis loops over list_1
+    # the fist axis loops over list_2
+    # the third axis loops over the dimensions
+    # tacke euclidean dist squared
+    dist2 = np.sum(np.power(diffs, 2), axis=2)
+    # get the minimum distance
+    min_dist = np.argmin(dist2, axis=1)
+    return min_dist
+    
+    
 

@@ -5,6 +5,26 @@ import matplotlib
 #from mayavi.scripts import mayavi2
 from mayavi import mlab
 
+def generate_cuboids(barrel_length, barrel_radius, tower_list, cuboid_lengths):
+    # angles under this are on the endcap
+    barrel_theta = np.arctan(barrel_radius/barrel_length)
+    thetas = np.array([t.theta() for t in tower_list])
+    phis = np.array([t.phi() for t in tower_list])
+    on_endcap = np.any((np.abs(thetas) < barrel_theta, 
+                        np.abs(thetas) > np.pi-barrel_theta),
+                       axis=0)
+    b_cuboids, b_centers, b_heights = \
+        barrel_cuboids(barrel_radius, thetas[~on_endcap], phis[~on_endcap], cuboid_lengths[~on_endcap])
+    e_cuboids, e_centers, e_heights = \
+        endcap_cuboids(barrel_length, barrel_radius, thetas[on_endcap], phis[on_endcap], cuboid_lengths[on_endcap])
+    i_b_cuboids, i_e_cuboids = iter(b_cuboids), iter(e_cuboids)
+    cuboids = [next(i_e_cuboids) if endcap else next(i_b_cuboids) for endcap in on_endcap]
+    i_b_centers, i_e_centers = iter(b_centers.tolist()), iter(e_centers.tolist())
+    centers = [next(i_e_centers) if endcap else next(i_b_centers) for endcap in on_endcap]
+    i_b_heights, i_e_heights = iter(b_heights.tolist()), iter(e_heights.tolist())
+    heights = [next(i_e_heights) if endcap else next(i_b_heights) for endcap in on_endcap]
+    return cuboids, centers, heights
+
 def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
     half_basesize = barrel_radius * np.pi / 200.
     cos_phis = np.cos(phis)
@@ -18,7 +38,7 @@ def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
     surface_1 = np.vstack((-sin_phis, cos_phis, np.zeros_like(phis))).T
     surface_2 = np.vstack((np.zeros_like(phis), np.zeros_like(phis), np.ones_like(phis))).T
     cuboids = make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec)
-    return cuboids
+    return cuboids, center_vec, height_vec
 
 def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
     half_basesize = barrel_radius * np.pi / 200.
@@ -36,7 +56,7 @@ def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
     surface_1 = np.vstack((np.zeros_like(phis), np.ones_like(phis), np.zeros_like(phis))).T
     surface_2 = np.vstack((np.ones_like(phis), np.zeros_like(phis), np.zeros_like(phis))).T
     cuboids = make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec)
-    return cuboids
+    return cuboids, center_vec, height_vec
 
 def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
     point_1 = center_vec + half_basesize * (surface_1 + surface_2)
@@ -61,6 +81,22 @@ def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
         cuboids.append(cuboid)
     return cuboids
 
+
+def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
+    for scale in np.linspace(120, 200, 4):
+        highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
+                                   highlight_xyz[:, 2], colours,
+                                   name='highlights', colormap=colourmap, scale_mode='none',
+                                   scale_factor=scale, opacity=0.06)
+    
+
+def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
+    if isinstance(all_positions, list):
+        all_positions = np.array(all_positions)
+    if len(colours) != len(indices):
+        colours = colours[indices]
+    highlight_pos(all_positions[indices], colours, colourmap)
+
     
 def plot_tracks_towers(track_list, tower_list):
     names = list()
@@ -84,33 +120,12 @@ def plot_tracks_towers(track_list, tower_list):
     factor = 1.3
     radiusplus = np.max(np.array(outer_pos)[:, :2]) * factor
     halflengthplus = np.max(np.array(outer_pos)[:, 2]) * factor
-    # angles under this are on the endcap
-    barrel_theta = np.arctan(radiusplus/halflengthplus)
-    tower_angles = np.array([[t.phi(), t.theta()]
-                             for t in tower_list])
-    on_endcap = np.any((np.abs(tower_angles[:, 1]) < barrel_theta, 
-                        np.abs(tower_angles[:, 1])
-                               > np.pi-barrel_theta),
-                       axis=0)
     tower_energies = np.array([t.e for t in tower_list])
-    tower_heights = 0.5 * radiusplus * tower_energies/np.max(tower_energies)
+    tower_lengths = 0.5 * radiusplus * tower_energies/np.max(tower_energies)
     dot_barrel = False
-    cos_phi = np.cos(tower_angles[:, 0])
-    sin_phi = np.sin(tower_angles[:, 0])
-    tan_theta = np.tan(tower_angles[:, 1])
-    tower_x = np.where(on_endcap,
-                       halflengthplus * np.abs(tan_theta) * cos_phi,
-                       radiusplus * cos_phi)
-    tower_y = np.where(on_endcap,
-                       halflengthplus * np.abs(tan_theta) * sin_phi,
-                       radiusplus * sin_phi)
-    tower_z = np.clip(radiusplus/tan_theta, -halflengthplus, halflengthplus)
-    tower_pos = np.vstack((tower_x, tower_y, tower_z)).T
-    tower_pos = tower_pos.tolist()
-    tower_scl = [10*endcap for tower, endcap in zip(tower_list, on_endcap)]
-    b_cuboids = barrel_cuboids(radiusplus, tower_angles[~on_endcap, 1], tower_angles[~on_endcap, 0], tower_energies[~on_endcap])
-    c_cuboids = endcap_cuboids(halflengthplus, radiusplus, tower_angles[on_endcap, 1], tower_angles[on_endcap, 0], tower_heights[on_endcap])
-    cuboids = b_cuboids + c_cuboids
+    cuboids, tower_pos, tower_heights = \
+        generate_cuboids(halflengthplus, radiusplus, tower_list, tower_lengths)
+    tower_scl = tower_energies.tolist()
 
     #colourmap = matplotlib.cm.get_cmap('Set2')
     #colours = [tuple(colourmap(c)[:3]) for c in np.linspace(0.03, 0.97, 9)]
@@ -135,7 +150,7 @@ def plot_tracks_towers(track_list, tower_list):
     o_a_anchors.mlab_source.dataset.lines = np.array(o_a_connections)
     tube = mlab.pipeline.tube(o_a_anchors, tube_radius=8)
     tube.filter.vary_radius = 'vary_radius_off'
-    mlab.pipeline.surface(tube, color=(0.2, 0.9, 0.9), opacity=0.3)
+    mlab.pipeline.surface(tube, color=(0.9, 0.9, 0.6), opacity=0.3)
 
     # plot anchor points for outer-tower lines ~~~~~~~~~~~~~~~~~~~~~~~
     t_o_anchor_pos = np.array(outer_pos + tower_pos)
@@ -192,14 +207,36 @@ def plot_tracks_towers(track_list, tower_list):
                                  scale_factor=100, opacity=0.7)
     else:
         for cuboid in cuboids:
-            mlab.mesh(*cuboid, color=(0, 0, 1))
+            mlab.mesh(*cuboid, color=(0.9, 0, 0.2))
+    return outer_pos, tower_pos
 
-    mlab.show()
 
 def main():
-    from tree_tagger import ReadSQL
+    from tree_tagger import ReadSQL, LinkingFramework
     event, tracks, towers, observations = ReadSQL.main()
-    plot_tracks_towers(tracks, towers)
+    outer_pos, tower_pos = plot_tracks_towers(tracks, towers)
+    MCtruth = LinkingFramework.MC_truth_links(towers, tracks)
+    tracks_near_tower, towers_near_track = LinkingFramework.tower_track_proximity(towers, tracks)
+    look_at_towers = False
+    if look_at_towers:
+        highlight_track = np.random.randint(0, len(tracks))
+        tower_friends = towers_near_track[highlight_track]
+        highlight_indices(outer_pos, [highlight_track], [0], "Pastel1")
+        highlight_indices(tower_pos, tower_friends, np.ones_like(tower_friends), "Set2")
+    look_at_tracks = True
+    if look_at_tracks:
+        highlight_tower = np.random.randint(0, len(towers))
+        track_friends = tracks_near_tower[highlight_tower]
+        highlight_indices(tower_pos, [highlight_tower], [0], "Pastel1")
+        highlight_indices(outer_pos, track_friends, np.ones_like(track_friends), "Set2")
+    look_at_truth = False
+    if look_at_truth:
+        tracks_idx, towers_idx = zip(*[[track, tower] for track, tower in MCtruth.items() if tower is not None])
+        tracks_idx, towers_idx = list(tracks_idx), list(towers_idx)
+        colours = np.random.random(len(towers_idx))
+        highlight_indices(tower_pos, towers_idx, colours, "nipy_spectral")
+        highlight_indices(outer_pos, tracks_idx, colours, "nipy_spectral")
+    mlab.show()
 
 
 if __name__ == '__main__':

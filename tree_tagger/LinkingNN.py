@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 import numpy as np
 from ipdb import set_trace as st
+from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework
 
 
 class Latent_projector(nn.Sequential):
@@ -76,13 +77,20 @@ def batch_forward(events_data, nets, criterion, device):
 
 def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
-    for track_n, tower_n in MC_truth.items():
+    # get the closeast tower fro each track
+    closest_tower = LinkingFramework.high_dim_proximity(tracks_projection.numpy(), towers_projection.numpy())
+    for closest_n, (track_n, tower_n) in zip(closest_tower, MC_truth.items()):
+        # penalise for distance to mc truth partner
         track_p = tracks_projection[track_n]
         tower_p = towers_projection[tower_n]
-        loss += torch.mean((track_p - tower_p)**2)
+        loss += torch.sum((track_p - tower_p)**2)
+        # add a penalty if the closes tower is not the MC truth partner
+        if closest_n != tower_n:
+            close_p = towers_projection[closest_n]
+            loss -= torch.sum((track_p - close_p)**2)
     return loss
-    
 
+# this should allow for some of the tracks never making towers?
 def prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
     for track_n, tower_indices in proximities:
@@ -93,7 +101,6 @@ def prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
             static_sum = np.sum(loss_here.numpy())
             loss += torch.mean(loss_here)/static_sum
     return loss
-    
 
 
 def single_pass(nets, run, dataloader, validation_events, test_events, device, criterion, validation_criterion, test_criterion, weight_decay):
@@ -227,8 +234,6 @@ def begin_training(run):
         device = torch.device('cpu')
     assert run.settings['net_type'] == "trackTower_projectors"
     criterion = prox_criterion
-    # TODO
-    dataset = LinkageDataset(run.settings['data_folder'])
     nets = [Tower_projector(), Track_projector()]
     # if the run is not empty there should be a previous net, load that
     if not run.empty_run:
@@ -244,11 +249,12 @@ def begin_training(run):
                 m.bias.data.fill_(0.01)
         net.apply(init_weights)
     test_criterion = truth_criterion
+    # create the dataset
+    dataset = Datasets.TracksTowersDataset(run.settings["data_folder"])
     # the nature of the data loader depends if we need to reweight
     sampler = RandomSampler(len(dataset))
     # this sampler then gets put inside a sampler that can split the data into a validation set
-    # TODO
-    validation_sampler = ValidationRandomSampler(sampler, n_folds=7)
+    validation_sampler = CustomSampler.ValidationRandomSampler(sampler, n_folds=7)
     # this gets wrapped in a batch sampler so the sample size can change
     batch_sampler = BatchSampler(validation_sampler, run.settings['batch_size'], False)
     dataloader = DataLoader(dataset, batch_sampler=batch_sampler, pin_memory=False)
@@ -259,8 +265,7 @@ def begin_training(run):
         optimiser = torch.optim.SGD(net.parameters(), lr=run.settings['inital_lr'],
                                      weight_decay=run.settings['weight_decay'])
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimiser, cooldown=3)
-        # TODO
-        bs_scheduler = ReduceBatchSizeOnPlateau(batch_sampler, cooldown=3)
+        bs_scheduler = CustomScheduler.ReduceBatchSizeOnPlateau(batch_sampler, cooldown=3)
         val_schedulers = [lr_scheduler, bs_scheduler]
 
     nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers)
