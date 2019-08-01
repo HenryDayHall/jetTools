@@ -1,4 +1,3 @@
-''' CSVv2 replica '''
 import sys
 import os
 import time
@@ -50,13 +49,17 @@ class Latent_projector(nn.Sequential):
 def forward(event_data, nets, criterion, device):
     towers_data, tracks_data, proximities, MC_truth = event_data
     tower_net, track_net = nets
-    towers_projection, tracks_projection = [], []
-    for tower_d in towers_data:
-        tower_d = tower_d.to(device)
-        towers_projection.append(tower_net(tower_d))
-    for track_d in tracks_data:
-        track_d = track_d.to(device)
-        tracks_projection.append(track_net(track_d))
+    towers_data.to(device)
+    towers_projection = tower_net(towers_data)
+    tracks_data.to(device)
+    tracks_projection = track_net(tracks_data)
+    # towers_projection, tracks_projection = [], []
+    # for tower_d in towers_data:
+    #     tower_d = tower_d.to(device)
+    #     towers_projection.append(tower_net(tower_d))
+    # for track_d in tracks_data:
+    #     track_d = track_d.to(device)
+    #     tracks_projection.append(track_net(track_d))
     loss = criterion(towers_projection, tracks_projection, proximities, MC_truth)
     return loss
 
@@ -81,19 +84,30 @@ def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth)
         # add a penalty if the closes tower is not the MC truth partner
         if closest_n != tower_n:
             close_p = towers_projection[closest_n]
-            loss -= torch.sum((track_p - close_p)**2)
+            loss += 1./torch.clamp(torch.sum((track_p - close_p)**2),
+                                                 0., 1.) # but we dont care is more than 1 away
     return loss
 
 # this should allow for some of the tracks never making towers?
 def prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
+    mask = np.ones(len(towers_projection), dtype=int)
     for track_n, tower_indices in enumerate(proximities):
         track_p = tracks_projection[track_n]
+        # pull towards towers in the sector
         for tower_n in tower_indices:
             tower_p = towers_projection[tower_n]
             loss_here = (track_p - tower_p)**2
             static_sum = np.sum(loss_here.detach().numpy())
-            loss += torch.mean(loss_here)/static_sum
+            loss += torch.sum(loss_here)/static_sum
+        # push away from other towers
+        mask[:] = 1
+        mask[tower_indices] = 0
+        factor = float(np.sum(mask))/5000.
+        loss += factor/torch.sum(
+                       torch.clamp(
+                       torch.sum((track_p - towers_projection[mask])**2, dim=1),
+                                   0, 1.))  # dont care when more than 1 unit away
     return loss
 
 
@@ -118,10 +132,10 @@ def single_pass(nets, run, dataloader, validation_events, test_events, device, c
     # if the run starts empty record a new best and last net
     state_dicts = [net.state_dict() for net in nets]
     if run.empty_run:
-        run.set_best_nets(state_dicts, test_loss)
+        run.set_best_state_dicts(state_dicts, test_loss)
         run.last_net = state_dicts
     elif test_loss < run.settings['lowest_loss']:
-        run.set_best_nets(state_dicts, test_loss)
+        run.set_best_state_dicts(state_dicts, test_loss)
     # weights
     mag_weights = 0
     for net in nets:
@@ -177,7 +191,8 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
             if i_batch % 100 == 0:                                          #
                 print('.', end='', flush=True)                              #
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-        net.eval()
+        for net in nets:
+            net.eval()
         # get the test training and validation loss
         validation_loss = 0
         for v_event in validation_events:
@@ -191,7 +206,8 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
         validation_events = [dataset[i] for i in val_i]
         # if this is the best seen so far, save it
         if test_loss < run.settings['lowest_loss']:
-            run.set_best_net(net.state_dict(), test_loss)
+            stat_dicts = [n.state_dict() for n in nets]
+            run.set_best_state_dicts(stat_dicts, test_loss)
         # look at current learning rate
         learning_rate = float(optimiser.param_groups[0]['lr'])
         batch_size = sampler.batch_size
@@ -213,7 +229,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
             # check to see if the weight decay should scale
             scheduler.step(validation_loss, epoch_reached)
     print("Finishing...")
-    return net, run
+    return nets, run
 
 
 def begin_training(run):
@@ -224,18 +240,16 @@ def begin_training(run):
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
-    assert run.settings['net_type'] == "trackTower_projectors"
+    assert run.settings['net_type'] == "tracktower_projectors"
     # create the dataset
-    dataset = Datasets.TracksTowersDataset(hepmc_name=run.settings["hepmc_name"],
-                                           database_name=run.settings["database_name"])
-    criterion = prox_criterion
-    latent_dimension = 5
+    dataset = Datasets.TracksTowersDataset(folder_name=run.settings['data_folder'])
+    criterion = truth_criterion
+    latent_dimension = run.settings['latent_dimension']
     nets = [Latent_projector(dataset.tower_dimensions, latent_dimension),
             Latent_projector(dataset.track_dimensions, latent_dimension)]
     # if the run is not empty there should be a previous net, load that
     if not run.empty_run:
-        for state_dict, net in zip(run.last_nets, nets):
-            net.load_state_dict(state_dict)
+        nets = run.last_nets
     # finish initilising the nets
     for net in nets:
         net = net.to(device)
@@ -266,3 +280,11 @@ def begin_training(run):
     nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers)
     run.last_nets = [net.state_dict() for net in nets]
     return run
+
+def main():
+    from tree_tagger import RunTools
+    run = RunTools.Run("tst", "run1", True)
+    begin_training(run)
+
+if __name__ == '__main__':
+    main()

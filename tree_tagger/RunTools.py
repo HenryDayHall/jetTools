@@ -10,7 +10,7 @@ from copy import deepcopy
 from ipdb import set_trace as st
 import torch
 import numpy as np
-from tree_tagger import Constants
+from tree_tagger import Constants, Datasets, LinkingNN
 
 
 def remove_file_extention(path):
@@ -35,14 +35,14 @@ def str_is_type(s_type, s, accept_none=False):
 class Run:
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
-    setting_names = ["net_type", "data_folder",  # nature of the net itself
+    setting_names = ["net_type", "latent_dimension", "data_folder",  # nature of the net itself
                      "database_name", "hepmc_name", # input location
                      "weight_decay", # minor net parameters
                      "batch_size", "loss_type", "inital_lr",  # training parameters
                      "auc", "lowest_loss", "notes"] # results
     # the permissable values
-    net_types = ['trackTower_projectors']
-    net_names = {'trackTower_projectors': ['track', 'tower']}
+    net_types = ['tracktower_projectors']
+    net_names = {'tracktower_projectors': ['track', 'tower']}
     loss_functions = ["BCE"]
     # the tests for identifying the arguments
     arg_tests = {"data_folder"   : os.path.exists,
@@ -52,6 +52,7 @@ class Run:
                  "inital_lr"   : lambda s: str_is_type(float, s),
                  "weight_decay": lambda s: str_is_type(float, s),
                  "net_type"    : lambda s: s.lower() in Run.net_types,
+                 "latent_dimension" : lambda s: str_is_type(int, s),
                  "loss_type"   : lambda s: s.upper() in Run.loss_functions,
                  "auc"         : lambda s: str_is_type(float, s) or (s is None),
                  "lowest_loss" : lambda s: str_is_type(float, s) or (s is None),
@@ -64,6 +65,7 @@ class Run:
                    "inital_lr"   : lambda s: float(s),
                    "weight_decay": lambda s: float(s),
                    "net_type"    : lambda s: s.lower(),
+                   "latent_dimension" : lambda s: int(s),
                    "loss_type"   : lambda s: s.upper(),
                    "auc"         : lambda s: None if s is None else float(s),
                    "lowest_loss" : lambda s: None if s is None else float(s),
@@ -77,6 +79,7 @@ class Run:
                     "inital_lr"   : 0.1,
                     "weight_decay": 0.01,
                     "net_type"    : net_types[0],
+                    "latent_dimension" : 10,
                     "loss_type"   : loss_functions[0],
                     "auc"         : None,
                     "lowest_loss" : None,
@@ -116,6 +119,7 @@ class Run:
                 assert len(self.column_headings) == self.table.shape[1], "Number columns not equal to number column headdings"
         # now process the info line
         self.settings = self.process_info_line(info_line)
+        self.dataset = self._load_dataset()
         # if the net is empty these things should not exist
         if self.empty_run:
             if self.settings['auc'] is not None:
@@ -133,20 +137,45 @@ class Run:
             self.last_net_files.append(self.base_name + "_last_" + name + net_extention)
             self.best_net_files.append(self.base_name + "_best_" + name + net_extention)
         # check to see if either of these exist and load if so
+        self.__best_net_state_dicts = None  # create the attribute
+        self.__last_net_state_dicts = None
         try:
-            self.last_nets = [torch.load(name, map_location='cpu')
-                              for name in self.last_net_files]
+            last_net_state_dicts = [torch.load(name, map_location='cpu')
+                                    for name in self.last_net_files]
+            self.last_nets = self._nets_from_state_dict(last_net_state_dicts)
         except FileNotFoundError:
             # if the run is not empty there should be a last net
             if not self.empty_run:
                 print("Warning; not an empty run, but no last net found!")
         try:
-            self.best_nets = [torch.load(name, map_location='cpu')
-                              for name in self.best_net_files]
-            self.set_best_nets(best_nets, self.settings['lowest_loss'])
+            best_net_state_dicts = [torch.load(name, map_location='cpu')
+                                    for name in self.best_net_files]
+            self.set_best_state_dicts(best_net_state_dicts, self.settings['lowest_loss'])
         except FileNotFoundError:
             if not self.empty_run:
                 print("Warning; not an empty run, but no best net found!")
+    
+    def _load_dataset(self):
+        if self.settings['net_type'] == 'tracktower_projectors':
+            dataset = Datasets.TracksTowersDataset(folder_name=self.settings['data_folder'],
+                                                   database_name=self.settings['database_name'],
+                                                   hepmc_name=self.settings['hepmc_name'])
+            return dataset
+        else:
+            raise NotImplementedError
+        
+
+    def _nets_from_state_dict(self, state_dicts):
+        if self.settings['net_type'] == 'tracktower_projectors':
+            towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
+                                                          self.settings['latent_dimension'])
+            towers_projector.load_state_dict(state_dicts[0])
+            tracks_projector = LinkingNN.Latent_projector(self.dataset.track_dimensions,
+                                                          self.settings['latent_dimension'])
+            tracks_projector.load_state_dict(state_dicts[1])
+            return [towers_projector, tracks_projector]
+        else:
+            raise NotImplementedError
 
     def __process_idx(self, idx):
         # if there is only one item make the second item a total slice
@@ -276,43 +305,6 @@ class Run:
                 args[arg_name] = self.arg_defaults[arg_name]
         return args
 
-    def load_net(self, version='best', name=''):
-        # TODO update for new nets
-        raise NotImplementedError()
-        name_list = self.net_names[self.settings['net_type']]
-        if name not in name_list:
-            raise ValueError(f"Net {name} not in this run. This run contains {name_list}.")
-        attribute_name = version + '_nets'
-        if hasattr(self, attribute_name):
-            param_dict = getattr(self, attribute_name)
-        else:
-            # then this net was never created
-            return None
-        with_sigmoid = self.settings['loss_type'] != "BCE"
-        # load the net
-        #if (self.settings["net_type"].lower() == 'csvv2' 
-        #        and self.settings["backend"] == 'pytorch'):
-        #    net = CSVv2_Net(n_variables, n_targets, with_sigmoid)
-        #    net.load_state_dict(param_dict)
-        #elif (self.settings["net_type"].lower() == 'deepcsv'
-        #        and self.settings["backend"] == 'pytorch'):
-        #    net = DeepCSV_Net(n_variables, n_targets, with_sigmoid)
-        #    net.load_state_dict(param_dict)
-        #elif (self.settings["net_type"].lower() == 'old'
-        #        and self.settings["backend"] == 'pytorch'):
-        #    # work on this later
-        #    # net = Old_net(22, 3)
-        #    # state_dict = torch.load(net_name, map_location='cpu')["net"][-1]
-        #    # net.load_state_dict(state_dict)
-        #elif self.settings["backend"] == 'keras':
-        #    # work on this later
-        #    raise NotImplementedError()
-        #    # net = load_model(net_name)
-        #else:
-        #    print("Error; self.settings['net_type'] {} not recognised, expecting 'csvv2' or 'deepcsv'".format(self.settings["net_type"]))
-        #    sys.exit(1)
-        #return net
-
     def get_time(self):
         # pick the first timestamp
         t_0 = self['time_stamps', 0]
@@ -324,7 +316,7 @@ class Run:
         _, _, auc = calculate_roc(self, self.settings['data_folder'])
         self.settings['auc'] = auc
 
-    def to_file(self):
+    def write(self):
         # just clear the file and start from scratch
         with open(self.progress_file_name, 'w') as pf:
             writer = csv.writer(pf, delimiter=' ')
@@ -333,17 +325,17 @@ class Run:
             for row in self.table:
                 writer.writerow(row)
         # save the best and last nets, they should exist by now
-        for net, file_name in zip(self.best_nets, self.best_net_files):
+        for net, file_name in zip(self.__best_net_state_dicts, self.best_net_files):
             torch.save(net, file_name)
         try:
-            for net, file_name in zip(self.last_nets, self.last_net_files):
+            for net, file_name in zip(self.__last_net_state_dicts, self.last_net_files):
                 torch.save(net, file_name)
         except AttributeError:
             print("Didn't find a last_net")
 
     @property
     def best_nets(self):
-        return self.__best_nets
+        return self._nets_from_state_dict(self.__best_net_state_dicts)
 
     @best_nets.setter
     def best_nets(self, param_dicts):
@@ -351,19 +343,22 @@ class Run:
         # must use set method to ensure we also get the lowest loss
         raise AttributeError("Do not set this directly, use set_best_net")
 
-    def set_best_nets(self, param_dicts, lowest_loss):
+    def set_best_state_dicts(self, param_dicts, lowest_loss):
         # could make an assertion about this loss being lower thant previous ones,
         # but as I expect this code to be called many times I will omit it
         self.settings['lowest_loss'] = float(lowest_loss)
-        self.__best_nets = param_dicts
+        self.__best_net_state_dicts = deepcopy(param_dicts)
 
     @property
     def last_nets(self):
-        return self.__last_nets
+        return self._nets_from_state_dict(self.__last_net_state_dicts)
 
     @last_nets.setter
     def last_nets(self, param_dicts):
-        self.__last_nets= deepcopy(param_dicts)
+        # if we were given a net make it a state dict
+        if not isinstance(param_dicts[0], dict):
+            param_dicts = [p.state_dict() for p in param_dicts]
+        self.__last_net_state_dicts = deepcopy(param_dicts)
 
             
 
