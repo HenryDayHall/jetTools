@@ -27,10 +27,27 @@ def getfilename(message, file_ending=''):
     def path_completer(start, state):
         line = readline.get_line_buffer().split()
         matching = [x for x in glob.glob(start+'*'+file_ending)]
+        # grab matching directories too
+        if os.path.isdir(start): # user gave a dir
+            real_dir = start
+            user_dir = start
+            user_incomplete = ''
+        else:  # user gave incomplete dir or other
+            user_dir, user_incomplete = os.path.split(start)
+            if user_dir in ('', '.', './'):  # current dir
+                real_dir = '.'
+            else:  # it's a directory (hopefully...)
+                real_dir = user_dir
+        dirs_here = next(os.walk(real_dir))[1]
+        # go back to the format the user chose
+        matching_dirs = [os.path.join(user_dir, name) + '/' for name in dirs_here
+                         if name.startswith(user_incomplete)]
+        matching += matching_dirs
         return matching[state]
 
     filename = tabComplete(path_completer, message)
     return filename
+
 
 def list_complete(message, possibilities):
     """ Get a string from the user, with tab completion from list.    
@@ -61,6 +78,7 @@ def list_complete(message, possibilities):
     selection = tabComplete(list_completer, message)
     return selection
 
+
 def tabComplete(possibilities_function, message):
     """ Create a tab completion based on a function
 
@@ -89,6 +107,7 @@ def tabComplete(possibilities_function, message):
     filename = input(message)
     readline.set_completer()  # remove tab completion
     return filename
+
 
 def yesNo_question(question):
     """ Get yes to no from the user.
