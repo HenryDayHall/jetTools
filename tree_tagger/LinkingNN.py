@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 import numpy as np
 from ipdb import set_trace as st
-from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework, CustomDataloader
+from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework, CustomDataloader, InputTools
 
 
 class Latent_projector(nn.Sequential):
@@ -160,7 +160,7 @@ def single_pass(nets, run, dataloader, validation_events, test_events, device, c
     return epoch_reached
 
 
-def train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers):
+def train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers, viewer=None):
     weight_decay = run.settings['weight_decay']
     sampler = dataloader.batch_sampler
     val_i = validation_sampler.validation_indices
@@ -172,11 +172,13 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
     weight_decay = optimiser.param_groups[0]['weight_decay']
     epoch_reached = single_pass(nets, run, dataloader, validation_events, test_events, device, criterion, validation_criterion, test_criterion, weight_decay)
     last_time = time.time()
-    while last_time < end_time:
+    while last_time < end_time and os.path.exists("continue"):
         for net in nets:
             net.train()
         # start an epoch
         sum_loss = 0.
+        # get a new iterator
+        dataloader.reset()
         for i_batch, sample_batched in enumerate(dataloader):
             # reset the optimiser
             optimiser.zero_grad()  # zero the gradient buffer
@@ -188,8 +190,10 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
             # optimise weights according to gradient found by backpropigation
             optimiser.step()
             # remove from fast version ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-            if i_batch % 100 == 0:                                          #
+            if i_batch % 2 == 0:                                            #
                 print('.', end='', flush=True)                              #
+                if viewer is not None:                                      #
+                    viewer(run, nets)                                       #
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
         for net in nets:
             net.eval()
@@ -232,7 +236,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, criterion,
     return nets, run
 
 
-def begin_training(run):
+def begin_training(run, viewer=None):
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
     # Device configuration
@@ -243,7 +247,7 @@ def begin_training(run):
     assert run.settings['net_type'] == "tracktower_projectors"
     # create the dataset
     dataset = Datasets.TracksTowersDataset(folder_name=run.settings['data_folder'])
-    criterion = truth_criterion
+    criterion = truth_criterion  # prox_criterion
     latent_dimension = run.settings['latent_dimension']
     nets = [Latent_projector(dataset.tower_dimensions, latent_dimension),
             Latent_projector(dataset.track_dimensions, latent_dimension)]
@@ -277,14 +281,6 @@ def begin_training(run):
         bs_scheduler = CustomScheduler.ReduceBatchSizeOnPlateau(batch_sampler, cooldown=3)
         val_schedulers = [lr_scheduler, bs_scheduler]
 
-    nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers)
+    nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers, viewer)
     run.last_nets = [net.state_dict() for net in nets]
     return run
-
-def main():
-    from tree_tagger import RunTools
-    run = RunTools.Run("tst", "run1", True)
-    begin_training(run)
-
-if __name__ == '__main__':
-    main()

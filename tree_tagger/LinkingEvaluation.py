@@ -4,8 +4,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 from tree_tagger import LinkingFramework, LinkingNN, Constants
 
-def apply_linking_net(run, use_test=True):
-    tower_net, track_net = run.best_nets
+def apply_linking_net(run, use_test=True, nets=None):
+    if nets is None:
+        tower_net, track_net = run.best_nets
+    else:
+        tower_net, track_net = nets
     dataset = run.dataset
     if use_test:
         events = dataset.test_events
@@ -22,6 +25,7 @@ def apply_linking_net(run, use_test=True):
             tracks_projection[i] = track_net(track_d).detach().numpy()
         output_events.append([towers_projection, tracks_projection, proximities, MC_truth])
     return output_events
+
 
 def get_distance_to_neighbor(output_events):
     match_status = []  # was it correctly matched?
@@ -53,6 +57,8 @@ def get_distance_to_neighbor(output_events):
 
 def plot_distances(output_events):
     match_status, match_distance, true_distance = get_distance_to_neighbor(output_events)
+    if np.all(np.isnan(match_distance)) and np.all(np.isnan(true_distance)):
+        raise ValueError("match_disance and true_distance all nan")
     num_true = len(true_distance)
     total = len(match_distance)
     # split the match distance by the match_status
@@ -69,7 +75,7 @@ def plot_distances(output_events):
     n_bins = 50
     hist_type = 'step'
     true_hist_type = 'bar'
-    distance_range = [0, max(np.max(match_distance), max(true_distance))]
+    distance_range = [0, max(np.nanmax(match_distance), np.nanmax(true_distance))]
     plt.hist(true_distance, n_bins, distance_range, histtype=true_hist_type, color='gray',
              label=f"distance to correct tower ({num_true})")
     plt.hist(correct_distance, n_bins, distance_range, histtype=hist_type, color='green',
@@ -85,5 +91,7 @@ def plot_distances(output_events):
     plt.xlabel("Seperation in latent space")
     plt.ylabel(f"Frequency from {total} tracks")
     
-    
-
+def view_progress(run, nets):
+    output = apply_linking_net(run, nets=nets)
+    plot_distances(output)
+    plt.show()

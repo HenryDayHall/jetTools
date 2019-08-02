@@ -13,5 +13,8 @@ class ArbitaryDataloader:
         new_indices = next(self.sample_iter)
         return self.dataset[new_indices]
 
+    def reset(self):
+        self.sample_iter = iter(self.batch_sampler)
+
     def __len__(self):
         return len(self.batch_sampler)

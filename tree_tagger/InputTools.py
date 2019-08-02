@@ -35,7 +35,7 @@ def getfilename(message, file_ending=''):
         else:  # user gave incomplete dir or other
             user_dir, user_incomplete = os.path.split(start)
             if user_dir in ('', '.', './'):  # current dir
-                real_dir = '.'
+                real_dir = '.'  # needed so os.walk works
             else:  # it's a directory (hopefully...)
                 real_dir = user_dir
         dirs_here = next(os.walk(real_dir))[1]
