@@ -6,7 +6,7 @@ import csv
 from ipdb import set_trace as st
 
 
-class Hepmc_event(Components.ParticleCollection):
+class Hepmc_event(Components.MCParticleCollection):
     def __init__(self, filepath, lines):
         self.filepath = filepath
         self.event_information = {"event_n": None, "n_multi_particle_inter": None,
@@ -212,7 +212,7 @@ class Hepmc_event(Components.ParticleCollection):
                 self.vertex_list.append(this_vertex)
             elif line[0] == 'P':
                 particle_reached = len(particle_list)
-                this_particle = Components.MyParticle(float(line[p_file_dict['px']]), float(line[p_file_dict['py']]),
+                this_particle = Components.MCParticle(float(line[p_file_dict['px']]), float(line[p_file_dict['py']]),
                                                       float(line[p_file_dict['pz']]), float(line[p_file_dict['energy']]),
                                                       pid=int(line[p_file_dict['MCPID']]), hepmc_barcode=int(line[p_file_dict['barcode']]),
                                                       global_id=particle_reached,
@@ -229,7 +229,7 @@ class Hepmc_event(Components.ParticleCollection):
                             self.colour_flow[particle_reached] = colour_code
                         elif code_index == 2:
                             self.antiColour_flow[particle_reached] = colour_code
-        # finally, initilise the ParticleCollection
+        # finally, initilise the MCParticleCollection
         super().__init__(*particle_list)
 
 

@@ -49,9 +49,9 @@ class Latent_projector(nn.Sequential):
 def forward(event_data, nets, criterion, device):
     towers_data, tracks_data, proximities, MC_truth = event_data
     tower_net, track_net = nets
-    towers_data.to(device)
+    towers_data = towers_data.to(device)
     towers_projection = tower_net(towers_data)
-    tracks_data.to(device)
+    tracks_data = tracks_data.to(device)
     tracks_projection = track_net(tracks_data)
     # towers_projection, tracks_projection = [], []
     # for tower_d in towers_data:
@@ -69,11 +69,58 @@ def batch_forward(events_data, nets, criterion, device):
     return sum(losses)
 
 
+def old_truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    loss = 0
+    # get the closeast tower fro each track
+    np_tracks_proj = np.array([t.cpu().detach().numpy() for t in tracks_projection])
+    np_towers_proj = np.array([t.cpu().detach().numpy() for t in towers_projection])
+    closest_tower = LinkingFramework.high_dim_proximity(np_tracks_proj, np_towers_proj)
+    for closest_n, (track_n, tower_n) in zip(closest_tower, MC_truth.items()):
+        track_p = tracks_projection[track_n]
+        if tower_n is not None:
+            # penalise for distance to mc truth partner
+            tower_p = towers_projection[tower_n]
+            loss += torch.sum((track_p - tower_p)**2)
+        # add a penalty if the closes tower is not the MC truth partner
+        if closest_n != tower_n:
+            close_p = towers_projection[closest_n]
+            loss += torch.sum((track_p - close_p)**2)
+            #loss += 1./torch.clamp(torch.sum((track_p - close_p)**2),
+            #                                  0., 1.) # but we dont care is more than 1 away
+    return loss
+
+# this should allow for some of the tracks never making towers?
+def old_prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    loss = 0
+    mask = np.ones(len(towers_projection), dtype=int)
+    for track_n, tower_indices in enumerate(proximities):
+        track_p = tracks_projection[track_n]
+        # pull towards towers in the sector
+        distances2 = []
+        for tower_n in tower_indices:
+            tower_p = towers_projection[tower_n]
+            loss_here = (track_p - tower_p)**2
+            static_sum = np.sum(loss_here.cpu().detach().numpy())
+            distances2.append(static_sum)
+            loss += torch.sum(loss_here)/static_sum
+        # push away from other towers
+        mask[:] = 1
+        mask[tower_indices] = 0
+        # this distane defind the standadrd behavior of other tracks
+        distance = float(np.sqrt(np.median(distances2)))
+        factor = float(np.sum(mask)) * distance
+        loss += factor/torch.sum(
+                       torch.clamp(
+                       torch.sum((track_p - towers_projection[mask])**2, dim=1),
+                                   0, distance))  # dont care when more than distance away
+    return loss
+
+
 def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
     # get the closeast tower fro each track
-    np_tracks_proj = np.array([t.detach().numpy() for t in tracks_projection])
-    np_towers_proj = np.array([t.detach().numpy() for t in towers_projection])
+    np_tracks_proj = np.array([t.cpu().detach().numpy() for t in tracks_projection])
+    np_towers_proj = np.array([t.cpu().detach().numpy() for t in towers_projection])
     closest_tower = LinkingFramework.high_dim_proximity(np_tracks_proj, np_towers_proj)
     for closest_n, (track_n, tower_n) in zip(closest_tower, MC_truth.items()):
         track_p = tracks_projection[track_n]
@@ -85,29 +132,47 @@ def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth)
         if closest_n != tower_n:
             close_p = towers_projection[closest_n]
             loss += 1./torch.clamp(torch.sum((track_p - close_p)**2),
-                                                 0., 1.) # but we dont care is more than 1 away
+                                              0.001, 1.) # but we dont care is more than 1 away
     return loss
 
 # this should allow for some of the tracks never making towers?
 def prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
     loss = 0
-    mask = np.ones(len(towers_projection), dtype=int)
+    track_distance = 0
+    tower_mask = np.ones(len(towers_projection), dtype=int)
+    track_mask = np.ones(len(tracks_projection), dtype=int)
     for track_n, tower_indices in enumerate(proximities):
         track_p = tracks_projection[track_n]
         # pull towards towers in the sector
+        distances2 = []
         for tower_n in tower_indices:
             tower_p = towers_projection[tower_n]
             loss_here = (track_p - tower_p)**2
-            static_sum = np.sum(loss_here.detach().numpy())
+            static_sum = np.sum(loss_here.cpu().detach().numpy())
+            distances2.append(static_sum)
             loss += torch.sum(loss_here)/static_sum
         # push away from other towers
-        mask[:] = 1
-        mask[tower_indices] = 0
-        factor = float(np.sum(mask))/5000.
-        loss += factor/torch.sum(
+        tower_mask[:] = 1
+        tower_mask[tower_indices] = 0
+        # this distane defind the standadrd behavior of other tracks
+        median_distance2 = float(np.median(distances2))
+        factor = float(np.sum(tower_mask)) * median_distance2
+        loss += factor*torch.sum(
+                       torch.rsqrt(  # inverse square root
                        torch.clamp(
-                       torch.sum((track_p - towers_projection[mask])**2, dim=1),
-                                   0, 1.))  # dont care when more than 1 unit away
+                       torch.sum((track_p - towers_projection[tower_mask])**2, dim=1),
+                                   0, median_distance2)))  # dont care when more than distance away
+        # push away from other tracks
+        track_mask[:] = 1
+        track_mask[track_n] = 0
+        track_distance += 0.5*torch.sum(
+                           torch.rsqrt(  # inverse square root
+                           torch.clamp(
+                           torch.sum((track_p - tracks_projection[track_mask])**2, dim=1),
+                                   0, median_distance2)))  # dont care when more than distance away
+    print(f"loss = {float(loss.cpu().detach().numpy())}")
+    print(f"track_distance = {float(track_distance.cpu().detach().numpy())}")
+    time.sleep(0.1)
     return loss
 
 
@@ -247,7 +312,7 @@ def begin_training(run, viewer=None):
     assert run.settings['net_type'] == "tracktower_projectors"
     # create the dataset
     dataset = Datasets.TracksTowersDataset(folder_name=run.settings['data_folder'])
-    criterion = truth_criterion  # prox_criterion
+    criterion = prox_criterion
     latent_dimension = run.settings['latent_dimension']
     nets = [Latent_projector(dataset.tower_dimensions, latent_dimension),
             Latent_projector(dataset.track_dimensions, latent_dimension)]
@@ -277,9 +342,10 @@ def begin_training(run, viewer=None):
     for net in nets:
         optimiser = torch.optim.SGD(net.parameters(), lr=run.settings['inital_lr'],
                                      weight_decay=run.settings['weight_decay'])
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimiser, cooldown=3)
+        #lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimiser, cooldown=3)
         bs_scheduler = CustomScheduler.ReduceBatchSizeOnPlateau(batch_sampler, cooldown=3)
-        val_schedulers = [lr_scheduler, bs_scheduler]
+        #val_schedulers = [lr_scheduler, bs_scheduler]
+        val_schedulers = [bs_scheduler]
 
     nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, criterion, test_criterion, optimiser, end_time, dataset_inv_size, val_schedulers, viewer)
     run.last_nets = [net.state_dict() for net in nets]

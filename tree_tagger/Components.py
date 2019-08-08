@@ -1,4 +1,5 @@
 """Low level components, format apes that of root """
+import itertools
 import contextlib
 import os
 from ipdb import set_trace as st
@@ -61,21 +62,11 @@ class SafeLorentz(hepmath.LorentzVector):
 
 class MyParticle(SafeLorentz):
     """Aping genparticle."""
-    def __init__(self, *args, global_id, **kwargs):
-        # IDs
-        self.global_id = global_id
-        self.pid = kwargs.get('pid', None)
-        self.sql_key = kwargs.get('sql_key', None)
-        self.hepmc_barcode = kwargs.get('hepmc_barcode', None)
+    def __init__(self, *args, **kwargs):
         # shower position
-        self.is_root = kwargs.get('is_root', False)
-        self.is_leaf = kwargs.get('is_leaf', False)
-        self.start_vertex_barcode = kwargs.get('start_vertex_barcode', None)
-        self.end_vertex_barcode = kwargs.get('end_vertex_barcode', None)
         self.mother_ids = []
         self.daughter_ids = []
         # status
-        self.status = kwargs.get('status', None)
         self.generated_mass = kwargs.get('generated_mass', None)
         # knimatics
         if len(args) == 4:
@@ -110,64 +101,91 @@ class MyParticle(SafeLorentz):
             else:
                 self.setptetaphie(pt, eta, phi, 0.)
 
-    def __str__(self):
-        return f"MyParticle[{self.global_id}] pid;{self.pid} energy;{self.e:.2e}"
-
     def __repr__(self):
-        body_content = [self.global_id,
-                        self.pid,
-                        self.sql_key,
-                        self.hepmc_barcode,
-                        self.is_root,
-                        self.is_leaf,
-                        self.start_vertex_barcode,
-                        self.end_vertex_barcode,
-                        self.status,
-                        self.generated_mass,
-                        self.px,
-                        self.py,
-                        self.pz,
-                        self.e]
-        body = ','.join([repr(x) for x in body_content])
-        mothers = ','.join([repr(m) for m in self.mother_ids])
-        daughters = ','.join([repr(m) for m in self.daughter_ids])
-        rep = "|".join([MyParticle.__name__, body, mothers, daughters])
+        body_contents = [self.__getattribute__(name) for name in self.repr_variables]
+        body = self.variable_sep.join([repr(x) for x in body_contents])
+        mothers = self.variable_sep.join([repr(m) for m in self.mother_ids])
+        daughters = self.variable_sep.join([repr(m) for m in self.daughter_ids])
+        rep = self.components_sep.join([MCParticle.__name__, body, mothers, daughters])
         return rep
-    repr_body = ','.join(["global_id", "pid", "sql_key", "hepmc_barcode",
-                          "is_root", "is_leaf",
-                          "start_vertex_barcode", "end_vertex_barcode",
-                          "status", "generated_mass",
-                          "px", "py", "pz", "e"])
-    repr_format = '|'.join(["MyParticle", repr_body,
-                            'mothers', 'daughters'])
 
+    repr_variables = ["generated_mass", "px", "py", "pz", "e"]
+    repr_variable_types = [float, float, float, float, float]
+    variable_sep = ','
+    repr_body = variable_sep.join(repr_variables)
+    repr_components = ["MCParticle", repr_body, 'mothers', 'daughters']
+    components_sep = '|'
+    repr_format = components_sep.join(repr_components)
 
     @classmethod
     def from_repr(cls, rep):
         if rep == '' or rep == 'None': return None
-        name, body, mothers, daughters = rep.split('|')
+        name, body, mothers, daughters = rep.split(cls.components_sep)
         assert name == cls.__name__
-        body_parts = body.split(',')
-        global_id = int(body_parts[0])
-        class_dict = {"pid": safe_convert(int, body_parts[1]),
-                      "sql_key": safe_convert(int, body_parts[2]),
-                      "hepmc_barcode": safe_convert(int, body_parts[3]),
-                      "is_root": safe_convert(bool, body_parts[4]),
-                      "is_leaf": safe_convert(bool, body_parts[5]),
-                      "start_vertex_barcode": safe_convert(int, body_parts[6]),
-                      "end_vertex_barcode": safe_convert(int, body_parts[7]),
-                      "status": safe_convert(int, body_parts[8]),
-                      "generated_mass": safe_convert(float, body_parts[9]),
-                      "px": safe_convert(float, body_parts[10]),
-                      "py": safe_convert(float, body_parts[11]),
-                      "pz": safe_convert(float, body_parts[12]),
-                      "e": safe_convert(float, body_parts[13])}
-        new_particle = cls(global_id=global_id, **class_dict)
+        body_parts = body.split(cls.variable_sep)
+        class_dict = {name: safe_convert(v_type, part) for name, v_type, part
+                      in zip(cls.repr_variables, cls.repr_variable_types, body_parts)}
+        new_particle = cls(**class_dict)
         if mothers != '':
-            new_particle.mother_ids = [int(m) for m in mothers.split(',')]
+            new_particle.mother_ids = [int(m) for m in mothers.split(cls.variable_sep)]
         if daughters != '':
-            new_particle.daughter_ids = [int(d) for d in daughters.split(',')]
+            new_particle.daughter_ids = [int(d) for d in daughters.split(cls.variable_sep)]
         return new_particle
+
+
+class RecoParticle(MyParticle):
+    """Aping genparticle."""
+    def __init__(self, *args, reco_particle_id, **kwargs):
+        self.reco_particle_id = reco_particle_id
+        self.charge = kwargs.get('charge', None)
+        super().__init__(*args, **kwargs)
+
+    repr_variables = ["reco_particle_id", "generated_mass", "charge", "px", "py", "pz", "e"]
+    repr_variable_types = [int, float, int, float, float, float, float]
+    variable_sep = ','
+    repr_body = variable_sep.join(repr_variables)
+    repr_components = ["MCParticle", repr_body, 'mothers', 'daughters']
+    components_sep = '|'
+    repr_format = components_sep.join(repr_components)
+
+
+class MCParticle(MyParticle):
+    """Aping genparticle."""
+    def __init__(self, *args, global_id, **kwargs):
+        # IDs
+        self.global_id = global_id
+        self.pid = kwargs.get('pid', None)
+        self.sql_key = kwargs.get('sql_key', None)
+        self.hepmc_barcode = kwargs.get('hepmc_barcode', None)
+        # shower position
+        self.is_root = kwargs.get('is_root', False)
+        self.is_leaf = kwargs.get('is_leaf', False)
+        self.start_vertex_barcode = kwargs.get('start_vertex_barcode', None)
+        self.end_vertex_barcode = kwargs.get('end_vertex_barcode', None)
+        self.mother_ids = []
+        self.daughter_ids = []
+        # status
+        self.status = kwargs.get('status', None)
+        super().__init__(*args, **kwargs)
+
+    def __str__(self):
+        return f"MCParticle[{self.global_id}] pid;{self.pid} energy;{self.e:.2e}"
+
+    repr_variables = ["global_id", "pid", "sql_key", "hepmc_barcode",
+                      "is_root", "is_leaf",
+                      "start_vertex_barcode", "end_vertex_barcode",
+                      "status", "generated_mass",
+                      "px", "py", "pz", "e"]
+    repr_variable_types = [int, int, int, int, 
+                           bool, bool,
+                           int, int, 
+                           int, float,
+                           float, float, float, float]
+    variable_sep = ','
+    repr_body = variable_sep.join(repr_variables)
+    repr_components = ["MCParticle", repr_body, 'mothers', 'daughters']
+    components_sep = '|'
+    repr_format = components_sep.join(repr_components)
 
 
 class MyVertex(SafeLorentz):
@@ -268,7 +286,7 @@ class MyTower(SafeLorentz):
         name, body, particles = rep.split('!')
         assert name == cls.__name__
         if particles != '':
-            particles = [MyParticle.from_repr(p) for p in particles.split('&')]
+            particles = [MCParticle.from_repr(p) for p in particles.split('&')]
         else:
             particles = []
         body_parts = body.split('&')
@@ -374,7 +392,7 @@ class MyTrack(SafeLorentz):
 
     repr_body = '&'.join(["global_track_id",
                           "pid", "sql_key", "particle_sql_key",
-                          MyParticle.repr_format, "charge",
+                          MCParticle.repr_format, "charge",
                           "_p", "_pT", "_eta", "_phi",
                           "ctgTheta", "etaOuter", "phiOuter",
                           "_t", "_x", "_y", "_z",
@@ -392,7 +410,7 @@ class MyTrack(SafeLorentz):
         class_dict = {'pid': safe_convert(int, body_parts[1]),
                       'sql_key': safe_convert(int, body_parts[2]),
                       'particle_sql_key': safe_convert(int, body_parts[3]),
-                      'particle': MyParticle.from_repr(body_parts[4]),
+                      'particle': MCParticle.from_repr(body_parts[4]),
                       'charge': safe_convert(float, body_parts[5]),
                       'p': safe_convert(float, body_parts[6]),
                       'pT': safe_convert(float, body_parts[7]),
@@ -420,20 +438,21 @@ class MyTrack(SafeLorentz):
 
 
 class ParticleCollection:
-    """Holds a group of particles together
-    and facilitates quick indexing of pt, eta, phi, e
-    A flat list, more complex forms are acheved by indexing the collection externally"""
+    """Holds a group of particles together"""
+    indexed_variables = MyParticle.repr_variables
+    variable_types = MyParticle.repr_variable_types
     # prevent messing with the particles directly
     __is_frozen = False
     def __setattr__(self, key, value):
-        if key == '_ParticleCollection__is_frozen' or not self.__is_frozen:
+        if key == '_MCParticleCollection__is_frozen' or not self.__is_frozen:
             super().__setattr__(key, value)
         else:
             raise TypeError("Do not set the attributes directly, " +
                             "add particles with addParticles()")
 
     def _freeze(self):
-        self.__is_frozen = True
+        if not self.__is_frozen:
+            self.__is_frozen = True
 
     def _unfreeze(self):
         self.__is_frozen = False
@@ -445,19 +464,9 @@ class ParticleCollection:
         self.pts = np.array([], dtype=float)
         self.etas = np.array([], dtype=float)
         self.phis = np.array([], dtype=float)
-        self.es = np.array([], dtype=float)
-        self.pxs = np.array([], dtype=float)
-        self.pys = np.array([], dtype=float)
-        self.pzs = np.array([], dtype=float)
-        self.ms = np.array([], dtype=float)
-        self.pids = np.array([], dtype=int)
-        self.sql_keys = np.array([], dtype=int)
-        self.hepmc_barcodes = np.array([], dtype=int)
-        self.global_ids = np.array([], dtype=int)
-        self.is_roots = np.array([], dtype=bool)
-        self.is_leafs = np.array([], dtype=bool)
-        self.start_vertex_barcodes = np.array([], dtype=int)
-        self.end_vertex_barcodes = np.array([], dtype=int)
+        for var_type, var_name in zip(self.variable_types, self.indexed_variables):
+            var_names = var_name + 's'
+            setattr(self, var_names, np.array([], dtype=var_type))
         self.particle_list = []
         self.addParticles(*args)
         self._freeze()
@@ -469,19 +478,13 @@ class ParticleCollection:
         self.pts = np.array([p.pt for p in self.particle_list])
         self.etas = np.array([p.eta for p in self.particle_list])
         self.phis = np.array([p.phi() for p in self.particle_list])
-        self.es = np.array([p.e for p in self.particle_list])
-        self.pxs = np.array([p.px for p in self.particle_list])
-        self.pys = np.array([p.py for p in self.particle_list])
-        self.pzs = np.array([p.pz for p in self.particle_list])
-        self.ms = np.array([p.m for p in self.particle_list])
-        self.pids = np.array([p.pid for p in self.particle_list])
-        self.sql_keys = np.array([p.sql_key for p in self.particle_list])
-        self.hepmc_barcodes = np.array([p.hepmc_barcode for p in self.particle_list])
-        self.global_ids = np.array([p.global_id for p in self.particle_list])
-        self.is_roots = np.array([p.is_root for p in self.particle_list])
-        self.is_leafs = np.array([p.is_leaf for p in self.particle_list])
-        self.start_vertex_barcodes = np.array([p.start_vertex_barcode for p in self.particle_list])
-        self.end_vertex_barcodes = np.array([p.end_vertex_barcode for p in self.particle_list])
+        for var_type, var_name in zip(self.variable_types, self.indexed_variables):
+            none_value = 0 if var_type is int else (np.nan if var_type is float else None)
+            var_names = var_name + 's'
+            var_val = [getattr(p, var_name, none_value) for p in self.particle_list]
+            var_val = [none_value if v is None else v for v in var_val]
+            var_val = np.array(var_val, dtype=var_type)
+            setattr(self, var_names, var_val)
         self._freeze()
 
     def addParticles(self, *args):
@@ -499,32 +502,14 @@ class ParticleCollection:
                        np.array([p.eta for p in new_particles])))
             self.phis = np.hstack((self.phis,
                        np.array([p.phi() for p in new_particles])))
-            self.es = np.hstack((self.es,
-                       np.array([p.e for p in new_particles])))
-            self.pxs = np.hstack((self.pxs,
-                       np.array([p.px for p in new_particles])))
-            self.pys = np.hstack((self.pys,
-                       np.array([p.py for p in new_particles])))
-            self.pzs = np.hstack((self.pzs,
-                       np.array([p.pz for p in new_particles])))
-            self.ms = np.hstack((self.ms,
-                       np.array([p.m for p in new_particles])))
-            self.pids = np.hstack((self.pids,
-                       np.array([p.pid for p in new_particles])))
-            self.sql_keys = np.hstack((self.sql_keys,
-                       np.array([p.sql_key for p in new_particles])))
-            self.hepmc_barcodes = np.hstack((self.hepmc_barcodes,
-                       np.array([p.hepmc_barcode for p in new_particles])))
-            self.global_ids = np.hstack((self.global_ids,
-                       np.array([p.global_id for p in new_particles])))
-            self.is_roots = np.hstack((self.is_roots,
-                       np.array([p.is_root for p in new_particles])))
-            self.is_leafs = np.hstack((self.is_leafs,
-                       np.array([p.is_leaf for p in new_particles])))
-            self.start_vertex_barcodes = np.hstack((self.start_vertex_barcodes,
-                       np.array([p.start_vertex_barcode for p in new_particles])))
-            self.end_vertex_barcodes = np.hstack((self.end_vertex_barcodes,
-                       np.array([p.end_vertex_barcode for p in new_particles])))
+        for var_type, var_name in zip(self.variable_types, self.indexed_variables):
+            none_value = 0 if var_type is int else (np.nan if var_type is float else None)
+            var_names = var_name + 's'
+            old_vals = getattr(self, var_names)
+            new_vals = [getattr(p, var_name, none_value) for p in new_particles]
+            new_vals = [none_value if v is None else v for v in new_vals]
+            new_vals = np.array(new_vals, dtype=var_type)
+            setattr(self, var_names, np.hstack((old_vals, new_vals)))
         self._freeze()
 
     def __getitem__(self, idx):
@@ -545,13 +530,96 @@ class ParticleCollection:
         return f"<{self.name}, {len(self)} particles>"
 
     def __repr__(self):
-        return f"<{self.name}, {self.global_ids}>"
+        lines = ['# ' + self.name]
+        for particle in self.particle_list:
+            lines.append(repr(particle))
+        return '\n'.join(lines)
 
     def collective_pt(self):
         return np.sum(self.pts)
 
     def collective_eta(self):
         raise NotImplementedError #TODO - also any other collective properties
+
+    def write(self, file_name):
+        with open(file_name, 'w') as save_file:
+            save_file.write(self.__repr__())
+
+    @classmethod
+    def from_repr(cls, repr_str):
+        lines = repr_str.split('\n')
+        name = lines[0][2:-1]
+        particle_list = [MCParticle.from_repr(line[:-1])
+                         for line in lines[1:]]
+        return cls(*particle_list, name=name)
+
+    @classmethod
+    def from_file(cls, file_name):
+        with open(file_name, 'r') as save_file:
+            repr_str = save_file.read()
+        return cls.from_repr(repr_str)
+
+
+class MCParticleCollection(ParticleCollection):
+    """Holds a group of particles together
+    and facilitates quick indexing of pt, eta, phi, e
+    A flat list, more complex forms are acheved by indexing the collection externally"""
+    indexed_variables = MCParticle.repr_variables + ['m']
+    variable_types = MCParticle.repr_variable_types + [float]
+
+
+class RecoParticleCollection(ParticleCollection):
+    """Holds a group of particles together
+    and facilitates quick indexing of pt, eta, phi, e
+    A flat list, more complex forms are acheved by indexing the collection externally"""
+    indexed_variables = RecoParticle.repr_variables + ['m']
+    variable_types = RecoParticle.repr_variable_types + [float]
+
+
+class MultiParticleCollections:
+    def __init__(self, particle_lists):
+        # figure out what kind of particles
+        if isinstance(next(pl for pl in particle_lists if len(pl))[0], MCParticle):
+            self.collections_list = [MCParticleCollection(*p_list)
+                                     for p_list in particle_lists]
+        else:
+            self.collections_list = [ParticleCollection(*p_list)
+                                     for p_list in particle_lists]
+    
+    def __getitem__(self, idx):
+        if isinstance(idx, (int, slice)):
+            return self.collections_list[idx]
+        return self.collections_list[idx[0]][idx[1:]]
+
+    def __repr__(self):
+        components = [repr(p_collection) for p_collection in self.collections_list]
+        cumulative_lines = []
+        size = 0
+        for block in components:
+            size += block.count('\n') + 1
+            cumulative_lines.append(size)
+        components = ['# ' + ' '.join(cumulative_lines)] + components
+        return '\n'.join(components)
+
+    def write(self, file_name):
+        with open(file_name, 'w') as save_file:
+            save_file.write(self.__repr__())
+
+    @classmethod
+    def from_repr(cls, repr_str):
+        lines = repr_str.split('\n')
+        cumulative_lines = [int(x) for x in lines[0].split(' ')[1:]]
+        by_collection = np.split(np.array(lines[1:]), cumulative_lines)
+        collections = [MCParticleCollection.from_repr('\n'.join(coll))
+                       for coll in by_collection]
+        particle_lists = [col.particle_list for col in collections]
+        return cls(*particle_lists)
+
+    @classmethod
+    def from_file(cls, file_name):
+        with open(file_name, 'r') as save_file:
+            repr_str = save_file.read()
+        return cls.from_repr(repr_str)
 
 
 class Observables:
@@ -617,7 +685,7 @@ class Observables:
         else:
             event_str = str(event_num)
         file_name = os.path.join(dir_name, f"observables{event_str}.dat")
-        summary_file_name = os.path.join(dir_name, "summary_observables{event_str}.csv")
+        summary_file_name = os.path.join(dir_name, f"summary_observables{event_str}.csv")
         # remove a summary file if it exists
         with contextlib.suppress(FileNotFoundError):
             os.remove(summary_file_name)
@@ -635,7 +703,7 @@ class Observables:
         # write the objects
         with open(file_name, 'w') as obj_file:
             # some headers
-            obj_file.writelines([MyParticle.repr_format + '\n',
+            obj_file.writelines([MCParticle.repr_format + '\n',
                                  MyTrack.repr_format + '\n',
                                  MyTower.repr_format + '\n'])
             # content
@@ -668,7 +736,10 @@ class Observables:
             event_str = ''
         else:
             event_str = str(event_num)
-        file_name = os.path.join(dir_name, f"observables{event_num}.dat")
+        if event_num is None:
+            file_name = os.path.join(dir_name, f"observables.dat")
+        else:
+            file_name = os.path.join(dir_name, f"observables{event_num}.dat")
         particles = []
         tracks = []
         towers = []
@@ -678,8 +749,8 @@ class Observables:
                 next(obj_file)
             for line in obj_file:
                 line = line[:-1]  # kill the newline
-                if line.startswith("MyParticle"):
-                    particles.append(MyParticle.from_repr(line))
+                if line.startswith("MCParticle"):
+                    particles.append(MCParticle.from_repr(line))
                 elif line.startswith("MyTrack"):
                     tracks.append(MyTrack.from_repr(line))
                 elif line.startswith("MyTower"):
@@ -687,7 +758,7 @@ class Observables:
         if len(tracks) + len(towers) > 0:
             return cls(tracks=tracks, towers=towers, event_num=event_num)
         else:
-            particles = ParticleCollection(*particles)
+            particles = MCParticleCollection(*particles)
             return cls(particle_collection=particles, event_num=event_num)
 
 
@@ -695,10 +766,10 @@ def make_observables(pts, etas, phis, es, dir_name="./tmp"):
     num_obs = len(pts)
     particle_list = []
     for i in range(num_obs):
-        particle = MyParticle(global_id=i, pt=pts[i], eta=etas[i], phi=phis[i], e=es[i],
+        particle = MCParticle(global_id=i, pt=pts[i], eta=etas[i], phi=phis[i], e=es[i],
                               is_leaf=True)
         particle_list.append(particle)
-    collection = ParticleCollection(*particle_list)
+    collection = MCParticleCollection(*particle_list)
     observables = Observables(collection)
     observables.write(dir_name)
     return observables

@@ -97,7 +97,7 @@ def read_tracks_towers(particle_collection, database_name, event_n):
     event_condition = f"EVENT = {event_n}"
     # get the sql keys and check the pids match
     particle_data = read_selected(database_name, ['ID', 'MCPID'], "GenParticles", where=event_condition)
-    assert len(particle_data) == len(particle_collection), "Difernet number of particles in .db and .hepc"
+    assert len(particle_data) == len(particle_collection), f"Difernet number of particles in .db ({len(particle_data)} and .hepmc ({len(particle_collection)})."
     sql_pids = np.array([int(line[1]) for line in particle_data], dtype=int)
     np.testing.assert_array_equal(sql_pids, particle_collection.pids, 
                                   "Particle pids dont match")
@@ -161,7 +161,7 @@ def read_tracks_towers(particle_collection, database_name, event_n):
     tower_id = 0
     for line in tower_data:
         tkey = int(line[0])
-        pkeys = [link[1] for link in link_data if link[0]==tkey]
+        pkeys = [link[1] for link in link_data if link[0] == tkey]
         p_idxs = np.where(np.isin(particle_collection.sql_keys, pkeys))[0]
         particles = [particle_collection.particle_list[i] for i in p_idxs]
         tower = Components.MyTower(global_tower_id=tower_id,

@@ -1,10 +1,12 @@
 """ Module to run the linking NN """
 import os
+import threading
 from tree_tagger import LinkingNN, LinkingEvaluation, RunTools, InputTools
+from matplotlib import pyplot as plt
 
 
 def main():
-    tst_dir = "./tst"
+    tst_dir = "./big_ds"
     in_tst = os.listdir(tst_dir)
     runs_in_tst = sorted([name for name in in_tst
                           if name.startswith("run") and name.endswith(".txt")],
@@ -16,9 +18,17 @@ def main():
         user_choice = default
     dir_name, file_name = os.path.split(user_choice)
     file_base = file_name.split('.', 1)[0]
-    run = RunTools.Run(dir_name, file_base, True)
-    viewer = LinkingEvaluation.view_progress
-    LinkingNN.begin_training(run, viewer)
+    run = RunTools.Run(dir_name, file_base, True, True)
+    training_thread = threading.Thread(target=LinkingNN.begin_training, args=(run, ))
+    training_thread.start()
+    live_plot = RunTools.Liveplot(run)
+    #viewer = LinkingEvaluation.view_progress
+    plt.clf()
+    output = LinkingEvaluation.apply_linking_net(run)
+    LinkingEvaluation.plot_distances(output)
+    plt.show()
+    input("What do you think")
+    
 
 if __name__ == '__main__':
     main()

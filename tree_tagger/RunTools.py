@@ -11,6 +11,8 @@ from ipdb import set_trace as st
 import torch
 import numpy as np
 from tree_tagger import Constants, Datasets, LinkingNN
+from matplotlib import pyplot as plt
+import matplotlib.animation
 
 
 def remove_file_extention(path):
@@ -85,7 +87,9 @@ class Run:
                     "lowest_loss" : None,
                     "notes"       : ""}
                           
-    def __init__(self, folder_name, run_name, accept_empty=False):
+    def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
+        self.writing = writing
+        self.written = False  # flip to true after first write
         self.folder_name = folder_name
         self.base_name = os.path.join(folder_name, run_name)
         self.progress_file_name = self.base_name + ".txt"
@@ -101,6 +105,7 @@ class Run:
             except StopIteration:
                 if accept_empty:
                     self.empty_run = True
+                    self.table = np.empty(0)  # generate an empty table for now
                 else:
                     # not a full run
                     raise ValueError
@@ -273,7 +278,7 @@ class Run:
         # we can only set column headdings if there arnt ay already
         assert not hasattr(self, 'column_headings'), "Column headdings already set!"
         # there should definetly be column headdings before data in the table
-        assert not hasattr(self, 'table'), "Data in table before column headdings chosen!"
+        assert not hasattr(self, 'table') or len(self.table)==0, "Data in table before column headdings chosen!"
         self.__column_headings = column_headings
         self.table = np.array([]).reshape((0, len(self.column_headings)))
 
@@ -281,6 +286,13 @@ class Run:
         # the line to append must have a value for every column
         assert len(line) == len(self.column_headings), "tried to append values not equal to number of columns"
         self.table = np.vstack((self.table, line))
+        if self.writing:
+            if self.written:  # then jsut update
+                with open(self.progress_file_name, 'a') as pf:
+                    writer = csv.writer(pf, delimiter=' ')
+                    writer.writerow(line)
+            else:  # then create the write
+                self.write(with_nets=False)
 
 
     def process_info_line(self, info_line):
@@ -316,7 +328,7 @@ class Run:
         _, _, auc = calculate_roc(self, self.settings['data_folder'])
         self.settings['auc'] = auc
 
-    def write(self):
+    def write(self, with_nets=True):
         # just clear the file and start from scratch
         with open(self.progress_file_name, 'w') as pf:
             writer = csv.writer(pf, delimiter=' ')
@@ -324,14 +336,16 @@ class Run:
             writer.writerow(self.column_headings)
             for row in self.table:
                 writer.writerow(row)
-        # save the best and last nets, they should exist by now
-        for net, file_name in zip(self.__best_net_state_dicts, self.best_net_files):
-            torch.save(net, file_name)
-        try:
-            for net, file_name in zip(self.__last_net_state_dicts, self.last_net_files):
+        if with_nets:
+            # save the best and last nets, they should exist by now
+            for net, file_name in zip(self.__best_net_state_dicts, self.best_net_files):
                 torch.save(net, file_name)
-        except AttributeError:
-            print("Didn't find a last_net")
+            try:
+                for net, file_name in zip(self.__last_net_state_dicts, self.last_net_files):
+                    torch.save(net, file_name)
+            except AttributeError:
+                print("Didn't find a last_net")
+        self.written = True
 
     @property
     def best_nets(self):
@@ -364,6 +378,69 @@ class Run:
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):
     raise NotImplementedError
+
+
+plt.ion()
+
+class Liveplot:
+    def __init__(self, run):
+        self.run = run
+        data = []
+        end_time = self.run.settings['time'] + time.time() + 10
+        self.xmin, self.xmax = time.time(), end_time
+        self.on_launch()
+        while time.time() < end_time and os.path.exists("continue"):
+            time.sleep(0.1)
+            line_data = self._try_line()
+            if line_data:
+                data.append(line_data)
+                self._update(data)
+
+    def on_launch(self):
+        # wait for the run to be assigned column headdings
+        while not self.run.written:
+            time.sleep(0.5)
+        # set up plots
+        self.figure, self.ax_array = plt.subplots(4, 1, sharex=True)
+        self.time_stamps_idx = self.run.column_headings.index("time_stamps")
+        plot_cols = ["training_loss", "validation_loss", "test_loss", "mag_weights"]
+        self.plot_idx = [self.run.column_headings.index(name) for name in plot_cols]
+        self.lines = []
+        for i, ax in enumerate(self.ax_array):
+            ax.set_ylabel(plot_cols[i])
+            self.lines.append(ax.plot([], [])[0])
+            #Autoscale on unknown axis and known lims on the other
+            ax.set_autoscaley_on(True)
+            ax.set_xlim(self.xmin, self.xmax)
+        self.ax_array[-1].set_xlabel("time_steps")
+        file_name = self.run.progress_file_name
+        # open the file
+        self.inp_file = open(file_name)
+        # first line is settings
+        self.inp_file.readline()
+        # second line is column headdings
+        self.inp_file.readline()
+
+    def _update(self, data):
+        # update the plot
+        time_stamps = [d[self.time_stamps_idx] for d in data]
+        for line, idx in zip(self.lines, self.plot_idx):
+            values = [d[idx] for d in data]
+            line.set_data(time_stamps, values)
+        plt.draw()
+        for ax in self.ax_array:
+            #Need both of these in order to rescale
+            ax.relim()
+            ax.autoscale_view()
+        #We need to draw *and* flush
+        self.figure.canvas.draw()
+        self.figure.canvas.flush_events()
+
+    def _try_line(self):
+        line = self.inp_file.readline()
+        if line:
+            data = [float(x) for x in line.split(' ')]
+            return data
 
 if __name__ == '__main__':
     pass
