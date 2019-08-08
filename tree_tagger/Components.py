@@ -5,7 +5,7 @@ import os
 from ipdb import set_trace as st
 import numpy as np
 from skhep import math as hepmath
-from tree_tagger import Constants
+from tree_tagger import Constants, PDGNames
 
 
 def safe_convert(cls, string):
@@ -102,18 +102,18 @@ class MyParticle(SafeLorentz):
                 self.setptetaphie(pt, eta, phi, 0.)
 
     def __repr__(self):
-        body_contents = [self.__getattribute__(name) for name in self.repr_variables]
+        body_contents = [getattr(self, name) for name in self.repr_variables]
         body = self.variable_sep.join([repr(x) for x in body_contents])
         mothers = self.variable_sep.join([repr(m) for m in self.mother_ids])
         daughters = self.variable_sep.join([repr(m) for m in self.daughter_ids])
-        rep = self.components_sep.join([MCParticle.__name__, body, mothers, daughters])
+        rep = self.components_sep.join([type(self).__name__, body, mothers, daughters])
         return rep
 
     repr_variables = ["generated_mass", "px", "py", "pz", "e"]
     repr_variable_types = [float, float, float, float, float]
     variable_sep = ','
     repr_body = variable_sep.join(repr_variables)
-    repr_components = ["MCParticle", repr_body, 'mothers', 'daughters']
+    repr_components = ["MyParticle", repr_body, 'mothers', 'daughters']
     components_sep = '|'
     repr_format = components_sep.join(repr_components)
 
@@ -141,12 +141,22 @@ class RecoParticle(MyParticle):
         super().__init__(*args, **kwargs)
 
     repr_variables = ["reco_particle_id", "generated_mass", "charge", "px", "py", "pz", "e"]
-    repr_variable_types = [int, float, int, float, float, float, float]
+    repr_variable_types = [int, float, float, float, float, float, float]
     variable_sep = ','
     repr_body = variable_sep.join(repr_variables)
-    repr_components = ["MCParticle", repr_body, 'mothers', 'daughters']
+    repr_components = ["RecoParticle", repr_body, 'mothers', 'daughters']
     components_sep = '|'
     repr_format = components_sep.join(repr_components)
+
+    @classmethod
+    def from_MC(cls, mcparticle, reco_particle_id, charge_map=None):
+        common_variables = set(cls.repr_variables).intersection(MCParticle.repr_variables)
+        kwargs = {name: getattr(mcparticle, name) for name in common_variables}
+        kwargs["reco_particle_id"] = reco_particle_id
+        if not charge_map:
+            charge_map = PDGNames.Identities().charges
+        kwargs["charge"] = charge_map[mcparticle.pid]
+        return cls(**kwargs)
 
 
 class MCParticle(MyParticle):
@@ -439,12 +449,13 @@ class MyTrack(SafeLorentz):
 
 class ParticleCollection:
     """Holds a group of particles together"""
+    particle_type = MyParticle
     indexed_variables = MyParticle.repr_variables
     variable_types = MyParticle.repr_variable_types
     # prevent messing with the particles directly
     __is_frozen = False
     def __setattr__(self, key, value):
-        if key == '_MCParticleCollection__is_frozen' or not self.__is_frozen:
+        if '__is_frozen' in key or not self.__is_frozen:
             super().__setattr__(key, value)
         else:
             raise TypeError("Do not set the attributes directly, " +
@@ -459,6 +470,7 @@ class ParticleCollection:
 
     def __init__(self, *args, **kwargs):
         self.name = kwargs.get("name", "ParticleCollection")
+        self.particle_type = kwargs.get("particle_type", MyParticle)
         self._ptetaphie = np.empty((0, 4), dtype=float)
         self.columns = ["$p_T$", "$\\eta$", "$\\phi$", "$E$"]
         self.pts = np.array([], dtype=float)
@@ -548,8 +560,8 @@ class ParticleCollection:
     @classmethod
     def from_repr(cls, repr_str):
         lines = repr_str.split('\n')
-        name = lines[0][2:-1]
-        particle_list = [MCParticle.from_repr(line[:-1])
+        name = lines[0][2:]
+        particle_list = [cls.particle_type.from_repr(line)
                          for line in lines[1:]]
         return cls(*particle_list, name=name)
 
@@ -564,6 +576,7 @@ class MCParticleCollection(ParticleCollection):
     """Holds a group of particles together
     and facilitates quick indexing of pt, eta, phi, e
     A flat list, more complex forms are acheved by indexing the collection externally"""
+    particle_type = MCParticle
     indexed_variables = MCParticle.repr_variables + ['m']
     variable_types = MCParticle.repr_variable_types + [float]
 
@@ -572,6 +585,7 @@ class RecoParticleCollection(ParticleCollection):
     """Holds a group of particles together
     and facilitates quick indexing of pt, eta, phi, e
     A flat list, more complex forms are acheved by indexing the collection externally"""
+    particle_type = RecoParticle
     indexed_variables = RecoParticle.repr_variables + ['m']
     variable_types = RecoParticle.repr_variable_types + [float]
 
@@ -653,7 +667,10 @@ class Observables:
                     self.global_to_obs[global_id] = obs_id
                 obs_id += 1
         elif particle_collection is not None:
-            self.objects = [p for p in particle_collection.particle_list if p.is_leaf]
+            if isinstance(particle_collection, MCParticleCollection):
+                self.objects = [p for p in particle_collection.particle_list if p.is_leaf]
+            else:
+                self.objects = [p for p in particle_collection.particle_list]
             self.pts = np.array([p.pt for p in self.objects])
             # fill maps
             obs_id = 0
@@ -683,7 +700,7 @@ class Observables:
         if self.event_num is None:
             event_str = ''
         else:
-            event_str = str(event_num)
+            event_str = str(self.event_num)
         file_name = os.path.join(dir_name, f"observables{event_str}.dat")
         summary_file_name = os.path.join(dir_name, f"summary_observables{event_str}.csv")
         # remove a summary file if it exists
@@ -773,7 +790,7 @@ def make_observables(pts, etas, phis, es, dir_name="./tmp"):
     observables = Observables(collection)
     observables.write(dir_name)
     return observables
-    
+   
 # probably wont use
 class CollectionStructure:
     def __init__(self, collection, structure=None, shape=None):

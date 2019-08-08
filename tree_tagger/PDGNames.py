@@ -48,7 +48,15 @@ class Identities:
         if attr[:-1] in self.particle_attributes:
             required_cols = [self.columns["id"], self.columns[attr[:-1]]]
             return {pid: val for pid, val in self.particle_data[:, required_cols]}
-        return None
+        raise AttributeError
+
+    @property
+    def charges(self):
+        charge_types = self.chargeTypes
+        part_charges = {i: charge_type/3 for i, charge_type in charge_types.items()}
+        anti_charges = {-i: -charge_type/3 for i, charge_type in charge_types.items()}
+        return {**part_charges, **anti_charges}
+
 
     def __getitem__(self, idx):
         antiparticle = idx < 0
