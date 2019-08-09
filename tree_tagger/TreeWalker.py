@@ -10,20 +10,25 @@ from ipdb import set_trace as st
 from skhep import math as hepmath
 import os
 import csv
+import torch
 
 class TreeWalker:
     def __init__(self, jet, node_id):
         self.jet = jet
         self.id = node_id
-        psudojet_ids = [ints[jet.psudojet_id_col] for ints in jet._ints]
+        #psudojet_ids = [ints[jet.psudojet_id_col] for ints in jet._ints]
+        psudojet_ids = jet.global_jet_ids
         node_index = psudojet_ids.index(node_id)
-        self.global_obs_id = jet._ints[node_index][jet.obs_id_col]
+        # self.global_obs_id = jet._ints[node_index][jet.obs_id_col]
+        self.global_obs_id = jet.global_obs_ids[node_index]
         self.left_id = jet._ints[node_index][jet.daughter1_col]
         self.right_id = jet._ints[node_index][jet.daughter2_col]
         self.label = jet.distances
         self.is_leaf = (self.left_id not in psudojet_ids) and (self.right_id not in psudojet_ids)
         self.leaf = [jet._floats[node_index][i] for i in
                       [jet.pt_col, jet.rap_col, jet.phi_col, jet.energy_col]]
+        # this si the variabel offered to the nn
+        self.leaf_val = torch.DoubleTensor(self.leaf)
         self.pt = self.leaf[0]
         self.rap = self.leaf[1]
         self.phi = self.leaf[2]
@@ -33,14 +38,18 @@ class TreeWalker:
         blue = (0.1, 0.5, 0.85, 1.)
         self.colour = green if self.is_leaf else blue
         self._decendants = None
+        # changing to holding the whole tree inn memory
+        if not self.is_leaf:
+            self.left = TreeWalker(self.jet, self.left_id)
+            self.right = TreeWalker(self.jet, self.right_id)
 
-    @property
-    def left(self):
-        return TreeWalker(self.jet, self.left_id)
-
-    @property
-    def right(self):
-        return TreeWalker(self.jet, self.right_id)
+#    @property
+#    def left(self):
+#        return TreeWalker(self.jet, self.left_id)
+#
+#    @property
+#    def right(self):
+#        return TreeWalker(self.jet, self.right_id)
 
     @property
     def decendants(self):

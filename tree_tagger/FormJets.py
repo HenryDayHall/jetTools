@@ -20,6 +20,7 @@ class PsudoJets:
             if isinstance(self._ints, np.ndarray):
                 self._ints = self._ints.tolist()
                 self._floats = self._floats.tolist()
+            self.root_psudojetIDs = kwargs.get('root_psudojetIDs', None)
         else:
             assert observables is not None, "Must give observables or floats and ints"
             self._ints = [[i, oid, -1, -1, -1, -1] for i, oid in enumerate(observables.global_obs_ids)]
@@ -28,12 +29,12 @@ class PsudoJets:
                                       observables.phis.reshape((-1, 1)),
                                       observables.es.reshape((-1, 1)),
                                       np.zeros((len(observables), 1)))).tolist()
+            # as we go note the root notes of the psudojets
+            self.root_psudojetIDs = []
         # keep track of how many clusters don't yet have a mother
         self._calculate_currently_avalible()
         self._distances = None
         self._calculate_distances()
-        # as we go note the root notes of the psudojets
-        self.root_psudojetIDs = []
 
     def _set_column_numbers(self):
         # int columns
@@ -115,6 +116,68 @@ class PsudoJets:
     @property
     def mothers(self):
         return np.array([ints[self.mother_col] for ints in self._ints])
+
+    @classmethod
+    def multi_write(cls, file_name, pseudojets):
+        """Save a handful of jets together """
+        # witin ach event the global ids will be unique but not between events
+        # so they must be splitabel without information from ids
+        num_pseudojets = len(pseudojets)
+        reached = 0
+        cumulative_length = np.empty(num_pseudojets, dtype=int)
+        ints = []
+        floats = []
+        deltaRs = np.empty(num_pseudojets)
+        exponent_multis = np.empty(num_pseudojets)
+        root_reached = 0
+        cumulative_root_length = np.empty(num_pseudojets, dtype=int)
+        roots = []
+        for i, jet in enumerate(pseudojets):
+            reached += len(jet)
+            cumulative_length[i] = reached
+            ints.append(jet._ints)
+            floats.append(jet.floats)
+            deltaRs[i] = jet.deltaR
+            exponent_multis[i] = jet.exponent_multiplyer
+            root_reached += len(jet.root_psudojetIDs)
+            cumulative_root_length[i] = root_reached
+            roots += jet.root_psudojetIDs
+        assert len(roots) == cumulative_root_length[-1]
+        np.savez(file_name,
+                 cumulative_length=cumulative_length,
+                 ints=np.vstack(ints),
+                 floats=np.vstack(floats),
+                 deltaRs=np.array(deltaRs),
+                 exponent_multipliers=exponent_multis,
+                 cumulative_root_length=cumulative_root_length,
+                 root_psudojetIDs=np.array(roots))
+
+    @classmethod
+    def multi_from_file(cls, file_name):
+        """ read a handful of jets from file """
+        # could write a version that just read one jet if needed
+        data = np.load(file_name)
+        cumulative_length = data['cumulative_length']
+        ints = data['ints']
+        floats = data['floats']
+        deltaRs = data['deltaRs']
+        exponent_multis = data['exponent_multipliers']
+        cumulative_root_length = data['cumulative_root_length']
+        roots = data['root_psudojetIDs']
+        jets = []
+        nodes_start, roots_start = 0, 0
+        for i, (nodes_end, roots_end) in enumerate(zip(cumulative_length,
+                                                           cumulative_root_length)):
+            new_jet = cls(deltaR=deltaRs[i],
+                          exponent_multiplier=exponent_multis[i],
+                          ints=ints[nodes_start:nodes_end],
+                          floats=floats[nodes_start:nodes_end],
+                          root_psudojetIDs=roots[roots_start:roots_end])
+            jets.append(new_jet)
+            nodes_start = nodes_end
+            roots_start = roots_end
+        return jets
+
 
     def write(self, dir_name, note="No note given."):
         note.replace('|', '!')  # because | will be used as a seperator
@@ -206,7 +269,6 @@ class PsudoJets:
         new_psudojet.currently_avalible = 0
         new_psudojet._calculate_roots()
         return new_psudojet
-
 
     def split(self):
         assert self.currently_avalible == 0, "Need to assign_mothers before splitting"
