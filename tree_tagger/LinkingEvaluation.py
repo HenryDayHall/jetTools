@@ -55,7 +55,11 @@ def get_distance_to_neighbor(output_events):
     return match_status, match_distance, true_distance
 
 
-def plot_distances(output_events):
+def plot_distances(output_events, ax=None):
+    if ax is None:
+        _, ax = plt.subplots()
+    else:
+        ax.clear()
     match_status, match_distance, true_distance = get_distance_to_neighbor(output_events)
     if np.all(np.isnan(match_distance)) and np.all(np.isnan(true_distance)):
         raise ValueError("match_disance and true_distance all nan")
@@ -76,22 +80,44 @@ def plot_distances(output_events):
     hist_type = 'step'
     true_hist_type = 'bar'
     distance_range = [0, max(np.nanmax(match_distance), np.nanmax(true_distance))]
-    plt.hist(true_distance, n_bins, distance_range, histtype=true_hist_type, color='gray',
-             label=f"distance to correct tower ({num_true})")
-    plt.hist(correct_distance, n_bins, distance_range, histtype=hist_type, color='green',
-             label=f"{num_corr} correct matches") 
-    plt.hist(incorrect_distance, n_bins, distance_range, histtype=hist_type, color='red',
-             label=f"{num_inc} incorrect matches") 
-    plt.hist(no_tower_distance, n_bins, distance_range, histtype=hist_type, color='blue',
+    ax.hist(true_distance, n_bins, distance_range, histtype=true_hist_type, color='gray',
+            label=f"distance to correct tower ({num_true})")
+    ax.hist(correct_distance, n_bins, distance_range, histtype=hist_type, color='green',
+            label=f"{num_corr} correct matches") 
+    ax.hist(incorrect_distance, n_bins, distance_range, histtype=hist_type, color='red',
+            label=f"{num_inc} incorrect matches") 
+    ax.hist(no_tower_distance, n_bins, distance_range, histtype=hist_type, color='blue',
              label=f"{num_no} no real match") 
 
     # label
-    plt.legend()
-    plt.title("Euclidean seperation between projections of tracks and towers")
-    plt.xlabel("Seperation in latent space")
-    plt.ylabel(f"Frequency from {total} tracks")
+    ax.legend()
+    ax.set_title("Euclidean seperation between projections of tracks and towers")
+    ax.set_xlabel("Seperation in latent space")
+    ax.set_ylabel(f"Frequency from {total} tracks")
     
-def view_progress(run, nets):
+def view_progress(run, nets, ax=None):
     output = apply_linking_net(run, nets=nets)
-    plot_distances(output)
+    plot_distances(output, ax=None)
     plt.show()
+
+class ResponsePlot:
+    def __init__(self, run):
+        self.run = run
+        data = []
+        self.on_launch()
+
+    def on_launch(self):
+        # set up plots
+        self.figure, self.ax = plt.subplots()
+
+    def update(self, _, nets):
+        output = apply_linking_net(self.run, nets=nets)
+        # update the plot
+        plot_distances(output, self.ax)
+        #Need both of these in order to rescale
+        self.ax.relim()
+        self.ax.autoscale_view()
+        #We need to draw *and* flush
+        self.figure.canvas.draw()
+        self.figure.canvas.flush_events()
+

@@ -1,5 +1,6 @@
 """tools for training the NN """
 from ipdb import set_trace as st
+import os
 import numpy as np
 import pickle
 import time
@@ -57,7 +58,7 @@ def single_pass(nets, run, dataloader, validation_events, test_events, device, t
     return epoch_reached
 
 
-def train(nets, run, dataloader, dataset, validation_sampler, device, train_losser, test_losser, optimiser, end_time, dataset_inv_size, val_schedulers, viewer=None):
+def train(nets, run, dataloader, dataset, validation_sampler, device, train_losser, batch_losser, test_losser, optimiser, end_time, dataset_inv_size, val_schedulers, viewer=None):
     weight_decay = run.settings['weight_decay']
     sampler = dataloader.batch_sampler
     val_i = validation_sampler.validation_indices
@@ -67,7 +68,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
     run.column_headings = ["time_stamps", "training_loss", "validation_loss", "test_loss", "mag_weights", "batch_size", "learning_rates", "weight_decay"]
     # Start working through the training epochs
     weight_decay = optimiser.param_groups[0]['weight_decay']
-    epoch_reached = single_pass(nets, run, dataloader, validation_events, test_events, device, criterion, validation_losser, test_losser, weight_decay)
+    epoch_reached = single_pass(nets, run, dataloader, validation_events, test_events, device, train_losser, validation_losser, test_losser, weight_decay)
     last_time = time.time()
     while last_time < end_time and os.path.exists("continue"):
         for net in nets:
@@ -80,7 +81,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
             # reset the optimiser
             optimiser.zero_grad()  # zero the gradient buffer
             # forward pass
-            loss = batch_forward(sample_batched, nets, criterion, device)
+            loss = batch_losser(sample_batched, nets, device, train_losser)
             # backwards pass
             loss.backward()
             sum_loss += loss.item()

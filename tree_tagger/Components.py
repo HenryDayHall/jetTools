@@ -108,9 +108,9 @@ class MyParticle(SafeLorentz):
         daughters = self.variable_sep.join([repr(m) for m in self.daughter_ids])
         rep = self.components_sep.join([type(self).__name__, body, mothers, daughters])
         return rep
-
-    repr_variables = ["generated_mass", "px", "py", "pz", "e"]
-    repr_variable_types = [float, float, float, float, float]
+    id_name = "id"
+    repr_variables = [id_name, "generated_mass", "px", "py", "pz", "e"]
+    repr_variable_types = [int, float, float, float, float, float]
     variable_sep = ','
     repr_body = variable_sep.join(repr_variables)
     repr_components = ["MyParticle", repr_body, 'mothers', 'daughters']
@@ -139,8 +139,9 @@ class RecoParticle(MyParticle):
         self.reco_particle_id = reco_particle_id
         self.charge = kwargs.get('charge', None)
         super().__init__(*args, **kwargs)
-
-    repr_variables = ["reco_particle_id", "generated_mass", "charge", "px", "py", "pz", "e"]
+    
+    id_name = "reco_particle_id"
+    repr_variables = [id_name, "generated_mass", "charge", "px", "py", "pz", "e"]
     repr_variable_types = [int, float, float, float, float, float, float]
     variable_sep = ','
     repr_body = variable_sep.join(repr_variables)
@@ -181,7 +182,8 @@ class MCParticle(MyParticle):
     def __str__(self):
         return f"MCParticle[{self.global_id}] pid;{self.pid} energy;{self.e:.2e}"
 
-    repr_variables = ["global_id", "pid", "sql_key", "hepmc_barcode",
+    id_name = "global_id"
+    repr_variables = [id_name, "pid", "sql_key", "hepmc_barcode",
                       "is_root", "is_leaf",
                       "start_vertex_barcode", "end_vertex_barcode",
                       "status", "generated_mass",
@@ -470,7 +472,6 @@ class ParticleCollection:
 
     def __init__(self, *args, **kwargs):
         self.name = kwargs.get("name", "ParticleCollection")
-        self.particle_type = kwargs.get("particle_type", MyParticle)
         self._ptetaphie = np.empty((0, 4), dtype=float)
         self.columns = ["$p_T$", "$\\eta$", "$\\phi$", "$E$"]
         self.pts = np.array([], dtype=float)
@@ -557,6 +558,31 @@ class ParticleCollection:
         with open(file_name, 'w') as save_file:
             save_file.write(self.__repr__())
 
+    def write_summary(self, dir_name):
+        summary_file_name = os.path.join(dir_name, f"summary_observables.csv")
+        # remove a summary file if it exists
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(summary_file_name)
+        # write the summaries
+        summary_cols = [self.particle_type.id_name, "pt",
+                        "eta", "rap", "phi", "e", 
+                        "px", "py", "pz"]
+        summary = np.hstack((getattr(self, self.particle_type.id_name+'s').reshape((-1, 1)),
+                             self.pts.reshape((-1, 1)),
+                             self.etas.reshape((-1, 1)),
+                             np.array([p.rapidity() for p in self.particle_list]).reshape((-1, 1)),
+                             self.phis.reshape((-1, 1)),
+                             np.array([p.e for p in self.particle_list]).reshape((-1, 1)),
+                             np.array([p.px for p in self.particle_list]).reshape((-1, 1)),
+                             np.array([p.py for p in self.particle_list]).reshape((-1, 1)),
+                             np.array([p.pz for p in self.particle_list]).reshape((-1, 1))))
+        if len(summary) > 0:
+            np.savetxt(summary_file_name, summary,
+                       header=' '.join(summary_cols))
+        else:
+            with open(summary_file_name, 'w') as summary_file:
+                summary_file.write('# ' + ' '.join(summary_cols) + '\n')
+
     @classmethod
     def from_repr(cls, repr_str):
         lines = repr_str.split('\n')
@@ -593,8 +619,14 @@ class RecoParticleCollection(ParticleCollection):
 class MultiParticleCollections:
     def __init__(self, particle_lists):
         # figure out what kind of particles
-        if isinstance(next(pl for pl in particle_lists if len(pl))[0], MCParticle):
+        first_object = next(pl for pl in particle_lists if len(pl))
+        if issubclass(type(first_object), ParticleCollection):
+            self.collections_list = particle_lists
+        elif isinstance(first_object[0], MCParticle):
             self.collections_list = [MCParticleCollection(*p_list)
+                                     for p_list in particle_lists]
+        elif isinstance(first_object[0], RecoParticle):
+            self.collections_list = [RecoParticleCollection(*p_list)
                                      for p_list in particle_lists]
         else:
             self.collections_list = [ParticleCollection(*p_list)
@@ -611,7 +643,7 @@ class MultiParticleCollections:
         size = 0
         for block in components:
             size += block.count('\n') + 1
-            cumulative_lines.append(size)
+            cumulative_lines.append(str(size))
         components = ['# ' + ' '.join(cumulative_lines)] + components
         return '\n'.join(components)
 
@@ -620,20 +652,41 @@ class MultiParticleCollections:
             save_file.write(self.__repr__())
 
     @classmethod
-    def from_repr(cls, repr_str):
+    def from_repr(cls, repr_str, batch_start=None, batch_end=None):
         lines = repr_str.split('\n')
+        # the type can be determined by the name at the start of the line
+        particle_type = lines[-1].split("Particle", 1)[0]
         cumulative_lines = [int(x) for x in lines[0].split(' ')[1:]]
         by_collection = np.split(np.array(lines[1:]), cumulative_lines)
-        collections = [MCParticleCollection.from_repr('\n'.join(coll))
-                       for coll in by_collection]
+        avalible = len(by_collection)
+        if batch_start is None:
+            batch_start = 0
+        elif batch_start > avalible:
+            return  # then return nothing
+        if batch_end is None:
+            batch_end = avalible
+        elif batch_end > avalible:
+            batch_end = avalible
+        by_collection = by_collection[batch_start:batch_end]
+        if particle_type == 'My':
+            collections = [ParticleCollection.from_repr('\n'.join(coll))
+                           for coll in by_collection]
+        elif particle_type == 'MC':
+            collections = [MCParticleCollection.from_repr('\n'.join(coll))
+                           for coll in by_collection]
+        elif particle_type == 'Reco':
+            collections = [RecoParticleCollection.from_repr('\n'.join(coll))
+                           for coll in by_collection]
+        else:
+            raise ValueError(f"Dont recognise particle_type {particle_type}")
         particle_lists = [col.particle_list for col in collections]
-        return cls(*particle_lists)
+        return cls(particle_lists)
 
     @classmethod
-    def from_file(cls, file_name):
+    def from_file(cls, file_name, batch_start=None, batch_end=None):
         with open(file_name, 'r') as save_file:
             repr_str = save_file.read()
-        return cls.from_repr(repr_str)
+        return cls.from_repr(repr_str, batch_start, batch_end)
 
 
 class Observables:
@@ -694,37 +747,11 @@ class Observables:
     def __len__(self):
         return len(self.objects)
 
-    def write(self, dir_name):
-        # make the directory if it dosn't exist
-        os.makedirs(dir_name, exist_ok=True)
-        if self.event_num is None:
-            event_str = ''
-        else:
-            event_str = str(self.event_num)
-        file_name = os.path.join(dir_name, f"observables{event_str}.dat")
+    def write_summary(self, dir_name, event_str):
         summary_file_name = os.path.join(dir_name, f"summary_observables{event_str}.csv")
         # remove a summary file if it exists
         with contextlib.suppress(FileNotFoundError):
             os.remove(summary_file_name)
-        # if there are already obesrvables in that file
-        # move them to a backup
-        if os.path.exists(file_name):
-            backup_format = file_name + ".bk{}"
-            backup_number = 1
-            while os.path.exists(backup_format.format(backup_number)):
-                backup_number += 1
-            print(f"Moving previous observables file to backup number {backup_number}")
-            if backup_number > 3:
-                print("Maybe you should tidy up....")
-            os.rename(file_name, backup_format.format(backup_number))
-        # write the objects
-        with open(file_name, 'w') as obj_file:
-            # some headers
-            obj_file.writelines([MCParticle.repr_format + '\n',
-                                 MyTrack.repr_format + '\n',
-                                 MyTower.repr_format + '\n'])
-            # content
-            obj_file.writelines([repr(obj) + '\n' for obj in self.objects])
         # write the summaries
         summary_cols = ["global_obs_id", "pt",
                         "eta", "rap", "phi", "e", 
@@ -746,6 +773,35 @@ class Observables:
         else:
             with open(summary_file_name, 'w') as summary_file:
                 summary_file.write('# ' + ' '.join(summary_cols) + '\n')
+
+    def write(self, dir_name):
+        # make the directory if it dosn't exist
+        os.makedirs(dir_name, exist_ok=True)
+        if self.event_num is None:
+            event_str = ''
+        else:
+            event_str = str(self.event_num)
+        file_name = os.path.join(dir_name, f"observables{event_str}.dat")
+        # if there are already obesrvables in that file
+        # move them to a backup
+        if os.path.exists(file_name):
+            backup_format = file_name + ".bk{}"
+            backup_number = 1
+            while os.path.exists(backup_format.format(backup_number)):
+                backup_number += 1
+            print(f"Moving previous observables file to backup number {backup_number}")
+            if backup_number > 3:
+                print("Maybe you should tidy up....")
+            os.rename(file_name, backup_format.format(backup_number))
+        # write the objects
+        with open(file_name, 'w') as obj_file:
+            # some headers
+            obj_file.writelines([MCParticle.repr_format + '\n',
+                                 MyTrack.repr_format + '\n',
+                                 MyTower.repr_format + '\n'])
+            # content
+            obj_file.writelines([repr(obj) + '\n' for obj in self.objects])
+        self.write_summary(dir_name, event_str)
 
     @classmethod
     def from_file(cls, dir_name, event_num=None):

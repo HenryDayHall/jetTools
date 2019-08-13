@@ -67,7 +67,7 @@ int _traverse(PseudoJet root,
     int daughter2_id;
 
     int this_id = free_id++;
-    // has form {my_id, global_obs_id, mother_id, daughter1_id, daughter2_id}
+    // has form {my_id, input_id, mother_id, daughter1_id, daughter2_id}
     vector<int> root_ints = {this_id, root.user_index(), mother_id, -1, -1};
     ints.push_back(root_ints);
     vector<double> root_doubles = {root.pt(), root.rap(), root.phi_std(), root.e()};
@@ -142,7 +142,7 @@ static void fj(vector<double>& a, // a = flat vector of observations
     for (unsigned int i = 0; i < a.size(); i += 5) {
         //                               px    py      pz      e
         fastjet::PseudoJet p = PseudoJet(a[i+1], a[i+2], a[i+3], a[i+4]);
-        // this is the global_obs_id
+        // this is the input_id
         p.set_user_index((int) a[i]);
         //std::cout << "Particle " << i/5 << " pt=" << p.pt() << " eta=" << p.eta() << " phi=" << p.phi_std() << " e=" << p.e() << std::endl;
         //n_file << p.px() << sep
@@ -176,9 +176,9 @@ static void fj(vector<double>& a, // a = flat vector of observations
     // Store results
     int free_id = 0;
 
-    if(jets.size() > 0){
-        std::cout << jets[0].exclusive_subdmerge(1) << std::endl;
-    }
+    //if(jets.size() > 0){
+    //    std::cout << jets[0].exclusive_subdmerge(1) << std::endl;
+    //}
 
     for (unsigned int j = 0; j < jets.size(); j++) {
         /*
@@ -250,7 +250,7 @@ int main(int argc, char * argv[]) {
                     << algorithm_name << sep
                     << "Columns;" << sep
                     << "psudojet_id" << sep
-                    << "global_obs_id" << sep
+                    << "input_id" << sep
                     << "mother_id" << sep
                     << "daughter1_id" << sep
                     << "daughter2_id"

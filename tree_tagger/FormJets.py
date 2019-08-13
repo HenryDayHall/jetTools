@@ -4,6 +4,8 @@ import os
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
 from skhep import math as hepmath
+from tree_tagger import Components
+
 
 
 class PsudoJets:
@@ -14,6 +16,7 @@ class PsudoJets:
         # make a table of ints and a table of floats
         # lists not arrays, becuase they will grow
         self._set_column_numbers()
+        self.event_id = kwargs.get('event_id', None)
         if 'ints' in kwargs:
             self._ints = kwargs['ints']
             self._floats = kwargs['floats']
@@ -132,47 +135,78 @@ class PsudoJets:
         root_reached = 0
         cumulative_root_length = np.empty(num_pseudojets, dtype=int)
         roots = []
+        event_ids = np.empty(num_pseudojets, dtype=int)
         for i, jet in enumerate(pseudojets):
             reached += len(jet)
             cumulative_length[i] = reached
-            ints.append(jet._ints)
-            floats.append(jet.floats)
+            ints += jet._ints
+            floats += jet._floats
             deltaRs[i] = jet.deltaR
             exponent_multis[i] = jet.exponent_multiplyer
             root_reached += len(jet.root_psudojetIDs)
             cumulative_root_length[i] = root_reached
             roots += jet.root_psudojetIDs
+            event_ids[i] = jet.event_id
         assert len(roots) == cumulative_root_length[-1]
         np.savez(file_name,
                  cumulative_length=cumulative_length,
-                 ints=np.vstack(ints),
-                 floats=np.vstack(floats),
+                 ints=np.array(ints),
+                 floats=np.array(floats),
                  deltaRs=np.array(deltaRs),
                  exponent_multipliers=exponent_multis,
                  cumulative_root_length=cumulative_root_length,
-                 root_psudojetIDs=np.array(roots))
+                 root_psudojetIDs=np.array(roots),
+                 event_ids=event_ids)
 
+        #TODO finifh implementing batching for TruTag method
     @classmethod
-    def multi_from_file(cls, file_name):
+    def multi_from_file(cls, file_name, batch_start=None, batch_end=None):
         """ read a handful of jets from file """
         # could write a version that just read one jet if needed
         data = np.load(file_name)
         cumulative_length = data['cumulative_length']
-        ints = data['ints']
-        floats = data['floats']
-        deltaRs = data['deltaRs']
-        exponent_multis = data['exponent_multipliers']
+        avalible = len(cumulative_length)
+        if batch_start is None:
+            batch_start = 0
+        elif batch_start > avalible:
+            return  # then return nothing
+        if batch_end is None:
+            batch_end = avalible
+        elif batch_end > avalible:
+            batch_end = avalible
+        if batch_start > 0:
+            line_start = cumulative_length[batch_start-1]
+        else:
+            line_start = 0
+        line_end = cumulative_length[batch_end-1]
+        # shift the cumulatives back to acount for ignored inital events
+        cumulative_length = cumulative_length[batch_start:batch_end] - line_start
+        ints = data['ints'][line_start:line_end]
+        floats = data['floats'][line_start:line_end]
+        deltaRs = data['deltaRs'][batch_start:batch_end]
+        exponent_multis = data['exponent_multipliers'][batch_start:batch_end]
         cumulative_root_length = data['cumulative_root_length']
-        roots = data['root_psudojetIDs']
+        if batch_start > 0:
+            root_start = cumulative_root_length[batch_start-1]
+        else:
+            root_start = 0
+        root_end = cumulative_root_length[batch_end-1]
+        cumulative_root_length = cumulative_root_length[batch_start:batch_end] - root_start
+        roots = data['root_psudojetIDs'][root_start:root_end]
         jets = []
         nodes_start, roots_start = 0, 0
+        event_ids = data['event_ids'][batch_start:batch_end]
+        if None in event_ids:
+            event_ids = [None for _ in cumulative_length]
         for i, (nodes_end, roots_end) in enumerate(zip(cumulative_length,
                                                            cumulative_root_length)):
             new_jet = cls(deltaR=deltaRs[i],
                           exponent_multiplier=exponent_multis[i],
                           ints=ints[nodes_start:nodes_end],
                           floats=floats[nodes_start:nodes_end],
-                          root_psudojetIDs=roots[roots_start:roots_end])
+                          root_psudojetIDs=roots[roots_start:roots_end],
+                          event_id=event_ids[i])
+            new_jet.currently_avalible = 0  # assumed since we are reading from file
             jets.append(new_jet)
             nodes_start = nodes_end
             roots_start = roots_end
@@ -204,6 +238,7 @@ class PsudoJets:
                    header=float_header)
 
     def _calculate_roots(self):
+        self.root_psudojetIDs = []
         # should only bee needed for reading from file
         assert self.currently_avalible == 0, "Assign mothers before you calculate roots"
         psudojet_ids = [ints[self.psudojet_id_col] for ints in self._ints]
@@ -275,6 +310,8 @@ class PsudoJets:
         self.grouped_psudojets = [self.get_decendants(lastOnly=False, psudojetID=psudojetID)
                                   for psudojetID in self.root_psudojetIDs]
         self.JetList = []
+        # ensure the split has the same order every time
+        self.root_psudojetIDs = sorted(self.root_psudojetIDs)
         for root in self.root_psudojetIDs:
             group = self.get_decendants(lastOnly=False, psudojetID=root)
             group_idx = [self.idx_from_ID(ID) for ID in group]
@@ -518,7 +555,7 @@ class PsudoJets:
         return len(self._ints)
 
 
-def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False):
+def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False, event_number=None):
     if exponent_multiplyer == -1:
         # antikt algorithm
         algorithm_num = 1
@@ -537,8 +574,28 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False):
         return fastjets, out
     subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)])
     fastjets = PsudoJets.read(dir_name, fastjet_format=True)
+    fastjets.event_id = event_number
     return fastjets
 
+
+def fastjet_multiapply(dir_name, multi_name, deltaR, exponent_multiplyer):
+    multi_col = Components.MultiParticleCollections.from_file(multi_name)
+    fastjets_by_event = []
+    for event_number, particle_col in enumerate(multi_col.collections_list):
+        if event_number % 100 == 0:
+            print(event_number, end=' ', flush=True)
+        particle_col.write_summary(dir_name)
+        fastjets = run_FastJet(dir_name, deltaR, exponent_multiplyer, event_number=event_number)
+        fastjets_by_event.append(fastjets)
+    try:
+        os.remove(os.path.join(dir_name, 'summary_observables.csv'))
+        multi_write_name = multi_name.split('.', 1)[0] + '_fastjets.npz'
+        PsudoJets.multi_write(multi_write_name, fastjets_by_event)
+    except Exception as e:
+        print(e)        
+        st()
+        multi_write_name = multi_name.split('.', 1)[0] + '_fastjets.npz'
+        PsudoJets.multi_write(multi_write_name, fastjets_by_event)
 
 
 def main():
@@ -582,6 +639,7 @@ def main():
     return pjets
     
 
+# just a doodle, see TruthTag.py for proper versions
 def truth_tag(jets, tag_particles, delta_r):
     delta_r2 = delta_r**2
     jet_raps = np.array([j.rap for j in jets])
@@ -600,9 +658,6 @@ def truth_tag(jets, tag_particles, delta_r):
         if np.any(jet_dist2 < delta_r2):
             selected_idx[i] = np.argmin(jet_dist2)
     return selected_idx
-
-
-                        
 
 
 

@@ -233,7 +233,7 @@ class Hepmc_event(Components.MCParticleCollection):
         super().__init__(*particle_list)
 
 
-def read_file(filepath, start=0, stop=np.inf):
+def read_file(filepath, start=0, stop=np.inf, chatty=False):
     assert os.path.exists(filepath), f"Can't see that file; {filepath}"
     with open(filepath, 'r') as this_file:
         csv_reader = csv.reader(this_file, delimiter=' ', quotechar='"')
@@ -261,6 +261,9 @@ def read_file(filepath, start=0, stop=np.inf):
                 if os.path.exists('stop'):
                     print(f"Event reached = {event_reached}")
                 event_lines = [line]
+                if chatty:
+                    if event_reached % 100 == 0:
+                        print(event_reached, end=' ', flush=True)
             else:
                 event_lines.append(line)
             if event_reached > stop:

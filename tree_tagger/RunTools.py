@@ -43,8 +43,9 @@ class Run:
                      "batch_size", "loss_type", "inital_lr",  # training parameters
                      "auc", "lowest_loss", "notes"] # results
     # the permissable values
-    net_types = ['tracktower_projectors']
-    net_names = {'tracktower_projectors': ['track', 'tower']}
+    net_types = ['tracktower_projectors', 'recursive']
+    net_names = {'tracktower_projectors': ['track', 'tower'],
+                 'recursive': ['recursive']}
     loss_functions = ["BCE"]
     # the tests for identifying the arguments
     arg_tests = {"data_folder"   : os.path.exists,
@@ -160,14 +161,18 @@ class Run:
             if not self.empty_run:
                 print("Warning; not an empty run, but no best net found!")
     
-    def _load_dataset(self):
+    def _load_dataset(self, shuffle=False):
         if self.settings['net_type'] == 'tracktower_projectors':
             dataset = Datasets.TracksTowersDataset(folder_name=self.settings['data_folder'],
                                                    database_name=self.settings['database_name'],
-                                                   hepmc_name=self.settings['hepmc_name'])
-            return dataset
+                                                   hepmc_name=self.settings['hepmc_name'],
+                                                   shuffle=shuffle)
+        elif self.setting['net_type'] == 'recursive':
+            file_name = os.path.join(self.settings['data_folder'], "allReco_h1bBatch2_fastjets.npz")
+            dataset = Datasets.JetTreesDataset(file_name)
         else:
             raise NotImplementedError
+        return dataset
         
 
     def _nets_from_state_dict(self, state_dicts):
@@ -374,13 +379,28 @@ class Run:
             param_dicts = [p.state_dict() for p in param_dicts]
         self.__last_net_state_dicts = deepcopy(param_dicts)
 
-            
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):
     raise NotImplementedError
 
+def get_LinkingProjections(nets, dataset, event_num):
+    data_event = dataset[event_num]
+    towers_data, tracks_data, proximities, MC_truth = event_data
+    tower_net, track_net = nets
+    towers_projection = tower_net(towers_data)
+    tracks_projection = track_net(tracks_data)
+    return towers_projection, tracks_projection
 
 plt.ion()
+
+def distances(track_num, tracks_projections, towers_projects):
+    this_track = tracks_projections[track_num]
+    track_dist = np.sqrt(np.sum(np.square(tracks_projections - this_track),
+                                axis=1))
+    tower_dist = np.sqrt(np.sum(np.square(towers_projections - this_track),
+                                axis=1))
+    return track_dist, tower_dist
+
 
 class Liveplot:
     def __init__(self, run):

@@ -106,7 +106,7 @@ def begin_training(run, viewer=None):
         #val_schedulers = [lr_scheduler, bs_scheduler]
         val_schedulers = [bs_scheduler]
 
-    nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, train_losser, test_losser, optimiser, end_time, dataset_inv_size, val_schedulers, viewer)
+    nets, run = train(nets, run, dataloader, dataset, validation_sampler, device, train_losser, batch_losser, test_losser, optimiser, end_time, dataset_inv_size, val_schedulers, viewer)
     run.last_nets = [pickle.loads(pickle.dumps(net.state_dict()))
                      for net in nets]
     return run
