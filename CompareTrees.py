@@ -60,6 +60,7 @@ def proximity(root1, root2):
     ratio = np.average(ratios, weights=weights)
     return ratio
 
+
 def canopy_proximity(jets1, jets2):
     canopies1 = [set(jet.global_obs_ids[jet.global_obs_ids!=-1])
                  for jet in jets1]
@@ -85,6 +86,7 @@ def canopy_proximity(jets1, jets2):
         selected2[y_min] = True
     total_number = np.sum(matched_grid)
     return num_matched, total_number
+
 
 def compare_psudoFast(dir_name="./test", deltaR=1., exponent_multiplyer=-1):
     import Components
@@ -143,6 +145,7 @@ def plot_psudofast(dir_name="./test/", lines=False, deltaR=1., exponent_multiply
     plt.xlabel("rap")
     plt.ylabel("phi")
     plt.show()
+
 
 def find_tree_prox(dir_name):
     observables = Components.Observables.from_file(dir_name)
@@ -228,6 +231,7 @@ def safe_eta(rap, pt, e):
     mag_p = np.sqrt(pt*pt + pz*pz)
     eta = 0.5*np.log((mag_p + pz)/(mag_p - pz))
     return eta, pz
+
 
 def three_way_comp():
     dir_name = "./test/"

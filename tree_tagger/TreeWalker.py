@@ -18,7 +18,7 @@ class TreeWalker:
         self.id = node_id
         #psudojet_ids = [ints[jet.psudojet_id_col] for ints in jet._ints]
         psudojet_ids = jet.global_jet_ids
-        node_index = psudojet_ids.index(node_id)
+        node_index = np.where(psudojet_ids==node_id)[0][0]
         # self.global_obs_id = jet._ints[node_index][jet.obs_id_col]
         self.global_obs_id = jet.global_obs_ids[node_index]
         self.left_id = jet._ints[node_index][jet.daughter1_col]
@@ -28,7 +28,7 @@ class TreeWalker:
         self.leaf = [jet._floats[node_index][i] for i in
                       [jet.pt_col, jet.rap_col, jet.phi_col, jet.energy_col]]
         # this si the variabel offered to the nn
-        self.leaf_val = torch.DoubleTensor(self.leaf)
+        self.leaf_inputs = torch.DoubleTensor(self.leaf)
         self.pt = self.leaf[0]
         self.rap = self.leaf[1]
         self.phi = self.leaf[2]

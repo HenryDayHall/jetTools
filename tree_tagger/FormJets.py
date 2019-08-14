@@ -202,8 +202,8 @@ class PsudoJets:
                                                            cumulative_root_length)):
             new_jet = cls(deltaR=deltaRs[i],
                           exponent_multiplier=exponent_multis[i],
-                          ints=ints[nodes_start:nodes_end],
-                          floats=floats[nodes_start:nodes_end],
+                          ints=ints[nodes_start:nodes_end].tolist(),
+                          floats=floats[nodes_start:nodes_end].tolist(),
                           root_psudojetIDs=roots[roots_start:roots_end],
                           event_id=event_ids[i])
             new_jet.currently_avalible = 0  # assumed since we are reading from file

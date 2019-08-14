@@ -37,60 +37,63 @@ def str_is_type(s_type, s, accept_none=False):
 class Run:
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
-    setting_names = ["net_type", "latent_dimension", "data_folder",  # nature of the net itself
-                     "database_name", "hepmc_name", # input location
+    setting_names = ["net_type", "data_folder",  # nature of the net itself
                      "weight_decay", # minor net parameters
                      "batch_size", "loss_type", "inital_lr",  # training parameters
                      "auc", "lowest_loss", "notes"] # results
-    # the permissable values
-    net_types = ['tracktower_projectors', 'recursive']
-    net_names = {'tracktower_projectors': ['track', 'tower'],
-                 'recursive': ['recursive']}
     loss_functions = ["BCE"]
     # the tests for identifying the arguments
-    arg_tests = {"data_folder"   : os.path.exists,
-                 "database_name" : os.path.exists,
-                 "hepmc_name"  : os.path.exists,
+    arg_tests = {"net_type"    : lambda s: True,
+                 "data_folder" : os.path.exists,
                  "batch_size"  : lambda s: str_is_type(int, s),
                  "inital_lr"   : lambda s: str_is_type(float, s),
                  "weight_decay": lambda s: str_is_type(float, s),
-                 "net_type"    : lambda s: s.lower() in Run.net_types,
-                 "latent_dimension" : lambda s: str_is_type(int, s),
                  "loss_type"   : lambda s: s.upper() in Run.loss_functions,
                  "auc"         : lambda s: str_is_type(float, s) or (s is None),
                  "lowest_loss" : lambda s: str_is_type(float, s) or (s is None),
                  "notes"       : lambda s: True}
 
-    arg_convert = {"data_folder"   : lambda s: s,
-                   "database_name" : lambda s: s,
-                   "hepmc_name"  : lambda s: s,
+    arg_convert = {"net_type"    : lambda s: s,
+                   "data_folder" : lambda s: s,
                    "batch_size"  : lambda s: int(s),
                    "inital_lr"   : lambda s: float(s),
                    "weight_decay": lambda s: float(s),
-                   "net_type"    : lambda s: s.lower(),
-                   "latent_dimension" : lambda s: int(s),
                    "loss_type"   : lambda s: s.upper(),
                    "auc"         : lambda s: None if s is None else float(s),
                    "lowest_loss" : lambda s: None if s is None else float(s),
                    "notes"       : lambda s: s}
 
-    arg_defaults = {"data_folder"   : "tst",
-                    "database_name" : "/home/henry/lazy/h1bBatch2.db",
-                    "hepmc_name"  : "/home/henry/lazy/h1bBatch2.hepmc",
+    arg_defaults = {"net_type"    : "default",
+                    "data_folder" : "tst",
                     "time"        : 3000,
                     "batch_size"  : 1000,
                     "inital_lr"   : 0.1,
                     "weight_decay": 0.01,
-                    "net_type"    : net_types[0],
-                    "latent_dimension" : 10,
                     "loss_type"   : loss_functions[0],
                     "auc"         : None,
                     "lowest_loss" : None,
                     "notes"       : ""}
                           
     def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
-        self.writing = writing
+        self.writing = writing  
         self.written = False  # flip to true after first write
+        # because this method is called frequently, pull the if logic outside
+        if writing: # a writing run is inefficient, but will continuously generate output
+            def append(line):
+                # the line to append must have a value for every column
+                assert len(line) == len(self.column_headings), "tried to append values not equal to number of columns"
+                self.table = np.vstack((self.table, line))
+                if self.written:  # then jsut update
+                    with open(self.progress_file_name, 'a') as pf:
+                        writer = csv.writer(pf, delimiter=' ')
+                        writer.writerow(line)
+                else:  # then create the write
+                    self.write(with_nets=False)
+        else:  # this is the fast version, even skip the assert
+            def append(line):
+                self.table = np.vstack((self.table, line))
+        self.append = append
+        # locate the write file
         self.folder_name = folder_name
         self.base_name = os.path.join(folder_name, run_name)
         self.progress_file_name = self.base_name + ".txt"
@@ -137,11 +140,8 @@ class Run:
         self.settings["pretty_name"] = run_name
         # also make file names for the best and last nets
         net_extention = ".torch"
-        self.last_net_files = []
-        self.best_net_files = []
-        for name in self.net_names[self.settings['net_type']]:
-            self.last_net_files.append(self.base_name + "_last_" + name + net_extention)
-            self.best_net_files.append(self.base_name + "_best_" + name + net_extention)
+        self.last_net_files = [self.base_name + "_last_" + self.settings['net_type'] + net_extention]
+        self.best_net_files = [self.base_name + "_best_" + self.settings['net_type'] + net_extention]
         # check to see if either of these exist and load if so
         self.__best_net_state_dicts = None  # create the attribute
         self.__last_net_state_dicts = None
@@ -161,31 +161,11 @@ class Run:
             if not self.empty_run:
                 print("Warning; not an empty run, but no best net found!")
     
-    def _load_dataset(self, shuffle=False):
-        if self.settings['net_type'] == 'tracktower_projectors':
-            dataset = Datasets.TracksTowersDataset(folder_name=self.settings['data_folder'],
-                                                   database_name=self.settings['database_name'],
-                                                   hepmc_name=self.settings['hepmc_name'],
-                                                   shuffle=shuffle)
-        elif self.setting['net_type'] == 'recursive':
-            file_name = os.path.join(self.settings['data_folder'], "allReco_h1bBatch2_fastjets.npz")
-            dataset = Datasets.JetTreesDataset(file_name)
-        else:
-            raise NotImplementedError
-        return dataset
-        
+    def _load_dataset(self):
+        raise NotImplementedError
 
-    def _nets_from_state_dict(self, state_dicts):
-        if self.settings['net_type'] == 'tracktower_projectors':
-            towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
-                                                          self.settings['latent_dimension'])
-            towers_projector.load_state_dict(state_dicts[0])
-            tracks_projector = LinkingNN.Latent_projector(self.dataset.track_dimensions,
-                                                          self.settings['latent_dimension'])
-            tracks_projector.load_state_dict(state_dicts[1])
-            return [towers_projector, tracks_projector]
-        else:
-            raise NotImplementedError
+    def _nets_from_state_dict(self):
+        raise NotImplementedError
 
     def __process_idx(self, idx):
         # if there is only one item make the second item a total slice
@@ -287,18 +267,6 @@ class Run:
         self.__column_headings = column_headings
         self.table = np.array([]).reshape((0, len(self.column_headings)))
 
-    def append(self, line):
-        # the line to append must have a value for every column
-        assert len(line) == len(self.column_headings), "tried to append values not equal to number of columns"
-        self.table = np.vstack((self.table, line))
-        if self.writing:
-            if self.written:  # then jsut update
-                with open(self.progress_file_name, 'a') as pf:
-                    writer = csv.writer(pf, delimiter=' ')
-                    writer.writerow(line)
-            else:  # then create the write
-                self.write(with_nets=False)
-
 
     def process_info_line(self, info_line):
         # kill empty strings
@@ -378,6 +346,92 @@ class Run:
         if not isinstance(param_dicts[0], dict):
             param_dicts = [p.state_dict() for p in param_dicts]
         self.__last_net_state_dicts = deepcopy(param_dicts)
+
+
+class LinkingRun(Run):
+    # the list arguments in the info line
+    # given inorder of precidence when performing comparison
+    setting_names = Run.setting_names + ["latent_dimension",
+                                 "database_name", "hepmc_name"]
+    # the tests for identifying the arguments
+    arg_tests = {**Run.arg_tests,
+                 "database_name" : os.path.exists,
+                 "hepmc_name"  : os.path.exists,
+                 "latent_dimension" : lambda s: str_is_type(int, s)}
+
+    arg_convert = {**Run.arg_convert, 
+                   "database_name" : lambda s: s,
+                   "hepmc_name"  : lambda s: s,
+                   "latent_dimension" : lambda s: int(s)}
+
+    arg_defaults = {"data_folder"   : "big_ds",
+                    "database_name" : "/home/henry/lazy/h1bBatch2.db",
+                    "hepmc_name"  : "/home/henry/lazy/h1bBatch2.hepmc",
+                    "time"        : 3000,
+                    "batch_size"  : 10,
+                    "inital_lr"   : 0.01,
+                    "weight_decay": 0.01,
+                    "net_type"    : "Linker",
+                    "latent_dimension" : 10,
+                    "auc"         : None,
+                    "lowest_loss" : None,
+                    "notes"       : ""}
+    net_list = ["tower_net", "track_net"]
+                          
+    def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
+        super().__init__(folder_name, run_name, accept_empty, writing)
+        self.last_net_files = []
+        self.best_net_files = []
+        net_extention = ".torch"
+        for name in self.net_list:
+            self.last_net_files.append(self.base_name + "_last_" + name + net_extention)
+            self.best_net_files.append(self.base_name + "_best_" + name + net_extention)
+    
+    def _load_dataset(self, shuffle=False):
+        dataset = Datasets.TracksTowersDataset(folder_name=self.settings['data_folder'],
+                                               database_name=self.settings['database_name'],
+                                               hepmc_name=self.settings['hepmc_name'],
+                                               shuffle=shuffle)
+        return dataset
+        
+
+    def _nets_from_state_dict(self, state_dicts):
+        towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
+                                                      self.settings['latent_dimension'])
+        towers_projector.load_state_dict(state_dicts[0])
+        tracks_projector = LinkingNN.Latent_projector(self.dataset.track_dimensions,
+                                                      self.settings['latent_dimension'])
+        tracks_projector.load_state_dict(state_dicts[1])
+        return [towers_projector, tracks_projector]
+
+
+class RecursiveRun(Run):
+    arg_defaults = {"data_folder" : "fakereco",
+                    "time"        : 3000,
+                    "batch_size"  : 10,
+                    "inital_lr"   : 0.01,
+                    "weight_decay": 0.01,
+                    "net_type"    : "Recursive",
+                    "auc"         : None,
+                    "lowest_loss" : None,
+                    "notes"       : ""}
+                          
+    def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
+        super().__init__(folder_name, run_name, accept_empty, writing)
+    
+    def _load_dataset(self, shuffle=False):
+        dataset = Datasets.JetTreesDataset(dir_name=self.settings['data_folder'])
+        return dataset
+        
+
+    def _nets_from_state_dict(self, state_dicts):
+        towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
+                                                      self.settings['latent_dimension'])
+        towers_projector.load_state_dict(state_dicts[0])
+        tracks_projector = LinkingNN.Latent_projector(self.dataset.track_dimensions,
+                                                      self.settings['latent_dimension'])
+        tracks_projector.load_state_dict(state_dicts[1])
+        return [towers_projector, tracks_projector]
 
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):

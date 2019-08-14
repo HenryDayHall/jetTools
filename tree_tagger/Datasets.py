@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from torch import nn
 from ipdb import set_trace as st
 import numpy as np
-from tree_tagger import Components, ReadSQL, ReadHepmc, LinkingFramework, FormJets, TreeWalker
+from tree_tagger import Components, ReadSQL, ReadHepmc, LinkingFramework, FormJets, TreeWalker, InputTools
 from sklearn import preprocessing
 import torch
 
@@ -556,11 +556,12 @@ class ParticlesDataset(Dataset):
         return num_events, events
 
 
-
 class JetTreesDataset(Dataset):
-    def __init__(self, multijet_filename, n_jets=None):
+    def __init__(self, multijet_filename=None, dir_name=None, n_jets=None):
         torch.set_default_tensor_type('torch.DoubleTensor')
         # read in from file
+        if multijet_filename is None:
+            multijet_filename = self.find_multijet_file(dir_name)
         self.multijet_filename = multijet_filename
         jets_by_event = FormJets.PsudoJets.multi_from_file(multijet_filename)
         jets = []
@@ -601,7 +602,16 @@ class JetTreesDataset(Dataset):
         # work out the dimensions
         valid_jet = next(j for j in jets if len(j._ints)>0)
         walker = TreeWalker.TreeWalker(valid_jet, valid_jet.root_psudojetIDs[0])
-        self.dimensions = len(walker.leaf_val)
+        self.dimensions = len(walker.leaf_inputs)
+
+    def find_multijet_file(self, dir_name):
+        in_dir = os.listdir(dir_name)
+        possibles = [f for f in in_dir if f.startswith("pros_") and f.endswith(".npz")]
+        if len(possibles) == 1:
+            chosen = possibles[0]
+        else:
+            chosen = InputTools.list_complete("Which jet file? ", possibles)
+        return os.path.join(dir_name, chosen)
 
     def __len__(self):
         return self._len

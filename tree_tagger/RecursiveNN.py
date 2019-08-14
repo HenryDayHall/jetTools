@@ -7,8 +7,9 @@ import torch.nn.functional
 # from torch.nn.utils import clip_grad_norm  this looks useful!
 
 class SimpleRecursor(nn.Module):
-    def __init__(self, device, num_jet_feaures, latent_dimensions=100, num_classes=5):
+    def __init__(self, device, num_jet_feaures, latent_dimensions=100, num_classes=1):
         super().__init__()
+        self.device = device
         # maps jet features to latent space
         self.embedding = nn.Linear(num_jet_feaures, latent_dimensions)
         # this is the network that combines a left and a right
@@ -31,11 +32,12 @@ class SimpleRecursor(nn.Module):
             hidden_state = self.activation(self.embedding(leaf))
         # recursive call for tree traversal
         # the left and the right hand sides are combined and the result put through W
-        else: hidden_state = self.activation(
+        else: 
+            hidden_state = self.activation(
                              self.combine(
                              torch.cat(
                                  (self.traverse(node.left),
-                                  self.traverse(node.right)),1)))
+                                  self.traverse(node.right)),0)))
         # all the recursive calls are made by now
         # in a more complext net we would ad the intermediat loss
         # self.node_preds.append(self.projection(currentNode))
