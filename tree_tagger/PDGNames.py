@@ -57,6 +57,13 @@ class Identities:
         anti_charges = {-i: -charge_type/3 for i, charge_type in charge_types.items()}
         return {**part_charges, **anti_charges}
 
+    @property
+    def antiNames(self):
+        """ It antiparticle should be accesable from the negative pid too """
+        _antiNames = self.__getattr__('antiNames')
+        neg_antiNames = {-key: name for key, name in _antiNames.items()}
+        return {**_antiNames, **neg_antiNames}
+
 
     def __getitem__(self, idx):
         antiparticle = idx < 0

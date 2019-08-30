@@ -83,17 +83,24 @@ def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
 
 
 def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
-    for scale in np.linspace(120, 200, 4):
-        highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
-                                   highlight_xyz[:, 2], colours,
-                                   name='highlights', colormap=colourmap, scale_mode='none',
-                                   scale_factor=scale, opacity=0.06)
+    if colourmap is False: # use a flat colour
+        for scale in np.linspace(120, 200, 4):
+            highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
+                                       highlight_xyz[:, 2],
+                                       name='highlights', color=colours, scale_mode='none',
+                                       scale_factor=scale, opacity=0.06)
+    else:
+        for scale in np.linspace(120, 200, 4):
+            highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
+                                       highlight_xyz[:, 2], colours,
+                                       name='highlights', colormap=colourmap, scale_mode='none',
+                                       scale_factor=scale, opacity=0.06)
     
 
 def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
     if isinstance(all_positions, list):
         all_positions = np.array(all_positions)
-    if len(colours) != len(indices):
+    if len(colours) != len(indices) and colourmap is not False:
         colours = colours[indices]
     highlight_pos(all_positions[indices], colours, colourmap)
 
@@ -150,7 +157,7 @@ def plot_tracks_towers(track_list, tower_list):
     o_a_anchors.mlab_source.dataset.lines = np.array(o_a_connections)
     tube = mlab.pipeline.tube(o_a_anchors, tube_radius=8)
     tube.filter.vary_radius = 'vary_radius_off'
-    mlab.pipeline.surface(tube, color=(0.9, 0.9, 0.6), opacity=0.3)
+    mlab.pipeline.surface(tube, color=(0.7, 0.7, 0.9), opacity=0.3)
 
     # plot anchor points for outer-tower lines ~~~~~~~~~~~~~~~~~~~~~~~
     t_o_anchor_pos = np.array(outer_pos + tower_pos)
@@ -173,7 +180,7 @@ def plot_tracks_towers(track_list, tower_list):
     t_o_anchors.mlab_source.dataset.lines = np.array(t_o_connections)
     tube = mlab.pipeline.tube(t_o_anchors, tube_radius=8)
     tube.filter.vary_radius = 'vary_radius_off'
-    mlab.pipeline.surface(tube, color=(0.9, 0.2, 0.9), opacity=0.3)
+    mlab.pipeline.surface(tube, color=(0.9, 0.9, 1.0), opacity=0.3)
 
 
     # plot the vertices
@@ -181,21 +188,21 @@ def plot_tracks_towers(track_list, tower_list):
     vertex_scl = np.array(vertex_scl)
     vertices = mlab.points3d(vertex_pos[:, 0], vertex_pos[:, 1],
                              vertex_pos[:, 2], vertex_scl,
-                             name='vertex', colormap='hot', scale_mode='none',
+                             name='vertex', colormap='gray', scale_mode='none',
                              scale_factor=100, opacity=0.7)
     # plot the approch
     approch_pos = np.array(approch_pos)
     approch_scl = np.array(approch_scl)
     vertices = mlab.points3d(approch_pos[:, 0], approch_pos[:, 1],
                              approch_pos[:, 2], approch_scl,
-                             name='approch', colormap='hot', scale_mode='none',
+                             name='approch', colormap='gray', scale_mode='none',
                              scale_factor=100, opacity=0.7)
     # plot the outer
     outer_pos = np.array(outer_pos)
     outer_scl = np.array(outer_scl)
     vertices = mlab.points3d(outer_pos[:, 0], outer_pos[:, 1],
                              outer_pos[:, 2], outer_scl,
-                             name='outer', colormap='hot', scale_mode='none',
+                             name='outer', colormap='gray', scale_mode='none',
                              scale_factor=100, opacity=0.7)
     # plot the towers
     if dot_barrel:
@@ -207,9 +214,35 @@ def plot_tracks_towers(track_list, tower_list):
                                  scale_factor=100, opacity=0.7)
     else:
         for cuboid in cuboids:
-            mlab.mesh(*cuboid, color=(0.9, 0, 0.2))
+            mlab.mesh(*cuboid, color=(0.6, 0.6, 0.6))
     return outer_pos, tower_pos
 
+def add_single(pos, colour, scale=100, name=None):
+    if name is None:
+        name='single'
+    else:
+        mlab.text3d(*pos[:3], name, scale=scale/5, color=colour)
+    if len(pos) == 3:
+        vertices = mlab.points3d([pos[0]], [pos[1]],
+                                 [pos[2]], 
+                                 name=name, scale_mode='none',
+                                 scale_factor=scale, color=colour)
+    elif len(pos) == 6:
+        vertices = mlab.quiver3d([pos[0]], [pos[1]],
+                                 [pos[2]], [pos[3]],
+                                 [pos[4]], [pos[5]],
+                                 name=name, scale_mode='none',
+                                 scale_factor=scale, color=colour,
+                                 mode='arrow')
+    else:
+        raise NotImplementedError(f"pos is len {len(pos)}; should be 3 or 6.")
+
+
+
+def colour_set(num_colours, colourmap='gist_rainbow'):
+    cmap = matplotlib.cm.get_cmap(colourmap)
+    colours = [cmap(i)[:3] for i in np.linspace(0., 1., num_colours)]
+    return colours
 
 def main():
     from tree_tagger import ReadSQL, LinkingFramework

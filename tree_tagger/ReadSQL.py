@@ -183,12 +183,12 @@ def read_tracks_towers(particle_collection, database_name, event_n):
     return track_list, tower_list
 
 
-def main():
+def main(event_num=0):
     """ """
     hepmc_name = "/home/henry/lazy/h1bBatch2.hepmc"
     database_name = "/home/henry/lazy/h1bBatch2.db"
-    event = ReadHepmc.read_file(hepmc_name, 0, 1)[0]
-    track_list, tower_list = read_tracks_towers(event, database_name, 0)
+    event = ReadHepmc.read_file(hepmc_name, event_num, event_num+1)[0]
+    track_list, tower_list = read_tracks_towers(event, database_name, event_num)
     observations = Components.Observables(tracks=track_list, towers=tower_list)
     return event, track_list, tower_list, observations
 

@@ -41,6 +41,7 @@ class ValidationRandomSampler(Sampler):
     def __iter__(self):
         i = 0
         for idx in self.sampler:  # pull indices out of the sampler
+            idx = int(idx)
             if i < len(self) and self.is_nonval[idx]:
                 i += 1
                 yield idx

@@ -7,7 +7,6 @@ from skhep import math as hepmath
 from tree_tagger import Components
 
 
-
 class PsudoJets:
     def __init__(self, observables=None, deltaR=1., exponent_multiplyer=-1, **kwargs):
         self.deltaR = deltaR
@@ -31,6 +30,9 @@ class PsudoJets:
                                       observables.raps.reshape((-1, 1)),
                                       observables.phis.reshape((-1, 1)),
                                       observables.es.reshape((-1, 1)),
+                                      observables.pxs.reshape((-1, 1)),
+                                      observables.pys.reshape((-1, 1)),
+                                      observables.pzs.reshape((-1, 1)),
                                       np.zeros((len(observables), 1)))).tolist()
             # as we go note the root notes of the psudojets
             self.root_psudojetIDs = []
@@ -54,11 +56,39 @@ class PsudoJets:
         self.rap_col = 1
         self.phi_col = 2
         self.energy_col = 3
-        self.join_distance_col = 4
+        self.px_col = 4
+        self.py_col = 5
+        self.pz_col = 6
+        self.join_distance_col = 7
 
     def _calculate_currently_avalible(self):
         # keep track of how many clusters don't yet have a mother
         self.currently_avalible = sum([p[self.mother_col]==-1 for p in self._ints])
+
+    @property
+    def px(self):
+        leaf_pxs = [floats[self.px_col] for floats, ints in zip(self._floats, self._ints)
+                    if ints[self.daughter1_col] == -1 and
+                       ints[self.daughter2_col] == -1]
+        return sum(leaf_pxs)
+
+    @property
+    def py(self):
+        leaf_pys = [floats[self.py_col] for floats, ints in zip(self._floats, self._ints)
+                    if ints[self.daughter1_col] == -1 and
+                       ints[self.daughter2_col] == -1]
+        return sum(leaf_pys)
+
+    @property
+    def pz(self):
+        leaf_pzs = [floats[self.pz_col] for floats, ints in zip(self._floats, self._ints)
+                    if ints[self.daughter1_col] == -1 and
+                       ints[self.daughter2_col] == -1]
+        return sum(leaf_pzs)
+
+    @property
+    def p(self):
+        return np.linalg.norm([self.px, self.py, self.pz])
 
     @property
     def pt(self):
@@ -85,6 +115,10 @@ class PsudoJets:
         phis = [floats[self.phi_col] for floats, ints in zip(self._floats, self._ints)
                      if ints[self.obs_id_col] != -1]
         return phis
+
+    @property
+    def theta(self):
+        raise NotImplementedError
 
     @property
     def phi(self):
@@ -232,7 +266,7 @@ class PsudoJets:
         int_header = ' '.join([note, technical_specs, "Columns;", *int_columns])
         np.savetxt(ifile_name, self._ints,
                    header=int_header, fmt='%d')
-        float_columns = ["pt", "rapidity", "phi", "energy", "join_distance"]
+        float_columns = ["pt", "rapidity", "phi", "energy", "px", "py", "pz", "join_distance"]
         float_header = ' '.join([note, technical_specs, "Columns;", *float_columns])
         np.savetxt(ffile_name, self._floats,
                    header=float_header)
@@ -515,11 +549,17 @@ class PsudoJets:
                 self._ints[psudojet_index1][self.psudojet_id_col],
                 self._ints[psudojet_index2][self.psudojet_id_col],
                 rank]
-        # pt eta phi energy join_distance
+        # pt px py pz eta phi energy join_distance
         pt1 = self._floats[psudojet_index1][self.pt_col]
         pt2 = self._floats[psudojet_index2][self.pt_col]
         e1 = self._floats[psudojet_index1][self.energy_col]
         e2 = self._floats[psudojet_index2][self.energy_col]
+        px1 = self._floats[psudojet_index1][self.px_col]
+        px2 = self._floats[psudojet_index2][self.px_col]
+        py1 = self._floats[psudojet_index1][self.py_col]
+        py2 = self._floats[psudojet_index2][self.py_col]
+        pz1 = self._floats[psudojet_index1][self.pz_col]
+        pz2 = self._floats[psudojet_index2][self.pz_col]
         rap1 = self._floats[psudojet_index1][self.rap_col]
         rap2 = self._floats[psudojet_index2][self.rap_col]
         phi1 = self._floats[psudojet_index1][self.phi_col]
@@ -536,6 +576,9 @@ class PsudoJets:
                   (rap1+rap2)/2,
                   mid_phi,
                   e1 + e2,
+                  px1 + px2,
+                  py1 + py2,
+                  pz1 + pz2,
                   distance]
         # floats = [pt1 + pt2,
         #           (pt1*eta1 + pt2*eta2)/(pt1+pt2),
@@ -553,6 +596,13 @@ class PsudoJets:
 
     def __len__(self):
         return len(self._ints)
+
+    def __eq__(self, other):
+        if len(self) != len(other):
+            return False 
+        ints_eq = self._ints == other._ints
+        floats_eq = np.allclose(self._floats, other._floats)
+        return ints_eq and floats_eq
 
 
 def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False, event_number=None):

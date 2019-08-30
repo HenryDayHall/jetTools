@@ -735,6 +735,9 @@ class Observables:
         else:
             raise ValueError("Need to provide particles, tracks or towers.")
         self.global_obs_ids = np.array(global_obs_ids)
+        # tell the object their obs ids
+        for oid, obj in zip(self.global_obs_ids, self.objects):
+            obj.global_obs_id = oid
         self.etas = np.array([t.eta for t in self.objects])
         self.raps = np.array([t.rapidity() for t in self.objects])
         self.phis = np.array([t.phi() for t in self.objects])

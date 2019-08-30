@@ -244,10 +244,10 @@ def read_file(filepath, start=0, stop=np.inf, chatty=False):
             if len(line) == 0:
                 continue
             if line[0] == "E":
-                event_reached += 1
                 if event_reached >= start:
                     event_lines = [line]
                     break
+                event_reached += 1
         assert len(event_lines) == 1, "Diddnt find any events!"
         # continue till the stop event
         events = []

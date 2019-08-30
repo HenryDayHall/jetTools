@@ -27,12 +27,15 @@ class TreeWalker:
         self.is_leaf = (self.left_id not in psudojet_ids) and (self.right_id not in psudojet_ids)
         self.leaf = [jet._floats[node_index][i] for i in
                       [jet.pt_col, jet.rap_col, jet.phi_col, jet.energy_col]]
-        # this si the variabel offered to the nn
-        self.leaf_inputs = torch.DoubleTensor(self.leaf)
         self.pt = self.leaf[0]
         self.rap = self.leaf[1]
         self.phi = self.leaf[2]
         self.e = self.leaf[3]
+        # this si the variabel offered to the nn
+        # momentum rapidity theta phi energy transverse-momentum
+        leaf_inputs = [jet.p, self.rap, jet.theta, jet.phi, self.e, self.pt]
+        self.leaf_inputs = torch.DoubleTensor(leaf_inputs)
+        # for visulisation
         self.size = self.e
         green = (0.2, 0.9, 0.15, 1.)
         blue = (0.1, 0.5, 0.85, 1.)

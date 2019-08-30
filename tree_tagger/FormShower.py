@@ -1,10 +1,7 @@
 """ Tools to turn clusters of particles into showers """
 from ipdb import set_trace as st
 import networkx
-import PDGNames
-import ReadSQL
-import ReadHepmc
-import DrawTrees
+from tree_tagger import PDGNames, ReadSQL, ReadHepmc, DrawTrees
 import itertools
 from matplotlib import pyplot as plt
 import numpy as np
@@ -42,6 +39,7 @@ class Shower:
                 self.mothers.append(other_shower.mothers[oIndex])
                 self.daughters.append(other_shower.daughters[oIndex])
                 self.labels[sIndex] = other_shower.labels[oIndex]
+        self._find_roots()
 
     @property
     def n_particles(self):
@@ -51,10 +49,17 @@ class Shower:
     def _find_roots(self):
         """ Demand the shower identify it's root.
         This is stored as an internal variable. """
-        roots = getRoots(self.global_ids, self.mothers)
+        root_gids = get_roots(self.global_ids, self.mothers)
         if not self.amalgam:
-            assert len(roots) == 1, "There should only be one root to a shower"
-        self.roots = roots
+            assert len(root_gids) == 1, "There should only be one root to a shower"
+        self.root_gids = root_gids
+        list_gids = list(self.global_ids)
+        self.root_idxs = [list_gids.index(r) for r in root_gids]
+
+    @property
+    def roots(self):
+        msg = "changed to root_gids or root_idxs for clarity"
+        raise AttributeError(msg)
 
 
     def find_ranks(self):
@@ -67,7 +72,7 @@ class Shower:
             mimics the structure of the ID list
         """
         # put the first rank in
-        current_rank = self.roots
+        current_rank = self.root_idxs
         rank_n = 0
         ranks = np.full_like(self.global_ids, -1, dtype=int)
         ranks[current_rank] = rank_n
@@ -108,14 +113,18 @@ class Shower:
 
     @property
     def outside_connections(self):
+        raise AttributeError("you want outside_connection_gids, but check you are useing global_id not index")
+
+    @property
+    def outside_connection_gids(self):
         """
         Function that anouches which particles have perantage from outside this shower
         Includes the root """
-        outside_indices = []
-        for i, mothers_here in enumerate(self.mothers):
+        outside_gids = []
+        for gid, mothers_here in zip(self.global_ids, self.mothers):
             if not np.all([m in self.global_ids for m in mothers_here]):
-                outside_indices.append(i)
-        return outside_indices
+                outside_gids.append(gid)
+        return outside_gids
 
     @property
     def ends(self):
@@ -154,10 +163,10 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
     # remove any stop pids
     mask = [p not in exclude_pids for p in particle_collection.pids]
     global_ids = particle_collection.global_ids[mask]
-    mother_ids = [p.mother_ids for p in particle_collection.particle_list]
-    mother_ids = list(itertools.compress(mother_ids, mask))
-    daughter_ids = [p.daughter_ids for p in particle_collection.particle_list]
-    daughter_ids = list(itertools.compress(daughter_ids, mask))
+    mother_ids = [p.mother_ids for p, included in zip(particle_collection.particle_list, mask)
+                  if included]
+    daughter_ids = [p.daughter_ids for p, included in zip(particle_collection.particle_list, mask)
+                    if included]
     pids = particle_collection.pids[mask]
     # check that worked
     remaining_pids = set(pids)
@@ -170,13 +179,14 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
     # but we want to split the event into showers
     # at start all particles are allocated to a diferent shower
     showers = []
-    roots = getRoots(global_ids, mother_ids)
-    print(f"Found {len(roots)} roots")
+    root_gids = get_roots(global_ids, mother_ids)
+    print(f"Found {len(root_gids)} root_gids")
     list_global_ids = list(global_ids)
-    for i, root in enumerate(roots):
+    for i, root_gid in enumerate(root_gids):
+        root_idx = list_global_ids.index(root_gid)
         print(f"Working on root {i}.", flush=True)
-        shower_indices = [root]
-        to_follow = [root]
+        shower_indices = [root_idx]
+        to_follow = [root_idx]
         while len(to_follow) > 0:
             next_gen = []
             for index in to_follow:
@@ -198,7 +208,7 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
     return showers
 
 
-def getRoots(global_ids, mothers):
+def get_roots(global_ids, mothers):
     """From a list of particle global_ids and a list of mother global_ids determin root particles
 
     A root particle is one whos mothers are both from outside the particle list.
@@ -219,14 +229,14 @@ def getRoots(global_ids, mothers):
 
     """
     roots = []
-    for i, mothers_here in enumerate(mothers):
+    for gid, mothers_here in zip(global_ids, mothers):
         if not np.any([m in global_ids for m in mothers_here]):
-            roots.append(i)
+            roots.append(gid)
     return roots
 
 
 # ignore not working
-def makeTree(global_ids, mothers, daughters, labels):
+def make_tree(global_ids, mothers, daughters, labels):
     """
     It's possible this is working better than I think it is ...
     Just the data was screwy

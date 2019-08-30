@@ -7,7 +7,7 @@ import time
 import torch
 import torch.nn.functional
 
-def single_pass(nets, run, dataloader, validation_events, test_events, device, train_losser, validation_losser, test_losser, weight_decay):
+def single_pass(nets, run, dataloader, dataset, validation_weights, validation_events, test_events, device, train_losser, validation_losser, test_losser, weight_decay):
     # make initial measures
     for net in nets:
         net.eval()
@@ -19,12 +19,12 @@ def single_pass(nets, run, dataloader, validation_events, test_events, device, t
     training_loss = train_losser(event_data, nets, device).item()
     # validation loss
     validation_loss = 0
-    for v_event in validation_events:
-        validation_loss += validation_losser(v_event, nets, device).item()
+    for weight, v_event in zip(validation_weights, validation_events):
+        validation_loss += weight * validation_losser(v_event, nets, device).item()
     # test loss
     test_loss = 0
-    for t_event in test_events:
-        test_loss += test_losser(t_event, nets, device).item()
+    for weight, t_event in zip(dataset.test_weights, test_events):
+        test_loss += weight * test_losser(t_event, nets, device).item()
     # if the run starts empty record a new best and last net
     # the pickle stuff is to make a clone (NB deepcopy not sufficient for this)
     state_dicts = [pickle.loads(pickle.dumps(net.state_dict()))
@@ -63,12 +63,13 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
     sampler = dataloader.batch_sampler
     val_i = validation_sampler.validation_indices
     validation_events = [dataset[i] for i in val_i]
+    validation_weights = dataset.train_weights[val_i]
     test_events = dataset.test_events
     validation_losser = test_losser
     run.column_headings = ["time_stamps", "training_loss", "validation_loss", "test_loss", "mag_weights", "batch_size", "learning_rates", "weight_decay"]
     # Start working through the training epochs
     weight_decay = optimiser.param_groups[0]['weight_decay']
-    epoch_reached = single_pass(nets, run, dataloader, validation_events, test_events, device, train_losser, validation_losser, test_losser, weight_decay)
+    epoch_reached = single_pass(nets, run, dataloader, dataset, validation_weights, validation_events, test_events, device, train_losser, validation_losser, test_losser, weight_decay)
     last_time = time.time()
     while last_time < end_time and os.path.exists("continue"):
         for net in nets:
@@ -88,7 +89,7 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
             # optimise weights according to gradient found by backpropigation
             optimiser.step()
             # remove from fast version ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-            if i_batch % 2 == 0:                                            #
+            if i_batch % 100 == 0:                                          #
                 print('.', end='', flush=True)                              #
                 if viewer is not None:                                      #
                     viewer(run, nets)                                       #
@@ -97,14 +98,15 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
             net.eval()
         # get the test training and validation loss
         validation_loss = 0
-        for v_event in validation_events:
-            validation_loss += validation_losser(v_event, nets, device).item()
+        for weight, v_event in zip(validation_weights, validation_events):
+            validation_loss += weight * validation_losser(v_event, nets, device).item()
         test_loss = 0
-        for t_event in test_events:
-            test_loss += test_losser(t_event, nets, device).item()
+        for weight, t_event in zip(dataset.test_weights, test_events):
+            test_loss += weight * test_losser(t_event, nets, device).item()
         training_loss = float(sum_loss) * dataset_inv_size
         # get new validation setup
         val_i = validation_sampler.validation_indices
+        validation_weights = dataset.train_weights[val_i]
         validation_events = [dataset[i] for i in val_i]
         # if this is the best seen so far, save it
         if test_loss < run.settings['lowest_loss']:

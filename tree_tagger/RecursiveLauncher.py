@@ -1,11 +1,12 @@
-""" Module to run the linking NN """
+""" Module to run the recusive NN """
 import os
 import threading
-from tree_tagger import RecursiveNN, RunTools, InputTools
+from tree_tagger import RecursiveNN, RunTools, InputTools, RecursiveEvaluation
 from matplotlib import pyplot as plt
 
 
 def main():
+    plotting = InputTools.yesNo_question("Do you want plots? ")
     tst_dir = "./fakereco"
     in_tst = os.listdir(tst_dir)
     runs_in_tst = sorted([name for name in in_tst
@@ -18,16 +19,19 @@ def main():
         user_choice = default
     dir_name, file_name = os.path.split(user_choice)
     file_base = file_name.split('.', 1)[0]
-    run = RunTools.Run(dir_name, file_base, True, True)
+    run = RunTools.RecursiveRun(dir_name, file_base, True, True)
 
-    training_thread = threading.Thread(target=LinkingNN.begin_training, args=(run, ))
-    training_thread.start()
-    live_plot = RunTools.Liveplot(run)
+    if plotting:
+        training_thread = threading.Thread(target=RecursiveNN.begin_training, args=(run, ))
+        training_thread.start()
+        live_plot = RunTools.Liveplot(run)
 
-    plt.clf()
-    output = LinkingEvaluation.apply_linking_net(run)
-    LinkingEvaluation.plot_distances(output)
-    plt.show()
+        plt.clf()
+        output = RecursiveEvaluation.apply_recursive_net(run)
+        RecursiveEvaluation.plot_hist(*output)
+        plt.show()
+    else:
+        RecursiveNN.begin_training(run)
 
     #viewer = LinkingEvaluation.ResponsePlot(run)
     #LinkingNN.begin_training(run, viewer.update)

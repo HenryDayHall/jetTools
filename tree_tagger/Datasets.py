@@ -569,8 +569,25 @@ class JetTreesDataset(Dataset):
             jets += j_event.split()
         # get truth tags
         data = np.load(multijet_filename)
-        self.truth_tags = data['truth_tags']
-        assert len(self.truth_tags) == len(jets)
+        truth_tags = data['truth_tags']
+        # get weights if given
+        if 'weights' in data:
+            weights = data['weights']
+        else:
+            weights = np.ones(len(jets))
+        # alter the weights to balence the signal and background sets
+        if len(truth_tags.shape) == 1:
+            signal_mask = truth_tags.astype(bool)
+            bg_over_signal = np.sum(~signal_mask)/np.sum(signal_mask)
+            weights[signal_mask] *= bg_over_signal
+        else:
+            raise NotImplementedError
+        # truth_tags to taget form 
+        if len(truth_tags.shape) == 1:
+            truth_tags = truth_tags.reshape((-1, 1))
+        truth_tags = torch.DoubleTensor(truth_tags)
+        assert len(truth_tags) == len(jets)
+        # caluclate number of jets
         if n_jets is None:
             full_event = True
             self.n_jets = len(jets)
@@ -588,21 +605,36 @@ class JetTreesDataset(Dataset):
             np.savez(multijet_filename, **data, test_allocation=test_allocation)
         # assign test and train
         if full_event:
-            _test_jets = np.array(jets)[test_allocation]
-            self._jets = np.array(jets)[~test_allocation]
+            # torch cannot be masked, so convert back to indices
+            test_indices = np.where(test_allocation)[0]
+            train_indices = np.where(~test_allocation)[0]
+            _test_jets = np.array(jets)[test_indices]
+            _test_truth = truth_tags[test_indices]
+            self.test_weights = weights[test_indices]
+            self._truth = truth_tags[train_indices]
+            self._jets = np.array(jets)[train_indices]
+            self.train_weights = weights[train_indices]
         else:
+            # torch cannot be masked, so convert back to indices
+            test_indices = np.where(test_allocation)[0]
+            train_indices = np.where(~test_allocation)[0]
             test_allocation = test_allocation[:self.n_jets]
-            _test_jets = np.array(jets)[:self.n_jets][test_allocation]
-            self._jets = np.array(jets)[:self.n_jets][~test_allocation]
+            _test_jets = np.array(jets)[:self.n_jets][test_indices]
+            _test_truth = truth_tags[:self.n_jets][test_indices]
+            self.test_weights = weights[:self.n_jets][test_indices]
+            self._truth = truth_tags[:self.n_jets][train_indices]
+            self._jets = np.array(jets)[:self.n_jets][train_indices]
+            self.train_weights = weights[:self.n_jets][train_indices]
         # this will cause all the test walkers to be stored in memory
         # if memory becomes an issue might need to move to he glloupe data reading anyhow
-        self._test_walkers = np.array([TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-                                       for jet in _test_jets])
+        self._test = np.array(list(zip(_test_truth, 
+                                       [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
+                                        for jet in _test_jets])))
         self._len = len(self._jets)
         # work out the dimensions
         valid_jet = next(j for j in jets if len(j._ints)>0)
         walker = TreeWalker.TreeWalker(valid_jet, valid_jet.root_psudojetIDs[0])
-        self.dimensions = len(walker.leaf_inputs)
+        self.num_dimensions = len(walker.leaf_inputs)
 
     def find_multijet_file(self, dir_name):
         in_dir = os.listdir(dir_name)
@@ -617,11 +649,22 @@ class JetTreesDataset(Dataset):
         return self._len
 
     def __getitem__(self, idx):
-        jet = self._jets[idx]
-        walker = TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-        return self.truth_tags[idx], walker
+        if isinstance(idx, (int, np.int, np.int64)):  # becuase there a lots of int-like things....
+            jet = self._jets[idx]
+            walker = TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
+            return self._truth[idx], walker
+        # it's a slice or a list
+        jets = self._jets[idx]
+        walkers = [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
+                  for jet in jets]
+        return list(zip(self._truth[idx], walkers))
+            
+
 
     @property
-    def test_jets(self):
-        return self._test_walkers
+    def test_events(self):
+        return self._test
 
+    @property
+    def num_targets(self):
+        return self._truth.shape[1]

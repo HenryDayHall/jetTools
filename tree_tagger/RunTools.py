@@ -10,7 +10,7 @@ from copy import deepcopy
 from ipdb import set_trace as st
 import torch
 import numpy as np
-from tree_tagger import Constants, Datasets, LinkingNN
+from tree_tagger import Constants, Datasets, LinkingNN, RecursiveNN
 from matplotlib import pyplot as plt
 import matplotlib.animation
 
@@ -35,15 +35,17 @@ def str_is_type(s_type, s, accept_none=False):
 
 
 class Run:
+    """ lazy loading, be aware that loading the nets will usually mean loading the datasets"""
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
-    setting_names = ["net_type", "data_folder",  # nature of the net itself
+    setting_names = ["net_type", "latent_dimension", "data_folder",  # nature of the net itself
                      "weight_decay", # minor net parameters
                      "batch_size", "loss_type", "inital_lr",  # training parameters
                      "auc", "lowest_loss", "notes"] # results
     loss_functions = ["BCE"]
     # the tests for identifying the arguments
     arg_tests = {"net_type"    : lambda s: True,
+                 "latent_dimension" : lambda s: str_is_type(int, s),
                  "data_folder" : os.path.exists,
                  "batch_size"  : lambda s: str_is_type(int, s),
                  "inital_lr"   : lambda s: str_is_type(float, s),
@@ -54,6 +56,7 @@ class Run:
                  "notes"       : lambda s: True}
 
     arg_convert = {"net_type"    : lambda s: s,
+                   "latent_dimension"   : lambda s: int(s),
                    "data_folder" : lambda s: s,
                    "batch_size"  : lambda s: int(s),
                    "inital_lr"   : lambda s: float(s),
@@ -64,6 +67,7 @@ class Run:
                    "notes"       : lambda s: s}
 
     arg_defaults = {"net_type"    : "default",
+                    "latent_dimension" : 10,
                     "data_folder" : "tst",
                     "time"        : 3000,
                     "batch_size"  : 1000,
@@ -128,7 +132,6 @@ class Run:
                 assert len(self.column_headings) == self.table.shape[1], "Number columns not equal to number column headdings"
         # now process the info line
         self.settings = self.process_info_line(info_line)
-        self.dataset = self._load_dataset()
         # if the net is empty these things should not exist
         if self.empty_run:
             if self.settings['auc'] is not None:
@@ -138,6 +141,7 @@ class Run:
                 print("Warning, found lowest_loss {} in empty run".format(self.settings['lowest_loss']))
                 self.settings['lowest_loss'] = None
         self.settings["pretty_name"] = run_name
+        self._dataset = None
         # also make file names for the best and last nets
         net_extention = ".torch"
         self.last_net_files = [self.base_name + "_last_" + self.settings['net_type'] + net_extention]
@@ -145,26 +149,43 @@ class Run:
         # check to see if either of these exist and load if so
         self.__best_net_state_dicts = None  # create the attribute
         self.__last_net_state_dicts = None
+        self._last_nets = None
+        self._best_nets = None
         try:
-            last_net_state_dicts = [torch.load(name, map_location='cpu')
-                                    for name in self.last_net_files]
-            self.last_nets = self._nets_from_state_dict(last_net_state_dicts)
+            self._last_net_state_dicts = [torch.load(name, map_location='cpu')
+                                          for name in self.last_net_files]
         except FileNotFoundError:
             # if the run is not empty there should be a last net
             if not self.empty_run:
                 print("Warning; not an empty run, but no last net found!")
         try:
-            best_net_state_dicts = [torch.load(name, map_location='cpu')
-                                    for name in self.best_net_files]
-            self.set_best_state_dicts(best_net_state_dicts, self.settings['lowest_loss'])
+            self.__best_net_state_dicts = [torch.load(name, map_location='cpu')
+                                           for name in self.best_net_files]
         except FileNotFoundError:
             if not self.empty_run:
                 print("Warning; not an empty run, but no best net found!")
     
-    def _load_dataset(self):
+    @property
+    def dataset(self):
         raise NotImplementedError
 
-    def _nets_from_state_dict(self):
+    @property
+    def last_nets(self):
+        if self._last_nets is None:
+            if self.__last_net_state_dicts is None:
+                raise FileNotFoundError("No last nets found for this run")
+            self._last_nets = self._nets_from_state_dict(self.__last_net_state_dicts)
+        return self._last_nets
+
+    @property
+    def best_nets(self):
+        if self._best_nets is None:
+            if self.__best_net_state_dicts is None:
+                raise FileNotFoundError("No best nets found for this run")
+            self._best_nets = self._nets_from_state_dict(self.__best_net_state_dicts)
+        return self._best_nets
+
+    def _nets_from_state_dict(self, *args, **kwargs):
         raise NotImplementedError
 
     def __process_idx(self, idx):
@@ -351,18 +372,15 @@ class Run:
 class LinkingRun(Run):
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
-    setting_names = Run.setting_names + ["latent_dimension",
-                                 "database_name", "hepmc_name"]
+    setting_names = Run.setting_names + ["database_name", "hepmc_name"]
     # the tests for identifying the arguments
     arg_tests = {**Run.arg_tests,
                  "database_name" : os.path.exists,
-                 "hepmc_name"  : os.path.exists,
-                 "latent_dimension" : lambda s: str_is_type(int, s)}
+                 "hepmc_name"  : os.path.exists}
 
     arg_convert = {**Run.arg_convert, 
                    "database_name" : lambda s: s,
-                   "hepmc_name"  : lambda s: s,
-                   "latent_dimension" : lambda s: int(s)}
+                   "hepmc_name"  : lambda s: s}
 
     arg_defaults = {"data_folder"   : "big_ds",
                     "database_name" : "/home/henry/lazy/h1bBatch2.db",
@@ -372,7 +390,6 @@ class LinkingRun(Run):
                     "inital_lr"   : 0.01,
                     "weight_decay": 0.01,
                     "net_type"    : "Linker",
-                    "latent_dimension" : 10,
                     "auc"         : None,
                     "lowest_loss" : None,
                     "notes"       : ""}
@@ -387,13 +404,24 @@ class LinkingRun(Run):
             self.last_net_files.append(self.base_name + "_last_" + name + net_extention)
             self.best_net_files.append(self.base_name + "_best_" + name + net_extention)
     
-    def _load_dataset(self, shuffle=False):
-        dataset = Datasets.TracksTowersDataset(folder_name=self.settings['data_folder'],
-                                               database_name=self.settings['database_name'],
-                                               hepmc_name=self.settings['hepmc_name'],
-                                               shuffle=shuffle)
-        return dataset
-        
+    
+    @property
+    def dataset(self):
+        if self._dataset is None:
+            self._dataset = Datasets.TracksTowersDataset(
+                            folder_name=self.settings['data_folder'],
+                            database_name=self.settings['database_name'],
+                            hepmc_name=self.settings['hepmc_name'],
+                            shuffle=shuffle)
+        return self._dataset
+
+    @property
+    def last_nets(self):
+        raise NotImplementedError
+
+    @property
+    def best_nets(self):
+        raise NotImplementedError
 
     def _nets_from_state_dict(self, state_dicts):
         towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
@@ -407,31 +435,47 @@ class LinkingRun(Run):
 
 class RecursiveRun(Run):
     arg_defaults = {"data_folder" : "fakereco",
+                    "latent_dimension" : 10,
                     "time"        : 3000,
                     "batch_size"  : 10,
                     "inital_lr"   : 0.01,
                     "weight_decay": 0.01,
-                    "net_type"    : "Recursive",
+                    "net_type"    : "simple_recursive",
                     "auc"         : None,
                     "lowest_loss" : None,
                     "notes"       : ""}
                           
     def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
+        # net types are used to select the corret net
+        net_types = ["recursive", "simple_recursive", "pseudostate_recursive"]
+        self.arg_tests['net_type'] = lambda s: s in net_types
+        def convert_net_type(net_type):
+            if net_type == "recursive":
+                # legacy for simple_recursive
+                net_type = "simple_recursive"
+            return net_type
+        self.arg_convert['net_type'] = convert_net_type
+
         super().__init__(folder_name, run_name, accept_empty, writing)
     
-    def _load_dataset(self, shuffle=False):
-        dataset = Datasets.JetTreesDataset(dir_name=self.settings['data_folder'])
-        return dataset
+    @property
+    def dataset(self, shuffle=False):
+        if self._dataset is None:
+            self._dataset = Datasets.JetTreesDataset(dir_name=self.settings['data_folder'])
+        return self._dataset
         
 
     def _nets_from_state_dict(self, state_dicts):
-        towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
-                                                      self.settings['latent_dimension'])
-        towers_projector.load_state_dict(state_dicts[0])
-        tracks_projector = LinkingNN.Latent_projector(self.dataset.track_dimensions,
-                                                      self.settings['latent_dimension'])
-        tracks_projector.load_state_dict(state_dicts[1])
-        return [towers_projector, tracks_projector]
+        # Device configuration
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        else:
+            device = torch.device('cpu')
+        net = RecursiveNN.SimpleRecursor(device, self.dataset.num_dimensions,
+                                         self.settings['latent_dimension'], 
+                                         self.dataset.num_targets)
+        return [net]
+
 
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):
