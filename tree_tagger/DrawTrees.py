@@ -259,7 +259,6 @@ class DotGraph:
     def legend(self):
         return self.__start + self.__legend + self.__end
 
-
     
 def main():
     """ Launch file, makes and saves a dot graph """

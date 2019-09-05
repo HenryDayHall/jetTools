@@ -1,11 +1,98 @@
 """Low level components, format apes that of root """
+import uproot
+import awkward
 import itertools
 import contextlib
 import os
+import csv
 from ipdb import set_trace as st
 import numpy as np
 from skhep import math as hepmath
-from tree_tagger import Constants, PDGNames
+from tree_tagger import Constants, PDGNames, InputTools
+
+
+# context manager for folder that holds data
+class DataIndex:
+    index_delimiter = '|'
+    index_columns = [('name', str), ('mutable', bool), ('size', int), ('save_name', str)]
+    def __init__(self, dir_name):
+        """ Context manager for folder that holds data
+        Designed to provide some checks that the contents of the folder are correct,
+        also provides paths fo opaning them """
+        self.dir_name = dir_name
+        # fetch the index file
+        self.index_name = os.path.join(dir_name, "index.txt")
+        self.contents = []
+        try:
+            with open(self.index_name, 'r') as index_file:
+                reader = csv.reader(index_file, delimiter=self.index_delimiter)
+                for row in reader:
+                    assert len(row) == len(self.index_columns)
+                    processed = {col: col_type(x) for ((col, col_type), x)
+                                 in zip(self.index_columns, row)}
+                    self.contents.append(processed)
+            self.verify_index()
+        except FileNotFoundError:  # new Datafolder, make an index
+            self.contents = self._generate_contents()
+            self._write_index()
+
+    def _generate_contents(self):
+        print(f"Creating index for {self.dir_name}")
+        in_dir = os.listdir(self.dir_name)
+        contents = []
+        for save_name in in_dir:
+            print(save_name)
+            name = input("name= ")
+            is_mutable = InputTools.yesNo_question("mutable= ")
+            path = os.path.join(self.dir_name, save_name)
+            size = os.stat(path).st_size
+            contents.append({'name': name, 'mutable': is_mutable,
+                             'size': size, 'save_name': save_name})
+        return contents
+
+    def verify_index(self, check_mutables=False):
+        """ check the index file is correct about the contents of the Data folder """
+        in_dir = os.listdir(self.dir_name)
+        index_save = os.path.split(self.index_name)[-1]
+        # check for the index file itself
+        if index_save in in_dir:
+            in_dir.remove(index_save)
+        else:
+            raise FileNotFoundError(f"{index_save} not in {self.dir_name}")
+        # look for other files
+        for file_data in self.contents:
+            if file_data['save_name'] in in_dir:
+                in_dir.remove(file_data['save_name'])
+            else:
+                raise FileNotFoundError(f"{file_data['save_name']} not in {self.dir_name}")
+            path = os.path.join(self.dir_name, file_data['save_name'])
+            if not file_data['mutable'] or check_mutables:
+                found_size = os.stat(path).st_size
+                if found_size != file_data['size']:
+                    raise OSError(f"{path} is size {found_size} - expected size={file_data['size']}")
+        # if the file isn't in the index it shouldn't be in the dir
+        if len(in_dir) > 0:
+            raise FileExistsError(f"Unindexed files found in {self.dir_name}; {in_dir}")
+
+    def _write_index(self):
+        with open(self.index_name, 'w') as index_file:
+            writer = csv.writer(index_file, delimiter=self.index_delimiter)
+            for entry in self.contents:
+                line = [str(entry[col_name]) for col_name, _ in self.index_columns]
+                writer.writerow(line)
+
+    def __enter__(self):
+        return self.contents
+
+    def __exit__(self, *args):
+        for entry in self.contents:
+            if 'size' not in entry:
+                path = os.path.join(self.dir_name, entry['save_name'])
+                entry['size'] = os.stat(path).st_size
+        self.verify_index()
+        self._write_index()
+
+
 
 
 def safe_convert(cls, string):
@@ -131,6 +218,152 @@ class MyParticle(SafeLorentz):
         if daughters != '':
             new_particle.daughter_ids = [int(d) for d in daughters.split(cls.variable_sep)]
         return new_particle
+
+
+class EventWise:
+    """ The most basic properties of collections that exist in an eventwise sense """
+    # putting them out here ensures they will be overwritten
+    columns = []
+    _column_contents = {}
+    auxilleries = []
+
+    def __init__(self, dir_name, save_name, columns=None, contents=None):
+        # the init method must generate some table of items,
+        # nomally a jagged array
+        self.dir_name = dir_name
+        self.save_name = save_name
+        if columns is not None:
+            self.columns = columns
+        if contents is not None:
+            self._column_contents = contents
+
+    def add_to_index(self, contents, name=None, mutable=True):
+        """ add this dataset to the file index """
+        if name is None:
+            name = self.save_name.split('.', 1)[0]
+        contents.append({'name': name, 'save_name': self.save_name, 'mutable':mutable})
+
+    def __getattr__(self, attr_name):
+        """ the columns are all avalible attrs """
+        # capitalise raises the case of the first letter
+        if attr_name[0].upper() + attr_name[1:] in self.columns:
+            return self._column_contents[attr_name]
+        raise AttributeError(f"{self.__class__.__name__} does not have {attr_name}")
+
+    def __dir__(self):
+        new_attrs = set(super().__dir__() + self.columns)
+        return sorted(new_attrs)
+
+    def write(self):
+        """ write to disk """
+        path = os.path.join(self.dir_name, self.save_name)
+        column_order = awkward.fromiter(self.columns)
+        all_content = {'column_order': column_order, **self._column_contents}
+        awkward.save(path, all_content, mode='w')
+
+    @classmethod
+    def from_file(cls, path):
+        contents = awkward.load(path)
+        columns = list(contents['column_order'])
+        new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
+        return new_eventWise
+
+
+class RootReadout(EventWise):
+    """ Reads arbitary components from a root file created by Delphes """
+    def __init__(self, dir_name, save_name, component_names):
+        # read the root file
+        path = os.path.join(dir_name, save_name)
+        self._root_file = uproot.open(path)["Delphes"]
+        # the first component has no prefix
+        prefixes = [''] + component_names[1:]
+        for prefix, component in zip(prefixes, component_names):
+            self.add_component(component, prefix)
+            st()
+        self._unpack_TRefs()
+        super().__init__(dir_name, save_name)
+
+    def add_component(self, component_name, key_prefix=''):
+        if key_prefix != '':
+            # check it ends in an underscore
+            if not key_prefix.endswith('_'):
+                key_prefix += '_'
+            # check that this prefix is not seen anywhere else
+            for key in self._column_contents.keys():
+                assert not key.startswith(key_prefix)
+        # remove keys starting with lower case letters (they seem to be junk)
+        full_keys = [k for k in self._root_file[component_name].keys()
+                     if (k.decode().split('.', 1)[1][0]).isupper()]
+        for key in full_keys:
+            array = self._root_file.array(key)
+        all_arrays = self._root_file.arrays(full_keys)
+        # process the keys to ensure they are usable a attribute names and unique
+        attr_names = []
+        # some attribute names get altered
+        rename = {'E': 'Energy', 'P':'Birr'}
+        for key in full_keys:
+            new_attr = key.decode().split('.', 1)[1]
+            new_attr = ''.join(filter(str.isalnum, new_attr))
+            if new_attr in rename:
+                new_attr = rename[new_attr]
+            new_attr = key_prefix + new_attr
+            if new_attr[0].isdigit():
+                # atribute naems can contain numbers 
+                # but they must not start with one
+                new_attr = 'x' + new_attr
+            attr_names.append(new_attr)
+        # now process to prevent duplicates
+        attr_names = np.array(attr_names)
+        for i, name in enumerate(attr_names):
+            if name in attr_names[i+1:]:
+                locations = np.where(attr_names == name)[0]
+                n = 1
+                for index in locations:
+                    # check it's not already there (for some reason)
+                    while attr_names[index]+str(n) in attr_names:
+                        n += 1
+                    attr_names[index] += str(n)
+        new_column_contents = {name: all_arrays[key]
+                               for key, name in zip(full_keys, attr_names)}
+        self._column_contents = {**new_column_contents, **self._column_contents}
+        # make this a list for fixed order
+        self.columns += sorted(self._column_contents.keys())
+
+    def _unpack_TRefs(self):
+        for name in self.columns:
+            try:
+                is_tRef, converted = self._recursive_to_id(self._column_contents[name])
+            except Exception:
+                st()
+                is_tRef, converted = self._recursive_to_id(self._column_contents[name])
+            if is_tRef:
+                converted = awkward.fromiter(converted)
+                self._column_contents[name] = converted
+
+    def _recursive_to_id(self, jagged_array):
+        results = []
+        is_tRef = True  # an empty list is assumed to be a tRef list
+        for item in jagged_array:
+            if hasattr(item, '__iter__'):
+                is_tRef, sub_results = self._recursive_to_id(item)
+                if not is_tRef:
+                    # cut losses and return up the stack now
+                    return is_tRef, results
+                results.append(sub_results)
+            else:
+                is_tRef = isinstance(item, uproot.rootio.TRef)
+                if not is_tRef:
+                    # cut losses and return up the stack now
+                    return is_tRef, results
+                results.append(item.id)
+        return is_tRef, results
+                
+    def write(self):
+        raise NotImplementedError("This interface is read only")
+
+    @classmethod
+    def from_file(cls, path, component_name):
+        return cls(*os.path.split(path), component_name)
 
 
 class RecoParticle(MyParticle):

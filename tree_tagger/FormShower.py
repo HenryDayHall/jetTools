@@ -9,13 +9,13 @@ import numpy as np
 class Shower:
     """ Object to hold a shower of particles
     
-    only keeps a list of the particle global_ids, mothers, daughters and PDGglobal_ids.
+    only keeps a list of the particle global_ids, parents, childs and PDGglobal_ids.
     """
-    def __init__(self, global_ids, mothers, daughters, labels):
+    def __init__(self, global_ids, parents, childs, labels):
         self.amalgam = False
         self.global_ids = global_ids
-        self.mothers = mothers
-        self.daughters = daughters
+        self.parents = parents
+        self.childs = childs
         self.labels = labels
         self.ranks = None  # exspensive, create as needed with find_ranks()
         self._find_roots()
@@ -29,15 +29,15 @@ class Shower:
         for oIndex, oID in enumerate(other_shower.global_ids):
             if oID in self.global_ids:  #check for agreement
                 sIndex = list(self.global_ids).index(oID)
-                assert self.mothers[sIndex] == other_shower.mothers[oIndex]
-                assert self.daughters[sIndex] == other_shower.daughters[oIndex]
+                assert self.parents[sIndex] == other_shower.parents[oIndex]
+                assert self.childs[sIndex] == other_shower.childs[oIndex]
                 assert self.labels[sIndex] == other_shower.labels[oIndex]
             else:  # add it on
                 sIndex = next_free_sIndex
                 next_free_sIndex += 1
                 self.global_ids[sIndex] = oID
-                self.mothers.append(other_shower.mothers[oIndex])
-                self.daughters.append(other_shower.daughters[oIndex])
+                self.parents.append(other_shower.parents[oIndex])
+                self.childs.append(other_shower.childs[oIndex])
                 self.labels[sIndex] = other_shower.labels[oIndex]
         self._find_roots()
 
@@ -49,7 +49,7 @@ class Shower:
     def _find_roots(self):
         """ Demand the shower identify it's root.
         This is stored as an internal variable. """
-        root_gids = get_roots(self.global_ids, self.mothers)
+        root_gids = get_roots(self.global_ids, self.parents)
         if not self.amalgam:
             assert len(root_gids) == 1, "There should only be one root to a shower"
         self.root_gids = root_gids
@@ -80,12 +80,12 @@ class Shower:
         has_decendants = True
         while has_decendants:
             rank_n += 1
-            decendant_global_ids = [daughter for index in current_rank
-                                    for daughter in self.daughters[index]
-                                    if daughter in self.global_ids]
+            decendant_global_ids = [child for index in current_rank
+                                    for child in self.childs[index]
+                                    if child in self.global_ids]
             current_rank = []
-            for daughter in decendant_global_ids:
-                index = list_global_ids.index(daughter)
+            for child in decendant_global_ids:
+                index = list_global_ids.index(child)
                 # don't overwite a rank, so in a loop the lowers rank stands
                 # also needed to prevent perpetual loops
                 if ranks[index] == -1:
@@ -106,8 +106,8 @@ class Shower:
         dotgraph : DotGraph
             an object that can produce a string that would be in a dot file for this graph
         """
-        assert len(self.global_ids) == len(self.mothers)
-        assert len(self.global_ids) == len(self.daughters)
+        assert len(self.global_ids) == len(self.parents)
+        assert len(self.global_ids) == len(self.childs)
         assert len(self.global_ids) == len(self.labels)
         return DrawTrees.DotGraph(self)
 
@@ -121,16 +121,16 @@ class Shower:
         Function that anouches which particles have perantage from outside this shower
         Includes the root """
         outside_gids = []
-        for gid, mothers_here in zip(self.global_ids, self.mothers):
-            if not np.all([m in self.global_ids for m in mothers_here]):
+        for gid, parents_here in zip(self.global_ids, self.parents):
+            if not np.all([m in self.global_ids for m in parents_here]):
                 outside_gids.append(gid)
         return outside_gids
 
     @property
     def ends(self):
         _ends = []
-        for i, daughters_here in enumerate(self.daughters):
-            if np.all([daughter is None for daughter in daughters_here]):
+        for i, childs_here in enumerate(self.childs):
+            if np.all([child is None for child in childs_here]):
                 _ends.append(i)
         return _ends
 
@@ -140,7 +140,7 @@ class Shower:
         return '+'.join(flavours)
         
 
-def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
+def get_showers(eventWise, event_n, exclude_pids=[2212, 25, 35]):
     """ From each root split the decendants into showers
     Each particle can only belong to a single shower.
 
@@ -161,13 +161,11 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
 
     """
     # remove any stop pids
-    mask = [p not in exclude_pids for p in particle_collection.pids]
-    global_ids = particle_collection.global_ids[mask]
-    mother_ids = [p.mother_ids for p, included in zip(particle_collection.particle_list, mask)
-                  if included]
-    daughter_ids = [p.daughter_ids for p, included in zip(particle_collection.particle_list, mask)
-                    if included]
-    pids = particle_collection.pids[mask]
+    mask = [p not in exclude_pids for p in eventWise.PID[event_n]]
+    global_ids = np.where(mask)[0]
+    parent_ids = eventWise.Parents[event_n, mask]
+    child_ids = eventWise.Children[event_n, mask]
+    pids = eventWise.PID[event_n, mask]
     # check that worked
     remaining_pids = set(pids)
     for exclude in exclude_pids:
@@ -179,7 +177,7 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
     # but we want to split the event into showers
     # at start all particles are allocated to a diferent shower
     showers = []
-    root_gids = get_roots(global_ids, mother_ids)
+    root_gids = get_roots(global_ids, parent_ids)
     print(f"Found {len(root_gids)} root_gids")
     list_global_ids = list(global_ids)
     for i, root_gid in enumerate(root_gids):
@@ -191,8 +189,8 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
             next_gen = []
             for index in to_follow:
                 # be careful not to include forbiden particles
-                next_gen += [list_global_ids.index(daughter) for daughter in daughter_ids[index]
-                             if daughter in global_ids]
+                next_gen += [list_global_ids.index(child) for child in child_ids[index]
+                             if child in global_ids]
             # prevent loops
             next_gen = list(set(next_gen))
             next_gen = [i for i in next_gen if i not in shower_indices]
@@ -201,25 +199,25 @@ def get_showers(particle_collection, exclude_pids=[2212, 25, 35]):
             to_follow = next_gen
         assert len(set(shower_indices)) == len(shower_indices)
         new_shower = Shower(global_ids[shower_indices],
-                            [mother_ids[s] for s in shower_indices], 
-                            [daughter_ids[s] for s in shower_indices],
+                            [parent_ids[s] for s in shower_indices], 
+                            [child_ids[s] for s in shower_indices],
                             labels[shower_indices])
         showers.append(new_shower)
     return showers
 
 
-def get_roots(global_ids, mothers):
-    """From a list of particle global_ids and a list of mother global_ids determin root particles
+def get_roots(global_ids, parents):
+    """From a list of particle global_ids and a list of parent global_ids determin root particles
 
-    A root particle is one whos mothers are both from outside the particle list.
+    A root particle is one whos parents are both from outside the particle list.
 
     Parameters
     ----------
     global_ids : numpy array of ints
         The unique id of each particle
         
-    mothers : 2D numpy array of ints
-        Each row contains the global_ids of two mothers of each particle in global_ids
+    parents : 2D numpy array of ints
+        Each row contains the global_ids of two parents of each particle in global_ids
         These can be none
 
     Returns
@@ -229,14 +227,14 @@ def get_roots(global_ids, mothers):
 
     """
     roots = []
-    for gid, mothers_here in zip(global_ids, mothers):
-        if not np.any([m in global_ids for m in mothers_here]):
+    for gid, parents_here in zip(global_ids, parents):
+        if not np.any([m in global_ids for m in parents_here]):
             roots.append(gid)
     return roots
 
 
 # ignore not working
-def make_tree(global_ids, mothers, daughters, labels):
+def make_tree(global_ids, parents, childs, labels):
     """
     It's possible this is working better than I think it is ...
     Just the data was screwy
@@ -248,12 +246,12 @@ def make_tree(global_ids, mothers, daughters, labels):
     global_ids : numpy array of ints
         The unique id of each particle
         
-    mothers : 2D numpy array of ints
-        Each row contains the global_ids of two mothers of each particle in global_ids
+    parents : 2D numpy array of ints
+        Each row contains the global_ids of two parents of each particle in global_ids
         These can be none
         
-    daughters : 2D numpy array of ints
-        Each row contains the global_ids of two daughters of each particle in global_ids
+    childs : 2D numpy array of ints
+        Each row contains the global_ids of two childs of each particle in global_ids
         These can be none
         
     labels : numpy array of ints
@@ -268,11 +266,11 @@ def make_tree(global_ids, mothers, daughters, labels):
     """
     graph =  networkx.Graph()
     graph.add_nodes_from(global_ids)
-    for this_id, this_mothers, this_daughters in zip(global_ids, mothers, daughters):
-        mother_edges = [(par_id, this_id) for par_id in this_mothers if par_id in global_ids]
-        graph.add_edges_from(mother_edges)
-        daughter_edges = [(this_id, chi_id) for chi_id in this_daughters if chi_id in global_ids]
-        graph.add_edges_from(daughter_edges)
+    for this_id, this_parents, this_childs in zip(global_ids, parents, childs):
+        parent_edges = [(par_id, this_id) for par_id in this_parents if par_id in global_ids]
+        graph.add_edges_from(parent_edges)
+        child_edges = [(this_id, chi_id) for chi_id in this_childs if chi_id in global_ids]
+        graph.add_edges_from(child_edges)
     label_dict = {i:l for i, l in zip(global_ids, labels)}
     networkx.relabel_nodes(graph, label_dict)
     return graph
