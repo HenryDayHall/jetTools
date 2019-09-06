@@ -43,11 +43,13 @@ class DotGraph:
         self.__legend = ""
         # if a shower is given make edges from that
         if shower is not None:
-            observables = kwargs.get('observables', None)
+            eventWise = kwargs.get('eventWise', None)
+            event_n = kwargs.get('event_n', 0)
+            use_TracksTowers = kwargs.get('use_TracksTowers', False)
             jet = kwargs.get('jet', None)
-            self.fromShower(shower, observables, jet)
+            self.fromShower(shower, eventWise, event_n, jet, use_TracksTowers)
 
-    def fromShower(self, shower, observables=None, jet=None):
+    def fromShower(self, shower, eventWise=None, event_n=None, jet=None, use_TracksTowers=False):
         """ Construct the graph from a shower object
         
 
@@ -58,12 +60,12 @@ class DotGraph:
             
         """
         # add the edges
-        for this_id, this_mothers in zip(shower.global_ids, shower.mothers):
-            for mother in this_mothers:
-                if mother in shower.global_ids:
-                    self.addEdge(mother, this_id)
+        for this_id, this_parents in zip(shower.particle_idxs, shower.parents):
+            for parent in this_parents:
+                if parent in shower.particle_idxs:
+                    self.addEdge(parent, this_id)
         # add the labels
-        shower_leaf_global_ids = shower.global_ids[shower.ends]
+        shower_leaf_particle_idxs = shower.particle_idxs[shower.ends]
         # set up a legened
         legened_id = 0
         internal_particle = "darkolivegreen1"
@@ -76,11 +78,11 @@ class DotGraph:
         self.addLegendNode(legened_id, "Connected to other shower", colour=outside_particle)
         legened_id += 1
         # add the shower particles in
-        for this_id, label in zip(shower.global_ids, shower.labels):
+        for this_id, label in zip(shower.particle_idxs, shower.labels):
             colour = internal_particle
-            if this_id in shower.root_gids:
+            if this_id in shower.root_idxs:
                 colour=root_particle
-            elif this_id in shower.outside_connection_gids:
+            elif this_id in shower.outside_connection_idxs:
                 colour=outside_particle
             shape = None
             self.addNode(this_id, label, colour=colour, shape=shape)
@@ -89,16 +91,16 @@ class DotGraph:
         rank_keys = sorted(list(set(ranks)))
         for key in rank_keys:
             mask = ranks == key
-            rank_ids = np.array(shower.global_ids)[mask]
+            rank_ids = np.array(shower.particle_idxs)[mask]
             self.addRank(rank_ids)
-        first_obs_id = np.max(shower.global_ids) + 1
+        first_obs_id = np.max(shower.particle_idxs) + 1
         obs_rank = max(ranks) + 1
         obs_draw_map = {}
-        if observables is not None:
+        if eventWise is not None:
             # make an observable layer
             # observable part of legend
             observable_shape = "diamond"
-            if observables.has_tracksTowers:
+            if use_TracksTowers:
                 tower_particle = "cadetblue"
                 self.addLegendNode(legened_id, "Tower", colour=tower_particle, shape=observable_shape)
                 legened_id += 1
@@ -109,37 +111,51 @@ class DotGraph:
                 self.addLegendNode(legened_id, "Observable", colour=internal_particle, shape=observable_shape)
                 legened_id += 1
             # start by deciding which observabels are actually used
-            used_obs_ids = []
-            # in the shower 
-            used_obs_ids += [oid for gid, oid in observables.global_to_obs.items()
-                             if gid in shower_leaf_global_ids]
+            jet_tracks, jet_towers, jet_particles = [], [], []
             if jet is not None:
-                used_obs_ids += [oid for oid in jet.global_obs_ids if oid > -1]
-            for oid, obj in zip(observables.global_obs_ids, observables.objects):
-                if oid not in used_obs_ids:
-                    continue
-                draw_id = oid + first_obs_id
-                obs_draw_map[oid] = draw_id
-                name = "Observable"
-                colour = internal_particle
-                shape = observable_shape
-                if type(obj) == Components.MyTrack:
-                    name = "Track"
-                    colour = track_particle
-                    if obj.global_id in shower.global_ids:
-                        self.addEdge(obj.global_id, draw_id)
-                    self.addNode(draw_id, name, colour, shape)
-                elif type(obj) == Components.MyTower:
-                    name = "Tower"
-                    colour = tower_particle
-                    for global_id in obj.global_ids:
-                        if global_id in shower.global_ids:
-                            self.addEdge(global_id, draw_id)
-                    self.addNode(draw_id, name, colour, shape)
+                raise NotImplementedError
+                if use_TracksTowers:
+                    pass
+                    #jet_tracks = foobar
+                    #jet_towers = foobaz
                 else:
-                    self.addEdge(obj.global_id, draw_id)
-                    self.addNode(draw_id, name, colour, shape)
-            
+                    pass
+                    #jet_particles = bax
+            if use_TracksTowers:
+                draw_id = first_obs_id
+                for track_idx, particle_idx in enumerate(eventWise.Track_Particle[event_n]):
+                    if (particle_idx not in shower_leaf_particle_idxs and
+                        track_idx not in jet_tracks):
+                        continue
+                    draw_id = track_idx + first_obs_id
+                    obs_draw_map[track_idx] = draw_id
+                    if particle_idx in shower.particle_idxs:
+                        self.addEdge(particle_idx, draw_id)
+                    self.addNode(draw_id, "Track", track_particle, observable_shape)
+                next_free_obs_id = draw_id
+                for tower_idx, particle_idxs in enumerate(eventWise.Tower_Particles[event_n]):
+                    if tower_idx not in jet_towers:
+                        try:
+                            # have a look to see if there is a particle in the shower
+                            inside_paticle = next(p for p in particle_idxs if p in shower_leaf_particle_idxs)
+                        except StopIteration:
+                            continue  # there isn't
+                    draw_id = tower_idx + next_free_obs_id
+                    obs_draw_map[tower_idx] = draw_id
+                    for particle_idx in particle_idxs:
+                        if particle_idx in shower_leaf_particle_idxs:
+                            self.addEdge(particle_idx, draw_id)
+                    self.addNode(draw_id, "Tower", tower_particle, observable_shape)
+            else:  # not using tracks towers
+                # in the shower and the tracks
+                root_particles = np.where(eventWise.is_root)[0]
+                for particle_idx in root_particles:
+                    if particle_idx not in shower_leaf_particle_idxs:
+                        continue
+                    draw_id = particle_idx + first_obs_id
+                    obs_draw_map[particle_idx] = draw_id
+                    self.addEdge(particle_idx, draw_id)
+                    self.addNode(draw_id, "Observable", internal_particle, observable_shape)
             self.addRank(list(obs_draw_map.values()))
         first_jet_id = int(np.max(list(obs_draw_map.values()),
                                   initial=first_obs_id)) + 1
@@ -161,13 +177,13 @@ class DotGraph:
             # add the highest shower rank t all the jet ranks
             jet_cluster = "coral"
             self.addLegendNode(legened_id, f"PsudoJet (join distance)", colour=jet_cluster)
-            for index, (draw_id, mother_jid, distance) in enumerate(zip(jet_draw_ids, jet.mothers, jet.distances)):
+            for index, (draw_id, parent_jid, distance) in enumerate(zip(jet_draw_ids, jet.parents, jet.distances)):
                 # add the edges
-                if mother_jid >= 0:
-                    mother_draw_id = jet_draw_map[mother_jid]
-                    if (mother_draw_id in jet_draw_ids
-                        or mother_draw_id in obs_draw_map.values()):
-                        self.addEdge(draw_id, mother_draw_id)
+                if parent_jid >= 0:
+                    parent_draw_id = jet_draw_map[parent_jid]
+                    if (parent_draw_id in jet_draw_ids
+                        or parent_draw_id in obs_draw_map.values()):
+                        self.addEdge(draw_id, parent_draw_id)
                 # if needed add the node
                 if draw_id in obs_draw_map.values():
                     continue
@@ -263,68 +279,78 @@ class DotGraph:
 def main():
     """ Launch file, makes and saves a dot graph """
     repeat = True
+    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
     while repeat:
-        event_n = int(input("Event number: "))
-        from tree_tagger import ReadSQL
-        event, tracks, towers, obs = ReadSQL.main(event_n)
         from tree_tagger import FormShower
-        from tree_tagger import FormJets
-        showers = FormShower.get_showers(event)
-        jets = FormJets.PsudoJets(obs)
-        jets.assign_mothers()
-        jets = jets.split()
-        chosen_showers = []
-        for i, shower in enumerate(showers):
-            shower_roots = [shower.labels[i] for i in shower.root_idxs]
+        event_n = int(input("Event number: "))
+        showers = FormShower.get_showers(eventWise, event_n)
+        for shower_n, shower in enumerate(showers):
+            shower_roots = [shower.labels[i] for i in shower.root_local_idxs]
             if 'b' not in shower_roots and 'bbar' not in shower_roots:
                 continue
-            chosen_showers.append(shower)
-            print(f"Shower roots {shower.root_gids}")
-            max_daughters = max([len(d) for d in shower.daughters])
-            end_ids = [shower.global_ids[e] for e in shower.ends]
-            print(f"Drawing shower {i}, has {max_daughters} max daughters. Daughters to particles ratio = {max_daughters/len(shower.daughters)}")
-            # pick the jet with largest overlap
-            largest_overlap = 0
-            picked_jet = jets[0]
-            for jet in jets:
-                obs_ids = [oid for oid in jet.global_obs_ids if not oid == -1]
-                matches_here = 0
-                for ob_oid, ob in zip(obs.global_obs_ids, obs.objects):
-                    if isinstance(ob, Components.MyTrack):
-                        # it's a track obs
-                                                          # the track is in the jet
-                        if (ob_oid in obs_ids  
-                            and ob.global_id in end_ids):  # the track is in the shower
-                            matches_here += 1
-                    else: # it's a tower
-                        if ob_oid in obs_ids:   # the tower is in the jet
-                            for gid in ob.global_ids:     # for each particle in the tower
-                                if gid in end_ids:       # the particle is in the shower
-                                    matches_here += 1
-                if matches_here > largest_overlap:
-                    largest_overlap = matches_here
-                    picked_jet = jet
-            print(f"A jet contains {largest_overlap} out of {len(end_ids)} end products")
-            graph = DotGraph(shower=shower, jet=picked_jet, observables=obs)
-            base_name = f"event{event_n}_plot"
-            dotName = base_name + str(i) + ".dot"
-            legendName = base_name + str(i) + "_ledg.dot"
+            graph = DotGraph(shower=shower, eventWise=eventWise, use_TracksTowers=True)
+            base_name = f"event{event_n}_shower{shower_n}_plot"
+            dotName = base_name + ".dot"
+            legendName = base_name + "_ledg.dot"
             with open(dotName, 'w') as dotFile:
                 dotFile.write(str(graph))
             with open(legendName, 'w') as dotFile:
                 dotFile.write(graph.legend)
-        amalgam_shower = chosen_showers[0]
-        if len(chosen_showers)>1:
-            for shower in chosen_showers[1:]:
-                amalgam_shower.amalgamate(shower)
-        print("Drawing the amalgam of all b showers")
-        graph = DotGraph(shower=amalgam_shower, observables=obs)
-        dotName = f"event{event_n}_mixing_plot.dot"
-        legendName ="mixing_ledg.dot"
-        with open(dotName, 'w') as dotFile:
-            dotFile.write(str(graph))
-        with open(legendName, 'w') as dotFile:
-            dotFile.write(graph.legend)
+        #jets = FormJets.PsudoJets(obs)
+        #jets.assign_parents()
+        #jets = jets.split()
+        #chosen_showers = []
+        #for i, shower in enumerate(showers):
+        #    shower_roots = [shower.labels[i] for i in shower.root_local_idxs]
+        #    if 'b' not in shower_roots and 'bbar' not in shower_roots:
+        #        continue
+        #    chosen_showers.append(shower)
+        #    print(f"Shower roots {shower.root_idxs}")
+        #    max_children = max([len(d) for d in shower.children])
+        #    end_ids = [shower.particle_idxs[e] for e in shower.ends]
+        #    print(f"Drawing shower {i}, has {max_children} max children. Daughters to particles ratio = {max_children/len(shower.children)}")
+        #    # pick the jet with largest overlap
+        #    largest_overlap = 0
+        #    picked_jet = jets[0]
+        #    for jet in jets:
+        #        obs_ids = [oid for oid in jet.global_obs_ids if not oid == -1]
+        #        matches_here = 0
+        #        for ob_oid, ob in zip(obs.global_obs_ids, obs.objects):
+        #            if isinstance(ob, Components.MyTrack):
+        #                # it's a track obs
+        #                                                  # the track is in the jet
+        #                if (ob_oid in obs_ids  
+        #                    and ob.particle_idx in end_ids):  # the track is in the shower
+        #                    matches_here += 1
+        #            else: # it's a tower
+        #                if ob_oid in obs_ids:   # the tower is in the jet
+        #                    for idx in ob.particle_idxs:     # for each particle in the tower
+        #                        if idx in end_ids:       # the particle is in the shower
+        #                            matches_here += 1
+        #        if matches_here > largest_overlap:
+        #            largest_overlap = matches_here
+        #            picked_jet = jet
+        #    print(f"A jet contains {largest_overlap} out of {len(end_ids)} end products")
+        #    graph = DotGraph(shower=shower, jet=picked_jet, observables=obs)
+        #    base_name = f"event{event_n}_plot"
+        #    dotName = base_name + str(i) + ".dot"
+        #    legendName = base_name + str(i) + "_ledg.dot"
+        #    with open(dotName, 'w') as dotFile:
+        #        dotFile.write(str(graph))
+        #    with open(legendName, 'w') as dotFile:
+        #        dotFile.write(graph.legend)
+        #amalgam_shower = chosen_showers[0]
+        #if len(chosen_showers)>1:
+        #    for shower in chosen_showers[1:]:
+        #        amalgam_shower.amalgamate(shower)
+        #print("Drawing the amalgam of all b showers")
+        #graph = DotGraph(shower=amalgam_shower, observables=obs)
+        #dotName = f"event{event_n}_mixing_plot.dot"
+        #legendName ="mixing_ledg.dot"
+        #with open(dotName, 'w') as dotFile:
+        #    dotFile.write(str(graph))
+        #with open(legendName, 'w') as dotFile:
+        #    dotFile.write(graph.legend)
         repeat = InputTools.yesNo_question("Again? ")
 
 

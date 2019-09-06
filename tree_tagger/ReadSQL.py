@@ -185,7 +185,7 @@ def read_tracks_towers(particle_collection, database_name, event_n):
 
 def main(event_num=0):
     """ """
-    hepmc_name = "/home/henry/lazy/h1bBatch2.hepmc"
+    hepmc_name = "/home/henry/lazy/dataset2/h1bBatch2.hepmc"
     database_name = "/home/henry/lazy/h1bBatch2.db"
     event = ReadHepmc.read_file(hepmc_name, event_num, event_num+1)[0]
     track_list, tower_list = read_tracks_towers(event, database_name, event_num)

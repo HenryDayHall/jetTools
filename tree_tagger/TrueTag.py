@@ -95,6 +95,54 @@ def add_tag(multievent_filename, multijet_filename):
 
 def main():
     from tree_tagger import ReadSQL, FormJets, DrawBarrel
+    num_tags = []
+    num_convergent_roots = []
+    hard_interaction_pids=[25, 35]
+    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    for event_num in range(999):
+        if event_num %10 == 0:
+            print('.', end='', flush=True)
+            if event_num %100 ==0:
+                print(f"set num_tags = {set(num_tags)}")
+        try:
+            event, track_list, tower_list, observations = ReadSQL.main(event_num)
+        except AssertionError:
+            continue
+        except Exception:
+            break
+        hard_emmision = []
+        # two possibilities, "hard particles" may be found in the event
+        # or they are exculded from the particle list, and first gen is parentless
+        hard_global_id = [p.global_id for p in event.particle_list
+                          if p.pid in hard_interaction_pids]
+        hard_emmision += [particle for particle in event.particle_list
+                          if len(particle.mother_ids) == 0
+                          or set(particle.mother_ids).intersection(hard_global_id)]
+        possible_tag = [particle for particle in hard_emmision if particle.pid in tag_pids]
+        tag_particles = []
+        # now if there have decendants in the tag list favour the decendant
+        convergent_roots = 0
+        while len(possible_tag) > 0:
+            possible = possible_tag.pop()
+            eligable_children = [child for child in event.particle_list
+                                 if child.global_id in possible.daughter_ids
+                                 and child.pid in tag_pids]
+            if eligable_children:
+                possible_tag += eligable_children
+            elif possible not in tag_particles:
+                tag_particles.append(possible)
+            else:
+                convergent_roots += 1
+        if len(tag_particles) != 4:
+            st()
+        num_tags.append(len(tag_particles))
+        num_convergent_roots.append(num_convergent_roots)
+    st()
+    np.savetxt("woop_num_tags.csv", num_tags)
+    print(np.mean(num_tags))
+
+def alt_main():
+    from tree_tagger import ReadSQL, FormJets, DrawBarrel
     repeat = True
     while repeat:
         event_num = int(input("Event num: "))

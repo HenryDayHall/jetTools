@@ -7,7 +7,8 @@ import awkward
 
 def marry(hepmc, root_particles):
     if isinstance(root_particles, str):
-        root_particles = Components.RootReadout(*os.path.split(root_particles), 'Particle')
+        root_particles = Components.RootReadout(*os.path.split(root_particles),
+                                                ['Particle', 'Track', 'Tower'])
     if isinstance(hepmc, str):
         hepmc = ReadHepmc.Hepmc.from_file(hepmc)
     # first we assert that they both contain the same number of events
@@ -20,7 +21,7 @@ def marry(hepmc, root_particles):
     close_equivalent = [('Px', 'Px'),
                         ('Py', 'Py'),
                         ('Pz', 'Pz'),
-                        ('Energy', 'E'),
+                        ('Energy', 'Energy'),
                         ('Generated_mass', 'Mass')]
     for event_n in range(n_events):
         # the particles are expected to have the same order in both files
@@ -39,7 +40,7 @@ def marry(hepmc, root_particles):
     contents = root_particles._column_contents
     per_event_hepmc_cols = hepmc.event_information_cols + hepmc.weight_cols + \
                            hepmc.units_cols + hepmc.cross_section_cols
-    columns += per_event_hepmc_cols
+    columns += sorted(per_event_hepmc_cols)
     for name in per_event_hepmc_cols:
         contents[name] = hepmc.__getattr__(name)
     # some get renamed
@@ -48,12 +49,12 @@ def marry(hepmc, root_particles):
                              'Y': 'Vertex_Y',
                              'Z': 'Vertex_Z',
                              'Ctau': 'Vertex_Ctau'}
-    columns += per_vertex_hepmc_cols
+    columns += sorted(per_vertex_hepmc_cols.values())
     for name, new_name in per_vertex_hepmc_cols.items():
         contents[new_name] = hepmc.__getattr__(name)
     per_particle_hepmc_cols = ['End_vertex_barcode', 'Start_vertex_barcode',
                                'Parents', 'Children', 'Is_root', 'Is_leaf']
-    columns += per_particle_hepmc_cols
+    columns += sorted(per_particle_hepmc_cols)
     for name in per_particle_hepmc_cols:
         contents[name] = hepmc.__getattr__(name)
     # record what has what level of granularity
@@ -63,21 +64,11 @@ def marry(hepmc, root_particles):
     # make the new object and save it
     save_name = root_particles.save_name.split('.', 1)[0] + '_particles.awkd'
     dir_name = root_particles.dir_name
-    # rename columns to prevent prefix clashes
-    rename = {'E': 'Energy', 'P':'Momentum'}
-    for old, new in rename.items():
-        columns[columns.index(old)] = new
-        contents[new] = contents[old]
-        del contents[old]
     try:
         new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
         new_eventWise.write()
     except Exception:
         st()
         new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
-        new_eventWise.write()
-
-def add_tracksTowers(recipient_name, root_name):
-    root_towers = Components.RootReadout(*os.path.split(root_name), 'Tower')
-    root_tracks = Components.RootReadout(*os.path.split(root_name), 'Track')
+        return new_eventWise
 

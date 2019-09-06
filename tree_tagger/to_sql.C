@@ -870,7 +870,7 @@ void MakeTable(ExRootTreeReader *treeReader, sqlite3 *db) {
             track = *((Track *)branchTrack->At(i));
             AddTrack(track, particle_to_SQLkey, trackKey, eventKey, db);
             trackKey++;
-        }
+       }
 
         //Loop over all the towers and fill that table up
         cout << "Adding towers\n";

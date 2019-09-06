@@ -236,6 +236,7 @@ class EventWise:
             self.columns = columns
         if contents is not None:
             self._column_contents = contents
+        assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
 
     def add_to_index(self, contents, name=None, mutable=True):
         """ add this dataset to the file index """
@@ -279,7 +280,6 @@ class RootReadout(EventWise):
         prefixes = [''] + component_names[1:]
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)
-            st()
         self._unpack_TRefs()
         super().__init__(dir_name, save_name)
 
@@ -294,13 +294,17 @@ class RootReadout(EventWise):
         # remove keys starting with lower case letters (they seem to be junk)
         full_keys = [k for k in self._root_file[component_name].keys()
                      if (k.decode().split('.', 1)[1][0]).isupper()]
-        for key in full_keys:
-            array = self._root_file.array(key)
         all_arrays = self._root_file.arrays(full_keys)
         # process the keys to ensure they are usable a attribute names and unique
         attr_names = []
         # some attribute names get altered
-        rename = {'E': 'Energy', 'P':'Birr'}
+        # this is becuase it it not possible to save when one name is a prefix of another
+        rename = {'E': 'Energy', 'P':'Birr', 'ErrorP': 'ErrorBirr',
+                  'T': 'Time',
+                  'EtaOuter': 'OuterEta', 'PhiOuter': 'OuterPhi',
+                  'TOuter': 'OuterTime', 'XOuter': 'OuterX',
+                  'YOuter': 'OuterY', 'ZOuter': 'OuterZ',
+                  'Xd': 'dX', 'Yd': 'dY', 'Zd': 'dZ'}
         for key in full_keys:
             new_attr = key.decode().split('.', 1)[1]
             new_attr = ''.join(filter(str.isalnum, new_attr))
@@ -323,22 +327,24 @@ class RootReadout(EventWise):
                     while attr_names[index]+str(n) in attr_names:
                         n += 1
                     attr_names[index] += str(n)
+        assert len(set(attr_names)) == len(attr_names), f"Duplicates in columns; {attr_names}"
         new_column_contents = {name: all_arrays[key]
                                for key, name in zip(full_keys, attr_names)}
         self._column_contents = {**new_column_contents, **self._column_contents}
         # make this a list for fixed order
-        self.columns += sorted(self._column_contents.keys())
+        self.columns += sorted(new_column_contents.keys())
 
     def _unpack_TRefs(self):
         for name in self.columns:
-            try:
-                is_tRef, converted = self._recursive_to_id(self._column_contents[name])
-            except Exception:
-                st()
-                is_tRef, converted = self._recursive_to_id(self._column_contents[name])
+            is_tRef, converted = self._recursive_to_id(self._column_contents[name])
             if is_tRef:
                 converted = awkward.fromiter(converted)
                 self._column_contents[name] = converted
+            #  check that all arrays are a full depth jaggedarray
+            if isinstance(self._column_contents[name],
+                          awkward.array.objects.ObjectArray):
+                self._column_contents[name] = awkward.fromiter([awkward.fromiter(a) for a in
+                                                                self._column_contents[name]])
 
     def _recursive_to_id(self, jagged_array):
         results = []
@@ -355,7 +361,8 @@ class RootReadout(EventWise):
                 if not is_tRef:
                     # cut losses and return up the stack now
                     return is_tRef, results
-                results.append(item.id)
+                # the trefs are 1 indexed not 0 indexed, so subtract 1
+                results.append(item.id - 1)
         return is_tRef, results
                 
     def write(self):
