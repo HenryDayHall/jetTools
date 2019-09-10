@@ -1,3 +1,4 @@
+# TODO Needs updates for uproot!
 # Jets are formed using applyFastJet.cc
 # this takes in the jets, clusters them and writes to the text form of parentedTree
 # read in the data
@@ -13,18 +14,19 @@ import csv
 import torch
 
 class TreeWalker:
-    def __init__(self, jet, node_id):
-        self.jet = jet
-        self.id = node_id
-        #psudojet_ids = [ints[jet.psudojet_id_col] for ints in jet._ints]
-        psudojet_ids = jet.global_jet_ids
-        node_index = np.where(psudojet_ids==node_id)[0][0]
-        # self.global_obs_id = jet._ints[node_index][jet.obs_id_col]
-        self.global_obs_id = jet.global_obs_ids[node_index]
-        self.left_id = jet._ints[node_index][jet.daughter1_col]
-        self.right_id = jet._ints[node_index][jet.daughter2_col]
-        self.label = jet.distances
-        self.is_leaf = (self.left_id not in psudojet_ids) and (self.right_id not in psudojet_ids)
+    def __init__(self, eventWise, jet_name, jet_number, pseudojet_idx):
+        self.eventWise = eventWise
+        self.jet_name = jet_name
+        self.jet_number = jet_number
+        self.pseudojet_idx = pseudojet_idx
+        self.left_id = getattr(eventWise, jet_name+"_Child1")[jet_number][pseudojet_idx]
+        self.right_id = getattr(eventWise, jet_name+"_Child2")[jet_number][pseudojet_idx]
+        self.is_leaf = self.left_id < 0 and self.right_id < 0
+        self.is_root = getattr(eventWise, jet_name+"_Parent")[jet_number][pseudojet_idx] < 0
+        self.particle_idx = -1
+        if self.is_leaf:
+            self.particle_idx = eventWise.JetInputs_SelectedIdx[getattr(eventWise, jet_name+"_InputIdx")[jet_number][pseudojet_idx]]
+        self.label = getattr(eventWise, jet_name + "_JoinDistance")[jet_number][pseudojet_idx]
         self.leaf = [jet._floats[node_index][i] for i in
                       [jet.pt_col, jet.rap_col, jet.phi_col, jet.energy_col]]
         self.pt = self.leaf[0]

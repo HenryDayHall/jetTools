@@ -108,6 +108,8 @@ class PseudoJet:
                       ints[self._Child2_col] == -1):
                       cumulative += floats[col_num]
                       num_obs += 1
+            if num_obs == 0:
+                return 0.
             # some attrs should be averages instead of cumulative
             average_attrs = ["Phi", "Rapidity"]
             if attr_name in average_attrs:
@@ -225,11 +227,12 @@ class PseudoJet:
                 self.root_jetInputIdxs.append(pid)
 
     @classmethod
-    def read(cls, dir_name, selected_index=0, fastjet_format=False):
+    def read(cls, dir_name, selected_index=0, eventWise=None, fastjet_format=False):
         if not fastjet_format:
             file_name = os.path.join(dir_name, f"single{selected_index}.npz")
             return cls.multi_from_file(file_name)[0]
         #  fastjet format
+        assert eventWise is not None
         ifile_name = os.path.join(dir_name, f"fastjet_ints.csv")
         ffile_name = os.path.join(dir_name, f"fastjet_doubles.csv")
         # first line will be the tech specs and columns
@@ -246,7 +249,18 @@ class PseudoJet:
             exponent_multiplyer = -1
         else:
             raise ValueError(f"Algorithm {algorithm_name} not recognised")
+        # the file of fast_ints contains
         fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
+        next_free = max(fast_ints[:, 1]) + 1
+        fast_idx_dict = {}
+        for line_idx, i in fast_ints[:, :2]:
+            if i == -1:
+                fast_idx_dict[line_idx] = next_free
+                next_free += 1
+            else:
+                fast_idx_dict[line_idx] = i
+        fast_idx_dict[-1]=-1
+        fast_ints = np.vectorize(fast_idx_dict.__getitem__)(fast_ints[:, [0, 2, 3, 4]])
         fast_floats = np.genfromtxt(ffile_name, skip_header=1)
         if len(fast_ints.shape) > 1:
             num_rows = fast_ints.shape[0]
@@ -255,15 +269,16 @@ class PseudoJet:
             num_rows = 1
         else:
             num_rows = 0
-        ints = np.full((num_rows, 6), -1, dtype=int)
-        floats = np.full((num_rows, 5), -1, dtype=float)
+        ints = np.full((num_rows, len(cls.int_columns)), -1, dtype=int)
+        floats = np.full((num_rows, len(cls.float_columns)), -1, dtype=float)
         if len(fast_ints) > 0:
-            ints[:, :5] = fast_ints
+            ints[:, :4] = fast_ints
             floats[:, :4] = fast_floats
         new_pseudojet = cls(ints=ints, floats=floats,
+                            eventWise=eventWise,
                             deltaR=deltaR,
                             exponent_multiplyer=exponent_multiplyer,
-                            jet_name="Fastjet")
+                            jet_name="FastJet")
         new_pseudojet.currently_avalible = 0
         new_pseudojet._calculate_roots()
         return new_pseudojet
@@ -379,8 +394,8 @@ class PseudoJet:
     def plt_assign_parents(self):
         # dendogram < this should be
         plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
-        inv_pts = [1/p[self.pt_col]**2 for p in self._floats]
-        plt.scatter(self.Rapidity, self.Phi, inv_pts, inv_marker='D', c='w')
+        inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
+        plt.scatter(self.Rapidity, self.Phi, inv_pts, c='w')
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.ylabel(r"$\phi$ - barrel angle")
@@ -402,10 +417,10 @@ class PseudoJet:
             if row == column:
                 decendents = self.get_decendants(lastOnly=True, pseudojet_idx=row)
                 decendents_idx = [self.idx_from_inpIdx(d) for d in decendents]
-                draps = [self.Rapidity[d] for d in decendents_idx]
-                dphis = [self.Phi[d] for d in decendents_idx]
-                des = [self.Energy[d] for d in decendents_idx]
-                dpts = [1/self.Pt[d]**2 for d in decendents_idx]  # WHY??
+                draps = [self._floats[d][self._Rapidity_col] for d in decendents_idx]
+                dphis = [self._floats[d][self._Phi_col] for d in decendents_idx]
+                des = [self._floats[d][self._Energy_col] for d in decendents_idx]
+                dpts = [1/self._floats[d][self._PT_col]**2 for d in decendents_idx]  # WHY??
                 plt.scatter(draps, dphis, dpts, marker='D')
                 print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} pseudojets unfinished")
                 plt.pause(0.05)
@@ -430,7 +445,7 @@ class PseudoJet:
         elif pseudojet_idx is None:
             pseudojet_idx = self.idx_from_inpIdx(jetInputIdx)
         elif jetInputIdx is None:
-            jetInputIdx = self._ints[pseudojet_idx][self.pseudojet_id_col]
+            jetInputIdx = self._ints[pseudojet_idx][self._InputIdx_col]
         decendents = []
         if not lastOnly:
             decendents.append(jetInputIdx)
@@ -443,22 +458,29 @@ class PseudoJet:
             # just the one
             return [jetInputIdx]
         to_check = []
+        ignore = []
         d1 = self._ints[pseudojet_idx][child1_col]
         d2 = self._ints[pseudojet_idx][child2_col]
         if d1 >= 0:
             to_check.append(d1)
         if d2 >= 0:
             to_check.append(d2)
+        i = 0
         while len(to_check) > 0:
+            if i > 1000:
+                st()
+            i+=1
             jetInputIdx = to_check.pop()
             pseudojet_idx = self.idx_from_inpIdx(jetInputIdx)
             if (pseudojet_idx in local_obs or not lastOnly):
                 decendents.append(jetInputIdx)
+            else:
+                ignore.append(jetInputIdx)
             d1 = self._ints[pseudojet_idx][child1_col]
             d2 = self._ints[pseudojet_idx][child2_col]
-            if d1 >= 0:
+            if d1 >= 0 and d1 not in (decendents + ignore):
                 to_check.append(d1)
-            if d2 >= 0:
+            if d2 >= 0 and d2 not in (decendents + ignore):
                 to_check.append(d2)
         return decendents
 
@@ -510,21 +532,21 @@ class PseudoJet:
 
 def produce_summary(eventWise, event):
     eventWise.selected_index = event
-    summary = np.vstack((range(len(eventWise.Energy)),
+    summary = np.vstack((range(len(eventWise.JetInputs_Energy)),
                          eventWise.JetInputs_Px,
                          eventWise.JetInputs_Py,
                          eventWise.JetInputs_Pz,
                          eventWise.JetInputs_Energy)).T
     summary = summary.astype(str)
     header = f"# summary file for {eventWise}\n"
-    file_name = os.path.join(eventWise.dir_name, f"summary_observables{event}.csv")
+    file_name = os.path.join(eventWise.dir_name, f"summary_observables.csv")
     with open(file_name, 'w') as summ_file:
         summ_file.write(header)
         writer = csv.writer(summ_file, delimiter=' ')
         writer.writerows(summary)
 
 
-def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False, event_number=None):
+def run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise, capture_out=False):
     if exponent_multiplyer == -1:
         # antikt algorithm
         algorithm_num = 1
@@ -542,27 +564,26 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer, capture_out=False, event_
         fastjets = PseudoJet.read(dir_name, fastjet_format=True)
         return fastjets, out
     subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)])
-    fastjets = PseudoJet.read(dir_name, fastjet_format=True)
-    fastjets.event_id = event_number
+    fastjets = PseudoJet.read(dir_name, eventWise=eventWise, fastjet_format=True)
     return fastjets
 
 
-def fastjet_multiapply(dir_name, multi_name, deltaR, exponent_multiplyer):
-    multi_col = Components.MultiParticleCollections.from_file(multi_name)
+def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer):
+    eventWise.selected_index = None
     fastjets_by_event = []
-    for event_number, particle_col in enumerate(multi_col.collections_list):
+    dir_name = eventWise.dir_name
+    for event_number in range(len(eventWise.JetInputs_Energy)):
         if event_number % 100 == 0:
             print(event_number, end=' ', flush=True)
-        particle_col.write_summary(dir_name)
-        fastjets = run_FastJet(dir_name, deltaR, exponent_multiplyer, event_number=event_number)
+        produce_summary(eventWise, event_number)
+        fastjets = run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise)
         fastjets_by_event.append(fastjets)
     try:
         os.remove(os.path.join(dir_name, 'summary_observables.csv'))
-        PseudoJet.multi_write(fastjets_by_event)
+        PseudoJet.multi_write(fastjets_by_event, jet_name="FastJet", eventWise=eventWise)
     except Exception as e:
         print(e)        
-        st()
-        PseudoJet.multi_write(fastjets_by_event)
+        return fastjets_by_event
 
 
 def create_jetInputs(eventWise):
@@ -589,6 +610,7 @@ def create_jetInputs(eventWise):
         contents[name] = getattr(eventWise, source_name)[obs_filter]
     eventWise.append(columns, contents)
 
+
 def make_all_jets(eventWise, deltaR=0.4, exponentMulti=0, name=None):
     if name is None:
         name = "HomeJets"
@@ -606,6 +628,7 @@ def make_all_jets(eventWise, deltaR=0.4, exponentMulti=0, name=None):
         PseudoJet.multi_write(jets, name, eventWise)
     except:
         return jets, name
+
 
 def main():
     # colourmap
@@ -627,21 +650,21 @@ def main():
         plt.scatter([pjet.Rapidity], [pjet.Phi], c='black', marker='o', s=10)
         plt.scatter([pjet.Rapidity], [pjet.Phi], c='red', marker='o', s=9)
     plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PseudoJets")
-    ## get soem fast jets
-    #directory = "./test/"
-    #fastjets = PsudoJets.read(directory, fastjet_format=True)
-    ## plot the fastjet
-    #fjets = fastjets.split()
-    #pseudo_colours = [colours(i) for i in np.linspace(0.6, 1., len(fjets))]
-    #for c, fjet in zip(pseudo_colours, fjets):
-    #    obs_idx = [ints[fjet.obs_id_col] != -1 for ints in fjet._ints]
-    #    plt.scatter(np.array(fjet._floats)[obs_idx, fjet._Rapidity_col],
-    #                np.array(fjet._floats)[obs_idx, fjet._Phi_col],
-    #                c=[c], marker='^', s=25, alpha=0.6)
-    #    #plt.scatter([jet.eta], [jet.phi], c=['black'], marker='o', s=10)
-    #    #plt.scatter([jet.eta], [jet.phi], c=[colour], marker='o', s=9)
-    #plt.scatter([], [], c=[c], marker='^', s=25, alpha=0.6, label="FastJets")
-    #plt.legend()
+    # get soem fast jets
+    produce_summary(eventWise, 0)
+    fastjets = run_FastJet(eventWise.dir_name, 0.4, 0, eventWise)
+    # plot the fastjet
+    fjets = fastjets.split()
+    pseudo_colours = [colours(i) for i in np.linspace(0.6, 1., len(fjets))]
+    for c, fjet in zip(pseudo_colours, fjets):
+        obs_idx = fjet.local_obs_idx()
+        plt.scatter(np.array(fjet._floats)[obs_idx, fjet._Rapidity_col],
+                    np.array(fjet._floats)[obs_idx, fjet._Phi_col],
+                    c=[c], marker='^', s=30, alpha=0.6)
+        plt.scatter([fjet.Rapidity], [fjet.Phi], c='black', marker='o', s=10)
+        plt.scatter([fjet.Rapidity], [fjet.Phi], c='red', marker='o', s=9)
+    plt.scatter([], [], c=[c], marker='^', s=25, alpha=0.6, label="FastJets")
+    plt.legend()
     plt.title("Jets")
     plt.xlabel("rapidity")
     plt.ylabel("phi")
@@ -649,5 +672,5 @@ def main():
     return pjets
     
 if __name__ == '__main__':
-    #main()
+    main()
     pass

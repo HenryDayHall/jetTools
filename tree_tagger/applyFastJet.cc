@@ -223,10 +223,10 @@ int main(int argc, char * argv[]) {
     while(file >> row) {
         // these values come from the observabels/summary file
         a.push_back(std::stod(row[0]));  //global_obs_id
-        a.push_back(std::stod(row[6]));  //px
-        a.push_back(std::stod(row[7]));  //py
-        a.push_back(std::stod(row[8]));  //pz
-        a.push_back(std::stod(row[5]));  //e
+        a.push_back(std::stod(row[1]));  //px
+        a.push_back(std::stod(row[2]));  //py
+        a.push_back(std::stod(row[3]));  //pz
+        a.push_back(std::stod(row[4]));  //e
     }
    vector< vector<int> > ints;  // for geometry results
    vector< vector<double> > doubles; //  for kinematics results
