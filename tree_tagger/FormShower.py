@@ -9,13 +9,13 @@ import numpy as np
 class Shower:
     """ Object to hold a shower of particles
     
-    only keeps a list of the particle particle_idxs, parents, childs and PDGparticle_idxs.
+    only keeps a list of the particle particle_idxs, parents, children and PDGparticle_idxs.
     """
-    def __init__(self, particle_idxs, parents, childs, labels):
+    def __init__(self, particle_idxs, parents, children, labels):
         self.amalgam = False
         self.particle_idxs = particle_idxs
         self.parents = parents
-        self.childs = childs
+        self.children = children
         self.labels = labels
         self.ranks = None  # exspensive, create as needed with find_ranks()
         self._find_roots()
@@ -33,14 +33,14 @@ class Shower:
             if oID in self.particle_idxs:  #check for agreement
                 sIndex = list(self.particle_idxs).index(oID)
                 assert self.parents[sIndex] == other_shower.parents[oIndex]
-                assert self.childs[sIndex] == other_shower.childs[oIndex]
+                assert self.children[sIndex] == other_shower.children[oIndex]
                 assert self.labels[sIndex] == other_shower.labels[oIndex]
             else:  # add it on
                 sIndex = next_free_sIndex
                 next_free_sIndex += 1
                 self.particle_idxs[sIndex] = oID
                 self.parents.append(other_shower.parents[oIndex])
-                self.childs.append(other_shower.childs[oIndex])
+                self.children.append(other_shower.children[oIndex])
                 self.labels[sIndex] = other_shower.labels[oIndex]
         self._find_roots()
 
@@ -84,7 +84,7 @@ class Shower:
         while has_decendants:
             rank_n += 1
             decendant_particle_idxs = [child for index in current_rank
-                                       for child in self.childs[index]
+                                       for child in self.children[index]
                                        if child in self.particle_idxs]
             current_rank = []
             for child in decendant_particle_idxs:
@@ -110,7 +110,7 @@ class Shower:
             an object that can produce a string that would be in a dot file for this graph
         """
         assert len(self.particle_idxs) == len(self.parents)
-        assert len(self.particle_idxs) == len(self.childs)
+        assert len(self.particle_idxs) == len(self.children)
         assert len(self.particle_idxs) == len(self.labels)
         return DrawTrees.DotGraph(self)
 
@@ -132,8 +132,8 @@ class Shower:
     @property
     def ends(self):
         _ends = []
-        for i, childs_here in enumerate(self.childs):
-            if np.all([child is None for child in childs_here]):
+        for i, children_here in enumerate(self.children):
+            if np.all([child is None for child in children_here]):
                 _ends.append(i)
         return _ends
 
@@ -143,7 +143,7 @@ class Shower:
         return '+'.join(flavours)
         
 
-def get_showers(eventWise, event_n, exclude_pids=[2212, 25, 35]):
+def get_showers(eventWise, exclude_pids=[2212, 25, 35]):
     """ From each root split the decendants into showers
     Each particle can only belong to a single shower.
 
@@ -164,11 +164,11 @@ def get_showers(eventWise, event_n, exclude_pids=[2212, 25, 35]):
 
     """
     # remove any stop pids
-    mask = [p not in exclude_pids for p in eventWise.PID[event_n]]
+    mask = [p not in exclude_pids for p in eventWise.PID]
     particle_idxs = np.where(mask)[0]
-    parent_ids = eventWise.Parents[event_n, mask]
-    child_ids = eventWise.Children[event_n, mask]
-    pids = eventWise.PID[event_n, mask]
+    parent_ids = eventWise.Parents[mask]
+    child_ids = eventWise.Children[mask]
+    pids = eventWise.PID[mask]
     # check that worked
     remaining_pids = set(pids)
     for exclude in exclude_pids:
@@ -236,7 +236,7 @@ def get_roots(particle_ids, parents):
 
 
 # ignore not working
-def make_tree(particle_idxs, parents, childs, labels):
+def make_tree(particle_idxs, parents, children, labels):
     """
     It's possible this is working better than I think it is ...
     Just the data was screwy
@@ -252,8 +252,8 @@ def make_tree(particle_idxs, parents, childs, labels):
         Each row contains the particle_idxs of two parents of each particle in particle_idxs
         These can be none
         
-    childs : 2D numpy array of ints
-        Each row contains the particle_idxs of two childs of each particle in particle_idxs
+    children : 2D numpy array of ints
+        Each row contains the particle_idxs of two children of each particle in particle_idxs
         These can be none
         
     labels : numpy array of ints
@@ -268,10 +268,10 @@ def make_tree(particle_idxs, parents, childs, labels):
     """
     graph =  networkx.Graph()
     graph.add_nodes_from(particle_idxs)
-    for this_id, this_parents, this_childs in zip(particle_idxs, parents, childs):
+    for this_id, this_parents, this_children in zip(particle_idxs, parents, children):
         parent_edges = [(par_id, this_id) for par_id in this_parents if par_id in particle_idxs]
         graph.add_edges_from(parent_edges)
-        child_edges = [(this_id, chi_id) for chi_id in this_childs if chi_id in particle_idxs]
+        child_edges = [(this_id, chi_id) for chi_id in this_children if chi_id in particle_idxs]
         graph.add_edges_from(child_edges)
     label_dict = {i:l for i, l in zip(particle_idxs, labels)}
     networkx.relabel_nodes(graph, label_dict)

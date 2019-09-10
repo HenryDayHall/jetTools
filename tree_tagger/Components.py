@@ -1,4 +1,5 @@
 """Low level components, format apes that of root """
+import warnings
 import uproot
 import awkward
 import itertools
@@ -226,6 +227,7 @@ class EventWise:
     columns = []
     _column_contents = {}
     auxilleries = []
+    selected_index = None
 
     def __init__(self, dir_name, save_name, columns=None, contents=None):
         # the init method must generate some table of items,
@@ -248,6 +250,8 @@ class EventWise:
         """ the columns are all avalible attrs """
         # capitalise raises the case of the first letter
         if attr_name[0].upper() + attr_name[1:] in self.columns:
+            if self.selected_index is not None:
+                return self._column_contents[attr_name][self.selected_index]
             return self._column_contents[attr_name]
         raise AttributeError(f"{self.__class__.__name__} does not have {attr_name}")
 
@@ -255,12 +259,34 @@ class EventWise:
         new_attrs = set(super().__dir__() + self.columns)
         return sorted(new_attrs)
 
+    def __str__(self):
+        msg = f"<EventWise with {len(self.columns)} columns; {os.path.join(self.dir_name, self.save_name)}>"
+        return msg
+
+    def __eq__(self, other):
+        return self.save_name == other.save_name and self.dir_name == other.dir_name
+
     def write(self):
         """ write to disk """
         path = os.path.join(self.dir_name, self.save_name)
         column_order = awkward.fromiter(self.columns)
+        try:
+            del self._column_contents['column_order']
+        except KeyError:
+            pass
         all_content = {'column_order': column_order, **self._column_contents}
         awkward.save(path, all_content, mode='w')
+
+    def append(self, new_columns, new_content):
+        self.columns += new_columns
+        self._column_contents = {**self._column_contents, **new_content}
+        self.write()
+
+    def remove(self, col_name):
+        if col_name not in self.columns:
+            raise KeyError(f"Don't have a column called {col_name}")
+        self.columns.remove(col_name)
+        del self._column_contents[col_name]
 
     @classmethod
     def from_file(cls, path):
@@ -268,6 +294,7 @@ class EventWise:
         columns = list(contents['column_order'])
         new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
         return new_eventWise
+
 
 
 class RootReadout(EventWise):
@@ -340,11 +367,31 @@ class RootReadout(EventWise):
             if is_tRef:
                 converted = awkward.fromiter(converted)
                 self._column_contents[name] = converted
-            #  check that all arrays are a full depth jaggedarray
+            #  the Tower_Particles column is infact a tref array,
+            # but due to indiosyncracys will be converted to an object array by uproot
             if isinstance(self._column_contents[name],
                           awkward.array.objects.ObjectArray):
-                self._column_contents[name] = awkward.fromiter([awkward.fromiter(a) for a in
-                                                                self._column_contents[name]])
+                if name == "Tower_Particles":
+                    new_tower_refs = []
+                    for event in self._column_contents[name]:
+                        event = [[idx-1 for idx in tower] for tower in event]
+                        new_tower_refs.append(awkward.fromiter(event))
+                    self._column_contents[name] = awkward.fromiter(new_tower_refs)
+                else:
+                    msg = f"{name} is an Object array " +\
+                          "Only expected Tower_Particles to be an object array"
+                    warnings.warn(msg, RuntimeWarning)  # don't raise an error
+                    # it may be possible to fix this in the save file
+        # reflect the tracks and towers
+        shape_ref = "Energy"
+        name = "Particle_Track"
+        self.columns.append(name)
+        self._column_contents[name] = self._reflect_references("Track_Particle",
+                                                         shape_ref, depth=1)
+        name = "Particle_Tower"
+        self.columns.append(name)
+        self._column_contents[name] = self._reflect_references("Tower_Particles",
+                                                         shape_ref, depth=2)
 
     def _recursive_to_id(self, jagged_array):
         results = []
@@ -364,6 +411,31 @@ class RootReadout(EventWise):
                 # the trefs are 1 indexed not 0 indexed, so subtract 1
                 results.append(item.id - 1)
         return is_tRef, results
+    
+    def _reflect_references(self, reference_col, target_shape_col, depth=1):
+        references = getattr(self, reference_col)
+        target_shape = getattr(self, target_shape_col)
+        reflection = []
+        for event_shape, event in zip(target_shape, references):
+            event_reflection = [-1 for _ in event_shape]
+            if depth == 1:
+                # this is the level on which the indices refer
+                for i, ref in enumerate(event):
+                    event_reflection[ref] = i
+            elif depth == 2:
+                # this is the level on which the indices refer
+                for i, ref_list in enumerate(event):
+                    for ref in ref_list:
+                        try:
+                            event_reflection[ref] = i
+                        except IndexError:
+                            st()
+                            print(i)
+            else:
+                raise NotImplementedError
+            reflection.append(event_reflection)
+        reflection = awkward.fromiter(reflection)
+        return reflection
                 
     def write(self):
         raise NotImplementedError("This interface is read only")

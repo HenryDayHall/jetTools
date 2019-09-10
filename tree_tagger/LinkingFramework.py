@@ -83,26 +83,25 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
     return proximates_1, proximates_2
 
 
-def tower_track_proximity(tower_list, track_list):
+def tower_track_proximity(eventWise):
     division = 6
     eta_seperation = 5/division
     phi_seperation = 2*np.pi/division
-    track_etas = np.array([t.eta for t in track_list])
-    track_phis = np.array([t.phi() for t in track_list])
-    tower_etas = np.array([t.eta for t in tower_list])
-    tower_phis = np.array([t.phi() for t in tower_list])
+    track_etas = eventWise.Track_Eta
+    track_phis = eventWise.Track_Phi
+    tower_etas = eventWise.Tower_Eta
+    tower_phis = eventWise.Tower_Phi
     tracks_near_tower, towers_near_track = proximity_lists(tower_etas, tower_phis, track_etas, track_phis, eta_seperation, phi_seperation)
     return tracks_near_tower, towers_near_track
 
 
 
-def MC_truth_links(tower_list, track_list):
+def MC_truth_links(eventWise):
     """ the monte carlo truth links between tracks and towers """
     links = {}
-    for j, track in enumerate(track_list):
-        gid = track.global_id
-        linked = next((i for i, tower in enumerate(tower_list)
-                       if gid in tower.global_ids),
+    for j, gid in enumerate(eventWise.Track_Particle):
+        linked = next((i for i, tower_gids in enumerate(eventWise.Tower_Particles)
+                       if gid in tower_gids),
                       None)
         links[j] = linked
     return links

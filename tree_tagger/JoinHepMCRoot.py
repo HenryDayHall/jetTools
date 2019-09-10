@@ -24,17 +24,22 @@ def marry(hepmc, root_particles):
                         ('Energy', 'Energy'),
                         ('Generated_mass', 'Mass')]
     for event_n in range(n_events):
+        hepmc.selected_index = event_n
+        root_particles.selected_index = event_n
         # the particles are expected to have the same order in both files
         for hepmc_name, root_name in precicely_equivalent:
-            assert np.all(root_particles.__getattr__(root_name)[event_n]
-                          == hepmc.__getattr__(hepmc_name)[event_n]), \
+            assert np.all(root_particles.__getattr__(root_name)
+                          == hepmc.__getattr__(hepmc_name)), \
                                   f"{root_name} in root file not equal to {hepmc_name}"+\
                                   " in hepmc file"
         for hepmc_name, root_name in close_equivalent:
-            np.testing.assert_allclose(root_particles.__getattr__(root_name)[event_n],
-                                       hepmc.__getattr__(hepmc_name)[event_n],
+            np.testing.assert_allclose(root_particles.__getattr__(root_name),
+                                       hepmc.__getattr__(hepmc_name),
                                        err_msg=f"{root_name} in root file not close" +
                                        "to {hepmc_name} in hepmc file")
+    # remove all selected indices
+    hepmc.selected_index = None
+    root_particles.selected_index = None
     # we will keep all of the root columns, but only a selection of the hepmc columns
     columns = root_particles.columns
     contents = root_particles._column_contents

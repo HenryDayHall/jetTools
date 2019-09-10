@@ -5,11 +5,12 @@ import matplotlib
 #from mayavi.scripts import mayavi2
 from mayavi import mlab
 
-def generate_cuboids(barrel_length, barrel_radius, tower_list, cuboid_lengths):
+def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths):
     # angles under this are on the endcap
     barrel_theta = np.arctan(barrel_radius/barrel_length)
-    thetas = np.array([t.theta() for t in tower_list])
-    phis = np.array([t.phi() for t in tower_list])
+    angle_to_beam = np.arcsin(eventWise.Tower_ET/eventWise.Tower_Energy)
+    thetas = np.where(eventWise.Tower_Eta>0, angle_to_beam, np.pi-angle_to_beam)
+    phis = eventWise.Tower_Phi
     on_endcap = np.any((np.abs(thetas) < barrel_theta, 
                         np.abs(thetas) > np.pi-barrel_theta),
                        axis=0)
@@ -105,33 +106,36 @@ def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
     highlight_pos(all_positions[indices], colours, colourmap)
 
     
-def plot_tracks_towers(track_list, tower_list):
+def plot_tracks_towers(eventWise):
     names = list()
 
     names.append("approch")
-    approch_pos = [[track.xd, track.yd, track.zd] 
-                  for track in track_list]
-    approch_scl = [track.e for track in track_list]
+    approch_pos = np.hstack([eventWise.Track_dX.reshape((-1,1)),
+                             eventWise.Track_dY.reshape((-1,1)),
+                             eventWise.Track_dZ.reshape((-1,1))]).tolist()
+    approch_scl = eventWise.Track_Birr.tolist()
 
     names.append("vertex")
-    vertex_pos = [[track._x, track._y, track._z]
-                   for track in track_list]
-    vertex_scl = [track.e for track in track_list]
+    vertex_pos = np.hstack([eventWise.Track_X.reshape((-1,1)),
+                            eventWise.Track_Y.reshape((-1,1)),
+                            eventWise.Track_Z.reshape((-1,1))]).tolist()
+    vertex_scl = eventWise.Track_Birr.tolist()
 
     names.append("outer")
-    outer_pos = [[track.x, track.y, track.z]
-                   for track in track_list]
-    outer_scl = [track.e for track in track_list]
+    outer_pos = np.hstack([eventWise.Track_OuterX.reshape((-1,1)),
+                           eventWise.Track_OuterY.reshape((-1,1)),
+                           eventWise.Track_OuterZ.reshape((-1,1))]).tolist()
+    outer_scl = eventWise.Track_Birr.tolist()
 
     # calculate barrel dimensions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     factor = 1.3
     radiusplus = np.max(np.array(outer_pos)[:, :2]) * factor
     halflengthplus = np.max(np.array(outer_pos)[:, 2]) * factor
-    tower_energies = np.array([t.e for t in tower_list])
+    tower_energies = eventWise.Tower_Energy
     tower_lengths = 0.5 * radiusplus * tower_energies/np.max(tower_energies)
     dot_barrel = False
     cuboids, tower_pos, tower_heights = \
-        generate_cuboids(halflengthplus, radiusplus, tower_list, tower_lengths)
+        generate_cuboids(eventWise, halflengthplus, radiusplus, tower_lengths)
     tower_scl = tower_energies.tolist()
 
     #colourmap = matplotlib.cm.get_cmap('Set2')
@@ -168,11 +172,10 @@ def plot_tracks_towers(track_list, tower_list):
                             name='t_o_anchor', opacity=0.)
 
     # get particle ids for the tracks
-    track_global_id = [t.global_id for t in track_list]
+    track_global_id = list(eventWise.Track_Particle)
     t_o_connections = []
     # go through the tower list lookignf or matches
-    for i, tower in enumerate(tower_list):
-        gids = tower.global_ids
+    for i, gids in enumerate(eventWise.Tower_Particles):
         for gid in gids:
             if gid in track_global_id:
                 t_o_connections.append([track_global_id.index(gid), i+num_tracks])
@@ -217,6 +220,7 @@ def plot_tracks_towers(track_list, tower_list):
             mlab.mesh(*cuboid, color=(0.6, 0.6, 0.6))
     return outer_pos, tower_pos
 
+
 def add_single(pos, colour, scale=100, name=None):
     if name is None:
         name='single'
@@ -238,38 +242,41 @@ def add_single(pos, colour, scale=100, name=None):
         raise NotImplementedError(f"pos is len {len(pos)}; should be 3 or 6.")
 
 
-
 def colour_set(num_colours, colourmap='gist_rainbow'):
     cmap = matplotlib.cm.get_cmap(colourmap)
     colours = [cmap(i)[:3] for i in np.linspace(0., 1., num_colours)]
     return colours
 
 def main():
-    from tree_tagger import ReadSQL, LinkingFramework
-    event, tracks, towers, observations = ReadSQL.main()
-    outer_pos, tower_pos = plot_tracks_towers(tracks, towers)
-    MCtruth = LinkingFramework.MC_truth_links(towers, tracks)
-    tracks_near_tower, towers_near_track = LinkingFramework.tower_track_proximity(towers, tracks)
-    look_at_towers = False
-    if look_at_towers:
-        highlight_track = np.random.randint(0, len(tracks))
-        tower_friends = towers_near_track[highlight_track]
-        highlight_indices(outer_pos, [highlight_track], [0], "Pastel1")
-        highlight_indices(tower_pos, tower_friends, np.ones_like(tower_friends), "Set2")
-    look_at_tracks = True
-    if look_at_tracks:
-        highlight_tower = np.random.randint(0, len(towers))
-        track_friends = tracks_near_tower[highlight_tower]
-        highlight_indices(tower_pos, [highlight_tower], [0], "Pastel1")
-        highlight_indices(outer_pos, track_friends, np.ones_like(track_friends), "Set2")
-    look_at_truth = False
-    if look_at_truth:
-        tracks_idx, towers_idx = zip(*[[track, tower] for track, tower in MCtruth.items() if tower is not None])
-        tracks_idx, towers_idx = list(tracks_idx), list(towers_idx)
-        colours = np.random.random(len(towers_idx))
-        highlight_indices(tower_pos, towers_idx, colours, "nipy_spectral")
-        highlight_indices(outer_pos, tracks_idx, colours, "nipy_spectral")
-    mlab.show()
+    from tree_tagger import Components, LinkingFramework, InputTools
+    repeat = True
+    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    while repeat:
+        eventWise.selected_index = int(input("Event number: "))
+        outer_pos, tower_pos = plot_tracks_towers(eventWise)
+        MCtruth = LinkingFramework.MC_truth_links(eventWise)
+        tracks_near_tower, towers_near_track = LinkingFramework.tower_track_proximity(eventWise)
+        look_at_towers = False
+        if look_at_towers:
+            highlight_track = np.random.randint(0, len(eventWise.Track_Birr))
+            tower_friends = towers_near_track[highlight_track]
+            highlight_indices(outer_pos, [highlight_track], [0], "Pastel1")
+            highlight_indices(tower_pos, tower_friends, np.ones_like(tower_friends), "Set2")
+        look_at_tracks = False
+        if look_at_tracks:
+            highlight_tower = np.random.randint(0, len(eventWise.Tower_Energy))
+            track_friends = tracks_near_tower[highlight_tower]
+            highlight_indices(tower_pos, [highlight_tower], [0], "Pastel1")
+            highlight_indices(outer_pos, track_friends, np.ones_like(track_friends), "Set2")
+        look_at_truth = False
+        if look_at_truth:
+            tracks_idx, towers_idx = zip(*[[track, tower] for track, tower in MCtruth.items() if tower is not None])
+            tracks_idx, towers_idx = list(tracks_idx), list(towers_idx)
+            colours = np.random.random(len(towers_idx))
+            highlight_indices(tower_pos, towers_idx, colours, "nipy_spectral")
+            highlight_indices(outer_pos, tracks_idx, colours, "nipy_spectral")
+        mlab.show()
+        repeat = InputTools.yesNo_question("Repeat? ")
 
 
 if __name__ == '__main__':
