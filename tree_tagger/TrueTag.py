@@ -1,24 +1,27 @@
-# TODO Needs updates for uproot!
 """ a collection of scripts to assocate each jet to it's MC truth """
 from ipdb import set_trace as st
 from tree_tagger import FormJets, Components, DrawBarrel, InputTools
 import numpy as np
+import awkward
+import os
 
-def allocate(tag_particles, jets):
+def allocate(eventWise, jet_name, tag_idx):
     """
     each tag will be assigned to a jet
     both tag particles and jets must offer rap and phi methods
     """
-    phi_distance = np.array([[tag.phi() - jet.phi for jet in jets]
-                             for tag in tag_particles])
-    rap_distance = np.array([[tag.rapidity() - jet.rap for jet in jets]
-                             for tag in tag_particles])
+    phi_distance = np.vstack([[eventWise.Phi[tag_i] - np.mean(jet_phi) for jet_phi
+                              in getattr(eventWise, jet_name+"_Phi")]
+                             for tag_i in tag_idx])
+    rap_distance = np.vstack([[eventWise.Rapidity[tag_i] - np.mean(jet_rap) for jet_rap
+                              in getattr(eventWise, jet_name+"_Rapidity")]
+                             for tag_i in tag_idx])
     dist2 = np.square(phi_distance) + np.square(rap_distance)
     closest = np.argmin(dist2, axis=1)
     return closest
 
 
-def from_hard_interaction(event, jets, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True, full_return=False):
+def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True):
     """ tag jets based on particles emmited by the hard scattering 
         follows taggable partilces to last tagable decendant"""
     # if no tag pids given, anything that contains a b
@@ -26,154 +29,131 @@ def from_hard_interaction(event, jets, hard_interaction_pids=[25, 35], tag_pids=
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     if include_antiparticles:
         tag_pids = np.concatenate((tag_pids, -tag_pids))
-    hard_emmision = []
+    hard_emmision_idx = []
     # two possibilities, "hard particles" may be found in the event
     # or they are exculded from the particle list, and first gen is parentless
-    hard_global_id = [p.global_id for p in event.particle_list
-                      if p.pid in hard_interaction_pids]
-    hard_emmision += [particle for particle in event.particle_list
-                      if len(particle.mother_ids) == 0
-                      or set(particle.mother_ids).intersection(hard_global_id)]
-    possible_tag = [particle for particle in hard_emmision if particle.pid in tag_pids]
-    tag_particles = []
+    hard_idx = [i for i, pid in enumerate(eventWise.PID)
+                if pid in hard_interaction_pids]
+    hard_emmision_idx += [i for i, parents in enumerate(eventWise.Parents)
+                          if len(parents) == 0
+                          or set(parents).intersection(hard_idx)]
+    possible_tag = [i for i in hard_emmision_idx if eventWise.PID[i] in tag_pids]
+    tag_idx = []
     # now if there have decendants in the tag list favour the decendant
     convergent_roots = 0
     while len(possible_tag) > 0:
         possible = possible_tag.pop()
-        eligable_children = [child for child in event.particle_list
-                             if child.global_id in possible.daughter_ids
-                             and child.pid in tag_pids]
+        eligable_children = [child for child in eventWise.Children[possible]
+                             if eventWise.PID[child] in tag_pids]
         if eligable_children:
             possible_tag += eligable_children
-        elif possible not in tag_particles:
-            tag_particles.append(possible)
+        elif possible not in tag_idx:
+            tag_idx.append(possible)
         else:
             convergent_roots += 1
     if convergent_roots:
-        print(f"{convergent_roots} b hadrons merge, may not form expected number of jets")
-    jets_tags = [[] for _ in jets]
-    if tag_particles: # there may not be any of the particles we wish to tag in the event
-        closest_matches = allocate(tag_particles, jets)
+        pass
+        #print(f"{convergent_roots} b hadrons merge, may not form expected number of jets")
+    jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
+    if tag_idx: # there may not be any of the particles we wish to tag in the event
+        closest_matches = allocate(eventWise, jet_name, tag_idx)
     else:
         closest_matches = []
-    if full_return:  # just return the particles and jets, no clever index stuff
-        tag_jets = [jets[match] for match in closest_matches]
-        return tag_particles, tag_jets
     # keep only the indices for space reasons
-    for match, particle in zip(closest_matches, tag_particles):
-        jets_tags[match].append(particle.pid)
+    for match, particle in zip(closest_matches, tag_idx):
+        jets_tags[match].append(particle)
     return jets_tags
 
 
-def add_tag(multievent_filename, multijet_filename):
+def add_tags(eventWise, jet_name):
+    name = jet_name+"_Tags"
+    namePID = jet_name+"_TagPIDs"
+    columns = [name, namePID]
     # this is a memory intense operation, so must be done in batches
-    batch_size = 15
-    batch_start = 0
-    n_jets = 0
-    jets_tags = []
-    while True:
-        events = Components.MultiParticleCollections.from_file(multievent_filename, batch_start, batch_start+batch_size)
-        if events is None:
-            break  # we reached the end
-        print(batch_start, end=' ', flush=True)
-        jets_by_event = FormJets.PsudoJets.multi_from_file(multijet_filename, batch_start, batch_start+batch_size)
-        for event_n, (event, event_jets) in enumerate(zip(events, jets_by_event)):
-            event_jets = event_jets.split()
-            jets_tags += from_hard_interaction(event, event_jets)
-            n_jets += len(event_jets)
-        batch_start += batch_size
+    eventWise.selected_index = None
+    total_events = len(eventWise.Energy)
+    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    batch_size = 100
+    tag_tmp_name = "checkpoint.awkd"
+    pid_tmp_name = "checkpointPID.awkd"
+    jet_tags = []
+    jet_tagpids = []
+    pre_existing = []
+    pid_pre_existing = []
+    for event_n in range(total_events):
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        if event_n % batch_size == 0:
+            print(f"{100*event_n/total_events:.1f}% ", end='', flush=True)
+            if os.path.exists(tag_tmp_name):
+                pre_existing = list(awkward.load(tag_tmp_name))
+                pid_pre_existing = list(awkward.load(pid_tmp_name))
+            jet_tags = awkward.fromiter(pre_existing + jet_tags)
+            jet_tagpids = awkward.fromiter(pid_pre_existing + jet_tagpids)
+            awkward.save(tag_tmp_name, jet_tags, mode='w')
+            awkward.save(pid_tmp_name, jet_tagpids, mode='w')
+            # clear stuff to save memory
+            jet_tags = []
+            jet_tagpids = []
+            pre_existing = []
+            pid_pre_existing = []
+        eventWise.selected_index = event_n
+        tags = from_hard_interaction(eventWise, jet_name, tag_pids=tag_pids)
+        jet_tags.append(awkward.fromiter(tags))
+        tagpids = [eventWise.PID[jet] for jet in tags]
+        jet_tagpids.append(awkward.fromiter(tagpids))
+    content = {}
+    content[name] = awkward.fromiter(jet_tags)
+    content[namePID] = awkward.fromiter(jet_tagpids)
     try:
-        assert n_jets == len(jets_tags)
-    except Exception as e:
-        print(e)
-    tag_lengths = np.array([len(t) for t in jets_tags])
-    mask = tag_lengths[:, None] > np.arange(tag_lengths.max())
-    padded_tags = np.zeros_like(mask, dtype=int)
-    padded_tags[mask] = np.concatenate(jets_tags)
-    data = np.load(multijet_filename)
-    np.savez(multijet_filename, **data, truth_tags=padded_tags)
-
+        eventWise.append(columns, content)
+    except Exception:
+        print("Problem")
+        return columns, content
 
 def main():
-    from tree_tagger import ReadSQL, FormJets, DrawBarrel
-    num_tags = []
-    num_convergent_roots = []
-    hard_interaction_pids=[25, 35]
-    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
-    for event_num in range(999):
-        if event_num %10 == 0:
-            print('.', end='', flush=True)
-            if event_num %100 ==0:
-                print(f"set num_tags = {set(num_tags)}")
-        try:
-            event, track_list, tower_list, observations = ReadSQL.main(event_num)
-        except AssertionError:
-            continue
-        except Exception:
-            break
-        hard_emmision = []
-        # two possibilities, "hard particles" may be found in the event
-        # or they are exculded from the particle list, and first gen is parentless
-        hard_global_id = [p.global_id for p in event.particle_list
-                          if p.pid in hard_interaction_pids]
-        hard_emmision += [particle for particle in event.particle_list
-                          if len(particle.mother_ids) == 0
-                          or set(particle.mother_ids).intersection(hard_global_id)]
-        possible_tag = [particle for particle in hard_emmision if particle.pid in tag_pids]
-        tag_particles = []
-        # now if there have decendants in the tag list favour the decendant
-        convergent_roots = 0
-        while len(possible_tag) > 0:
-            possible = possible_tag.pop()
-            eligable_children = [child for child in event.particle_list
-                                 if child.global_id in possible.daughter_ids
-                                 and child.pid in tag_pids]
-            if eligable_children:
-                possible_tag += eligable_children
-            elif possible not in tag_particles:
-                tag_particles.append(possible)
-            else:
-                convergent_roots += 1
-        if len(tag_particles) != 4:
-            st()
-        num_tags.append(len(tag_particles))
-        num_convergent_roots.append(num_convergent_roots)
-    st()
-    np.savetxt("woop_num_tags.csv", num_tags)
-    print(np.mean(num_tags))
-
-def alt_main():
-    from tree_tagger import ReadSQL, FormJets, DrawBarrel
+    from tree_tagger import Components, DrawBarrel
     repeat = True
+    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    jet_name = "HomeJets"
     while repeat:
-        event_num = int(input("Event num: "))
-        event, track_list, tower_list, observations = ReadSQL.main(event_num)
-        psudojet = FormJets.PsudoJets(observations, deltaR=0.4)
-        psudojet.assign_mothers()
-        pjets = psudojet.split()
-        outer_pos, tower_pos = DrawBarrel.plot_tracks_towers(track_list, tower_list)
-        tag_particles, tag_jets = from_hard_interaction(event, pjets, full_return=True)
+        eventWise.selected_index = int(input("Event num: "))
+        outer_pos, tower_pos = DrawBarrel.plot_tracks_towers(eventWise)
+        tags_by_jet = from_hard_interaction(eventWise, jet_name)
+        tag_particle_idxs = []
+        tag_jet_idx = []
+        for j, tags in enumerate(tags_by_jet):
+            tag_particle_idxs += tags
+            tag_jet_idx += [j for _ in tags]
         # start by putting the tag particles on the image
         tag_distance = np.max(np.abs(tower_pos)) * 1.2
-        tag_colours = DrawBarrel.colour_set(len(tag_particles))
+        tag_colours = DrawBarrel.colour_set(len(tag_particle_idxs))
         # set fat jets to share a colour
-        for i, jet in enumerate(tag_jets):
-            locations = [j for j, other_jet in enumerate(tag_jets)
-                         if other_jet == jet]
+        for i, tag in enumerate(tag_jet_idx):
+            locations = [j for j, other_idx in enumerate(tag_jet_idx)
+                         if other_idx == tag]
             for l in locations:
                 tag_colours[l] = tag_colours[i]
-        for colour, particle in zip(tag_colours, tag_particles):
-            pos = np.array([particle.x, particle.y, particle.z,
-                            particle.px, particle.py, particle.pz])
+        for colour, idx in zip(tag_colours, tag_particle_idxs):
+            pos = np.array([eventWise.X[idx], eventWise.Y[idx], eventWise.Z[idx],
+                            eventWise.Px[idx], eventWise.Py[idx], eventWise.Pz[idx]])
+            # check the position is off the origin
+            if np.sum(np.abs(pos[:3])) <= 0.:
+                pos[:3] = pos[3:]  #make the momentum the position
             pos *= tag_distance/np.linalg.norm(pos)
-            DrawBarrel.add_single(pos, colour, name=f'tag({particle.pid})', scale=300)
+            DrawBarrel.add_single(pos, colour, name=f'tag({eventWise.PID[idx]})', scale=300)
         # highlight the towers and tracks assocated with each tag
-        for colour, jet in zip(tag_colours, tag_jets):
-            jet_oids = jet.global_obs_ids[jet.global_obs_ids!=-1] 
-            tower_indices = [i for i, t in enumerate(tower_list) if t.global_obs_id in jet_oids]
-            track_indices = [i for i, t in enumerate(track_list) if t.global_obs_id in jet_oids]
-            DrawBarrel.highlight_indices(tower_pos, tower_indices, colours=colour, colourmap=False)
-            DrawBarrel.highlight_indices(outer_pos, track_indices, colours=colour, colourmap=False)
+        for colour, jet_idx in zip(tag_colours, tag_jet_idx):
+            external_jetidx = getattr(eventWise, jet_name + "_Child1")[jet_idx] < 0
+            input_jetidx = getattr(eventWise, jet_name + "_InputIdx")[jet_idx][external_jetidx]
+            particle_idx = eventWise.JetInputs_SourceIdx[input_jetidx]
+            tower_idx = eventWise.Particle_Tower[particle_idx]
+            tower_idx = tower_idx[tower_idx>0]
+            track_idx = eventWise.Particle_Track[particle_idx]
+            track_idx = track_idx[track_idx>0]
+            DrawBarrel.highlight_indices(tower_pos, tower_idx, colours=colour, colourmap=False)
+            DrawBarrel.highlight_indices(outer_pos, track_idx, colours=colour, colourmap=False)
 
         repeat = InputTools.yesNo_question("Again? ")
 

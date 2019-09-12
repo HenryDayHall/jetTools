@@ -115,7 +115,7 @@ class PseudoJet:
             if attr_name in average_attrs:
                 cumulative /= num_obs
             if attr_name == 'Phi':  # make sure it's -pi to pi
-                cumulative = ((cumulative+np.pi) % (2*np.pi)) - np.pi
+                cumulative = Components.confine_angle(cumulative)
             return cumulative
         elif attr_name in self._int_contents:
             # ints return every value
@@ -251,6 +251,9 @@ class PseudoJet:
             raise ValueError(f"Algorithm {algorithm_name} not recognised")
         # the file of fast_ints contains
         fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
+        assert len(fast_ints) > 0, "No ints found!"
+        # check that all the input idx have come through
+        assert set(fast_ints[:, 1]) == set(range(-1, max(fast_ints[:, 1] + 1))), "Problem with inputIdx"
         next_free = max(fast_ints[:, 1]) + 1
         fast_idx_dict = {}
         for line_idx, i in fast_ints[:, :2]:
@@ -261,6 +264,21 @@ class PseudoJet:
                 fast_idx_dict[line_idx] = i
         fast_idx_dict[-1]=-1
         fast_ints = np.vectorize(fast_idx_dict.__getitem__)(fast_ints[:, [0, 2, 3, 4]])
+        # check that the parent child relationship is reflexive
+        for line in fast_ints:
+            identifier = f"pseudojet inputIdx={line[0]} "
+            if line[2] == -1:
+                assert line[3] == -1, identifier + "has only one child"
+            else:
+                assert line[2] != line[3], identifier + " child1 and child1 are same"
+                child1_line = fast_ints[fast_ints[:, 0] == line[2]][0]
+                assert child1_line[1] == line[0], identifier + " first child dosn't acknowledge parent"
+                child2_line = fast_ints[fast_ints[:, 0] == line[3]][0]
+                assert child2_line[1] == line[0], identifier + " second child dosn't acknowledge parent"
+            if line[1] != -1:
+                assert line[0] != line[1], identifier + "is it's own mother"
+                parent_line = fast_ints[fast_ints[:, 0] == line[1]][0]
+                assert line[0] in parent_line[2:4], identifier + " parent doesn't acknowledge child"
         fast_floats = np.genfromtxt(ffile_name, skip_header=1)
         if len(fast_ints.shape) > 1:
             num_rows = fast_ints.shape[0]
@@ -281,6 +299,19 @@ class PseudoJet:
                             jet_name="FastJet")
         new_pseudojet.currently_avalible = 0
         new_pseudojet._calculate_roots()
+        # make ranks
+        rank = 0
+        ints[ints[:, 2]==-1, 4] = rank
+        this_rank = ints[ints[:, 2] == -1, 1]
+        while len(this_rank) > 0:
+            rank += 1
+            next_rank = []
+            for i in this_rank:
+                ints[ints[:, 0] == i, 4] = rank
+                parent = ints[ints[:, 0] == i, 1]
+                if parent != -1 and parent not in next_rank:
+                    next_rank.append(parent)
+            this_rank = next_rank
         return new_pseudojet
 
     def split(self):
@@ -312,7 +343,7 @@ class PseudoJet:
         rap_col = self._Rapidity_col
         phi_col = self._Phi_col
         exponent = self.exponent
-        deltaR = self.deltaR
+        deltaR2 = self.deltaR**2
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
                 if column > row:
@@ -320,10 +351,10 @@ class PseudoJet:
                 elif self._floats[row][pt_col] == 0:
                     distance = 0  # soft radation might as well be at 0 distance
                 elif column == row:
-                    distance = self._floats[row][pt_col]**exponent * deltaR
+                    distance = self._floats[row][pt_col]**exponent * deltaR2
                 else:
-                    angular_diffrence = self._floats[row][phi_col] - self._floats[column][phi_col]
-                    angular_distance = min(abs(angular_diffrence), abs(2*np.pi - angular_diffrence))
+                    angular_diffrence = abs(self._floats[row][phi_col] - self._floats[column][phi_col]) % (2*np.pi)
+                    angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
                     distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
                                ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
                                (angular_distance)**2)
@@ -335,10 +366,10 @@ class PseudoJet:
             if column > row:
                 row, column = column, row  # keep the upper triangular form
             if column == row:
-                distance = self._floats[row][self._PT_col]**self.exponent * self.deltaR
+                distance = self._floats[row][self._PT_col]**self.exponent * self.deltaR**2
             else:
-                angular_diffrence = self._floats[row][self._Phi_col] - self._floats[column][self._Phi_col]
-                angular_distance = min(abs(angular_diffrence), abs(2*np.pi - angular_diffrence))
+                angular_diffrence = abs(self._floats[row][self._Phi_col] - self._floats[column][self._Phi_col]) % (2*np.pi)
+                angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
                 distance = min(self._floats[row][self._PT_col]**self.exponent, self._floats[column][self._PT_col]**self.exponent) *\
                            ((self._floats[row][self._Rapidity_col] - self._floats[column][self._Rapidity_col])**2 +
                            (angular_distance)**2)
@@ -465,11 +496,7 @@ class PseudoJet:
             to_check.append(d1)
         if d2 >= 0:
             to_check.append(d2)
-        i = 0
         while len(to_check) > 0:
-            if i > 1000:
-                st()
-            i+=1
             jetInputIdx = to_check.pop()
             pseudojet_idx = self.idx_from_inpIdx(jetInputIdx)
             if (pseudojet_idx in local_obs or not lastOnly):
@@ -515,7 +542,7 @@ class PseudoJet:
         # fix the distance
         floats[self._JoinDistance_col] = distance
         # get the angle between 0 and 2pi 
-        floats[self._Phi_col] = ((floats[self._Phi_col] + np.pi)%(2*np.pi)) - np.pi
+        floats[self._Phi_col] = Components.confine_angle(floats[self._Phi_col])
         # all the rest are just cumulative
         return ints, floats
 
@@ -570,20 +597,22 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise, capture_out=Fa
 
 def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer):
     eventWise.selected_index = None
-    fastjets_by_event = []
+    all_fastjets = []
     dir_name = eventWise.dir_name
     for event_number in range(len(eventWise.JetInputs_Energy)):
+        eventWise.selected_index = event_number
         if event_number % 100 == 0:
             print(event_number, end=' ', flush=True)
         produce_summary(eventWise, event_number)
         fastjets = run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise)
-        fastjets_by_event.append(fastjets)
+        fastjets = fastjets.split()
+        all_fastjets += fastjets
     try:
         os.remove(os.path.join(dir_name, 'summary_observables.csv'))
-        PseudoJet.multi_write(fastjets_by_event, jet_name="FastJet", eventWise=eventWise)
+        PseudoJet.multi_write(all_fastjets, jet_name="FastJet", eventWise=eventWise)
     except Exception as e:
         print(e)        
-        return fastjets_by_event
+        return all_fastjets
 
 
 def create_jetInputs(eventWise):
@@ -613,7 +642,7 @@ def create_jetInputs(eventWise):
 
 def make_all_jets(eventWise, deltaR=0.4, exponentMulti=0, name=None):
     if name is None:
-        name = "HomeJets"
+        name = "HomeJet"
     jets = []
     for event_n in range(len(eventWise.JetInputs_Energy)):
         if event_n % 100 == 0:
@@ -631,13 +660,15 @@ def make_all_jets(eventWise, deltaR=0.4, exponentMulti=0, name=None):
 
 
 def main():
+    ax = plt.gca()
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
     eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
     if "JetInputs_Energy" not in eventWise.columns:
         create_jetInputs(eventWise)
     eventWise.selected_index = 0
-    pseudojet = PseudoJet(eventWise, 1., 0., jet_name="HomejetR1KT")
+    deltaR = 0.4
+    pseudojet = PseudoJet(eventWise, deltaR, 0., jet_name="HomejetR1KT")
     pseudojet.assign_parents()
     pjets = pseudojet.split()
     # plot the pseudojets
@@ -648,11 +679,13 @@ def main():
                     np.array(pjet._floats)[obs_idx, pjet._Phi_col],
                     c=[c], marker='v', s=30, alpha=0.6)
         plt.scatter([pjet.Rapidity], [pjet.Phi], c='black', marker='o', s=10)
-        plt.scatter([pjet.Rapidity], [pjet.Phi], c='red', marker='o', s=9)
+        plt.scatter([pjet.Rapidity], [pjet.Phi], c=[c], marker='o', s=9)
+        circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=(0,0,0,0.2), fill=False)
+        ax.add_artist(circle)
     plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PseudoJets")
     # get soem fast jets
     produce_summary(eventWise, 0)
-    fastjets = run_FastJet(eventWise.dir_name, 0.4, 0, eventWise)
+    fastjets = run_FastJet(eventWise.dir_name, deltaR, 0, eventWise)
     # plot the fastjet
     fjets = fastjets.split()
     pseudo_colours = [colours(i) for i in np.linspace(0.6, 1., len(fjets))]
@@ -662,7 +695,9 @@ def main():
                     np.array(fjet._floats)[obs_idx, fjet._Phi_col],
                     c=[c], marker='^', s=30, alpha=0.6)
         plt.scatter([fjet.Rapidity], [fjet.Phi], c='black', marker='o', s=10)
-        plt.scatter([fjet.Rapidity], [fjet.Phi], c='red', marker='o', s=9)
+        plt.scatter([fjet.Rapidity], [fjet.Phi], c=[c], marker='o', s=9)
+        circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=(0,0,0,0.2), fill=False)
+        ax.add_artist(circle)
     plt.scatter([], [], c=[c], marker='^', s=25, alpha=0.6, label="FastJets")
     plt.legend()
     plt.title("Jets")
@@ -673,4 +708,4 @@ def main():
     
 if __name__ == '__main__':
     main()
-    pass
+    #pass

@@ -11,6 +11,10 @@ import numpy as np
 from skhep import math as hepmath
 from tree_tagger import Constants, PDGNames, InputTools
 
+def confine_angle(angle):
+    """ confine an angle between -pi and pi"""
+    return ((angle + np.pi)%(2*np.pi)) - np.pi
+
 
 # context manager for folder that holds data
 class DataIndex:
@@ -293,6 +297,51 @@ class EventWise:
         new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
         return new_eventWise
 
+def add_thetas(eventWise):
+    # find all the things with an angular property
+    columns = []
+    contents = {}
+    phi_cols = [c[:-4] for c in eventWise.columns if c.endswith("_Phi")]
+    missing_theta = [c for c in phi_cols if (c+"_Theta") not in eventWise.columns]
+    for name in missing_theta:
+        avalible_components = [c[len(name)+1:] for c in eventWise.columns
+                               if c.startswith(name)]
+        if (set(("PT", "Pz")) <= set(avalible_components) or
+            set(("Birr", "PT")) <= set(avalible_components) or
+            set(("Birr", "Pz")) <= set(avalible_components) or
+            set(("Px", "Py", "Pz")) <= set(avalible_components)):
+            # then we will work with momentum
+            if "Pz" in avalible_components:
+                pz = getattr(eventWise, name+"_Pz")
+                if "Birr" in avalible_components:
+                    birr = getattr(eventWise, name+"_Birr")
+                    theta = np.arccos(pz/birr)
+                else:
+                    if "PT" in avalible_components:
+                        pt = getattr(eventWise, name+"_PT")
+                    else:
+                        pt = np.sqrt(getattr(eventWise, name+"_Px")**2 +
+                                     getattr(eventWise, name+"_Py")**2)
+                    theta = np.arctan(pt/pz)
+            else:
+                birr = getattr(eventWise, name+"_Birr")
+                pt = getattr(eventWise, name+"_PT")
+                theta = np.arcsin(pt/birr)
+        elif "ET" in avalible_components:
+            # we work with energy
+            et = getattr(eventWise, name+"_ET")
+            e = getattr(eventWise, name+"_Energy")
+            theta = np.arcsin(et/e)
+        else:
+            print(f"Couldn't calculate Theta for {name}")
+            continue
+        columns.append(name + "_Theta")
+        contents[name+"_Theta"] = theta
+    if "Theta" not in eventWise.columns:
+        theta = np.arctan(eventWise.PT/eventWise.Pz)
+        columns.append("Theta")
+        contents["Theta"] = theta
+    eventWise.append(columns, contents)
 
 
 class RootReadout(EventWise):

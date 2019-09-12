@@ -1,4 +1,4 @@
-# TODO Needs updates for uproot!
+# TODO fix me...
 # Jets are formed using applyFastJet.cc
 # this takes in the jets, clusters them and writes to the text form of parentedTree
 # read in the data
@@ -12,60 +12,106 @@ from skhep import math as hepmath
 import os
 import csv
 import torch
+from tree_tagger import Components
 
 class TreeWalker:
     def __init__(self, eventWise, jet_name, jet_number, pseudojet_idx):
         self.eventWise = eventWise
+        inputIdx = getattr(eventWise, jet_name+"_InputIdx")[jet_number]
         self.jet_name = jet_name
         self.jet_number = jet_number
         self.pseudojet_idx = pseudojet_idx
-        self.left_id = getattr(eventWise, jet_name+"_Child1")[jet_number][pseudojet_idx]
-        self.right_id = getattr(eventWise, jet_name+"_Child2")[jet_number][pseudojet_idx]
-        self.is_leaf = self.left_id < 0 and self.right_id < 0
         self.is_root = getattr(eventWise, jet_name+"_Parent")[jet_number][pseudojet_idx] < 0
         self.particle_idx = -1
-        if self.is_leaf:
-            self.particle_idx = eventWise.JetInputs_SelectedIdx[getattr(eventWise, jet_name+"_InputIdx")[jet_number][pseudojet_idx]]
-        self.label = getattr(eventWise, jet_name + "_JoinDistance")[jet_number][pseudojet_idx]
-        self.leaf = [jet._floats[node_index][i] for i in
-                      [jet.pt_col, jet.rap_col, jet.phi_col, jet.energy_col]]
-        self.pt = self.leaf[0]
-        self.rap = self.leaf[1]
-        self.phi = self.leaf[2]
-        self.e = self.leaf[3]
-        # this si the variabel offered to the nn
-        # momentum rapidity theta phi energy transverse-momentum
-        leaf_inputs = [jet.p, self.rap, jet.theta, jet.phi, self.e, self.pt]
-        self.leaf_inputs = torch.DoubleTensor(leaf_inputs)
-        # for visulisation
-        self.size = self.e
         green = (0.2, 0.9, 0.15, 1.)
         blue = (0.1, 0.5, 0.85, 1.)
-        self.colour = green if self.is_leaf else blue
         self._decendants = None
+        left_id = getattr(eventWise, jet_name+"_Child1")[jet_number][pseudojet_idx]
+        right_id = getattr(eventWise, jet_name+"_Child2")[jet_number][pseudojet_idx]
+        self.is_leaf = left_id < 0 and right_id < 0
+        self.colour = green if self.is_leaf else blue
         # changing to holding the whole tree inn memory
         if not self.is_leaf:
-            self.left = TreeWalker(self.jet, self.left_id)
-            self.right = TreeWalker(self.jet, self.right_id)
+            # the left node should always have higher PT than the right
+            self.left_idx = np.where(inputIdx == left_id)[0][0]
+            self.right_idx = np.where(inputIdx == right_id)[0][0]
+            left_pt = getattr(eventWise, jet_name + "_PT")[jet_number][self.left_idx]
+            right_pt = getattr(eventWise, jet_name + "_PT")[jet_number][self.right_idx]
+            if left_pt < right_pt:
+                tmp = int(self.left_idx)
+                self.left_idx = int(self.right_idx)
+                self.right_idx = tmp
+            self.left = TreeWalker(eventWise, jet_name, jet_number, self.left_idx)
+            self.right = TreeWalker(eventWise, jet_name, jet_number, self.right_idx)
+        else:
+            self.particle_idx = eventWise.JetInputs_SourceIdx[inputIdx[pseudojet_idx]]
 
 #    @property
 #    def left(self):
-#        return TreeWalker(self.jet, self.left_id)
+#        return TreeWalker(self.jet, self.left_idx)
 #
 #    @property
 #    def right(self):
-#        return TreeWalker(self.jet, self.right_id)
+#        return TreeWalker(self.jet, self.right_idx)
+
+    
+    # these things need to be properties to avoid loading too much in to memory
+    @property
+    def label(self):
+        return getattr(self.eventWise, self.jet_name + "_JoinDistance")[self.jet_number][self.pseudojet_idx]
+
+    @property
+    def pt(self):
+        return getattr(self.eventWise, self.jet_name + "_PT")[self.jet_number][self.pseudojet_idx]
+    @property
+    def rap(self):
+        return getattr(self.eventWise, self.jet_name + "_Rapidity")[self.jet_number][self.pseudojet_idx]
+    
+    @property
+    def phi(self):
+        return getattr(self.eventWise, self.jet_name + "_Phi")[self.jet_number][self.pseudojet_idx]
+    
+    @property
+    def theta(self):
+        return getattr(self.eventWise, self.jet_name + "_Theta")[self.jet_number][self.pseudojet_idx]
+    
+    @property
+    def e(self):
+        return getattr(self.eventWise, self.jet_name + "_Energy")[self.jet_number][self.pseudojet_idx]
+    
+    @property
+    def p(self):
+        return np.sqrt(getattr(self.eventWise, self.jet_name + "_Px")[self.jet_number][self.pseudojet_idx]**2 +
+                       getattr(self.eventWise, self.jet_name + "_Py")[self.jet_number][self.pseudojet_idx]**2 +
+                       getattr(self.eventWise, self.jet_name + "_Pz")[self.jet_number][self.pseudojet_idx]**2)
+    @property
+    def leaf(self):
+        return [self.pt, self.rap, self.phi, self.e]
+    
+    @property
+    def leaf_inputs(self):
+        # this si the variabel offered to the nn
+        # momentum rapidity theta phi energy transverse-momentum
+        leaf_inputs = [self.p, self.rap, self.theta, self.phi, self.e, self.pt]
+        return torch.DoubleTensor(leaf_inputs)
+
+    @property
+    def size(self):
+        # for visulisation
+        return self.e
+
 
     @property
     def decendants(self):
         if self._decendants is None:
             if self.is_leaf:
-                self._decendants = set([self.global_obs_id])
+                self._decendants = set([self.particle_idx])
             else:
                 left_decendants = self.left.decendants
                 right_decendants = self.right.decendants
                 self._decendants = left_decendants.union(right_decendants)
         return self._decendants
+
 
 # how abut a graph of average join properties
 def join_behaviors(root):
@@ -202,8 +248,17 @@ def quick_vid():
     import FormJets
     save_name = "homepic" 
     assert not os.path.exists(save_name)
-    jet = FormJets.PsudoJets.read("test")
-    walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise.selected_index = int(input("Event num? "))
+    print(f"This event has {len(eventWise.HomeJet_Px)} jets.")
+    lengthy_jets = [(i, len(j)) for i, j in enumerate(eventWise.HomeJet_Parents)
+                    if len(j) > 3]
+    print("Those with length are; ")
+    print(lengthy_jets)
+    jet_num = int(input("Jet num? "))
+    root = np.where(eventWise.HomeJet_InputIdx[jet_num]
+                    == eventWise.HomeJet_RootInputIdx[jet_num][0])[0][0]
+    walker = TreeWalker(eventWise, "HomeJet", jet_num, root)
     steps_between = 10
     motion, size, colour = tree_motion(walker.leaf[1:3], walker, steps_between)
     plot_motions([motion], [size], [colour], save_name, steps_between)
@@ -217,18 +272,20 @@ def whole_event(nodisplay=False):
     home_save_name = "homeeventpic"
     assert not os.path.exists(fast_save_name)
     assert not os.path.exists(home_save_name)
-    observables = Components.Observables.from_file(obs_dir)
-    deltaR = 1.
-    exponent_multiplyer = -1
+    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise.selected_index = int(input("Event num? "))
     steps_between = 10
     print("Starting fastjet")
-    fast_jets = FormJets.run_FastJet(obs_dir, deltaR, exponent_multiplyer)
-    fast_jets = fast_jets.split()
     motions = []; colours = []; sizes = []
-    for i, jet in enumerate(fast_jets):
+    for i in range(len(eventWise.FastJet_Px)):
         print(f"Getting fast motion. Jet {i}")
-        fast_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+        root = np.where(eventWise.FastJet_InputIdx[i]
+                        == eventWise.FastJet_RootInputIdx[i][0])[0][0]
+        fast_walker = TreeWalker(eventWise, "FastJet", i, root)
         motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
+        if len(motion) == 0:
+            st()
+            motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
         motions.append(motion); sizes.append(size); colours.append(color)
     if nodisplay:
         for i, motion in enumerate(motions):
@@ -249,13 +306,12 @@ def whole_event(nodisplay=False):
     else:
         print("Plotting fast jets")
         plot_motions(motions, sizes, colours, fast_save_name, steps_between)
-    home_jets = FormJets.PsudoJets(observables, deltaR, exponent_multiplyer)
-    home_jets.assign_mothers()
-    home_jets = home_jets.split()
     motions = []; colours = []; sizes = []
-    for i, jet in enumerate(home_jets):
+    for i, px in enumerate(eventWise.HomeJet_Px):
         print(f"Getting home motion. Jet {i}")
-        home_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+        root = np.where(eventWise.HomeJet_InputIdx[i]
+                        == eventWise.HomeJet_RootInputIdx[i][0])[0][0]
+        home_walker = TreeWalker(eventWise, "HomeJet", i, root)
         motion, size, color = tree_motion(home_walker.leaf[1:3], home_walker, steps_between)
         motions.append(motion); sizes.append(size); colours.append(color)
     if nodisplay:
@@ -284,31 +340,31 @@ def whole_event_behavior(nodisplay=False):
     import FormJets
     import Components
     obs_dir = "test"
-    observables = Components.Observables.from_file(obs_dir)
-    deltaR = 1.
-    exponent_multiplyer = -1
+    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise.selected_index = int(input("Event num? "))
+    deltaR = eventWise.HomeJet_DeltaRs[0]
+    exponent_multiplyer = eventWise.HomeJet_ExponentMulti[0]
     steps_between = 10
     print("Starting fastjet")
-    fast_jets = FormJets.run_FastJet(obs_dir, deltaR, exponent_multiplyer)
-    fast_jets = fast_jets.split()
     fast_behavior = []
     fast_jump = []
-    for i, jet in enumerate(fast_jets):
-        print(f"Getting fast behavior. Jet {i}")
-        fast_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+    for i in range(len(eventWise.FastJet_Px)):
+        print(f"Getting fast motion. Jet {i}")
+        root = np.where(eventWise.FastJet_InputIdx[i]
+                        == eventWise.FastJet_RootInputIdx[i][0])[0][0]
+        fast_walker = TreeWalker(eventWise, "FastJet", i, root)
         jet_behavior, jet_jump = join_behaviors(fast_walker)
         fast_behavior += jet_behavior
         fast_jump += jet_jump
     fast_behavior = np.array(fast_behavior)
     fast_jump = np.array(fast_jump)
-    home_jets = FormJets.PsudoJets(observables, deltaR, exponent_multiplyer)
-    home_jets.assign_mothers()
-    home_jets = home_jets.split()
     home_behavior = []
     home_jump = []
-    for i, jet in enumerate(home_jets):
-        print(f"Getting home behavior. Jet {i}")
-        home_walker = TreeWalker(jet, jet.root_psudojetIDs[0])
+    for i in range(len(eventWise.HomeJet_Px)):
+        print(f"Getting home motion. Jet {i}")
+        root = np.where(eventWise.HomeJet_InputIdx[i]
+                        == eventWise.HomeJet_RootInputIdx[i][0])[0][0]
+        home_walker = TreeWalker(eventWise, "HomeJet", i, root)
         jet_behavior, jet_jump = join_behaviors(home_walker)
         home_behavior += jet_behavior
         home_jump += jet_jump
@@ -324,8 +380,10 @@ def whole_event_behavior(nodisplay=False):
         plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR)
 
 def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR):
-    plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
-    plt.scatter(home_behavior[home_jump, 0], home_behavior[home_jump, 1], c= home_behavior[home_jump, 2], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
+    if np.any(fast_jump):
+        plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
+    if np.any(home_jump):
+        plt.scatter(home_behavior[home_jump, 0], home_behavior[home_jump, 1], c= home_behavior[home_jump, 2], cmap='viridis', marker='o', label=f"Home jet, modular jump ({sum(home_jump)} points)", edgecolor='k')
     plt.scatter(fast_behavior[~fast_jump, 0], fast_behavior[~fast_jump, 1], c= fast_behavior[~fast_jump, 2], cmap='viridis', marker='P', label="Fast jet")
     plt.scatter(home_behavior[~home_jump, 0], home_behavior[~home_jump, 1], c= home_behavior[~home_jump, 2], cmap='viridis', marker='o', label="Home jet")
     plt.legend()
