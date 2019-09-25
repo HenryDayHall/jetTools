@@ -84,6 +84,7 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
 
 
 def tower_track_proximity(eventWise):
+    assert eventWise.selected_index != None
     division = 6
     eta_seperation = 5/division
     phi_seperation = 2*np.pi/division
@@ -95,9 +96,9 @@ def tower_track_proximity(eventWise):
     return tracks_near_tower, towers_near_track
 
 
-
 def MC_truth_links(eventWise):
     """ the monte carlo truth links between tracks and towers """
+    assert eventWise.selected_index != None
     links = {}
     for j, gid in enumerate(eventWise.Track_Particle):
         linked = next((i for i, tower_gids in enumerate(eventWise.Tower_Particles)

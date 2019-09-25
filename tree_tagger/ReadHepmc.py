@@ -286,6 +286,29 @@ class Hepmc(Components.EventWise):
             self.Cross_section_error_pb[event_n] = float(header_line[i])
 
 
+def add_PT_Theta_Phi(eventWise):
+    pt, theta, phi = [], [], []
+    n_events = len(eventWise.Px)
+    for event_n in range(n_events):
+        if event_n % 100 == 0:
+            print(f"{100*event_n/n_events}%", end='\r')
+        eventWise.selected_index = event_n
+        pt_here = np.sqrt(np.square(eventWise.Px) +
+                          np.square(eventWise.Py))
+        pt.append(awkward.fromiter(pt_here))
+        theta_here = np.where(eventWise.Pz != 0,
+                              np.arctan(pt_here/eventWise.Pz),
+                              np.pi)
+        theta.append(awkward.fromiter(theta_here))
+        phi_here = np.arctan(eventWise.Px/eventWise.Py)
+        phi.append(phi_here)
+    content = {"PT": awkward.fromiter(pt),
+               "Theta": awkward.fromiter(theta),
+               "Phi": awkward.fromiter(phi)}
+    columns = list(content.keys())
+    eventWise.append(columns, content)
+
+
 def main():
     filepath = "/home/henry/lazy/h1bBatch2.hepmc"
     event = Hepmc(filepath, 0, 1)

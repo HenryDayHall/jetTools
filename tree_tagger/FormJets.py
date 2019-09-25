@@ -30,6 +30,10 @@ class PseudoJet:
         self.jet_name = kwargs.get('jet_name', 'Pseudojet')
         self.int_columns = [c.replace('Pseudojet', self.jet_name) for c in self.int_columns]
         self.float_columns = [c.replace('Pseudojet', self.jet_name) for c in self.float_columns]
+        self.from_PseudoRapidity = kwargs.get("from_PseudoRapidity", False)
+        if self.from_PseudoRapidity:
+            idx = next(i for i, c in enumerate(self.float_columns) if c.endswith("_Rapidity"))
+            self.float_columns[idx] = self.float_columns[idx].replace("_Rapidity", "_PseudoRapidity")
         # make a table of ints and a table of floats
         # lists not arrays, becuase they will grow
         self._set_column_numbers()
@@ -56,8 +60,12 @@ class PseudoJet:
             
             self.n_inputs = len(eventWise.JetInputs_PT)
             self._ints = [[i, -1, -1, -1, -1] for i in range(self.n_inputs)]
+            if self.from_PseudoRapidity:
+                rapidity_var = eventWise.JetInputs_PseudoRapidity
+            else:
+                rapidity_var = eventWise.JetInputs_Rapidity
             self._floats = np.hstack((eventWise.JetInputs_PT.reshape((-1, 1)),
-                                      eventWise.JetInputs_Rapidity.reshape((-1, 1)),
+                                      rapidity_var.reshape((-1, 1)),
                                       eventWise.JetInputs_Phi.reshape((-1, 1)),
                                       eventWise.JetInputs_Energy.reshape((-1, 1)),
                                       eventWise.JetInputs_Px.reshape((-1, 1)),
@@ -82,6 +90,8 @@ class PseudoJet:
         # float columns
         self._float_contents = {}
         for i, name in enumerate(self.float_columns):
+            if "PseudoRapidity" == name[prefix_len:]:
+                name = "Rapidity"
             attr_name = '_' + name[prefix_len:] + "_col"
             self._float_contents[name[prefix_len:]] = attr_name
             setattr(self, attr_name, i)
@@ -128,14 +138,12 @@ class PseudoJet:
         return np.linalg.norm([self.Px, self.Py, self.Pz])
 
     @classmethod
-    def multi_write(cls, pseudojets, jet_name="Pseudojet", eventWise=None):
+    def write_event(cls, pseudojets, jet_name="Pseudojet", event_num=None, eventWise=None):
         """Save a handful of jets together """
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
-        # witin ach event the global ids will be unique but not between events
-        # so they must be splitabel without information from ids
-        num_pseudojets = len(pseudojets)
-        prefix_len = len(jet_name) + 1
+        if event_num is None:
+            event_num = eventWise.selected_index
         save_columns = [ "_DeltaRs", "_ExponentMulti",
                         "_RootInputIdx"]
         save_columns = [jet_name + c for c in save_columns]
@@ -143,27 +151,26 @@ class PseudoJet:
         float_columns = [c.replace('Pseudojet', jet_name) for c in cls.float_columns]
         save_columns += float_columns
         save_columns += int_columns
-        arrays = {name: [] for name in save_columns}
+        eventWise.selected_index = None
+        arrays = {name: list(getattr(eventWise, name, [])) for name in save_columns}
+        # check there are enough event rows
+        for name in save_columns:
+            while len(arrays[name]) <= event_num:
+                arrays[name].append([])
         for jet in pseudojets:
             assert jet.eventWise == pseudojets[0].eventWise
-            event_index = jet.eventWise.selected_index
-            # check there are enough event rows
-            for name in save_columns:
-                while len(arrays[name]) <= event_index:
-                    arrays[name].append([])
-            arrays[jet_name + "_DeltaRs"][event_index].append(jet.deltaR)
-            arrays[jet_name + "_ExponentMulti"][event_index].append(jet.exponent_multiplyer)
-            arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
+            arrays[jet_name + "_DeltaRs"][event_num].append(jet.deltaR)
+            arrays[jet_name + "_ExponentMulti"][event_num].append(jet.exponent_multiplyer)
+            arrays[jet_name + "_RootInputIdx"][event_num].append(awkward.fromiter(jet.root_jetInputIdxs))
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
             for col_num, name in enumerate(jet.int_columns):
-                arrays[name][event_index].append(ints[:, col_num])
+                arrays[name][event_num].append(ints[:, col_num])
             floats = awkward.fromiter(jet._floats)
             for col_num, name in enumerate(jet.float_columns):
-                arrays[name][event_index].append(floats[:, col_num])
+                arrays[name][event_num].append(floats[:, col_num])
         arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
-        new_columns = sorted(arrays.keys())
-        eventWise.append(new_columns=new_columns, new_content=arrays)
+        eventWise.append(arrays)
 
         #TODO finifh implementing batching for TruTag method
     @classmethod
@@ -173,6 +180,11 @@ class PseudoJet:
         float_columns = [c.replace('Pseudojet', jet_name) for c in cls.float_columns]
         # could write a version that just read one jet if needed
         eventWise = Components.EventWise.from_file(file_name)
+        # check if its a pseudorapidty jet
+        if jet_name + "_Rapidity" not in eventWise.columns:
+            assert jet_name + "_PseudoRapidity" in eventWise.columns
+            idx = float_columns.index(jet_name + "_Rapidity")
+            float_columns[idx] = float_columns[idx].replace("_Rapidity", "_PseudoRapidity")
         save_name = eventWise.save_name
         dir_name = eventWise.dir_name
         avalible = len(getattr(eventWise, jet_name + "_Ints"))
@@ -212,7 +224,7 @@ class PseudoJet:
 
 
     def write(self, dir_name):
-        self.multi_write(os.path.join(dir_name, f"single{self.eventWise.selected_index}.npz"), [self]) 
+        self.write_event([self], f"single{self.eventWise.selected_index}Jet", event_num=0) 
 
     def _calculate_roots(self):
         self.root_jetInputIdxs = []
@@ -252,8 +264,13 @@ class PseudoJet:
         # the file of fast_ints contains
         fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
         assert len(fast_ints) > 0, "No ints found!"
+        if len(fast_ints.shape) == 1:
+            fast_ints = fast_ints.reshape((1, -1))
         # check that all the input idx have come through
-        assert set(fast_ints[:, 1]) == set(range(-1, max(fast_ints[:, 1] + 1))), "Problem with inputIdx"
+        if -1 in fast_ints[:, 1]:
+            assert set(fast_ints[:, 1]) == set(range(-1, max(fast_ints[:, 1] + 1))), "Problem with inputIdx"
+        else:
+            assert set(fast_ints[:, 1]) == set(range(0, max(fast_ints[:, 1] + 1))), "Problem with inputIdx"
         next_free = max(fast_ints[:, 1]) + 1
         fast_idx_dict = {}
         for line_idx, i in fast_ints[:, :2]:
@@ -280,6 +297,8 @@ class PseudoJet:
                 parent_line = fast_ints[fast_ints[:, 0] == line[1]][0]
                 assert line[0] in parent_line[2:4], identifier + " parent doesn't acknowledge child"
         fast_floats = np.genfromtxt(ffile_name, skip_header=1)
+        if len(fast_floats.shape) == 1:
+            fast_floats = fast_floats.reshape((1, -1))
         if len(fast_ints.shape) > 1:
             num_rows = fast_ints.shape[0]
             assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
@@ -430,7 +449,10 @@ class PseudoJet:
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.ylabel(r"$\phi$ - barrel angle")
-        plt.xlabel(r"$\eta$ - pseudo rapidity")
+        if self.from_PseudoRapidity:
+            plt.xlabel(r"$\eta$ - pseudo rapidity")
+        else:
+            plt.xlabel(r"Rapidity")
         plt.title("Detected Hits")
         plt.gca().set_facecolor('gray')
         # for getting rid of the axis
@@ -517,8 +539,6 @@ class PseudoJet:
                        self._ints[i][self._Child2_col] < 0)]
         return idx_are_obs
 
-            
-
     def _combine(self, pseudojet_index1, pseudojet_index2, distance):
         new_id = max([ints[self._InputIdx_col] for ints in self._ints]) + 1
         self._ints[pseudojet_index1][self._Parent_col] = new_id
@@ -555,6 +575,82 @@ class PseudoJet:
         ints_eq = self._ints == other._ints
         floats_eq = np.allclose(self._floats, other._floats)
         return ints_eq and floats_eq
+
+
+def filter_obs(eventWise, existing_idx_selection):
+    assert eventWise.selected_index is not None
+    has_track = eventWise.Particle_Track[existing_idx_selection] >= 0
+    has_tower = eventWise.Particle_Tower[existing_idx_selection] >= 0
+    observable = np.logical_or(has_track, has_tower)
+    new_selection = existing_idx_selection[observable]
+    return new_selection
+
+
+def filter_ends(eventWise, existing_idx_selection):
+    assert eventWise.selected_index is not None
+    is_end = [len(c) == 0 for c in 
+              eventWise.Children[existing_idx_selection]]
+    new_selection = existing_idx_selection[is_end]
+    return new_selection
+
+
+def filter_pt_eta(eventWise, existing_idx_selection):
+    assert eventWise.selected_index is not None
+    # filter PT
+    sufficient_pt = eventWise.PT[existing_idx_selection] > 5.
+    updated_selection = existing_idx_selection[sufficient_pt]
+    zero_pseudorapidity = eventWise.Pz[updated_selection] == 0
+    tan_theta = eventWise.PT[updated_selection]/eventWise.Pz[updated_selection]
+    pseudorapidity_choice = np.abs(np.log(np.abs(tan_theta)/2)) < 2.5
+    pseudorapidity_choice[zero_pseudorapidity] = 0
+    updated_selection = updated_selection[pseudorapidity_choice]
+    return updated_selection
+
+
+def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], batch_length=1000):
+    # decide on run range
+    eventWise.selected_index = None
+    n_events = len(eventWise.Energy)
+    start_point = len(getattr(eventWise, "JetInputs_Energy", []))
+    if start_point >= n_events:
+        print("Finished")
+        return True
+    end_point = min(n_events, start_point+batch_length)
+    print(f" Will stop at {100*end_point/n_events}%")
+    # sort out olumn names
+    sources = ["PT", "Rapidity", "Phi", "Energy", "Px", "Py", "Pz"]
+    for s in sources:
+        if not hasattr(eventWise, s):
+            print(f"EventWise lacks {s}")
+            sources.remove(s)
+    columns = ["JetInputs_" + c for c in sources]
+    columns.append("JetInputs_SourceIdx")
+    # the source column gives indices in the origin
+    # construct the observable filter in advance
+    contents = {"JetInputs_SourceIdx": list(getattr(eventWise, "JetInputs_SourceIdx", []))}
+    for name in columns:
+        contents[name] = list(getattr(eventWise, name, []))
+    mask = []
+    for event_n in range(start_point, end_point):
+        if event_n % 100 == 0:
+            print(f"{100*event_n/n_events}%", end='\r')
+        eventWise.selected_index = event_n
+        idx_selection = np.arange(len(eventWise.PT))
+        for filter_func in filter_functions:
+            idx_selection = filter_func(eventWise, idx_selection)
+        contents["JetInputs_SourceIdx"].append(idx_selection)
+        mask_here = np.full_like(eventWise.PT, False, dtype=bool)
+        mask_here[idx_selection] = True
+        mask.append(awkward.fromiter(mask_here))
+    mask = awkward.fromiter(mask)
+    eventWise.selected_index = None
+    try:
+        for name, source_name in zip(columns, sources):
+            contents[name] += list(getattr(eventWise, source_name)[start_point:end_point][mask])
+        contents = {k:awkward.fromiter(v) for k, v in contents.items()}
+        eventWise.append(contents)
+    except Exception as e:
+        return contents, mask, columns, sources, e
 
 
 def produce_summary(eventWise, event):
@@ -595,68 +691,62 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise, capture_out=Fa
     return fastjets
 
 
-def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer):
+def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, batch_length=100):
+    if jet_name is None:
+        jet_name = "FastJet"
     eventWise.selected_index = None
-    all_fastjets = []
     dir_name = eventWise.dir_name
-    for event_number in range(len(eventWise.JetInputs_Energy)):
-        eventWise.selected_index = event_number
-        if event_number % 100 == 0:
-            print(event_number, end=' ', flush=True)
-        produce_summary(eventWise, event_number)
+    n_events = len(eventWise.JetInputs_Energy)
+    start_point = len(getattr(eventWise, jet_name+"_Energy", []))
+    if start_point >= n_events:
+        print("Finished")
+        return True
+    end_point = min(n_events, start_point+batch_length)
+    print(f" Will stop at {100*end_point/n_events}%")
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r')
+        eventWise.selected_index = event_n
+        if len(eventWise.JetInputs_PT) == 0:
+            continue  # there are no observables
+        produce_summary(eventWise, event_n)
         fastjets = run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise)
         fastjets = fastjets.split()
-        all_fastjets += fastjets
-    try:
-        os.remove(os.path.join(dir_name, 'summary_observables.csv'))
-        PseudoJet.multi_write(all_fastjets, jet_name="FastJet", eventWise=eventWise)
-    except Exception as e:
-        print(e)        
-        return all_fastjets
-
-
-def create_jetInputs(eventWise):
-    sources = ["PT", "Rapidity", "Phi", "Energy", "Px", "Py", "Pz",]
-    columns = ["JetInputs_" + c for c in sources]
-    columns.append("JetInputs_SourceIdx")
-    # the source column gives indices in the origin
-    for col_name in columns:
         try:
-            eventWise.remove(col_name)
-        except KeyError:
-            pass
-    # construct the observable filter in advance
-    obs_filter = []
-    contents = {"JetInputs_SourceIdx": []}
-    for track_lst, tower_lst in zip(eventWise.Particle_Track, eventWise.Particle_Tower):
-        obs_filter.append([])
-        for track_num, tower_num in zip(track_lst, tower_lst):
-            obs_filter[-1].append(track_num >= 0 or tower_num >= 0)
-        contents["JetInputs_SourceIdx"].append(np.where(obs_filter[-1])[0])
-    contents["JetInputs_SourceIdx"] = awkward.fromiter(contents["JetInputs_SourceIdx"])
-    obs_filter = awkward.fromiter(obs_filter)
-    for name, source_name in zip(columns, sources):
-        contents[name] = getattr(eventWise, source_name)[obs_filter]
-    eventWise.append(columns, contents)
+            os.remove(os.path.join(dir_name, 'summary_observables.csv'))
+            PseudoJet.write_event(fastjets, jet_name=jet_name, event_num=event_n, eventWise=eventWise)
+        except Exception as e:
+            print(e)        
+            return fastjets
+    return False
 
 
-def make_all_jets(eventWise, deltaR=0.4, exponentMulti=0, name=None):
-    if name is None:
-        name = "HomeJet"
-    jets = []
-    for event_n in range(len(eventWise.JetInputs_Energy)):
-        if event_n % 100 == 0:
-            print(event_n)
+def homejet_multiappy(eventWise, deltaR=0.4, exponentMulti=0, jet_name=None, batch_length=100):
+    if jet_name is None:
+        jet_name = "HomeJet"
+    n_events = len(eventWise.JetInputs_Energy)
+    start_point = len(getattr(eventWise, jet_name+"_Energy", []))
+    if start_point >= n_events:
+        print("Finished")
+        return True
+    end_point = min(n_events, start_point+batch_length)
+    print(f" Will stop at {100*end_point/n_events}%")
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r')
         eventWise.selected_index = event_n
+        if len(eventWise.JetInputs_PT) == 0:
+            continue  # there are no observables
         pseudojet = PseudoJet(eventWise, deltaR=deltaR,
                               exponent_multiplyer=exponentMulti,
-                              jet_name=name)
+                              jet_name=jet_name)
         pseudojet.assign_parents()
-        jets += pseudojet.split()
-    try:
-        PseudoJet.multi_write(jets, name, eventWise)
-    except:
-        return jets, name
+        jets = pseudojet.split()
+        try:
+            PseudoJet.write_event(jets, jet_name, eventWise)
+        except:
+            return jets, jet_name
+    return False
 
 
 def main():
@@ -664,8 +754,9 @@ def main():
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
     eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    filter_funcs = [filter_obs, filter_pt_eta]
     if "JetInputs_Energy" not in eventWise.columns:
-        create_jetInputs(eventWise)
+        create_jetInputs(eventWise, filter_funcs)
     eventWise.selected_index = 0
     deltaR = 0.4
     pseudojet = PseudoJet(eventWise, deltaR, 0., jet_name="HomejetR1KT")
@@ -707,5 +798,5 @@ def main():
     return pjets
     
 if __name__ == '__main__':
-    main()
-    #pass
+    #main()
+    pass

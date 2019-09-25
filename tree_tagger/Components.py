@@ -279,7 +279,18 @@ class EventWise:
         all_content = {'column_order': column_order, **self._column_contents}
         awkward.save(path, all_content, mode='w')
 
-    def append(self, new_columns, new_content):
+    def append(self, *args):
+        if len(args) == 2:
+            new_columns = args[0]
+            new_content = args[1]
+            for name in new_columns:
+                assert name not in self.columns, f"Already have {name}"
+        else:
+            new_content = args[0]
+            new_columns = new_content.keys()
+            for name in new_columns:
+                if name in self.columns:
+                    self.remove(name)
         self.columns += new_columns
         self._column_contents = {**self._column_contents, **new_content}
         self.write()
@@ -288,6 +299,8 @@ class EventWise:
         if col_name not in self.columns:
             raise KeyError(f"Don't have a column called {col_name}")
         self.columns.remove(col_name)
+        if type(self._column_contents) != dict:
+            self._column_contents = {k:v for k, v in self._column_contents.items()}
         del self._column_contents[col_name]
 
     @classmethod
@@ -296,6 +309,41 @@ class EventWise:
         columns = list(contents['column_order'])
         new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
         return new_eventWise
+
+
+def add_rapidity(eventWise, base_name=''):
+    if base_name != '':
+        if not base_name.endwith('_'):
+            base_name += '_'
+    pts = getattr(eventWise, base_name+"PT")
+    pzs = getattr(eventWise, base_name+"Pz")
+    es = getattr(eventWise, base_name+"Energy")
+    assert not hasattr(pts[0][0], '__iter__')
+    n_events = len(getattr(eventWise, base_name+"PT"))
+    rapidities = []
+    for event_n in range(n_events):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r')
+        rap_here = []
+        eventWise.selected_index = event_n
+        pts = getattr(eventWise, base_name+"PT")
+        pzs = getattr(eventWise, base_name+"Pz")
+        es = getattr(eventWise, base_name+"Energy")
+        for pt, pz, e in zip(pts, pzs, es):
+            if pt == 0 and e == np.abs(pz):
+                large_num = 10**10
+                rap_here.append(np.sign(pz)*large_num + pz)
+            elif pz == 0.:
+                rap_here.append(0)
+            else:
+                m2 = e**2 - pz**2 - pt**2
+                mag_rap = 0.5*np.log((pt**2 + m2)/((e + np.abs(pz))**2))
+                rap_here.append(-np.sign(pz) * mag_rap)
+        rapidities.append(awkward.fromiter(rap_here))
+    eventWise.selected_index = None
+    rapidities = awkward.fromiter(rapidities)
+    eventWise.append({base_name+"Rapidity": rapidities})
+
 
 def add_thetas(eventWise):
     # find all the things with an angular property
@@ -490,3 +538,4 @@ class RootReadout(EventWise):
     @classmethod
     def from_file(cls, path, component_name):
         return cls(*os.path.split(path), component_name)
+

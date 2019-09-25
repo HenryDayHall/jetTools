@@ -1,49 +1,139 @@
-# TODO Needs updates for uproot!
+# TODO need to rotat the jets
 """ Preprocessig module takes prepared datafiles and performed generic processing tasks requird beofre data can be run as a net """
 import numpy as np
+from ipdb import set_trace as st
 from sklearn import preprocessing
 import os
+import awkward
+from tree_tagger import Components
+
+def flatten(nested):
+    for part in nested:
+        if hasattr(part, '__iter__'):
+            yield from flatten(part)
+        else:
+            yield part
+    raise StopIteration
 
 
-class Process:
-    def __init__(self, start_filename, add_to=True):
-        if start_filename.startswith("pros_"):
-            # the naem is of a file that has already began processing
-            self.processed_filename = start_filename
-        else: # then make the processed name
-            dir_name, f_name = os.path.split(start_filename)
-            self.processed_filename = os.path.join(dir_name, "pros_" + f_name)
-        if add_to:  # then we continue adding to an existing processed verison
-            if os.path.exists(self.processed_filename):
-                try:
-                    self.existing_data = np.load(self.processed_filename)
-                except OSError:
-                    # the processed file is not redable
-                    self.existing_data = np.load(start_filename)
-            else: # go back to the start_name
-                self.existing_data = np.load(start_filename)
-        else: # go back to the start_name
-            self.existing_data = np.load(start_filename)
-        self.new_data = {}
+def apply_array_func(func, *nested):
+    # all nested must have the same shape
+    out = []
+    # nested must alway contain at least one list like object
+    if len(nested[0]) == 0:
+        out.append(func(*nested))
+    else:
+        for parts in zip(*nested):
+            try:
+                if hasattr(parts[0][0], '__iter__'):
+                    out.append(apply_array_func(func, *parts))
+                else:
+                    out.append(func(*parts))
+            except IndexError:
+                st()
+    return awkward.fromiter(out)
 
-    def __enter__(self):
-        return self.existing_data, self.new_data
+def phi_rotation(eventWise):
+    content = {}
+    # pick out the columns to transform
+    pxy_cols = [(c, c.replace('Px', 'Py').replace('px', 'py'))
+                for c in eventWise.columns if "px" in c.lower()]
+    phi_cols = [c for c in eventWise.columns if "phi" in c.lower()]
+    content = {c:[] for c in phi_cols}
+    for px_name, py_name in pxy_cols:
+        content[px_name] = []
+        content[py_name] = []
+    # now rotate the events about the z axis
+    # so that the overall momentum is down the x axis
+    children = eventWise.Children
+    no_decendants = apply_array_func(lambda lst: not bool(len(lst)), children)
+    pxs = eventWise.Px
+    pys = eventWise.Py
+    def leaf_sum(values, no_dez):
+        return np.sum(values[no_dez])
+    px_sums = apply_array_func(leaf_sum, pxs, no_decendants)
+    py_sums = apply_array_func(leaf_sum, pys, no_decendants)
+    for event_n, (px, py) in enumerate(zip(px_sums, py_sums)):
+        eventWise.selected_index = event_n
+        angle = np.arctan(py/px)
+        cos = np.cos(angle)
+        sin = np.sin(angle)
+        def rotate_x(xs, ys):
+            return xs*cos - ys*sin
+        def rotate_y(xs, ys):
+            return xs*sin + ys*cos
+        def rotate_phi(phis):
+            return Components.confine_angle(phis - angle)
+        for px_name, py_name in pxy_cols:
+            this_pxs = getattr(eventWise, px_name)
+            this_pys = getattr(eventWise, py_name)
+            content[px_name].append(apply_array_func(rotate_x, this_pxs, this_pys))
+            content[py_name].append(apply_array_func(rotate_y, this_pxs, this_pys))
+        for phi_name in phi_cols:
+            this_phis = getattr(eventWise, phi_name)
+            content[phi_name].append(apply_array_func(rotate_phi, this_phis))
+    content = {name: awkward.fromiter(a) for name, a in content.items()}
+    columns = sorted(content.keys())
+    eventWise.append(columns, content)
 
-    def __exit__(self, exception_type, exception_value, traceback):
-        existing_data = {k: v for k, v in self.existing_data.items() if k not in self.new_data}
-        np.savez(self.processed_filename, **self.new_data, **existing_data)
+
+def normalize_jets(eventWise, jet_name):
+    eventWise.selected_index = None
+    jet_cols = [c for c in eventWise.columns if jet_name in c]
+    normed_outs = {}
+    for name in jet_cols:
+        values = getattr(eventWise, name)
+        flat_iter = flatten(values)
+        first = next(flat_iter)
+        # we ony want to normalise flaot columns
+        if isinstance(first, (float, np.float)):
+            print(f"Norming {name}")
+            flat_values = [first] + [i for i in flat_iter]
+            transformer = preprocessing.RobustScaler().fit(flat_values)
+            out = apply_array_func(transformer.transform, values)
+            normed_outs[name + "_normed"] = out
+    columns = sorted(normed_outs.keys())
+    eventWise.append(columns, normed_outs)
 
 
-def normalize_jets(multijet_filename):
-    with Process(multijet_filename) as (existing_data, new_data):
-        new_data['floats'] = preprocessing.robust_scale(existing_data['floats'])
-
-
-def make_targets(multijet_filename):
+def make_targets(eventWise, jet_name):
     """ anything with at least one tag is considered signal """
-    with Process(multijet_filename) as (existing_data, new_data):
-        truth_tags = existing_data['truth_tags']
-        new_data['truth_tags'] = np.array([bool(np.count_nonzero(tags)) for tags in truth_tags],
-                                      dtype=int)
+    truth_tags = getattr(eventWise, jet_name+"_Tags")
+    def target_func(array):
+        return len(array) > 0
+    contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags)}
+    columns = sorted(contents.keys())
+    eventWise.append(columns, contents)
 
+
+def event_wide_observables(eventWise):
+    contents = {}
+    cumulative_columns = ["Energy", "Rapidity", "PT",
+                          "Px", "Py", "Pz"]
+    for name  in cumulative_columns:
+        values = getattr(eventWise, name)
+        contents["Event_Sum"+name] = apply_array_func(np.sum, values)
+        contents["Event_Ave"+name] = apply_array_func(np.mean, values)
+        contents["Event_Std"+name] = apply_array_func(np.std, values)
+    columns = sorted(contents.keys())
+    eventWise.append(columns, contents)
+
+
+def jet_wide_observables(eventWise, jet_name):
+    # calculate averages and num hits
+    eventWise.selected_index = None
+    cumulative_components = ["PT", "Rapidity", "Phi", "Energy",
+                             "Px", "Py", "Pz",
+                             "JoinDistance"]
+    contents = {}
+    for name in cumulative_components:
+        col_name = jet_name + '_' + name
+        values = getattr(eventWise, col_name)
+        contents[jet_name+"_Sum"+name] = apply_array_func(np.sum, values)
+        contents[jet_name+"_Ave"+name] = apply_array_func(np.mean, values)
+        contents[jet_name+"_Std"+name] = apply_array_func(np.std, values)
+    # num_hits
+    contents[jet_name+"_size"] = apply_array_func(len, values)
+    columns = sorted(contents.keys())
+    eventWise.append(columns, contents)
 
