@@ -1,4 +1,3 @@
-# TODO Needs updates for uproot!
 ''' module for data reading tools '''
 import os
 import sys
@@ -52,8 +51,8 @@ class Run:
                  "inital_lr"   : lambda s: str_is_type(float, s),
                  "weight_decay": lambda s: str_is_type(float, s),
                  "loss_type"   : lambda s: s.upper() in Run.loss_functions,
-                 "auc"         : lambda s: str_is_type(float, s) or (s is None),
-                 "lowest_loss" : lambda s: str_is_type(float, s) or (s is None),
+                 "auc"         : lambda s: str_is_type(float, s, True),
+                 "lowest_loss" : lambda s: str_is_type(float, s, True),
                  "notes"       : lambda s: True}
 
     arg_convert = {"net_type"    : lambda s: s,
@@ -342,10 +341,6 @@ class Run:
                 print("Didn't find a last_net")
         self.written = True
 
-    @property
-    def best_nets(self):
-        return self._nets_from_state_dict(self.__best_net_state_dicts)
-
     @best_nets.setter
     def best_nets(self, param_dicts):
         # don't allow direct setting of the best net
@@ -357,10 +352,6 @@ class Run:
         # but as I expect this code to be called many times I will omit it
         self.settings['lowest_loss'] = float(lowest_loss)
         self.__best_net_state_dicts = deepcopy(param_dicts)
-
-    @property
-    def last_nets(self):
-        return self._nets_from_state_dict(self.__last_net_state_dicts)
 
     @last_nets.setter
     def last_nets(self, param_dicts):
@@ -377,15 +368,15 @@ class LinkingRun(Run):
     # the tests for identifying the arguments
     arg_tests = {**Run.arg_tests,
                  "database_name" : os.path.exists,
-                 "hepmc_name"  : os.path.exists}
+                 "num_events"    : lambda s: str_is_type(int, s)}
 
     arg_convert = {**Run.arg_convert, 
                    "database_name" : lambda s: s,
-                   "hepmc_name"  : lambda s: s}
+                   "num_events"  : int}
 
     arg_defaults = {"data_folder"   : "big_ds",
-                    "database_name" : "/home/henry/lazy/h1bBatch2.db",
-                    "hepmc_name"  : "/home/henry/lazy/h1bBatch2.hepmc",
+                    "database_name" : "/home/henry/lazy/h1bBatch2_hepmc.awkd",
+                    "num_events"  : -1,
                     "time"        : 3000,
                     "batch_size"  : 10,
                     "inital_lr"   : 0.01,
@@ -409,11 +400,10 @@ class LinkingRun(Run):
     @property
     def dataset(self):
         if self._dataset is None:
+            # TODO make use of save load in datasets
             self._dataset = Datasets.TracksTowersDataset(
-                            folder_name=self.settings['data_folder'],
                             database_name=self.settings['database_name'],
-                            hepmc_name=self.settings['hepmc_name'],
-                            shuffle=shuffle)
+                            num_events=self.settings["num_events"])
         return self._dataset
 
     @property
@@ -435,7 +425,20 @@ class LinkingRun(Run):
 
 
 class RecursiveRun(Run):
+    arg_tests = {**Run.arg_tests,
+                 "database_name" : os.path.exists,
+                 "n_jets"    : lambda s: str_is_type(int, s)
+                 "jet_name"  : lambda s: True}
+
+    arg_convert = {**Run.arg_convert, 
+                   "database_name" : lambda s: s,
+                   "n_jets"  : int,
+                   "jet_name": lambda s: s}
+
     arg_defaults = {"data_folder" : "fakereco",
+                    "database_name" : "/home/henry/lazy/h1bBatch2_hepmc.awkd",
+                    "n_jets"  : -1,
+                    "jet_name"  : "FastJet",
                     "latent_dimension" : 10,
                     "time"        : 3000,
                     "batch_size"  : 10,
@@ -462,7 +465,9 @@ class RecursiveRun(Run):
     @property
     def dataset(self, shuffle=False):
         if self._dataset is None:
-            self._dataset = Datasets.JetTreesDataset(dir_name=self.settings['data_folder'])
+            self._dataset = Datasets.JetTreesDataset(database_name=self.settings["database_name"],
+                                                     jet_name=self.settings["jet_name"],
+                                                     n_jets=self.settings["n_jets"],)
         return self._dataset
         
 

@@ -1,4 +1,3 @@
-# TODO Needs updates for uproot!
 import os
 import csv
 import random
@@ -14,37 +13,28 @@ TEST_DS="/home/henry/lazy/dataset2/h1bBatch2_particles.awkd"
 
 
 class EventWiseDataset(Dataset):
-    def __init__(self, database_name=None, num_events=None, test_percent=0.2, shuffle=True, all_events=None):
+    def __init__(self, database_name=None, num_events=-1, test_percent=0.2, shuffle=True, all_events=None):
         torch.set_default_tensor_type('torch.DoubleTensor')
         self.database_name = database_name
         self.eventWise = Components.EventWise.from_file(database_name)
         total_avalible = len(self.eventWise.Energy)
-        if num_events is None:
-            num_events = total_avalible
-        elif num_events > total_avalible:
-            num_events = total_avalible
         test_percent = 0.2
-        self.num_test = int(num_events*test_percent)
-        all_indices = np.arange(total_avalible)
-        if "TestEventIdx" in self.eventWise.columns:
-            self._test_indices = self.eventWise.TestEventIdx
-            assert len(self._test_indices) >= self.num_test
+        if num_events is -1 or num_events * (1+test_percent) > total_avalible:
+            num_events = int(total_avalible/(1+test_percent))
+        self._len = num_events
+        if "IsTestEvent" in self.eventWise.columns:
+            self._test_mask = self.eventWise.IsTestEvent
+            assert len(self._test_mask) == total_avalible
         else:
-            np.random.shuffle(all_indices)
-            self._test_indices = all_indices[:self.num_test]
-            self.eventWise.append(["TestEventIdx"], {"TestEventIdx", self._test_indices})
-        all_indices = np.sort(all_indices)
-        self.all_indices = all_indices
-        train_mask = np.ones_like(all_indices)
-        train_mask[self._test_indices] = 0
-        self._train_indices = all_indices[train_mask]
-        if shuffle:
-            # shuffle the events
-            random.shuffle(self._train_indices)
-        # then take the first section as test data
-        self._len = len(self._train_indices)
-        if all_events is None:
-            all_events = np.array(self._process_events())
+            num_test_events = int(total_avalible*test_percent)
+            test_mask = np.full(total_avalible, False, dtype=bool)
+            test_mask[:num_test_events] = True
+            np.random.shuffle(test_mask)
+            self.eventWise.append(["IsTestEvent"], {"IsTestEvent", test_mask})
+        self.num_test = num_events*test_percent
+        self._test_indices = np.random.shuffle(np.where(test_mask)[0])[:self.num_test]
+        self._train_indices = np.random.shuffle(np.where(~test_mask)[0])[:num_events]
+        self.all_indices = np.concatenate((self._test_indices, self._train_indices))
         self._events = all_events[self._train_indices]
         self._test_events = all_events[self._test_indices]
         
@@ -308,40 +298,35 @@ def simplifier(dataset, num_pairs=1):
 
 
 class JetWiseDataset(Dataset):
-    def __init__(self, database_name=None, jet_name="FastJet", n_jets=None, shuffle=True, all_truth_jets=None):
+    def __init__(self, database_name=None, jet_name="FastJet", n_jets=-1, shuffle=True, all_truth_jets=None):
         torch.set_default_tensor_type('torch.DoubleTensor')
         self.database_name = database_name
         self.eventWise = Components.EventWise.from_file(database_name)
+        self.jet_name = jet_name
         jet_energies = getattr(self.eventWise, jet_name + "_Energy")
+        total_events = len(jet_energies)
         jets_per_event = np.array([len(e) for e in jet_energies])
         self._cumulative_jets = np.cumsum(jets_per_event)
-        total_avalible = self.cumulative_jets[-1]
-        if num_events is None:
-            num_events = total_avalible
-        elif num_events > total_avalible:
-            num_events = total_avalible
+        total_jets = self._cumulative_jets[-1]
         test_percent = 0.2
-        self.num_test = int(num_events*test_percent)
-        all_indices = np.arange(total_avalible)
-        if "TestEventIdx" in self.eventWise.columns:
-            test_events = self.eventWise.TestEventIdx
+        if n_jets is -1 or n_jets * (1+test_percent) > total_jets:
+            n_jets = int(total_jets/(1+test_percent))
+        if "IsTestEvent" in self.eventWise.columns:
+            test_mask = self.eventWise.IsTestEvent
+            assert len(test_mask) == total_events
         else:
-            all_event_indices = np.arange(len(jet_energies))
-            np.random.shuffle(all_event_indices)
-            test_events = all_event_indices[:self.num_test]
-            self.eventWise.append(["TestEventIdx"], {"TestEventIdx", test_events})
-        self._test_indices = self._event_idx_to_jet(test_events)
-        assert len(self._test_indices) >= self.num_test
-        all_indices = np.sort(all_indices)
-        self.all_indices = all_indices
-        train_mask = np.ones_like(all_indices)
-        train_mask[self._test_indices] = 0
-        self._train_indices = all_indices[train_mask]
-        if shuffle:
-            # shuffle the events
-            random.shuffle(self._train_indices)
-        # then take the first section as test data
-        self._len = len(self._train_indices)
+            num_test_events = int(total_events*test_percent)
+            test_mask = np.full(total_events, False, dtype=bool)
+            test_mask[:num_test_events] = True
+            np.random.shuffle(test_mask)
+            self.eventWise.append(["IsTestEvent"], {"IsTestEvent", test_mask})
+        self.num_test = (n_jets/total_jets)*total_events*test_percent
+        test_events = np.random.shuffle(np.where(test_mask)[0])
+        self._test_indices = self._event_idx_to_jet(test_events)[: self.num_test]
+        train_events = np.random.shuffle(np.where(~test_mask)[0])
+        self._train_indices = self._event_idx_to_jet(train_events)[: n_jets]
+        self._len = n_jets
+        self.all_indices = np.concatenate((self._test_indices, self._train_indices))
         if all_truth_jets is None:
             all_truth, all_jets = self._process_jets()
         else:
@@ -384,14 +369,15 @@ class JetTreesDataset(JetWiseDataset):
         truths = np.empty((len(self.all_indices), 1))
         event_num = 0
         event_start = 0
-        self.eventWise.selected_index = 0
+        eventWise = self.eventWise
+        eventWise.selected_index = 0
         parents = getattr(eventWise, self.jet_name + "_Parent")
         tags = getattr(eventWise, self.jet_name + "_Tags")
         for jet_num, idx in enumerate(sorted(self.all_indices)):
             while idx >= self._cumulative_jets[event_num]:
                 event_start = self._cumulative_jets[event_num]
                 event_num += 1
-                self.eventWise.selected_index = event_num
+                eventWise.selected_index = event_num
                 parents = getattr(eventWise, self.jet_name + "_Parent")
                 tags = getattr(eventWise, self.jet_name + "_Tags")
             jet_in_event = idx - event_start
@@ -399,7 +385,7 @@ class JetTreesDataset(JetWiseDataset):
             jets[jet_num] = [event_num, jet_in_event, root]
             # anything with any tag is called signal
             truths[jet_num][0] = len(tags[jet_in_event]) > 0
-        self.eventWise.selected_index = None
+        eventWise.selected_index = None
         return truths, jets
 
     def __getitem__(self, idx):
