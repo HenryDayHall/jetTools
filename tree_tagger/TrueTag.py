@@ -81,7 +81,6 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     eventWise.selected_index = None
     name = jet_name+"_Tags"
     namePID = jet_name+"_TagPIDs"
-    columns = [name, namePID]
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
     start_point = len(getattr(eventWise, name, []))
     if start_point >= n_events:
@@ -110,7 +109,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     content[name] = awkward.fromiter(jet_tags)
     content[namePID] = awkward.fromiter(jet_tagpids)
     try:
-        eventWise.append(columns, content)
+        eventWise.append(content)
     except Exception:
         print("Problem")
         return columns, content

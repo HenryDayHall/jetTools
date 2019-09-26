@@ -343,17 +343,14 @@ class JetWiseDataset(Dataset):
         # then take the first section as test data
         self._len = len(self._train_indices)
         if all_truth_jets is None:
-            all_truth, all_jets = np.array(self._process_jets())
+            all_truth, all_jets = self._process_jets()
         else:
             all_truth, all_jets = all_truth_jets
         self._jets = all_jets[self._train_indices]
         self._truth = all_truth[self._train_indices]
-        test_jets = all_jets[self._test_indices]
-        test_truth = all_truth[self._test_indices]
-        # may cause memry issues
-        self._test = np.array(list(zip(all_truth[self._test_indices], 
-                                       [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-                                        for jet in all_jets[self._test_indices]])))
+        self._test_jets = all_jets[self._test_indices]
+        self._test_truth = all_truth[self._test_indices]
+        self._test = None
 
     def _event_idx_to_jet(self, idx_list):
         jet_idx = [np.arange(self._cumulative_jets[idx-1],
@@ -376,34 +373,54 @@ class JetWiseDataset(Dataset):
     def __len__(self):
         return self._len
 
-    def __getitem__(self, idx):
-        if isinstance(idx, (int, np.int, np.int64)):  # becuase there a lots of int-like things....
-            jet = self._jets[idx]
-            walker = TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-            return self._truth[idx], walker
-        # it's a slice or a list
-        jets = self._jets[idx]
-        walkers = [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-                  for jet in jets]
-        return list(zip(self._truth[idx], walkers))
-
-    @property
-    def test_events(self):
-        return self._test
-
     @property
     def num_targets(self):
         return self._truth.shape[1]
 
 
-# TODO point reached
 class JetTreesDataset(JetWiseDataset):
     def __process_jets(self):
-        eventWise = self.eventWise
-        eventWise.selected_index = None
-        truth_tags = eventWise
-        # truth_tags to taget form 
-        if len(truth_tags.shape) == 1:
-            truth_tags = truth_tags.reshape((-1, 1))
-        truth_tags = torch.DoubleTensor(truth_tags)
+        jets = np.empty((len(self.all_indices), 3))
+        truths = np.empty((len(self.all_indices), 1))
+        event_num = 0
+        event_start = 0
+        self.eventWise.selected_index = 0
+        parents = getattr(eventWise, self.jet_name + "_Parent")
+        tags = getattr(eventWise, self.jet_name + "_Tags")
+        for jet_num, idx in enumerate(sorted(self.all_indices)):
+            while idx >= self._cumulative_jets[event_num]:
+                event_start = self._cumulative_jets[event_num]
+                event_num += 1
+                self.eventWise.selected_index = event_num
+                parents = getattr(eventWise, self.jet_name + "_Parent")
+                tags = getattr(eventWise, self.jet_name + "_Tags")
+            jet_in_event = idx - event_start
+            root = np.where(parents[jet_in_event] == -1)[0][0]
+            jets[jet_num] = [event_num, jet_in_event, root]
+            # anything with any tag is called signal
+            truths[jet_num][0] = len(tags[jet_in_event]) > 0
+        self.eventWise.selected_index = None
+        return truths, jets
+
+    def __getitem__(self, idx):
+        if isinstance(idx, (int, np.int, np.int64)):  # becuase there a lots of int-like things....
+            jet = self._jets[idx]
+            walker = TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
+                                           jet[0], jet[1], jet[3])
+            return self._truth[idx], walker
+        # it's a slice or a list
+        jets = self._jets[idx]
+        walkers = [TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
+                                         jet[0], jet[1], jet[3])
+                  for jet in jets]
+        return list(zip(self._truth[idx], walkers))
+
+    @property
+    def test_events(self):
+        if self._test is None:
+            self._test = np.array(list(zip(self._test_truth,
+                                           [TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
+                                                                  jet[0], jet[1], jet[3])
+                                            for jet in self._test_jets])))
+        return self._test
 

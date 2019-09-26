@@ -15,8 +15,10 @@ import torch
 from tree_tagger import Components
 
 class TreeWalker:
-    def __init__(self, eventWise, jet_name, jet_number, pseudojet_idx):
+    def __init__(self, eventWise, jet_name, selected_index, jet_number, pseudojet_idx):
         self.eventWise = eventWise
+        # set that here befor pulling values
+        self.eventWise.selected_index = selected_index
         inputIdx = getattr(eventWise, jet_name+"_InputIdx")[jet_number]
         self.jet_name = jet_name
         self.jet_number = jet_number
@@ -41,8 +43,8 @@ class TreeWalker:
                 tmp = int(self.left_idx)
                 self.left_idx = int(self.right_idx)
                 self.right_idx = tmp
-            self.left = TreeWalker(eventWise, jet_name, jet_number, self.left_idx)
-            self.right = TreeWalker(eventWise, jet_name, jet_number, self.right_idx)
+            self.left = TreeWalker(eventWise, jet_name, selected_index, jet_number, self.left_idx)
+            self.right = TreeWalker(eventWise, jet_name, selected_index, jet_number, self.right_idx)
         else:
             self.particle_idx = eventWise.JetInputs_SourceIdx[inputIdx[pseudojet_idx]]
 
