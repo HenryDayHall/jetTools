@@ -11,6 +11,31 @@ import numpy as np
 from skhep import math as hepmath
 from tree_tagger import Constants, PDGNames, InputTools
 
+def flatten(nested):
+    for part in nested:
+        if hasattr(part, '__iter__'):
+            yield from flatten(part)
+        else:
+            yield part
+    raise StopIteration
+
+
+def apply_array_func(func, *nested):
+    # all nested must have the same shape
+    out = []
+    # some functions go funky on an empty jagged array
+    empty_array = np.array([])
+    # nested must alway contain at least one list like object
+    for parts in zip(*nested):
+        if len(parts[0]) == 0:
+            out.append(func(*[empty_array for _ in parts]))
+        elif hasattr(parts[0][0], '__iter__'):
+            out.append(apply_array_func(func, *parts))
+        else:
+            out.append(func(*parts))
+    return awkward.fromiter(out)
+
+
 def confine_angle(angle):
     """ confine an angle between -pi and pi"""
     return ((angle + np.pi)%(2*np.pi)) - np.pi
@@ -345,12 +370,15 @@ def add_rapidity(eventWise, base_name=''):
     eventWise.append({base_name+"Rapidity": rapidities})
 
 
-def add_thetas(eventWise):
-    # find all the things with an angular property
+def add_thetas(eventWise, basename=None):
     columns = []
     contents = {}
-    phi_cols = [c[:-4] for c in eventWise.columns if c.endswith("_Phi")]
-    missing_theta = [c for c in phi_cols if (c+"_Theta") not in eventWise.columns]
+    if basename is None:
+        # find all the things with an angular property
+        phi_cols = [c[:-4] for c in eventWise.columns if c.endswith("_Phi")]
+        missing_theta = [c for c in phi_cols if (c+"_Theta") not in eventWise.columns]
+    else:
+        missing_theta = [basename]
     for name in missing_theta:
         avalible_components = [c[len(name)+1:] for c in eventWise.columns
                                if c.startswith(name)]
@@ -391,6 +419,36 @@ def add_thetas(eventWise):
         contents["Theta"] = theta
     eventWise.append(columns, contents)
 
+
+def add_pseudorapidity(eventWise, basename=None):
+    columns = []
+    contents = {}
+    if basename is None:
+        # find all the things with theta
+        theta_cols = [c[:-5] for c in eventWise.columns if c.endswith("_Theta")]
+        missing_ps = [c for c in theta_cols if (c+"PseudoRapidity") not in eventWise.columns]
+        if "Theta" in eventWise.columns and "PseudoRapidity" not in eventWise.columns:
+            missing_ps.append('')
+    else:
+        if basename == '':
+            missing_ps = [basename]
+        else:
+            missing_ps = [basename + '_']
+    for name in missing_ps:
+        theta = getattr(eventWise, name+"Theta")
+        pseudorapidity = apply_array_func(theta_to_pseudorapidity, theta)
+        columns.append(name + "PseudoRapidity")
+        contents[name+"PseudoRapidity"] = pseudorapidity
+    eventWise.append(columns, contents)
+
+def theta_to_pseudorapidity(theta_list):
+    tan_theta = np.tan(theta_list)
+    mag_tan_theta = np.abs(tan_theta)
+    infinite = mag_tan_theta <= 0.
+    pseudorapidity = np.full_like(theta_list, np.inf)
+    pseudorapidity[~infinite] = np.log(mag_tan_theta/2)
+    pseudorapidity *= -np.sign(tan_theta)
+    return pseudorapidity
 
 class RootReadout(EventWise):
     """ Reads arbitary components from a root file created by Delphes """

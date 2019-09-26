@@ -31,6 +31,10 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2):
 def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True, max_angle2=np.inf):
     """ tag jets based on particles emmited by the hard scattering 
         follows taggable partilces to last tagable decendant"""
+    # check if the selected event containes jets
+    jet_energies = getattr(eventWise, jet_name+"_Energy")
+    if len(jet_energies) == 0:
+        return []
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
@@ -39,19 +43,19 @@ def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], t
     hard_emmision_idx = []
     # two possibilities, "hard particles" may be found in the event
     # or they are exculded from the particle list, and first gen is parentless
-    hard_idx = [i for i, pid in enumerate(eventWise.PID)
+    hard_idx = [i for i, pid in enumerate(eventWise.MCPID)
                 if pid in hard_interaction_pids]
     hard_emmision_idx += [i for i, parents in enumerate(eventWise.Parents)
                           if len(parents) == 0
                           or set(parents).intersection(hard_idx)]
-    possible_tag = [i for i in hard_emmision_idx if eventWise.PID[i] in tag_pids]
+    possible_tag = [i for i in hard_emmision_idx if eventWise.MCPID[i] in tag_pids]
     tag_idx = []
     # now if there have decendants in the tag list favour the decendant
     convergent_roots = 0
     while len(possible_tag) > 0:
         possible = possible_tag.pop()
         eligable_children = [child for child in eventWise.Children[possible]
-                             if eventWise.PID[child] in tag_pids]
+                             if eventWise.MCPID[child] in tag_pids]
         if eligable_children:
             possible_tag += eligable_children
         elif possible not in tag_idx:
@@ -61,7 +65,7 @@ def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], t
     if convergent_roots:
         pass
         #print(f"{convergent_roots} b hadrons merge, may not form expected number of jets")
-    jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
+    jets_tags = [[] for _ in jet_energies]
     if tag_idx: # there may not be any of the particles we wish to tag in the event
         closest_matches = allocate(eventWise, jet_name, tag_idx, max_angle2)
     else:
@@ -75,16 +79,16 @@ def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], t
 
 def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     eventWise.selected_index = None
-    n_events = len(eventWise.Energy)
-    start_point = len(getattr(eventWise, "JetInputs_Energy", []))
+    name = jet_name+"_Tags"
+    namePID = jet_name+"_TagPIDs"
+    columns = [name, namePID]
+    n_events = len(getattr(eventWise, jet_name+"_Energy", []))
+    start_point = len(getattr(eventWise, name, []))
     if start_point >= n_events:
         print("Finished")
         return True
     end_point = min(n_events, start_point+batch_length)
     print(f" Will stop at {100*end_point/n_events}%")
-    name = jet_name+"_Tags"
-    namePID = jet_name+"_TagPIDs"
-    columns = [name, namePID]
     # this is a memory intense operation, so must be done in batches
     eventWise.selected_index = None
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
@@ -100,7 +104,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
         eventWise.selected_index = event_n
         tags = from_hard_interaction(eventWise, jet_name, tag_pids=tag_pids, max_angle2=max_angle2)
         jet_tags.append(awkward.fromiter(tags))
-        tagpids = [eventWise.PID[jet] for jet in tags]
+        tagpids = [eventWise.MCPID[jet] for jet in tags]
         jet_tagpids.append(awkward.fromiter(tagpids))
     content = {}
     content[name] = awkward.fromiter(jet_tags)
@@ -144,7 +148,7 @@ if display:  # have to comment out to run without display
                 if np.sum(np.abs(pos[:3])) <= 0.:
                     pos[:3] = pos[3:]  #make the momentum the position
                 pos *= tag_distance/np.linalg.norm(pos)
-                DrawBarrel.add_single(pos, colour, name=f'tag({eventWise.PID[idx]})', scale=300)
+                DrawBarrel.add_single(pos, colour, name=f'tag({eventWise.MCPID[idx]})', scale=300)
             # highlight the towers and tracks assocated with each tag
             for colour, jet_idx in zip(tag_colours, tag_jet_idx):
                 external_jetidx = getattr(eventWise, jet_name + "_Child1")[jet_idx] < 0

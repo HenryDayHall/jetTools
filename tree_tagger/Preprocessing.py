@@ -6,32 +6,7 @@ from sklearn import preprocessing
 import os
 import awkward
 from tree_tagger import Components
-
-def flatten(nested):
-    for part in nested:
-        if hasattr(part, '__iter__'):
-            yield from flatten(part)
-        else:
-            yield part
-    raise StopIteration
-
-
-def apply_array_func(func, *nested):
-    # all nested must have the same shape
-    out = []
-    # nested must alway contain at least one list like object
-    if len(nested[0]) == 0:
-        out.append(func(*nested))
-    else:
-        for parts in zip(*nested):
-            try:
-                if hasattr(parts[0][0], '__iter__'):
-                    out.append(apply_array_func(func, *parts))
-                else:
-                    out.append(func(*parts))
-            except IndexError:
-                st()
-    return awkward.fromiter(out)
+from tree_tagger.Components import flatten, apply_array_func
 
 def phi_rotation(eventWise):
     content = {}

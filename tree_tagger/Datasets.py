@@ -308,84 +308,61 @@ def simplifier(dataset, num_pairs=1):
 
 
 class JetWiseDataset(Dataset):
-    def __init__(self, multijet_filename=None, dir_name=None, n_jets=None):
+    def __init__(self, database_name=None, jet_name="FastJet", n_jets=None, shuffle=True, all_truth_jets=None):
         torch.set_default_tensor_type('torch.DoubleTensor')
-        # read in from file
-        if multijet_filename is None:
-            multijet_filename = self.find_multijet_file(dir_name)
-        self.multijet_filename = multijet_filename
-        jets_by_event = FormJets.PsudoJets.multi_from_file(multijet_filename)
-        jets = []
-        for j_event in jets_by_event:
-            jets += j_event.split()
-        # get truth tags
-        data = np.load(multijet_filename)
-        truth_tags = data['truth_tags']
-        # get weights if given
-        if 'weights' in data:
-            weights = data['weights']
+        self.database_name = database_name
+        self.eventWise = Components.EventWise.from_file(database_name)
+        jet_energies = getattr(self.eventWise, jet_name + "_Energy")
+        jets_per_event = np.array([len(e) for e in jet_energies])
+        self._cumulative_jets = np.cumsum(jets_per_event)
+        total_avalible = self.cumulative_jets[-1]
+        if num_events is None:
+            num_events = total_avalible
+        elif num_events > total_avalible:
+            num_events = total_avalible
+        test_percent = 0.2
+        self.num_test = int(num_events*test_percent)
+        all_indices = np.arange(total_avalible)
+        if "TestEventIdx" in self.eventWise.columns:
+            test_events = self.eventWise.TestEventIdx
         else:
-            weights = np.ones(len(jets))
-        # alter the weights to balence the signal and background sets
-        if len(truth_tags.shape) == 1:
-            signal_mask = truth_tags.astype(bool)
-            bg_over_signal = np.sum(~signal_mask)/np.sum(signal_mask)
-            weights[signal_mask] *= bg_over_signal
+            all_event_indices = np.arange(len(jet_energies))
+            np.random.shuffle(all_event_indices)
+            test_events = all_event_indices[:self.num_test]
+            self.eventWise.append(["TestEventIdx"], {"TestEventIdx", test_events})
+        self._test_indices = self._event_idx_to_jet(test_events)
+        assert len(self._test_indices) >= self.num_test
+        all_indices = np.sort(all_indices)
+        self.all_indices = all_indices
+        train_mask = np.ones_like(all_indices)
+        train_mask[self._test_indices] = 0
+        self._train_indices = all_indices[train_mask]
+        if shuffle:
+            # shuffle the events
+            random.shuffle(self._train_indices)
+        # then take the first section as test data
+        self._len = len(self._train_indices)
+        if all_truth_jets is None:
+            all_truth, all_jets = np.array(self._process_jets())
         else:
-            raise NotImplementedError
-        # truth_tags to taget form 
-        if len(truth_tags.shape) == 1:
-            truth_tags = truth_tags.reshape((-1, 1))
-        truth_tags = torch.DoubleTensor(truth_tags)
-        assert len(truth_tags) == len(jets)
-        # caluclate number of jets
-        if n_jets is None:
-            full_event = True
-            self.n_jets = len(jets)
-        else:
-            full_event = n_jets >= len(jets)
-            self.n_jets = min(n_jets, len(jets))
-        # check in the file for test allocation
-        if 'test_allocation' in data:
-            test_allocation = data['test_allocation']
-        else:
-            test_allocation = np.full(len(jets), True)
-            test_percent = 0.2
-            test_allocation[int(len(jets)*test_percent):] = False
-            np.random.shuffle(test_allocation)
-            np.savez(multijet_filename, **data, test_allocation=test_allocation)
-        # assign test and train
-        if full_event:
-            # torch cannot be masked, so convert back to indices
-            test_indices = np.where(test_allocation)[0]
-            train_indices = np.where(~test_allocation)[0]
-            _test_jets = np.array(jets)[test_indices]
-            _test_truth = truth_tags[test_indices]
-            self.test_weights = weights[test_indices]
-            self._truth = truth_tags[train_indices]
-            self._jets = np.array(jets)[train_indices]
-            self.train_weights = weights[train_indices]
-        else:
-            # torch cannot be masked, so convert back to indices
-            test_indices = np.where(test_allocation)[0]
-            train_indices = np.where(~test_allocation)[0]
-            test_allocation = test_allocation[:self.n_jets]
-            _test_jets = np.array(jets)[:self.n_jets][test_indices]
-            _test_truth = truth_tags[:self.n_jets][test_indices]
-            self.test_weights = weights[:self.n_jets][test_indices]
-            self._truth = truth_tags[:self.n_jets][train_indices]
-            self._jets = np.array(jets)[:self.n_jets][train_indices]
-            self.train_weights = weights[:self.n_jets][train_indices]
-        # this will cause all the test walkers to be stored in memory
-        # if memory becomes an issue might need to move to he glloupe data reading anyhow
-        self._test = np.array(list(zip(_test_truth, 
+            all_truth, all_jets = all_truth_jets
+        self._jets = all_jets[self._train_indices]
+        self._truth = all_truth[self._train_indices]
+        test_jets = all_jets[self._test_indices]
+        test_truth = all_truth[self._test_indices]
+        # may cause memry issues
+        self._test = np.array(list(zip(all_truth[self._test_indices], 
                                        [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-                                        for jet in _test_jets])))
-        self._len = len(self._jets)
-        # work out the dimensions
-        valid_jet = next(j for j in jets if len(j._ints)>0)
-        walker = TreeWalker.TreeWalker(valid_jet, valid_jet.root_psudojetIDs[0])
-        self.num_dimensions = len(walker.leaf_inputs)
+                                        for jet in all_jets[self._test_indices]])))
+
+    def _event_idx_to_jet(self, idx_list):
+        jet_idx = [np.arange(self._cumulative_jets[idx-1],
+                             self._cumulative_jets[idx])
+                   for idx in idx_list]
+        return np.concatenate(jet_idx)
+
+    def _process_jets(self):
+        raise NotImplementedError
 
     def find_multijet_file(self, dir_name):
         in_dir = os.listdir(dir_name)
@@ -409,8 +386,6 @@ class JetWiseDataset(Dataset):
         walkers = [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
                   for jet in jets]
         return list(zip(self._truth[idx], walkers))
-            
-
 
     @property
     def test_events(self):
@@ -420,115 +395,15 @@ class JetWiseDataset(Dataset):
     def num_targets(self):
         return self._truth.shape[1]
 
-class JetTreesDataset(Dataset):
-    def __init__(self, multijet_filename=None, dir_name=None, n_jets=None):
-        torch.set_default_tensor_type('torch.DoubleTensor')
-        # read in from file
-        if multijet_filename is None:
-            multijet_filename = self.find_multijet_file(dir_name)
-        self.multijet_filename = multijet_filename
-        jets_by_event = FormJets.PsudoJets.multi_from_file(multijet_filename)
-        jets = []
-        for j_event in jets_by_event:
-            jets += j_event.split()
-        # get truth tags
-        data = np.load(multijet_filename)
-        truth_tags = data['truth_tags']
-        # get weights if given
-        if 'weights' in data:
-            weights = data['weights']
-        else:
-            weights = np.ones(len(jets))
-        # alter the weights to balence the signal and background sets
-        if len(truth_tags.shape) == 1:
-            signal_mask = truth_tags.astype(bool)
-            bg_over_signal = np.sum(~signal_mask)/np.sum(signal_mask)
-            weights[signal_mask] *= bg_over_signal
-        else:
-            raise NotImplementedError
+
+# TODO point reached
+class JetTreesDataset(JetWiseDataset):
+    def __process_jets(self):
+        eventWise = self.eventWise
+        eventWise.selected_index = None
+        truth_tags = eventWise
         # truth_tags to taget form 
         if len(truth_tags.shape) == 1:
             truth_tags = truth_tags.reshape((-1, 1))
         truth_tags = torch.DoubleTensor(truth_tags)
-        assert len(truth_tags) == len(jets)
-        # caluclate number of jets
-        if n_jets is None:
-            full_event = True
-            self.n_jets = len(jets)
-        else:
-            full_event = n_jets >= len(jets)
-            self.n_jets = min(n_jets, len(jets))
-        # check in the file for test allocation
-        if 'test_allocation' in data:
-            test_allocation = data['test_allocation']
-        else:
-            test_allocation = np.full(len(jets), True)
-            test_percent = 0.2
-            test_allocation[int(len(jets)*test_percent):] = False
-            np.random.shuffle(test_allocation)
-            np.savez(multijet_filename, **data, test_allocation=test_allocation)
-        # assign test and train
-        if full_event:
-            # torch cannot be masked, so convert back to indices
-            test_indices = np.where(test_allocation)[0]
-            train_indices = np.where(~test_allocation)[0]
-            _test_jets = np.array(jets)[test_indices]
-            _test_truth = truth_tags[test_indices]
-            self.test_weights = weights[test_indices]
-            self._truth = truth_tags[train_indices]
-            self._jets = np.array(jets)[train_indices]
-            self.train_weights = weights[train_indices]
-        else:
-            # torch cannot be masked, so convert back to indices
-            test_indices = np.where(test_allocation)[0]
-            train_indices = np.where(~test_allocation)[0]
-            test_allocation = test_allocation[:self.n_jets]
-            _test_jets = np.array(jets)[:self.n_jets][test_indices]
-            _test_truth = truth_tags[:self.n_jets][test_indices]
-            self.test_weights = weights[:self.n_jets][test_indices]
-            self._truth = truth_tags[:self.n_jets][train_indices]
-            self._jets = np.array(jets)[:self.n_jets][train_indices]
-            self.train_weights = weights[:self.n_jets][train_indices]
-        # this will cause all the test walkers to be stored in memory
-        # if memory becomes an issue might need to move to he glloupe data reading anyhow
-        self._test = np.array(list(zip(_test_truth, 
-                                       [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-                                        for jet in _test_jets])))
-        self._len = len(self._jets)
-        # work out the dimensions
-        valid_jet = next(j for j in jets if len(j._ints)>0)
-        walker = TreeWalker.TreeWalker(valid_jet, valid_jet.root_psudojetIDs[0])
-        self.num_dimensions = len(walker.leaf_inputs)
 
-    def find_multijet_file(self, dir_name):
-        in_dir = os.listdir(dir_name)
-        possibles = [f for f in in_dir if f.startswith("pros_") and f.endswith(".npz")]
-        if len(possibles) == 1:
-            chosen = possibles[0]
-        else:
-            chosen = InputTools.list_complete("Which jet file? ", possibles)
-        return os.path.join(dir_name, chosen)
-
-    def __len__(self):
-        return self._len
-
-    def __getitem__(self, idx):
-        if isinstance(idx, (int, np.int, np.int64)):  # becuase there a lots of int-like things....
-            jet = self._jets[idx]
-            walker = TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-            return self._truth[idx], walker
-        # it's a slice or a list
-        jets = self._jets[idx]
-        walkers = [TreeWalker.TreeWalker(jet, jet.root_psudojetIDs[0])
-                  for jet in jets]
-        return list(zip(self._truth[idx], walkers))
-            
-
-
-    @property
-    def test_events(self):
-        return self._test
-
-    @property
-    def num_targets(self):
-        return self._truth.shape[1]
