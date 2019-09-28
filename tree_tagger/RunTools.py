@@ -1,4 +1,5 @@
 ''' module for data reading tools '''
+import pickle
 import os
 import sys
 import time
@@ -43,6 +44,8 @@ class Run:
                      "batch_size", "loss_type", "inital_lr",  # training parameters
                      "auc", "lowest_loss", "notes"] # results
     loss_functions = ["BCE"]
+    columns_default = ['time_stamps', 'training_loss', 'test_loss'] 
+    net_extention=".torch"
     # the tests for identifying the arguments
     arg_tests = {"net_type"    : lambda s: True,
                  "latent_dimension" : lambda s: str_is_type(int, s),
@@ -78,11 +81,11 @@ class Run:
                     "lowest_loss" : None,
                     "notes"       : ""}
                           
-    def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
-        self.writing = writing  
+    def __init__(self, folder_name, run_name, accept_empty=False, **kwargs):
+        self.writing = kwargs.get("writing",  False) 
         self.written = False  # flip to true after first write
         # because this method is called frequently, pull the if logic outside
-        if writing: # a writing run is inefficient, but will continuously generate output
+        if self.writing: # a writing run is inefficient, but will continuously generate output
             def append(line):
                 # the line to append must have a value for every column
                 assert len(line) == len(self.column_headings), "tried to append values not equal to number of columns"
@@ -101,37 +104,50 @@ class Run:
         self.folder_name = folder_name
         self.base_name = os.path.join(folder_name, run_name)
         self.progress_file_name = self.base_name + ".txt"
-        with open(self.progress_file_name, 'r') as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=' ')
-            # the first line in the file is info
-            info_line = next(csv_reader)
-            # the line under this is the columns
-            try:
-                self.column_headings = next(csv_reader)
-                # if it exists the run is not empty
-                self.empty_run = False
-            except StopIteration:
-                if accept_empty:
-                    self.empty_run = True
-                    self.table = np.empty(0)  # generate an empty table for now
-                else:
-                    # not a full run
-                    raise ValueError
-            if not self.empty_run:
-                # the first column is always time_stamps
-                if self.column_headings[0] != 'time_stamps':
-                    raise ValueError
-                # then tehre is the table
-                table = []
-                for row in csv_reader:
-                    table.append(row)
-                self.table = np.array(table, dtype=np.float)
-                # if the table is smaller than the column headings drop those columns
-                if self.table.shape[1] < len(self.column_headings):
-                    self.column_headings = self.column_headings[:self.table.shape[1]]
-                assert len(self.column_headings) == self.table.shape[1], "Number columns not equal to number column headdings"
-        # now process the info line
-        self.settings = self.process_info_line(info_line)
+        table = []
+        try:
+            with open(self.progress_file_name, 'r') as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=' ')
+                # the first line in the file is info
+                info_line = next(csv_reader)
+                # the line under this is the columns
+                try:
+                    self.column_headings = next(csv_reader)
+                    # if it exists the run is not empty
+                    self.empty_run = False
+                except StopIteration:
+                    if accept_empty:
+                        self.empty_run = True
+                        self.table = np.empty(0)  # generate an empty table for now
+                    else:
+                        # not a full run
+                        raise ValueError
+                if not self.empty_run:
+                    # the first column is always time_stamps
+                    if self.column_headings[0] != 'time_stamps':
+                        raise ValueError
+                    # then tehre is the table
+                    for row in csv_reader:
+                        table.append(row)
+                    self.table = np.array(table, dtype=np.float)
+                    if len(self.table) > 0:
+                    # if the table is smaller than the column headings drop those columns
+                        if self.table.shape[1] < len(self.column_headings):
+                            self.column_headings = self.column_headings[:self.table.shape[1]]
+                        assert len(self.column_headings) == self.table.shape[1], "Number columns not equal to number column headdings"
+                    else:
+                        #it lacks a table
+                        self.empty_run = True
+            # now process the info line
+            self.settings = self.process_info_line(info_line)
+        except FileNotFoundError:
+            print("New run being created")
+            self.empty_run = True
+            self.settings = kwargs.get("settings", self.arg_defaults)
+            self.column_headings = kwargs.get("columns", self.columns_default)
+            with open(self.progress_file_name, 'w') as csv_file:
+                csv_file.write('"' + str(self.settings) + '"\n')
+                csv_file.write(' '.join(self.column_headings) + '\n')
         # if the net is empty these things should not exist
         if self.empty_run:
             if self.settings['auc'] is not None:
@@ -143,23 +159,25 @@ class Run:
         self.settings["pretty_name"] = run_name
         self._dataset = None
         # also make file names for the best and last nets
-        net_extention = ".torch"
-        self.last_net_files = [self.base_name + "_last_" + self.settings['net_type'] + net_extention]
-        self.best_net_files = [self.base_name + "_best_" + self.settings['net_type'] + net_extention]
+        self.last_net_files = [self.base_name + "_last_" + self.settings['net_type'] + self.net_extention]
+        self.best_net_files = [self.base_name + "_best_" + self.settings['net_type'] + self.net_extention]
         # check to see if either of these exist and load if so
-        self.__best_net_state_dicts = None  # create the attribute
-        self.__last_net_state_dicts = None
+        self._best_net_state_dicts = None  # create the attribute
+        self._last_net_state_dicts = None
         self._last_nets = None
         self._best_nets = None
+        self._load_state_dicts()
+
+    def _load_state_dicts(self):
         try:
             self._last_net_state_dicts = [torch.load(name, map_location='cpu')
-                                          for name in self.last_net_files]
+                                           for name in self.last_net_files]
         except FileNotFoundError:
             # if the run is not empty there should be a last net
             if not self.empty_run:
                 print("Warning; not an empty run, but no last net found!")
         try:
-            self.__best_net_state_dicts = [torch.load(name, map_location='cpu')
+            self._best_net_state_dicts = [torch.load(name, map_location='cpu')
                                            for name in self.best_net_files]
         except FileNotFoundError:
             if not self.empty_run:
@@ -172,17 +190,17 @@ class Run:
     @property
     def last_nets(self):
         if self._last_nets is None:
-            if self.__last_net_state_dicts is None:
+            if self._last_net_state_dicts is None:
                 raise FileNotFoundError("No last nets found for this run")
-            self._last_nets = self._nets_from_state_dict(self.__last_net_state_dicts)
+            self._last_nets = self._nets_from_state_dict(self._last_net_state_dicts)
         return self._last_nets
 
     @property
     def best_nets(self):
         if self._best_nets is None:
-            if self.__best_net_state_dicts is None:
+            if self._best_net_state_dicts is None:
                 raise FileNotFoundError("No best nets found for this run")
-            self._best_nets = self._nets_from_state_dict(self.__best_net_state_dicts)
+            self._best_nets = self._nets_from_state_dict(self._best_net_state_dicts)
         return self._best_nets
 
     def _nets_from_state_dict(self, *args, **kwargs):
@@ -332,33 +350,36 @@ class Run:
                 writer.writerow(row)
         if with_nets:
             # save the best and last nets, they should exist by now
-            for net, file_name in zip(self.__best_net_state_dicts, self.best_net_files):
-                torch.save(net, file_name)
+            for net, file_name in zip(self._best_net_state_dicts, self.best_net_files):
+                self.save_net(net, file_name)
             try:
-                for net, file_name in zip(self.__last_net_state_dicts, self.last_net_files):
-                    torch.save(net, file_name)
-            except AttributeError:
+                for net, file_name in zip(self._last_net_state_dicts, self.last_net_files):
+                    self.save_net(net, file_name)
+            except (AttributeError, TypeError):  # throws type error when it feels like....
                 print("Didn't find a last_net")
         self.written = True
+
+    def save_net(self, net, file_name):
+        torch.save(net, file_name)
 
     @best_nets.setter
     def best_nets(self, param_dicts):
         # don't allow direct setting of the best net
         # must use set method to ensure we also get the lowest loss
-        raise AttributeError("Do not set this directly, use set_best_net")
+        raise AttributeError("do not set this directly, use set_best_state_dicts")
 
     def set_best_state_dicts(self, param_dicts, lowest_loss):
         # could make an assertion about this loss being lower thant previous ones,
-        # but as I expect this code to be called many times I will omit it
+        # but as i expect this code to be called many times i will omit it
         self.settings['lowest_loss'] = float(lowest_loss)
-        self.__best_net_state_dicts = deepcopy(param_dicts)
+        self._best_net_state_dicts = deepcopy(param_dicts)
 
     @last_nets.setter
     def last_nets(self, param_dicts):
         # if we were given a net make it a state dict
         if not isinstance(param_dicts[0], dict):
             param_dicts = [p.state_dict() for p in param_dicts]
-        self.__last_net_state_dicts = deepcopy(param_dicts)
+        self._last_net_state_dicts = deepcopy(param_dicts)
 
 
 class LinkingRun(Run):
@@ -380,6 +401,7 @@ class LinkingRun(Run):
                     "time"        : 3000,
                     "batch_size"  : 10,
                     "inital_lr"   : 0.01,
+                    "loss_type"   : "BCE",
                     "weight_decay": 0.01,
                     "net_type"    : "Linker",
                     "auc"         : None,
@@ -391,10 +413,9 @@ class LinkingRun(Run):
         super().__init__(folder_name, run_name, accept_empty, writing)
         self.last_net_files = []
         self.best_net_files = []
-        net_extention = ".torch"
         for name in self.net_list:
-            self.last_net_files.append(self.base_name + "_last_" + name + net_extention)
-            self.best_net_files.append(self.base_name + "_best_" + name + net_extention)
+            self.last_net_files.append(self.base_name + "_last_" + name + self.net_extention)
+            self.best_net_files.append(self.base_name + "_best_" + name + self.net_extention)
     
     
     @property
@@ -424,30 +445,120 @@ class LinkingRun(Run):
         return [towers_projector, tracks_projector]
 
 
-class RecursiveRun(Run):
+class JetWiseRun(Run):
     arg_tests = {**Run.arg_tests,
                  "database_name" : os.path.exists,
-                 "n_jets"    : lambda s: str_is_type(int, s)
-                 "jet_name"  : lambda s: True}
+                 "n_jets"    : lambda s: str_is_type(int, s),
+                 "jet_name"  : lambda s: True,
+                 "net_type"  : lambda s: True}
 
     arg_convert = {**Run.arg_convert, 
                    "database_name" : lambda s: s,
                    "n_jets"  : int,
-                   "jet_name": lambda s: s}
+                   "jet_name": lambda s: s, 
+                   "net_type": lambda s: s}
 
     arg_defaults = {"data_folder" : "fakereco",
                     "database_name" : "/home/henry/lazy/h1bBatch2_hepmc.awkd",
                     "n_jets"  : -1,
                     "jet_name"  : "FastJet",
-                    "latent_dimension" : 10,
+                    "latent_dimension" : 10,  # ignored by a BDT
                     "time"        : 3000,
                     "batch_size"  : 10,
                     "inital_lr"   : 0.01,
                     "weight_decay": 0.01,
-                    "net_type"    : "simple_recursive",
+                    "loss_type"   : "BCE",
+                    "net_type"    : "bdt",
                     "auc"         : None,
                     "lowest_loss" : None,
                     "notes"       : ""}
+    
+    @property
+    def dataset(self, shuffle=False):
+        if self._dataset is None:
+            self._dataset = Datasets.JetWiseDataset(database_name=self.settings["database_name"],
+                                                    jet_name=self.settings["jet_name"],
+                                                    n_jets=self.settings["n_jets"])
+        return self._dataset
+        
+
+    def _nets_from_state_dict(self, state_dicts):
+        raise NotImplementedError
+
+
+class FlatJetRun(JetWiseRun):
+    net_extention = ".sklrn"
+    arg_tests = {**JetWiseRun.arg_tests,
+                 "max_depth"      : lambda s: str_is_type(int, s),
+                 "n_estimators"   : lambda s: str_is_type(int, s),
+                 "algorithm_name" : lambda s: True}
+
+    arg_convert = {**JetWiseRun.arg_convert, 
+                   "max_depth"     : int,
+                   "n_estimators"  : int,
+                   "algorithm_name": lambda s : s}
+
+    arg_defaults = {**JetWiseRun.arg_defaults,
+                    "max_depth"     : 3,
+                    "n_estimators"  : 200,
+                    "algorithm_name": "SAMME"}
+
+    def _load_state_dicts(self):
+        try:
+            self._last_net_state_dicts = []
+            for name in self.last_net_files:
+                with open(name, 'rb') as state_file:
+                    self._last_net_state_dicts.append(state_file.read())
+        except FileNotFoundError:
+            # if the run is not empty there should be a last net
+            if not self.empty_run:
+                print("Warning; not an empty run, but no last net found!")
+        try:
+            self._best_net_state_dicts = []
+            for name in self.best_net_files:
+                with open(name, 'rb') as state_file:
+                    self._best_net_state_dicts.append(state_file.read())
+        except FileNotFoundError:
+            if not self.empty_run:
+                print("Warning; not an empty run, but no best net found!")
+
+    @property
+    def dataset(self, shuffle=False):
+        if self._dataset is None:
+            try:
+                self._dataset = Datasets.FlatJetDataset.from_file(self.settings["database_name"],
+                                                                  self.settings["data_folder"])
+            except FileNotFoundError:
+                self._dataset = Datasets.FlatJetDataset(database_name=self.settings["database_name"],
+                                                        jet_name=self.settings["jet_name"],
+                                                        n_jets=self.settings["n_jets"])
+        return self._dataset
+        
+    def save_net(self, net, file_name):
+        with open(file_name, 'wb') as pickle_file:
+            if type(net) == bytes:
+                #already pickled
+                pickle_file.write(net)
+            else:
+                pickle.dump(net, pickle_file)
+
+    def set_best_state_dicts(self, net, lowest_loss=0):
+        # could make an assertion about this loss being lower thant previous ones,
+        # but as i expect this code to be called many times i will omit it
+        super().set_best_state_dicts(net, lowest_loss)
+
+    @Run.last_nets.setter
+    def last_nets(self, param_dicts):
+        self._last_net_state_dicts = [pickle.dumps(d) for d in param_dicts]
+
+    def _nets_from_state_dict(self, state_dicts):
+        nets = [pickle.loads(s) for s in state_dicts]
+        return nets
+
+
+class RecursiveRun(JetWiseRun):
+    arg_defaults = {**JetWiseRun.arg_defaults,
+                    "net_type"    : "simple_recursive"}
                           
     def __init__(self, folder_name, run_name, accept_empty=False, writing=False):
         # net types are used to select the corret net
@@ -481,7 +592,6 @@ class RecursiveRun(Run):
                                          self.settings['latent_dimension'], 
                                          self.dataset.num_targets)
         return [net]
-
 
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):

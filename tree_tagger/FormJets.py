@@ -594,14 +594,14 @@ def filter_ends(eventWise, existing_idx_selection):
     return new_selection
 
 
-def filter_pt_eta(eventWise, existing_idx_selection):
+def filter_pt_eta(eventWise, existing_idx_selection, min_pt=5., max_eta=2.5):
     assert eventWise.selected_index is not None
     # filter PT
-    sufficient_pt = eventWise.PT[existing_idx_selection] > 5.
+    sufficient_pt = eventWise.PT[existing_idx_selection] > min_pt
     updated_selection = existing_idx_selection[sufficient_pt]
     zero_pseudorapidity = eventWise.Pz[updated_selection] == 0
     tan_theta = eventWise.PT[updated_selection]/eventWise.Pz[updated_selection]
-    pseudorapidity_choice = np.abs(np.log(np.abs(tan_theta)/2)) < 2.5
+    pseudorapidity_choice = np.abs(np.log(np.abs(tan_theta)/2)) < max_eta
     pseudorapidity_choice[zero_pseudorapidity] = 0
     updated_selection = updated_selection[pseudorapidity_choice]
     return updated_selection
@@ -743,7 +743,8 @@ def homejet_multiappy(eventWise, deltaR=0.4, exponentMulti=0, jet_name=None, bat
         pseudojet.assign_parents()
         jets = pseudojet.split()
         try:
-            PseudoJet.write_event(jets, jet_name, eventWise)
+            PseudoJet.write_event(jets, jet_name=jet_name,
+                                  event_num=event_n, eventWise=eventWise)
         except:
             return jets, jet_name
     return False

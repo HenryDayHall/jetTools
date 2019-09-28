@@ -19,20 +19,39 @@ def flatten(nested):
             yield part
     raise StopIteration
 
+def detect_depth(nested):
+    # assumed arrays are wider than deep
+    max_depth = 2
+    for x in nested:
+        if not hasattr(x, '__iter__'):
+            return True, 0  # absolute end found
+        elif len(x) > 0:
+            abs_end, x_depth = detect_depth(x) 
+            if abs_end:
+                return abs_end, x_depth+1
+            max_depth = max(max_depth, x_depth+1)
+    return False, max_depth
 
-def apply_array_func(func, *nested):
+def apply_array_func(func, *nested, depth=None):
+    if depth is None:
+        abs_end, depth = detect_depth(nested[0])
+        if not abs_end:  # no objects in array
+            print("Warning, no object found in array!")
+    return _apply_array_func(func, depth, *nested)
+
+
+def _apply_array_func(func, depth, *nested):
     # all nested must have the same shape
     out = []
-    # some functions go funky on an empty jagged array
-    empty_array = np.array([])
-    # nested must alway contain at least one list like object
-    for parts in zip(*nested):
-        if len(parts[0]) == 0:
-            out.append(func(*[empty_array for _ in parts]))
-        elif hasattr(parts[0][0], '__iter__'):
-            out.append(apply_array_func(func, *parts))
-        else:
-            out.append(func(*parts))
+    if depth==1:
+        for parts in zip(*nested):
+            if len(parts[0]) == 0:
+                out.append([])
+            else:
+                out.append(func(*parts))
+    else:
+        for parts in zip(*nested):
+            out.append(_apply_array_func(func, depth-1, *parts))
     return awkward.fromiter(out)
 
 
@@ -175,79 +194,6 @@ class SafeLorentz(hepmath.LorentzVector):
         self.setpxpypze(*inputs)
 
 
-class MyParticle(SafeLorentz):
-    """Aping genparticle."""
-    def __init__(self, *args, **kwargs):
-        # shower position
-        self.mother_ids = []
-        self.daughter_ids = []
-        # status
-        self.generated_mass = kwargs.get('generated_mass', None)
-        # knimatics
-        if len(args) == 4:
-            # has format x y z t
-            # or px py pz e
-            super().__init__(*args)
-        elif 'px' in kwargs:
-            px = kwargs['px']
-            py = kwargs['py']
-            pz = kwargs['pz']
-            if 'm' in kwargs:
-                m = kwargs['m']
-                super().__init__()
-                self.setpxpypzm(px, py, pz, m)
-            elif 'e' in kwargs:
-                e = kwargs['e']
-                super().__init__(px, py, pz, e)
-            else:
-                super().__init__(px, py, pz, 0.)
-        elif 'pt' in kwargs:
-            # initilise blank vector
-            super().__init__()
-            pt = kwargs['pt']
-            eta = kwargs['eta']
-            phi = kwargs.get('phi', 0.)
-            if 'm' in kwargs:
-                m = kwargs['m']
-                self.setptetaphim(pt, eta, phi, m)
-            elif 'e' in kwargs:
-                e = kwargs['e']
-                self.setptetaphie(pt, eta, phi, e)
-            else:
-                self.setptetaphie(pt, eta, phi, 0.)
-
-    def __repr__(self):
-        body_contents = [getattr(self, name) for name in self.repr_variables]
-        body = self.variable_sep.join([repr(x) for x in body_contents])
-        mothers = self.variable_sep.join([repr(m) for m in self.mother_ids])
-        daughters = self.variable_sep.join([repr(m) for m in self.daughter_ids])
-        rep = self.components_sep.join([type(self).__name__, body, mothers, daughters])
-        return rep
-    id_name = "id"
-    repr_variables = [id_name, "generated_mass", "px", "py", "pz", "e"]
-    repr_variable_types = [int, float, float, float, float, float]
-    variable_sep = ','
-    repr_body = variable_sep.join(repr_variables)
-    repr_components = ["MyParticle", repr_body, 'mothers', 'daughters']
-    components_sep = '|'
-    repr_format = components_sep.join(repr_components)
-
-    @classmethod
-    def from_repr(cls, rep):
-        if rep == '' or rep == 'None': return None
-        name, body, mothers, daughters = rep.split(cls.components_sep)
-        assert name == cls.__name__
-        body_parts = body.split(cls.variable_sep)
-        class_dict = {name: safe_convert(v_type, part) for name, v_type, part
-                      in zip(cls.repr_variables, cls.repr_variable_types, body_parts)}
-        new_particle = cls(**class_dict)
-        if mothers != '':
-            new_particle.mother_ids = [int(m) for m in mothers.split(cls.variable_sep)]
-        if daughters != '':
-            new_particle.daughter_ids = [int(d) for d in daughters.split(cls.variable_sep)]
-        return new_particle
-
-
 class EventWise:
     """ The most basic properties of collections that exist in an eventwise sense """
     # putting them out here ensures they will be overwritten
@@ -255,6 +201,8 @@ class EventWise:
     _column_contents = {}
     auxilleries = []
     selected_index = None
+    EVENT_DEPTH=1 # events, objects in events
+    JET_DEPTH=2 # events, jets, objects in jets
 
     def __init__(self, dir_name, save_name, columns=None, contents=None):
         # the init method must generate some table of items,
@@ -296,6 +244,7 @@ class EventWise:
     def write(self):
         """ write to disk """
         path = os.path.join(self.dir_name, self.save_name)
+        assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
         column_order = awkward.fromiter(self.columns)
         try:
             del self._column_contents['column_order']
@@ -309,7 +258,8 @@ class EventWise:
             new_columns = args[0]
             new_content = args[1]
             for name in new_columns:
-                assert name not in self.columns, f"Already have {name}"
+                if name in self.columns:
+                    self.remove(name)
         else:
             new_content = args[0]
             new_columns = new_content.keys()
@@ -327,6 +277,11 @@ class EventWise:
         if type(self._column_contents) != dict:
             self._column_contents = {k:v for k, v in self._column_contents.items()}
         del self._column_contents[col_name]
+
+    def remove_prefix(self, col_prefix):
+        to_remove = [c for c in self.columns if c.startswith(col_prefix)]
+        for c in to_remove:
+            self.remove(c)
 
     @classmethod
     def from_file(cls, path):
@@ -362,6 +317,7 @@ def add_rapidity(eventWise, base_name=''):
                 rap_here.append(0)
             else:
                 m2 = e**2 - pz**2 - pt**2
+                m2 = min(m2, 0.)  # m2 should be strictly positive, but floating point happens
                 mag_rap = 0.5*np.log((pt**2 + m2)/((e + np.abs(pz))**2))
                 rap_here.append(-np.sign(pz) * mag_rap)
         rapidities.append(awkward.fromiter(rap_here))
@@ -440,6 +396,7 @@ def add_pseudorapidity(eventWise, basename=None):
         columns.append(name + "PseudoRapidity")
         contents[name+"PseudoRapidity"] = pseudorapidity
     eventWise.append(columns, contents)
+
 
 def theta_to_pseudorapidity(theta_list):
     tan_theta = np.tan(theta_list)

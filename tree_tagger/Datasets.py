@@ -30,7 +30,7 @@ class EventWiseDataset(Dataset):
             test_mask = np.full(total_avalible, False, dtype=bool)
             test_mask[:num_test_events] = True
             np.random.shuffle(test_mask)
-            self.eventWise.append(["IsTestEvent"], {"IsTestEvent", test_mask})
+            self.eventWise.append({"IsTestEvent": test_mask})
         self.num_test = num_events*test_percent
         self._test_indices = np.random.shuffle(np.where(test_mask)[0])[:self.num_test]
         self._train_indices = np.random.shuffle(np.where(~test_mask)[0])[:num_events]
@@ -298,44 +298,61 @@ def simplifier(dataset, num_pairs=1):
 
 
 class JetWiseDataset(Dataset):
-    def __init__(self, database_name=None, jet_name="FastJet", n_jets=-1, shuffle=True, all_truth_jets=None):
+    def __init__(self, database_name, jet_name="FastJet", n_jets=-1, shuffle=True, all_truth_jets=None):
+        print(f"Creating Dataset for {jet_name}")
         torch.set_default_tensor_type('torch.DoubleTensor')
         self.database_name = database_name
         self.eventWise = Components.EventWise.from_file(database_name)
         self.jet_name = jet_name
-        jet_energies = getattr(self.eventWise, jet_name + "_Energy")
-        total_events = len(jet_energies)
-        jets_per_event = np.array([len(e) for e in jet_energies])
-        self._cumulative_jets = np.cumsum(jets_per_event)
-        total_jets = self._cumulative_jets[-1]
         test_percent = 0.2
-        if n_jets is -1 or n_jets * (1+test_percent) > total_jets:
-            n_jets = int(total_jets/(1+test_percent))
-        if "IsTestEvent" in self.eventWise.columns:
-            test_mask = self.eventWise.IsTestEvent
-            assert len(test_mask) == total_events
-        else:
-            num_test_events = int(total_events*test_percent)
-            test_mask = np.full(total_events, False, dtype=bool)
-            test_mask[:num_test_events] = True
-            np.random.shuffle(test_mask)
-            self.eventWise.append(["IsTestEvent"], {"IsTestEvent", test_mask})
-        self.num_test = (n_jets/total_jets)*total_events*test_percent
-        test_events = np.random.shuffle(np.where(test_mask)[0])
-        self._test_indices = self._event_idx_to_jet(test_events)[: self.num_test]
-        train_events = np.random.shuffle(np.where(~test_mask)[0])
-        self._train_indices = self._event_idx_to_jet(train_events)[: n_jets]
-        self._len = n_jets
-        self.all_indices = np.concatenate((self._test_indices, self._train_indices))
         if all_truth_jets is None:
+            jet_energies = getattr(self.eventWise, jet_name + "_Energy")
+            total_events = len(jet_energies)
+            print(f"Total events on disk {total_events}")
+            jets_per_event = np.array([len(e) for e in jet_energies])
+            self._cumulative_jets = np.cumsum(jets_per_event)
+            total_jets = self._cumulative_jets[-1]
+            print(f"Total jets on disk {total_jets}")
+            if n_jets is -1 or n_jets * (1+test_percent) > total_jets:
+                n_jets = int(total_jets/(1+test_percent))
+            self._len = n_jets
+            print(f"Number of train events to be used {n_jets}")
+            if "IsTestEvent" in self.eventWise.columns:
+                print("Test allocation exists")
+                test_mask = self.eventWise.IsTestEvent
+                assert len(test_mask) == total_events
+            else:
+                print("Assigning test events")
+                num_test_events = int(total_events*test_percent)
+                test_mask = np.full(total_events, False, dtype=bool)
+                test_mask[:num_test_events] = True
+                np.random.shuffle(test_mask)
+                self.eventWise.append({"IsTestEvent": test_mask})
+            self.num_test = int(n_jets*test_percent)
+            print(f"Number of test events to be used {self.num_test}")
+            test_events = np.where(test_mask)[0]
+            np.random.shuffle(test_events)
+            self._test_indices = self._event_idx_to_jet(test_events)[: self.num_test]
+            train_events = np.where(~test_mask)[0]
+            np.random.shuffle(train_events)
+            self._train_indices = self._event_idx_to_jet(train_events)[: n_jets]
+            self.all_indices = np.concatenate((self._test_indices, self._train_indices))
+            print("Processing the jets")
             all_truth, all_jets = self._process_jets()
         else:
+            print("Jets are provided")
             all_truth, all_jets = all_truth_jets
-        self._jets = all_jets[self._train_indices]
-        self._truth = all_truth[self._train_indices]
-        self._test_jets = all_jets[self._test_indices]
-        self._test_truth = all_truth[self._test_indices]
+            total_jets = len(all_truth)
+            if n_jets is -1 or n_jets * (1+test_percent) > total_jets:
+                n_jets = int(total_jets/(1+test_percent))
+            self._len = n_jets
+            self.num_test = int(n_jets*test_percent)
+        self.jets = all_jets[self.num_test:]
+        self.truth = all_truth[self.num_test:]
+        self.test_jets = all_jets[:self.num_test]
+        self.test_truth = all_truth[:self.num_test]
         self._test = None
+        print("Dataset initilised")
 
     def _event_idx_to_jet(self, idx_list):
         jet_idx = [np.arange(self._cumulative_jets[idx-1],
@@ -360,11 +377,98 @@ class JetWiseDataset(Dataset):
 
     @property
     def num_targets(self):
-        return self._truth.shape[1]
+        return self.truth.shape[1]
+
+    @classmethod
+    def save_name(cls, database_name, folder_name=None):
+        ds_components = os.path.split(database_name)
+        if folder_name is None:
+            folder_name = ds_components[0]
+        elif folder_name.endswith('/'):
+            folder_name = folder_name[:-1]
+        ds_base = ds_components[1].split('.', 1)[0]
+        self_name = cls.__name__
+        save_name = os.path.join(folder_name, f"{ds_base}_{self_name}.npz")
+        return save_name
+
+    def write(self, folder_name=None):
+        params = {"database_name": self.database_name,
+                  "jet_name": self.jet_name,
+                  "n_jets": len(self),
+                  "shuffle": True}
+        all_jets = np.vstack((self.test_jets, self.jets))
+        all_truth = np.vstack((self.test_truth, self.truth))
+        np.savez(self.save_name(self.database_name, folder_name), params=[params],
+                 all_jets=all_jets, all_truth=all_truth)
+
+    @classmethod
+    def from_file(cls, dataset_name, folder_name=None):
+        params = cls._read_file(dataset_name, folder_name)
+        return cls(**params)
+
+    @classmethod
+    def _read_file(cls, dataset_name, folder_name):
+        content = np.load(cls.save_name(dataset_name, folder_name))
+        params = content['params'][0]
+        params['all_truth_jets'] = (content['all_truth'], content['all_jets'])
+        return params
+
+
+class FlatJetDataset(JetWiseDataset):
+    def _process_jets(self):
+        per_event_columns = [c for c in self.eventWise.columns
+                             if c.startswith("Event_")]
+        per_jet_columns = [c for c in self.eventWise.columns if
+                           c.startswith(self.jet_name + "_Std") or
+                           c.startswith(self.jet_name + "_Ave") or
+                           c.startswith(self.jet_name + "_Sum")]
+        jets = np.empty((len(self.all_indices),
+                         len(per_event_columns)+len(per_jet_columns)))
+        truths = np.empty((len(self.all_indices), 1))
+        event_num = 0
+        event_start = 0
+        eventWise = self.eventWise
+        eventWise.selected_index = 0
+        event_vars = [getattr(eventWise, c) for c in per_event_columns]
+        jet_vars = [getattr(eventWise, c) for c in per_jet_columns]
+        tags = getattr(eventWise, self.jet_name + "_Tags")
+        n_jets = len(self)
+        update=False
+        for jet_num, idx in enumerate(sorted(self.all_indices)):
+            if jet_num %100 == 0:
+                print(f"{100*jet_num/n_jets:.2f}%", end='\r', flush=True)
+            while idx >= self._cumulative_jets[event_num]:
+                event_num += 1
+                update=True
+            if update:
+                event_start = self._cumulative_jets[event_num-1]
+                eventWise.selected_index = event_num
+                event_vars = [getattr(eventWise, c) for c in per_event_columns]
+                jet_vars = [getattr(eventWise, c) for c in per_jet_columns]
+                tags = getattr(eventWise, self.jet_name + "_Tags")
+                update=False
+            jet_in_event = idx - event_start
+            try:
+                jets[jet_num] = event_vars + [jv[jet_in_event] for jv in jet_vars]
+            except IndexError:
+                st()
+            # anything with any tag is called signal
+            truths[jet_num][0] = len(tags[jet_in_event]) > 0
+        eventWise.selected_index = None
+        return truths, jets
+
+    def __getitem__(self, idx):
+        return self.truth[idx], self.jets[idx]
+
+    @property
+    def test_events(self):
+        if self._test is None:
+            self._test = np.array(list(zip(self.test_truth, self.test_jets)))
+        return self._test
 
 
 class JetTreesDataset(JetWiseDataset):
-    def __process_jets(self):
+    def _process_jets(self):
         jets = np.empty((len(self.all_indices), 3))
         truths = np.empty((len(self.all_indices), 1))
         event_num = 0
@@ -390,16 +494,16 @@ class JetTreesDataset(JetWiseDataset):
 
     def __getitem__(self, idx):
         if isinstance(idx, (int, np.int, np.int64)):  # becuase there a lots of int-like things....
-            jet = self._jets[idx]
+            jet = self.jets[idx]
             walker = TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
                                            jet[0], jet[1], jet[3])
-            return self._truth[idx], walker
+            return self.truth[idx], walker
         # it's a slice or a list
-        jets = self._jets[idx]
+        jets = self.jets[idx]
         walkers = [TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
                                          jet[0], jet[1], jet[3])
                   for jet in jets]
-        return list(zip(self._truth[idx], walkers))
+        return list(zip(self.truth[idx], walkers))
 
     @property
     def test_events(self):
@@ -407,6 +511,6 @@ class JetTreesDataset(JetWiseDataset):
             self._test = np.array(list(zip(self._test_truth,
                                            [TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
                                                                   jet[0], jet[1], jet[3])
-                                            for jet in self._test_jets])))
+                                            for jet in self.test_jets])))
         return self._test
 

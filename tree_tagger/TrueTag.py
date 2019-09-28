@@ -82,7 +82,9 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     name = jet_name+"_Tags"
     namePID = jet_name+"_TagPIDs"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
-    start_point = len(getattr(eventWise, name, []))
+    jet_tags = list(getattr(eventWise, name, []))
+    jet_tagpids = list(getattr(eventWise, namePID, []))
+    start_point = len(jet_tags)
     if start_point >= n_events:
         print("Finished")
         return True
@@ -92,8 +94,6 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     eventWise.selected_index = None
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     max_angle2 = max_angle**2
-    jet_tags = []
-    jet_tagpids = []
     for event_n in range(start_point, end_point):
         if event_n % 100 == 0:
             print(f"{100*event_n/n_events}%", end='\r')
@@ -112,7 +112,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
         eventWise.append(content)
     except Exception:
         print("Problem")
-        return columns, content
+        return content
 
 display=True
 if display:  # have to comment out to run without display

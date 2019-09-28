@@ -52,11 +52,12 @@ def phi_rotation(eventWise):
     eventWise.append(columns, content)
 
 
-def normalize_jets(eventWise, jet_name):
+def normalize_jets(eventWise, jet_name, new_name):
     eventWise.selected_index = None
-    jet_cols = [c for c in eventWise.columns if jet_name in c]
+    jet_cols = [(c, c.replace(jet_name, new_name))
+                for c in eventWise.columns if jet_name in c]
     normed_outs = {}
-    for name in jet_cols:
+    for name, new_name in jet_cols:
         values = getattr(eventWise, name)
         flat_iter = flatten(values)
         first = next(flat_iter)
@@ -64,11 +65,34 @@ def normalize_jets(eventWise, jet_name):
         if isinstance(first, (float, np.float)):
             print(f"Norming {name}")
             flat_values = [first] + [i for i in flat_iter]
+            flat_values = np.array(flat_values).reshape((-1, 1))
             transformer = preprocessing.RobustScaler().fit(flat_values)
-            out = apply_array_func(transformer.transform, values)
-            normed_outs[name + "_normed"] = out
-    columns = sorted(normed_outs.keys())
-    eventWise.append(columns, normed_outs)
+            def rescale(vals):
+                if len(vals) == 0:
+                    return vals
+                return transformer.transform(np.array(vals).reshape((-1, 1)))
+            out = apply_array_func(rescale, values)  # mixed depth if summary vars present
+            normed_outs[new_name] = out
+    eventWise.append(normed_outs)
+
+
+def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
+    eventWise.selected_index = None
+    jet_cols = [(c, c.replace(jet_name, new_name))
+                for c in eventWise.columns if jet_name in c]
+    per_track_var = getattr(eventWise, jet_name+"_Energy")
+    n_events = len(per_track_var)
+    mask = apply_array_func(lambda lst: len(lst)>=min_tracks, per_track_var, depth=eventWise.JET_DEPTH)
+    filtered_outs = {}
+    for name, new_name in jet_cols:
+        print(f"Filtering {name}")
+        values = []
+        for event_n, mask_here in enumerate(mask):
+            eventWise.selected_index = event_n
+            values_here = getattr(eventWise, name)
+            values.append(values_here[mask_here])
+        filtered_outs[new_name] = awkward.fromiter(values)
+    eventWise.append(filtered_outs)
 
 
 def make_targets(eventWise, jet_name):
@@ -76,7 +100,7 @@ def make_targets(eventWise, jet_name):
     truth_tags = getattr(eventWise, jet_name+"_Tags")
     def target_func(array):
         return len(array) > 0
-    contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags)}
+    contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags, depth=eventWise.JET_DEPTH)}
     columns = sorted(contents.keys())
     eventWise.append(columns, contents)
 
@@ -85,30 +109,38 @@ def event_wide_observables(eventWise):
     contents = {}
     cumulative_columns = ["Energy", "Rapidity", "PT",
                           "Px", "Py", "Pz"]
+    eventWise.selected_index = None
     for name  in cumulative_columns:
+        # sometimes the num of a jagged array works like a concatination
         values = getattr(eventWise, name)
-        contents["Event_Sum"+name] = apply_array_func(np.sum, values)
-        contents["Event_Ave"+name] = apply_array_func(np.mean, values)
-        contents["Event_Std"+name] = apply_array_func(np.std, values)
-    columns = sorted(contents.keys())
-    eventWise.append(columns, contents)
+        values = apply_array_func(np.nan_to_num, values, depth=eventWise.EVENT_DEPTH)
+        contents["Event_Sum"+name] = apply_array_func(np.sum, values, depth=eventWise.EVENT_DEPTH)
+        contents["Event_Ave"+name] = apply_array_func(np.mean, values, depth=eventWise.EVENT_DEPTH)
+        contents["Event_Std"+name] = apply_array_func(np.std, values, depth=eventWise.EVENT_DEPTH)
+    eventWise.selected_index = None
+    eventWise.append(contents)
 
 
 def jet_wide_observables(eventWise, jet_name):
     # calculate averages and num hits
     eventWise.selected_index = None
-    cumulative_components = ["PT", "Rapidity", "Phi", "Energy",
+    cumulative_components = ["PT", "Rapidity", "PseudoRapidity",
+                             "Theta", "Phi", "Energy",
                              "Px", "Py", "Pz",
                              "JoinDistance"]
     contents = {}
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_name+"_Energy"))
     for name in cumulative_components:
         col_name = jet_name + '_' + name
+        # sometimes the num of a jagged array works like a concatination
         values = getattr(eventWise, col_name)
-        contents[jet_name+"_Sum"+name] = apply_array_func(np.sum, values)
-        contents[jet_name+"_Ave"+name] = apply_array_func(np.mean, values)
-        contents[jet_name+"_Std"+name] = apply_array_func(np.std, values)
+        values = apply_array_func(np.nan_to_num, values, depth=eventWise.JET_DEPTH)
+        contents[jet_name+"_Sum"+name] = apply_array_func(np.sum, values, depth=eventWise.JET_DEPTH)
+        contents[jet_name+"_Ave"+name] = apply_array_func(np.mean, values, depth=eventWise.JET_DEPTH)
+        contents[jet_name+"_Std"+name] = apply_array_func(np.std, values, depth=eventWise.JET_DEPTH)
     # num_hits
-    contents[jet_name+"_size"] = apply_array_func(len, values)
-    columns = sorted(contents.keys())
-    eventWise.append(columns, contents)
+    eventWise.selected_index = None
+    contents[jet_name+"_size"] = apply_array_func(len, values, depth=eventWise.JET_DEPTH)
+    eventWise.append(contents)
 
