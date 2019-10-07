@@ -2,9 +2,10 @@ from ipdb import set_trace as st
 import pickle
 import time
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional
-from torch.utils.data import WeightedRandomSampler, BatchSampler
+from torch.utils.data import WeightedRandomSampler, BatchSampler, RandomSampler
 from tree_tagger import CustomDataloader, CustomScheduler, CustomSampler, TrainingTools
 # from torch.nn.utils import clip_grad_norm  this looks useful!
 
@@ -23,15 +24,15 @@ class SimpleLinear(nn.Sequential):
         # this makes the node prediction, in simple case called once at end
         self.projection = nn.Linear(latent_dimensions, num_classes)
         # activation for internal or external nodes
-        self.activation = torch.nn.functional.relu
-        self.all_layers = [self.embedding, *self.internals, self.activation]
+        self.activation = torch.nn.ReLU(True)
+        self.all_layers = [self.embedding, *self.internals, self.projection]
         process = self.all_layers[:1]
         for layer in self.all_layers[1:]:
             process += [self.activation, layer]
         super().__init__(*process)
     
     def get_weights(self):
-        weights = [layer.data for layer in self.all_layers]
+        weights = [layer.weight.data for layer in self.all_layers]
         return weights
     
     def get_bias(self):
@@ -47,9 +48,10 @@ def begin_training(run, viewer=None):
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
-    assert 'recursive' in run.settings['net_type'].lower();
+    assert 'standard' in run.settings['net_type'].lower();
     # create the dataset
     dataset = run.dataset
+    dataset.to_torch(device)
     criterion = nn.BCEWithLogitsLoss()
     # create the lossers (which get the loss)
     def train_losser(data, nets, device):
@@ -63,15 +65,14 @@ def begin_training(run, viewer=None):
     def batch_losser(events_data, nets, device, losser):
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
-
+    
     test_losser = train_losser
     latent_dimension = run.settings['latent_dimension']
-    # select the net by the net_type
-    if run.settings['net_type'] == 'simple_linear':
-        nets = [SimpleLinear(device, dataset.num_dimensions, latent_dimension, dataset.num_targets)]
     # if the run is not empty there should be a previous net, load that
     if not run.empty_run:
         nets = run.last_nets
+    else:
+        nets = [SimpleLinear(device, dataset.num_inputs, latent_dimension, dataset.num_targets)]
     # finish initilising the nets
     for net in nets:
         net = net.to(device)
@@ -82,6 +83,10 @@ def begin_training(run, viewer=None):
                 m.bias.data.fill_(0.01)
         net.apply(init_weights)
     # the nature of the data loader depends if we need to reweight
+    if not hasattr(dataset, 'train_weights'):
+        dataset.train_weights = np.ones(len(dataset))
+    if not hasattr(dataset, 'test_weights'):
+        dataset.test_weights = np.ones(len(dataset.test_truth))
     sampler = WeightedRandomSampler(dataset.train_weights, len(dataset))
     # this sampler then gets put inside a sampler that can split the data into a validation set
     validation_sampler = CustomSampler.ValidationRandomSampler(sampler, n_folds=3)

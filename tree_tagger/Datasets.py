@@ -11,7 +11,6 @@ import torch
 
 TEST_DS="/home/henry/lazy/dataset2/h1bBatch2_particles.awkd"
 
-
 class EventWiseDataset(Dataset):
     def __init__(self, database_name=None, num_events=-1, test_percent=0.2, shuffle=True, all_events=None):
         torch.set_default_tensor_type('torch.DoubleTensor')
@@ -298,8 +297,9 @@ def simplifier(dataset, num_pairs=1):
 
 
 class JetWiseDataset(Dataset):
-    def __init__(self, database_name, jet_name="FastJet", n_jets=-1, shuffle=True, all_truth_jets=None):
-        print(f"Creating Dataset for {jet_name}")
+    def __init__(self, database_name, jet_name="FastJet", n_train_jets=-1, shuffle=True, all_truth_jets=None):
+        self.is_torch = False
+        #print(f"Creating Dataset for {jet_name}")
         torch.set_default_tensor_type('torch.DoubleTensor')
         self.database_name = database_name
         self.eventWise = Components.EventWise.from_file(database_name)
@@ -313,10 +313,6 @@ class JetWiseDataset(Dataset):
             self._cumulative_jets = np.cumsum(jets_per_event)
             total_jets = self._cumulative_jets[-1]
             print(f"Total jets on disk {total_jets}")
-            if n_jets is -1 or n_jets * (1+test_percent) > total_jets:
-                n_jets = int(total_jets/(1+test_percent))
-            self._len = n_jets
-            print(f"Number of train events to be used {n_jets}")
             if "IsTestEvent" in self.eventWise.columns:
                 print("Test allocation exists")
                 test_mask = self.eventWise.IsTestEvent
@@ -328,31 +324,44 @@ class JetWiseDataset(Dataset):
                 test_mask[:num_test_events] = True
                 np.random.shuffle(test_mask)
                 self.eventWise.append({"IsTestEvent": test_mask})
-            self.num_test = int(n_jets*test_percent)
-            print(f"Number of test events to be used {self.num_test}")
+            if n_train_jets is -1 or n_train_jets > int(total_jets* (1-test_percent)):
+                n_train_jets = int(total_jets*(1-test_percent))
             test_events = np.where(test_mask)[0]
             np.random.shuffle(test_events)
-            self._test_indices = self._event_idx_to_jet(test_events)[: self.num_test]
+            self._test_indices = self._event_idx_to_jet(test_events)
+            self.num_test = min(len(self._test_indices),
+                                int((test_percent*n_train_jets)/(1-test_percent)))
+            print(f"Number of test events to be used {self.num_test}")
             train_events = np.where(~test_mask)[0]
             np.random.shuffle(train_events)
-            self._train_indices = self._event_idx_to_jet(train_events)[: n_jets]
+            self._train_indices = self._event_idx_to_jet(train_events)
+            self._len = min(len(self._train_indices), n_train_jets)
+            print(f"Number of train events to be used {len(self)}")
             self.all_indices = np.concatenate((self._test_indices, self._train_indices))
             print("Processing the jets")
             all_truth, all_jets = self._process_jets()
         else:
-            print("Jets are provided")
+            #print("Jets are provided")
             all_truth, all_jets = all_truth_jets
             total_jets = len(all_truth)
-            if n_jets is -1 or n_jets * (1+test_percent) > total_jets:
-                n_jets = int(total_jets/(1+test_percent))
-            self._len = n_jets
-            self.num_test = int(n_jets*test_percent)
+            if n_train_jets is -1 or n_train_jets > int(total_jets * (1-test_percent)):
+                n_train_jets = int(total_jets*(1-test_percent))
+            self._len = n_train_jets
+            self.num_test = total_jets - n_train_jets
         self.jets = all_jets[self.num_test:]
         self.truth = all_truth[self.num_test:]
         self.test_jets = all_jets[:self.num_test]
         self.test_truth = all_truth[:self.num_test]
         self._test = None
-        print("Dataset initilised")
+        #print("Dataset initilised")
+
+    def to_torch(self, device):
+        self.is_torch = True
+        torch.set_default_tensor_type('torch.DoubleTensor')
+        self.jets = torch.from_numpy(self.jets).to(device)
+        #self.truth = torch.from_numpy(self.truth)
+        self.test_jets = torch.from_numpy(self.test_jets).to(device)
+        #self.test_truth = torch.from_numpy(self.test_truth)
 
     def _event_idx_to_jet(self, idx_list):
         jet_idx = [np.arange(self._cumulative_jets[idx-1],
@@ -379,6 +388,10 @@ class JetWiseDataset(Dataset):
     def num_targets(self):
         return self.truth.shape[1]
 
+    @property
+    def num_inputs(self):
+        raise NotImplementedError
+
     @classmethod
     def save_name(cls, database_name, folder_name=None):
         ds_components = os.path.split(database_name)
@@ -394,7 +407,7 @@ class JetWiseDataset(Dataset):
     def write(self, folder_name=None):
         params = {"database_name": self.database_name,
                   "jet_name": self.jet_name,
-                  "n_jets": len(self),
+                  "n_train_jets": len(self),
                   "shuffle": True}
         all_jets = np.vstack((self.test_jets, self.jets))
         all_truth = np.vstack((self.test_truth, self.truth))
@@ -422,9 +435,12 @@ class FlatJetDataset(JetWiseDataset):
                            c.startswith(self.jet_name + "_Std") or
                            c.startswith(self.jet_name + "_Ave") or
                            c.startswith(self.jet_name + "_Sum")]
+        self.column_names = per_event_columns + per_jet_columns
+        self.column_names.remove("Event_n")
         jets = np.empty((len(self.all_indices),
                          len(per_event_columns)+len(per_jet_columns)))
         truths = np.empty((len(self.all_indices), 1))
+        n_train_jets = len(truths)
         event_num = 0
         event_start = 0
         eventWise = self.eventWise
@@ -432,11 +448,10 @@ class FlatJetDataset(JetWiseDataset):
         event_vars = [getattr(eventWise, c) for c in per_event_columns]
         jet_vars = [getattr(eventWise, c) for c in per_jet_columns]
         tags = getattr(eventWise, self.jet_name + "_Tags")
-        n_jets = len(self)
         update=False
         for jet_num, idx in enumerate(sorted(self.all_indices)):
             if jet_num %100 == 0:
-                print(f"{100*jet_num/n_jets:.2f}%", end='\r', flush=True)
+                print(f"{100*jet_num/n_train_jets:.2f}%", end='\r', flush=True)
             while idx >= self._cumulative_jets[event_num]:
                 event_num += 1
                 update=True
@@ -448,23 +463,27 @@ class FlatJetDataset(JetWiseDataset):
                 tags = getattr(eventWise, self.jet_name + "_Tags")
                 update=False
             jet_in_event = idx - event_start
-            try:
-                jets[jet_num] = event_vars + [jv[jet_in_event] for jv in jet_vars]
-            except IndexError:
-                st()
+            jets[jet_num] = event_vars + [jv[jet_in_event] for jv in jet_vars]
             # anything with any tag is called signal
             truths[jet_num][0] = len(tags[jet_in_event]) > 0
         eventWise.selected_index = None
         return truths, jets
 
     def __getitem__(self, idx):
-        return self.truth[idx], self.jets[idx]
+        if isinstance(idx, (int, np.int, np.int64)):  # becuase there a lots of int-like things....
+            return self.truth[idx], self.jets[idx]
+        # it's a slice or a list
+        return list(zip(self.truth[idx], self.jets[idx]))
 
     @property
     def test_events(self):
         if self._test is None:
             self._test = np.array(list(zip(self.test_truth, self.test_jets)))
         return self._test
+
+    @property
+    def num_inputs(self):
+        return self.jets.shape[1]
 
 
 class JetTreesDataset(JetWiseDataset):
@@ -508,7 +527,7 @@ class JetTreesDataset(JetWiseDataset):
     @property
     def test_events(self):
         if self._test is None:
-            self._test = np.array(list(zip(self._test_truth,
+            self._test = np.array(list(zip(self.test_truth,
                                            [TreeWalker.TreeWalker(self.eventWise, self.jet_name, 
                                                                   jet[0], jet[1], jet[3])
                                             for jet in self.test_jets])))

@@ -9,6 +9,7 @@ from tree_tagger import Components
 from tree_tagger.Components import flatten, apply_array_func
 
 def phi_rotation(eventWise):
+    eventWise.selected_index = None
     content = {}
     # pick out the columns to transform
     pxy_cols = [(c, c.replace('Px', 'Py').replace('px', 'py'))
@@ -21,7 +22,7 @@ def phi_rotation(eventWise):
     # now rotate the events about the z axis
     # so that the overall momentum is down the x axis
     children = eventWise.Children
-    no_decendants = apply_array_func(lambda lst: not bool(len(lst)), children)
+    no_decendants = apply_array_func(lambda lst: not bool(len(lst)), children, depth=Components.EventWise.EVENT_DEPTH)
     pxs = eventWise.Px
     pys = eventWise.Py
     def leaf_sum(values, no_dez):
@@ -29,6 +30,7 @@ def phi_rotation(eventWise):
     px_sums = apply_array_func(leaf_sum, pxs, no_decendants)
     py_sums = apply_array_func(leaf_sum, pys, no_decendants)
     for event_n, (px, py) in enumerate(zip(px_sums, py_sums)):
+        remove_cols = []
         eventWise.selected_index = event_n
         angle = np.arctan(py/px)
         cos = np.cos(angle)
@@ -37,16 +39,27 @@ def phi_rotation(eventWise):
             return xs*cos - ys*sin
         def rotate_y(xs, ys):
             return xs*sin + ys*cos
-        def rotate_phi(phis):
-            return Components.confine_angle(phis - angle)
+        def rotate_phi(phis): 
+            return Components.confine_angle(phis - angle) 
         for px_name, py_name in pxy_cols:
-            this_pxs = getattr(eventWise, px_name)
-            this_pys = getattr(eventWise, py_name)
-            content[px_name].append(apply_array_func(rotate_x, this_pxs, this_pys))
-            content[py_name].append(apply_array_func(rotate_y, this_pxs, this_pys))
+            try:
+                this_pxs = getattr(eventWise, px_name)
+                this_pys = getattr(eventWise, py_name)
+                content[px_name].append(rotate_x(this_pxs, this_pys))
+                content[py_name].append(rotate_y(this_pxs, this_pys))
+            except IndexError:
+                remove_cols.append((px_name, py_name))
+        for pair in remove_cols:
+            pxy_cols.remove(pair)
+        remove_cols = []
         for phi_name in phi_cols:
-            this_phis = getattr(eventWise, phi_name)
-            content[phi_name].append(apply_array_func(rotate_phi, this_phis))
+            try:
+                this_phis = getattr(eventWise, phi_name)
+                content[phi_name].append(rotate_phi(this_phis))
+            except IndexError:
+                remove_cols.append(phi_name)
+        for name in remove_cols:
+            phi_cols.remove(name)
     content = {name: awkward.fromiter(a) for name, a in content.items()}
     columns = sorted(content.keys())
     eventWise.append(columns, content)
@@ -90,7 +103,10 @@ def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
         for event_n, mask_here in enumerate(mask):
             eventWise.selected_index = event_n
             values_here = getattr(eventWise, name)
-            values.append(values_here[mask_here])
+            try:
+                values.append(values_here[mask_here])
+            except IndexError:
+                st()
         filtered_outs[new_name] = awkward.fromiter(values)
     eventWise.append(filtered_outs)
 
@@ -100,7 +116,7 @@ def make_targets(eventWise, jet_name):
     truth_tags = getattr(eventWise, jet_name+"_Tags")
     def target_func(array):
         return len(array) > 0
-    contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags, depth=eventWise.JET_DEPTH)}
+    contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags, depth=eventWise.EVENT_DEPTH)}
     columns = sorted(contents.keys())
     eventWise.append(columns, contents)
 
@@ -136,9 +152,13 @@ def jet_wide_observables(eventWise, jet_name):
         # sometimes the num of a jagged array works like a concatination
         values = getattr(eventWise, col_name)
         values = apply_array_func(np.nan_to_num, values, depth=eventWise.JET_DEPTH)
-        contents[jet_name+"_Sum"+name] = apply_array_func(np.sum, values, depth=eventWise.JET_DEPTH)
-        contents[jet_name+"_Ave"+name] = apply_array_func(np.mean, values, depth=eventWise.JET_DEPTH)
-        contents[jet_name+"_Std"+name] = apply_array_func(np.std, values, depth=eventWise.JET_DEPTH)
+        # goes funky on jagged arrays
+        contents[jet_name+"_Sum"+name] = apply_array_func(lambda lst: np.sum(lst.tolist()),
+                                                          values, depth=eventWise.JET_DEPTH)
+        contents[jet_name+"_Ave"+name] = apply_array_func(lambda lst: np.mean(lst.tolist()),
+                                                          values, depth=eventWise.JET_DEPTH)
+        contents[jet_name+"_Std"+name] = apply_array_func(lambda lst: np.std(lst.tolist()),
+                                                          values, depth=eventWise.JET_DEPTH)
     # num_hits
     eventWise.selected_index = None
     contents[jet_name+"_size"] = apply_array_func(len, values, depth=eventWise.JET_DEPTH)

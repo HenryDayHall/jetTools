@@ -12,12 +12,13 @@ def begin_training(run, viewer=None):
     assert 'bdt' in run.settings['net_type'].lower();
     # create the dataset
     dataset = run.dataset
-    if not run.empty_run:
-        bdt = run.last_nets[0]
-    else:
-        dtc = tree.DecisionTreeClassifier(max_depth=run.settings['max_depth'])
-        bdt = ensemble.AdaBoostClassifier(dtc, algorithm=run.settings['algorithm_name'],
-                                 n_estimators=run.settings['n_estimators'])
+    #if not run.empty_run:
+    #    bdt = run.last_nets[0]
+    #else:
+    #print(f"md={run.settings['max_depth']}, ne={run.settings['n_estimators']}")
+    dtc = tree.DecisionTreeClassifier(max_depth=run.settings['max_depth'])
+    bdt = ensemble.AdaBoostClassifier(dtc, algorithm=run.settings['algorithm_name'],
+                             n_estimators=run.settings['n_estimators'])
     bdt.fit(make_finite(dataset.jets), dataset.truth)
     run.last_nets = [bdt]
     run.set_best_state_dicts([pickle.dumps(bdt)])
@@ -25,10 +26,7 @@ def begin_training(run, viewer=None):
 
 
 def make_hist(run):
-    bdt = run.best_nets[0]
-    dataset = run.dataset
-    output = bdt.decision_function(make_finite(dataset.test_jets))
-    test_truth = dataset.test_truth.flatten()
+    output, test_truth = run.apply_to_test()
     plot_range = (output.min(), output.max())
     plt.hist(output[test_truth>0.5],
              bins=10, range=plot_range,
@@ -78,3 +76,26 @@ def plot_rocs(runs, loglog=False, ax=None):
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
 
+def feature_importance(run):
+    bdt = run.best_nets[0]
+    importances = bdt.feature_importances_
+    std = np.std([tree.feature_importances_ for tree in bdt.estimators_], axis=0)
+    indices = np.argsort(importances)[::-1]
+    use = 10
+    indices = indices[:use]
+    eventWise = run.dataset.eventWise
+    jet_name = run.dataset.jet_name
+    per_event_columns = [c for c in eventWise.columns
+                         if c.startswith("Event_")]
+    per_jet_columns = [c for c in eventWise.columns if
+                       c.startswith(jet_name + "_Std") or
+                       c.startswith(jet_name + "_Ave") or
+                       c.startswith(jet_name + "_Sum")]
+    names = per_event_columns + per_jet_columns
+    names.remove("Event_n")
+    names = np.array(names)
+
+    plt.title(f"Feature Importance, first {use}")
+    plt.bar(range(len(indices)), importances[indices],
+            color=(0.7, 0.2, 0.1), alpha=0.6, yerr=std[indices], align="center")
+    plt.xticks(range(len(indices)), names[indices], rotation="vertical")

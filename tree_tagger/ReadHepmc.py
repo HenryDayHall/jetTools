@@ -286,6 +286,7 @@ class Hepmc(Components.EventWise):
             self.Cross_section_error_pb[event_n] = float(header_line[i])
 
 
+# TODO use methods in Components
 def add_PT_Theta_Phi(eventWise):
     pt, theta, phi = [], [], []
     n_events = len(eventWise.Px)

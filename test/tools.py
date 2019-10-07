@@ -3,29 +3,16 @@ import numpy as np
 import collections
 from ipdb import set_trace as st
 import os
+import awkward
+import pickle
 
 
-def generic_equality_comp(x, y, strict=True):
+
+def generic_equality_comp(x, y):
     """ an atempt to generalise checking equality """
-    xdict = x.__dict__
-    ydict = y.__dict__
-    if len(xdict) != len(ydict): return False
-    if set(xdict.keys()) != set(ydict.keys()): return False
-    for key in xdict:
-        if isinstance(xdict[key], np.ndarray):
-            # if possible use the numpy inbuilt comparison
-            np.allclose(xdict[key], ydict[key])
-        elif isinstance(xdict[key], collections.Hashable):
-            if xdict[key] != ydict[key]: return False
-        else:
-            try:
-                # if it's a list of numbers go back to numpy
-                if isinstance(xdict[key][0], (int, float, np.int, np.float)):
-                    if not np.allclose(xdict[key], ydict[key]): return False
-            except:
-                # finally give up and compare reprs
-                if repr(xdict[key]) != repr(ydict[key]): return False
-    return True
+    strx = pickle.dumps(x)
+    stry = pickle.dumps(y)
+    return strx == stry
 
 
 # context manager for test directory

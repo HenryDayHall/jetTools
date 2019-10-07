@@ -1,9 +1,137 @@
 import numpy as np
+import os
 from ipdb import set_trace as st
 import collections
 from numpy import testing as tst
+import pytest
 from tree_tagger import Components
 from tools import generic_equality_comp, TempTestDir
+import awkward
+
+class AwkdArrays:
+    empty = awkward.fromiter([])
+    one_one = awkward.fromiter([1])
+    minus_plus = awkward.fromiter(np.arange(-2, 3))
+    event_ints = awkward.fromiter([[1, 2], [3]])
+    jet_ints = awkward.fromiter([awkward.fromiter([[1, 2], [3]]),
+                                 awkward.fromiter([[4,5,6]])])
+    event_floats = awkward.fromiter([[.1, .2], [.3]])
+    jet_floats = awkward.fromiter([awkward.fromiter([[.1, .2], [.3]]),
+                                 awkward.fromiter([[.4,.5,.6]])])
+    empty_event = awkward.fromiter([[], [1]])
+    empty_jet = awkward.fromiter([awkward.fromiter([[], [1]]),
+                                  awkward.fromiter([[2, 3]])])
+    empty_events = awkward.fromiter([[], []])
+    empty_jets = awkward.fromiter([awkward.fromiter([[],[]]),
+                                   awkward.fromiter([[]])])
+
+
+def test_flatten():
+    input_ouputs = [
+            (AwkdArrays.empty, []),
+            (AwkdArrays.one_one, [1]),
+            (AwkdArrays.minus_plus, range(-2, 3)),
+            (AwkdArrays.event_ints, [1,2,3]),
+            (AwkdArrays.jet_ints, list(range(1, 7))),
+            (AwkdArrays.event_floats, [.1, .2, .3]),
+            (AwkdArrays.jet_floats, np.arange(0.1, 0.7, 0.1)),
+            (AwkdArrays.empty_event, [1]),
+            (AwkdArrays.empty_jet, [1,2,3]),
+            (AwkdArrays.empty_events, []),
+            (AwkdArrays.empty_jets, [])]
+    for inp, out in input_ouputs:
+        inp = list(Components.flatten(inp))
+        tst.assert_allclose(inp, out)
+
+
+def test_detect_depth():
+    input_ouputs = [
+            (AwkdArrays.empty, (False, 0)),
+            (AwkdArrays.one_one, (True, 0)),
+            (AwkdArrays.minus_plus, (True, 0)),
+            (AwkdArrays.event_ints, (True, 1)),
+            (AwkdArrays.jet_ints, (True, 2)),
+            (AwkdArrays.event_floats, (True, 1)),
+            (AwkdArrays.jet_floats, (True, 2)),
+            (AwkdArrays.empty_event, (True, 1)),
+            (AwkdArrays.empty_jet, (True, 2)),
+            (AwkdArrays.empty_events, (False, 1)),
+            (AwkdArrays.empty_jets, (False, 2))]
+    for inp, out in input_ouputs:
+        depth = Components.detect_depth(inp)
+        assert depth == out, f"{inp} gives depth (certanty, depth) = {depth}, not {out}"
+
+
+def test_apply_array_func():
+    func = np.cos
+    input_ouputs = [
+        (AwkdArrays.empty, awkward.fromiter([])),
+        (AwkdArrays.one_one, awkward.fromiter([func(1)])),
+        (AwkdArrays.minus_plus, awkward.fromiter(func(np.arange(-2, 3)))),
+        (AwkdArrays.event_ints, awkward.fromiter([[func(1), func(2)], [func(3)]])),
+        (AwkdArrays.jet_ints, awkward.fromiter([awkward.fromiter([[func(1), func(2)], [func(3)]]),
+                                     awkward.fromiter([[func(4),func(5),func(6)]])])),
+        (AwkdArrays.event_floats, awkward.fromiter([[func(.1), func(.2)], [func(.3)]])),
+        (AwkdArrays.jet_floats, awkward.fromiter([awkward.fromiter([[func(.1), func(.2)], [func(.3)]]),
+                                     awkward.fromiter([[func(.4),func(.5),func(.6)]])])),
+        (AwkdArrays.empty_event, awkward.fromiter([[], [func(1)]])),
+        (AwkdArrays.empty_jet, awkward.fromiter([awkward.fromiter([[], [func(1)]]),
+                                      awkward.fromiter([[func(2), func(3)]])])),
+        (AwkdArrays.empty_events, awkward.fromiter([[], []])),
+        (AwkdArrays.empty_jets, awkward.fromiter([awkward.fromiter([[],[]]),
+                                       awkward.fromiter([[]])]))]
+    for inp, out in input_ouputs:
+        result = Components.apply_array_func(func, inp)
+        assert generic_equality_comp(out, result), f"{inp} gives result = {result}, not {out}"
+    func = len
+    input_ouputs = [
+        (AwkdArrays.empty, 0),
+        (AwkdArrays.one_one, 1),
+        (AwkdArrays.minus_plus, 5),
+        (AwkdArrays.event_ints, awkward.fromiter([2, 1])),
+        (AwkdArrays.jet_ints, awkward.fromiter([awkward.fromiter([2, 1]),
+                                     awkward.fromiter([3])])),
+        (AwkdArrays.event_floats, awkward.fromiter([2, 1])),
+        (AwkdArrays.jet_floats, awkward.fromiter([awkward.fromiter([2, 1]),
+                                     awkward.fromiter([3])])),
+        (AwkdArrays.empty_event, awkward.fromiter([0, 1])),
+        (AwkdArrays.empty_jet, awkward.fromiter([awkward.fromiter([0, 1]),
+                                      awkward.fromiter([2])])),
+        (AwkdArrays.empty_events, awkward.fromiter([0, 0])),
+        (AwkdArrays.empty_jets, awkward.fromiter([[0, 0], [0]]))]
+    for inp, out in input_ouputs:
+        result = Components.apply_array_func(func, inp)
+        assert generic_equality_comp(out, result), f"{inp} gives result = {result}, not {out}"
+    # specify event depth
+    input_ouputs = [
+        (AwkdArrays.event_ints, awkward.fromiter([2, 1])),
+        (AwkdArrays.jet_ints, awkward.fromiter([2, 1])),
+        (AwkdArrays.event_floats, awkward.fromiter([2, 1])),
+        (AwkdArrays.jet_floats, awkward.fromiter([2, 1])),
+        (AwkdArrays.empty_event, awkward.fromiter([0, 1])),
+        (AwkdArrays.empty_jet, awkward.fromiter([2, 1])),
+        (AwkdArrays.empty_events, awkward.fromiter([0, 0])),
+        (AwkdArrays.empty_jets, awkward.fromiter([2, 1]))]
+    for inp, out in input_ouputs:
+        result = Components.apply_array_func(func, inp, depth=Components.EventWise.EVENT_DEPTH)
+        assert generic_equality_comp(out, result), f"{inp} gives result = {result}, not {out}"
+
+
+def test_confine_angle():
+    inputs_outputs = [
+            (0., 0.),
+            (1., 1.),
+            (-1., -1.),
+            (2*np.pi, 0.),
+            (np.pi+0.1, -np.pi+0.1),
+            (-np.pi-0.1, np.pi-0.1),
+            (2*np.pi+0.1, 0.1),
+            (-2*np.pi, 0.),
+            (-2*np.pi-0.1, -0.1),
+            (4*np.pi, 0.)]
+    for inp, out in inputs_outputs:
+        tst.assert_allclose(Components.confine_angle(inp), out)
+
 
 def test_safe_convert():
     # edge case tests
@@ -54,444 +182,252 @@ def test_safe_convert():
                              f"instead got {out}."
 
 
-def test_MCParticle():
-    # some variations on the general inputs
-    default_gen_inps = {'global_id' : 1,
-                        'pid' : None,
-                        'sql_key' : None,
-                        'hepmc_barcode' : None,
-                        'is_root' : False,
-                        'is_leaf' : False,
-                        'start_vertex_barcode' : None,
-                        'end_vertex_barcode' : None,
-                        'status' : None,
-                        'generated_mass' : None}
-    alternate_gen_inps = {'global_id' : 100,
-                          'pid' : 1,
-                          'sql_key' : 2,
-                          'hepmc_barcode' : 3,
-                          'is_root' : True,
-                          'is_leaf' : True,
-                          'start_vertex_barcode' : 4,
-                          'end_vertex_barcode' : 5,
-                          'status' : 0,
-                          'generated_mass' : 3.4}
-    # dummy kinematic variables
-    kinematic_xyzs = ((0., 0., 0., 0.),
-                      (0., 0., 0., 100.),
-                      (-1000., 1000., 0.002, 100.),
-                      (-1000., 1000., 0.002, 0.),
-                      (-1000, 1000, 0, 0),
-                      (-252, -6, -2.34, -2.6))
-    kinematic_angle = ((0., 0., 0., 0.),
-                       (0., 0., 0., 100.),
-                       (1., -1., 0.002, 100.),
-                       (0.002, -2*np.pi, 2*np.pi, 0.),
-                       (0, -2*np.pi, 2*np.pi, 0.),
-                       (2.52, -.6, -2.34, -2.6))
-    for kset in kinematic_xyzs:
-        # test the px py pz version
-        particle1 = Components.MCParticle(*kset, global_id=default_gen_inps['global_id'])
-        assert particle1.global_id == 1
-        assert particle1.pid == None
-        assert particle1.sql_key == None
-        assert particle1.hepmc_barcode == None
-        assert particle1.is_root == False
-        assert particle1.is_leaf == False
-        assert particle1.start_vertex_barcode == None
-        assert particle1.end_vertex_barcode == None
-        assert particle1.status == None
-        assert particle1.generated_mass == None
-        assert particle1.daughter_ids == []
-        particle2 = Components.MCParticle(*kset, **default_gen_inps)
-        assert generic_equality_comp(particle1, particle2)
-        particle3 = Components.MCParticle(px=kset[0], py=kset[1], pz=kset[2],
-                                          e=kset[3], **default_gen_inps)
-        assert generic_equality_comp(particle1, particle3)
-        particle4 = Components.MCParticle(px=kset[0], py=kset[1], pz=kset[2],
-                                          **default_gen_inps)
-        if kset[-1] == 0:
-            assert generic_equality_comp(particle1, particle4)
-        else:
-            assert not generic_equality_comp(particle1, particle4)
-        particle5 = Components.MCParticle.from_repr(repr(particle1))
-        assert generic_equality_comp(particle1, particle5)
-        # test alternate settings
-        particle6 = Components.MCParticle(*kset, **alternate_gen_inps)
-        assert particle6.global_id == 100
-        assert particle6.pid == 1
-        assert particle6.sql_key == 2
-        assert particle6.hepmc_barcode == 3
-        assert particle6.is_root == True
-        assert particle6.is_leaf == True
-        assert particle6.start_vertex_barcode == 4
-        assert particle6.end_vertex_barcode == 5
-        assert particle6.status == 0
-        assert particle6.generated_mass == 3.4
-        assert not generic_equality_comp(particle1, particle6)
-        # test setting mass
-        particle7 = Components.MCParticle(px=kset[0], py=kset[1], pz=kset[2],
-                                          m=kset[3], **default_gen_inps)
-        # with no momentum, the energy == mass
-        if sum([abs(k) for k in kset[:3]]) == 0.:
-            assert generic_equality_comp(particle1, particle7)
-        else:
-            assert not generic_equality_comp(particle1, particle7)
-    for kset in kinematic_angle:
-        # test the eta phi pt version
-        particle8 = Components.MCParticle(pt=kset[0], eta=kset[1], phi=kset[2],
-                                          e=kset[3], **default_gen_inps)
-        particle9 = Components.MCParticle(pt=kset[0], eta=kset[1], phi=kset[2],
-                                          **default_gen_inps)
-        if kset[-1] == 0:
-            assert generic_equality_comp(particle8, particle9)
-        else:
-            assert not generic_equality_comp(particle8, particle9)
-        particle10 = Components.MCParticle(pt=kset[0], eta=kset[1], phi=kset[2],
-                                           m=kset[3], **default_gen_inps)
-        # with no momentum, the energy == mass
-        if kset[0] == 0:
-            assert generic_equality_comp(particle8, particle10)
-        else:
-            assert not generic_equality_comp(particle8, particle10)
-        # test repr
-        particle11 = Components.MCParticle.from_repr(repr(particle8))
-        assert generic_equality_comp(particle8, particle11)
+def test_EventWise():
+    # blank
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "blank.awkd"
+        blank_ew = Components.EventWise(dir_name, save_name)
+        assert blank_ew.columns == []
+        # add to index
+        contents = []
+        blank_ew.add_to_index(contents)
+        expected =  {"name": "blank", "save_name": save_name,
+                     "mutable": True}
+        assert generic_equality_comp(contents[-1], expected)
+        blank_ew.add_to_index(contents, name="a", mutable=False)
+        expected =  {"name": "a", "save_name": save_name,
+                     "mutable": False}
+        assert generic_equality_comp(contents[-1], expected)
+        # getting attributes
+        with pytest.raises(AttributeError):
+            getattr(blank_ew, "PT")
+        with pytest.raises(AttributeError):
+            blank_ew.PT
+        # write
+        save_path = os.path.join(dir_name, save_name)
+        blank_ew.write()
+        assert os.path.exists(save_path)
+        # from file
+        blank_ew_clone = Components.EventWise.from_file(save_path)
+        assert generic_equality_comp(blank_ew.columns, blank_ew_clone.columns)
+        contents = {k:v for k, v in blank_ew._column_contents.items() if k!="column_order"}
+        contents_clone = {k:v for k, v in blank_ew_clone._column_contents.items() if k!="column_order"}
+        assert generic_equality_comp(contents, contents_clone)
+        # eq
+        assert blank_ew == blank_ew_clone
+        # append
+        blank_ew.append(["a"], {"a": AwkdArrays.empty})
+        blank_ew.append({"b": AwkdArrays.one_one})
+        assert list(blank_ew.a) == []
+        assert "A" in blank_ew.columns
+        assert list(blank_ew.b) == [1]
+        assert "B" in blank_ew.columns
+        # remove
+        current_cols = list(blank_ew.columns)
+        for name in current_cols:
+            blank_ew.remove(name)
+        assert len(blank_ew.columns) == 0
+        with pytest.raises(AttributeError):
+            blank_ew.a
+        with pytest.raises(AttributeError):
+            blank_ew.b
+        # remove prefix
+        blank_ew.append({"A": AwkdArrays.empty, "Bc": AwkdArrays.one_one, "Bd": AwkdArrays.minus_plus})
+        blank_ew.remove_prefix("B")
+        assert list(blank_ew.columns) == ["A"]
 
 
-def test_MyVertex():
-    # some variations on the general inputs
-    default_gen_inps = {'global_vertex_id' : 1,
-                        'sql_key' : None,
-                        'hepmc_barcode' : None,
-                        'n_out' : None,
-                        'n_weights' : None,
-                        'n_orphans' : None}
-    alternate_gen_inps = {'global_vertex_id' : 100,
-                          'sql_key' : 2,
-                          'hepmc_barcode' : 3,
-                          'n_out' : 6,
-                          'n_weights' : 8,
-                          'n_orphans' : 3}
-    # dummy kinematic variables
-    kinematic_xyzs = ((0., 0., 0., 0.),
-                      (0., 0., 0., 100.),
-                      (-1000., 1000., 0.002, 100.),
-                      (-1000., 1000., 0.002, 0.),
-                      (-1000, 1000, 0, 0),
-                      (-252, -6, -2.34, -2.6))
-    for kset in kinematic_xyzs:
-        # test the px py pz version
-        vertex1 = Components.MyVertex(*kset, global_vertex_id=default_gen_inps['global_vertex_id'])
-        assert vertex1.global_vertex_id == 1
-        assert vertex1.sql_key == None
-        assert vertex1.hepmc_barcode == None
-        assert vertex1.n_out == None
-        assert vertex1.n_weights == None
-        assert vertex1.n_orphans == None
-        vertex2 = Components.MyVertex(*kset, **default_gen_inps)
-        assert generic_equality_comp(vertex1, vertex2)
-        vertex3 = Components.MyVertex(x=kset[0], y=kset[1], z=kset[2],
-                                        ctau=kset[3], **default_gen_inps)
-        assert generic_equality_comp(vertex1, vertex3)
-        # test alternate settings
-        vertex6 = Components.MyVertex(*kset, **alternate_gen_inps)
-        assert vertex6.global_vertex_id == 100
-        assert vertex6.sql_key == 2
-        assert vertex6.hepmc_barcode == 3
-        assert vertex6.n_out == 6
-        assert vertex6.n_weights == 8
-        assert vertex6.n_orphans == 3
-        assert not generic_equality_comp(vertex1, vertex6)
+def test_add_rapidity():
+    large_num = np.inf
+    pts = awkward.fromiter([[0., 0., 0., 0.,  0., 1., 1.,  1., 1., 10.]])
+    pzs = awkward.fromiter([[0., 0., 1., -1., 1., 1., -1., 0., 0., 10.]])
+    es =  awkward.fromiter([[0., 1., 1., 1.,  2., 2., 2.,  1., 2., 100.]])
+    rap = awkward.fromiter([np.nan, 0., large_num + 1., -large_num-1., 0.5*np.log(3/1),
+                            0.5*np.log(3/1), -0.5*np.log(3/1), 0., 0., 0.5*np.log(110./90.)])
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "rapidity.awkd"
+        contents = {"PT": pts, "Pz": pzs, "Energy": es}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_rapidity(ew)
+        ew.selected_index = 0
+        tst.assert_allclose(ew.Rapidity, rap)
+        # try adding to a specific prefix
+        contents = {"A_PT": pts, "A_Pz": pzs, "A_Energy": es,
+                    "B_PT": pts, "B_Pz": pzs, "B_Energy": es}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_rapidity(ew, 'A')
+        ew.selected_index = 0
+        tst.assert_allclose(ew.A_Rapidity, rap)
+        with pytest.raises(AttributeError):
+            ew.B_Rapidity
+
+
+
+class Particle:
+    def __init__(self, direction, mass):
+        self.px = awkward.fromiter([0.])
+        self.py = awkward.fromiter([0.])
+        self.pz = awkward.fromiter([0.])
+        self.pt = awkward.fromiter([1.])
+        self.p = awkward.fromiter([1.])
+        if direction == 'x':
+            self.px = awkward.fromiter([1.])
+        elif direction == '-x':
+            self.px = awkward.fromiter([-1.])
+        elif direction == 'y':
+            self.py = awkward.fromiter([1.])
+        elif direction == '-y':
+            self.py = awkward.fromiter([-1.])
+        elif direction == 'z':
+            self.pz = awkward.fromiter([1.])
+            self.pt = awkward.fromiter([0.])
+        elif direction == '-z':
+            self.pz = awkward.fromiter([-1.])
+            self.pt = awkward.fromiter([0.])
+        elif direction == '45':
+            self.px = awkward.fromiter([np.sqrt(0.5)])
+            self.py = awkward.fromiter([np.sqrt(0.5)])
+            self.pz = awkward.fromiter([1.])
+            self.p = awkward.fromiter([np.sqrt(2.)])
+        self.m2 = awkward.fromiter([mass**2])
+        self.e2 = awkward.fromiter([self.m2[0] + self.p[0]**2])
+        self.e = np.sqrt(self.e2)
+        self.et = self.e * (self.pt/self.p)
+
+
+def test_add_thetas():
+    # particles could go down each axial direction
+    input_output = [
+            ('x', np.pi/2.),
+            ('-x', np.pi/2.),
+            ('y', np.pi/2.),
+            ('-y', np.pi/2.),
+            ('z', 0.),
+            ('-z', np.pi),
+            ('45', np.pi/4.)]
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "rapidity.awkd"
+        for inp, out in input_output:
+            particle = Particle(inp, 0)
+            # there are many things theta can be calculated from
+            # pz&birr pt&pz (px&py)&pz pt&birr et&e
+            contents = {"Birr": particle.p, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            contents = {"PT": particle.pt, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            contents = {"Px": particle.px, "Py": particle.py, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            contents = {"Birr": particle.p, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            # Need to add energy version for towers, trouble getting direction
+            #contents = {"Energy": particle.e, "ET": particle.et}
+            #ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            #                          contents=contents)
+            #Components.add_thetas(ew, '')
+            #tst.assert_allclose(ew.Theta[0], out)
+            # check that adding mass makes no diference
+            particle = Particle(inp, 1.)
+            contents = {"Birr": particle.p, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            contents = {"PT": particle.pt, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            contents = {"Px": particle.px, "Py": particle.py, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            contents = {"Birr": particle.p, "Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, '')
+            tst.assert_allclose(ew.Theta[0], out)
+            # Need to add energy version for towers, trouble getting direction
+            #contents = {"Energy": particle.e, "ET": particle.et}
+            #ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            #                          contents=contents)
+            #Components.add_thetas(ew, '')
+            #tst.assert_allclose(ew.Theta[0], out)
+
+
+def test_theta_to_pseudorapidity():
+    input_output = [
+            (0., np.inf),
+            (np.pi/2, 0.),
+            (np.pi, -np.inf)]
+    for inp, out in input_output:
+        etas = Components.theta_to_pseudorapidity(np.array([inp]))
+        tst.assert_allclose(etas[0], out, atol=0.0001)
+
+
+def test_add_pseudorapidity():
+    large_num = np.inf
+    theta = awkward.fromiter([[0., np.pi/4, np.pi/2, 3*np.pi/4, np.pi]])
+    eta = awkward.fromiter([np.inf, -np.log(np.tan(np.pi/8)), 0., np.log(np.tan(np.pi/8)), -np.inf])
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "pseudorapidity.awkd"
+        contents = {"Theta": theta}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_pseudorapidity(ew)
+        ew.selected_index = 0
+        tst.assert_allclose(ew.PseudoRapidity, eta, atol=0.0001)
+        # try adding to a specific prefix
+        contents = {"A_Theta": theta,
+                    "B_Theta": theta}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_pseudorapidity(ew, 'A')
+        ew.selected_index = 0
+        tst.assert_allclose(ew.A_PseudoRapidity, eta, atol=0.0001)
+        with pytest.raises(AttributeError):
+            ew.B_PseudoRapidity
+
+
+def test_RootReadout():
+    root_file = "/home/henry/lazy/dataset2/h1bBatch2.root"
+    dir_name, save_name = os.path.split(root_file)
+    components = ["Particle", "Track", "Tower"]
+    rr = Components.RootReadout(dir_name, save_name, components)
+    n_events = len(rr.Energy)
+    test_events = np.random.randint(0, n_events, 20)
+    for event_n in test_events:
+        rr.selected_index = event_n
+        # sanity checks on particle values
+        # momentum
+        tst.assert_allclose(rr.PT**2, (rr.Px**2 + rr.Py**2), atol=0.0001)
+        tst.assert_allclose(rr.Birr**2, (rr.PT**2 + rr.Pz**2), atol=0.0001)
+        # on shell
+        tst.assert_allclose(rr.Mass, (rr.Energy**2 - rr.Birr**2), atol=0.0001)
+        # angles
+        tst.assert_allclose(rr.Phi, np.arctan2(rr.Py, rr.Px), atol=0.0001)
+        rapidity_calculated = 0.5*np.log((rr.Energy + rr.Birr)/(rr.Energy - rr.Birr))
+        tst.assert_allclose(rr.Rapidity, rapidity_calculated, atol=0.0001)
+        # valid PID
+        assert np.all(rr.PID>0)
     
-
-def test_MyTower():
-    # some variations on the general inputs
-    default_gen_inps = {'global_tower_id' : 1,
-                        'sql_key' : None,
-                        't' : None,
-                        'nTimeHits' : None,
-                        'eem' : None,
-                        'ehad' : None,
-                        'edges' : [None, None, None, None]}
-    particles = [Components.MCParticle(3.4, 5.6, 1., 3.4, global_id=10)]
-    alternate_gen_inps = {'global_tower_id' : 100,
-                          'sql_key' : 2,
-                          'particles' : particles,
-                          't' : 4.5,
-                          'nTimeHits' : 10,
-                          'eem' : 3.3,
-                          'ehad' : -2.3,
-                          'edges' : [0.4, 5.5, 10.2, 1.1]}
-    # dummy kinematic variables
-    kinematic_angle = ((0., 0., 0., 0.),
-                       (0., 0., 0., 100.),
-                       (1., -1., 0.002, 100.),
-                       (0.002, -2*np.pi, 2*np.pi, 0.),
-                       (0, -2*np.pi, 2*np.pi, 0.),
-                       (2.52, -.6, -2.34, -2.6))
-    for kset in kinematic_angle:
-        tower1 = Components.MyTower(*kset, global_tower_id=default_gen_inps['global_tower_id'])
-        assert tower1.global_tower_id == 1
-        assert tower1.sql_key == None
-        assert tower1._t == None
-        assert tower1.nTimeHits == None
-        assert tower1.eem == None
-        assert tower1.ehad == None
-        assert tower1.edges == [None, None, None, None]
-        tower2 = Components.MyTower(*kset, **default_gen_inps)
-        assert generic_equality_comp(tower1, tower2)
-        tower3 = Components.MyTower(et=kset[0], eta=kset[1], phi=kset[2],
-                                    e=kset[3], **default_gen_inps)
-        # default is to set by x y z t
-        if sum([abs(k) for k in kset[1:3]]) != 0.:
-            # particle stationary, or only momentum in x axis
-            assert not generic_equality_comp(tower1, tower3)
-        else:
-            assert generic_equality_comp(tower1, tower3)
-        # two options, set py px, py, pz
-        tower5 = Components.MyTower.from_repr(repr(tower1))
-        assert generic_equality_comp(tower1, tower5)
-        # set by angle
-        tower6 = Components.MyTower.from_repr(repr(tower3))
-        assert generic_equality_comp(tower3, tower6)
-        # test alternate settings
-        tower7 = Components.MyTower(*kset, **alternate_gen_inps)
-        assert tower7.global_tower_id == 100
-        assert tower7.sql_key == 2
-        assert tower7.particles == particles
-        assert tower7._t == 4.5
-        assert tower7.nTimeHits == 10
-        assert tower7.eem == 3.3
-        assert tower7.ehad == -2.3
-        assert tower7.edges == [0.4, 5.5, 10.2, 1.1]
-        assert not generic_equality_comp(tower1, tower7)
-
-
-def test_MyTrack():
-    # some variations on the general inputs
-    default_gen_inps = {'global_track_id' : 1,
-                        'sql_key' : None,
-                        'particle_sql_key' : None,
-                        'particle' : None,
-                        'charge' : None,
-                        'p' : None,
-                        'pT' : None,
-                        'eta' : None,
-                        'phi' : None,
-                        'ctgTheta' : None,
-                        'etaOuter' : None,
-                        'phiOuter' : None,
-                        't' : None,
-                        'x' : None,
-                        'y' : None,
-                        'z' : None,
-                        'xd' : None,
-                        'yd' : None,
-                        'zd' : None,
-                        'l' : None,
-                        'd0' : None,
-                        'dZ' : None}
-    particle = Components.MCParticle(3.4, 5.6, 1., 3.4, global_id=10)
-    alternate_gen_inps = {'global_track_id' : 100,
-                          'sql_key' : 124,
-                          'particle_sql_key' : 8916,
-                          'particle' : particle,
-                          'charge' : 2,
-                          'p' : 82.,
-                          'pT' : 3.4,
-                          'eta' : 1.4,
-                          'phi' : 2.2,
-                          'ctgTheta' : 3.4,
-                          'etaOuter' : 2.3,
-                          'phiOuter' : 1.2,
-                          't' : 3.4,
-                          'x' : -3.5,
-                          'y' : 7.8,
-                          'z' : 2.2,
-                          'xd' : -3.4,
-                          'yd' : -10000,
-                          'zd' : 10000,
-                          'l' : 6.7,
-                          'd0' : 3.4,
-                          'dZ' : 2.2}
-    # dummy kinematic variables
-    kinematic_xyzs = ((0., 0., 0., 0.),
-                      (0., 0., 0., 100.),
-                      (-1000., 1000., 0.002, 100.),
-                      (-1000., 1000., 0.002, 0.),
-                      (-1000, 1000, 0, 0),
-                      (-252, -6, -2.34, -2.6))
-    kinematic_angle = ((0., 0., 0., 0.),
-                       (0., 0., 0., 100.),
-                       (1., -1., 0.002, 100.),
-                       (0.002, -2*np.pi, 2*np.pi, 0.),
-                       (0, -2*np.pi, 2*np.pi, 0.),
-                       (2.52, -.6, -2.34, -2.6))
-    for kset in kinematic_xyzs:
-        track1 = Components.MyTrack(*kset, global_track_id=default_gen_inps['global_track_id'])
-        assert track1.global_track_id == 1
-        assert track1.sql_key == None
-        assert track1.particle_sql_key == None
-        assert track1.particle == None
-        assert track1.charge == None
-        assert track1._p == None
-        assert track1._pT == None
-        assert track1._eta == None
-        assert track1._phi == None
-        assert track1.ctgTheta == None
-        assert track1.etaOuter == None
-        assert track1.phiOuter == None
-        assert track1._t == None
-        assert track1._x == None
-        assert track1._y == None
-        assert track1._z == None
-        assert track1.xd == None
-        assert track1.yd == None
-        assert track1.zd == None
-        assert track1.l == None
-        assert track1.d0 == None
-        assert track1.dZ == None
-        track2 = Components.MyTrack(*kset, **default_gen_inps)
-        assert generic_equality_comp(track1, track2)
-        track3 = Components.MyTrack(x_outer=kset[0], y_outer=kset[1], z_outer=kset[2],
-                                    t_outer=kset[3], **default_gen_inps)
-        assert generic_equality_comp(track1, track3)
-        track5 = Components.MyTrack.from_repr(repr(track1))
-        assert generic_equality_comp(track1, track5)
-        # test alternate settings
-        track6 = Components.MyTrack(*kset, **alternate_gen_inps)
-        assert track6.global_track_id == 100
-        assert track6.sql_key == 124
-        assert track6.particle_sql_key == 8916
-        assert track6.particle == particle
-        assert track6.charge == 2
-        assert track6._p == 82.
-        assert track6._pT == 3.4
-        assert track6._eta == 1.4
-        assert track6._phi == 2.2
-        assert track6.ctgTheta == 3.4
-        assert track6.etaOuter == 2.3
-        assert track6.phiOuter == 1.2
-        assert track6._t == 3.4
-        assert track6._x == -3.5
-        assert track6._y == 7.8
-        assert track6._z == 2.2
-        assert track6.xd == -3.4
-        assert track6.yd == -10000
-        assert track6.zd == 10000
-        assert track6.l == 6.7
-        assert track6.d0 == 3.4
-        assert track6.dZ == 2.2
-        assert not generic_equality_comp(track1, track6)
-        # test setting mass
-        track8 = Components.MyTrack.from_repr(repr(track6))
-        assert generic_equality_comp(track8, track6)
-
-
-def test_MCParticleCollection():
-    # empty collection
-    empty = Components.MCParticleCollection(name="empty")
-    assert empty.name == "empty"
-    assert empty.columns == ["$p_T$", "$\\eta$", "$\\phi$", "$E$"]
-    assert len(empty.pts) == 0
-    assert len(empty.etas) == 0
-    assert len(empty.phis) == 0
-    assert len(empty.es) == 0
-    assert len(empty.pxs) == 0
-    assert len(empty.pys) == 0
-    assert len(empty.pzs) == 0
-    assert len(empty.ms) == 0
-    assert len(empty.pids) == 0
-    assert len(empty.sql_keys) == 0
-    assert len(empty.hepmc_barcodes) == 0
-    assert len(empty.global_ids) == 0
-    assert len(empty.is_roots) == 0
-    assert len(empty.is_leafs) == 0
-    assert len(empty.start_vertex_barcodes) == 0
-    assert len(empty.end_vertex_barcodes) == 0
-    assert len(empty.particle_list) == 0
-    assert len(empty) == 0
-    # create some particles
-    pxpypz = np.random.uniform(-100, 100, (100, 3))
-    e = np.random.uniform(0, 200, (100, 1))
-    kinematic = np.hstack((pxpypz, e))
-    # set some specile cases at the end
-    kinematic[-1] = [0, 0, 0, 0]
-    kinematic[-2] = [10000, 0, 0, 0]
-    kinematic[-3] = [-10000, 0, 0, 0]
-    kinematic[-4] = [0, 0, 0, 1000]
-    # make particles of them
-    particles = [Components.MCParticle(*k, global_id=i) for i, k in enumerate(kinematic)]
-    random = Components.MCParticleCollection(*particles)
-    assert np.all(random.pxs == kinematic[:, 0])
-    assert np.all(random.pys == kinematic[:, 1])
-    assert np.all(random.pzs == kinematic[:, 2])
-    assert np.all(random.es == kinematic[:, 3])
-    assert np.all(random.global_ids == np.arange(100))
-    assert len(random) == 100
-
-# try with just particles
-
-
-def test_Observables():
-    # empty observables
-    empty = Components.Observables(particle_collection=Components.MCParticleCollection())
-    assert len(empty) == 0
-    assert len(empty.global_obs_ids) == 0
-    assert len(empty.pts) == 0
-    assert len(empty.etas) == 0
-    assert len(empty.raps) == 0
-    assert len(empty.phis) == 0
-    assert len(empty.es) == 0
-    assert len(empty.pxs) == 0
-    assert len(empty.pys) == 0
-    assert len(empty.pzs) == 0
-    assert len(empty.jet_allocation) == 0
-    assert empty.global_to_obs == {}
-    assert empty.obs_to_global == {}
-    # test file read write
-    with TempTestDir("ObsTest") as dir_name:
-        empty.write(dir_name)
-        read_obs = Components.Observables.from_file(dir_name)
-        generic_equality_comp(empty, read_obs)
-    # sample sets
-    # create kinematics
-    pxpypz = np.random.uniform(-100, 100, (100, 3))
-    e = np.random.uniform(0, 200, (100, 1))
-    kinematic = np.hstack((pxpypz, e))
-    # set some specile cases at the end
-    kinematic[-1] = [0, 0, 0, 0]
-    kinematic[-2] = [10000, 0, 0, 0]
-    kinematic[-3] = [-10000, 0, 0, 0]
-    kinematic[-4] = [0, 0, 0, 1000]
-    # make particles of them
-    particles = [Components.MCParticle(*k, global_id=i, is_leaf=True) for i, k in enumerate(kinematic)]
-    random = Components.MCParticleCollection(*particles)
-    tracks = [Components.MyTrack(*k, global_track_id=i) for i, k in enumerate(kinematic)]
-    towers = [Components.MyTower(*k, global_tower_id=i) for i, k in enumerate(kinematic)]
-    # make some input versions
-    inps = [(random,), {"tracks": tracks}, {"towers": towers},
-            {"tracks": tracks[:50], "towers": towers[50:]},
-            {"tracks": tracks[:50], "towers": towers[50:], "particle_collection": random},
-            # it should make no diference what is in particle collection if tracks and towers are entered
-            {"tracks": tracks[:50], "towers": towers[50:], "particle_collection": 6.555}]
-    for inp in inps:
-        # assert basic properties
-        if isinstance(inp, dict):
-            obs = Components.Observables(**inp)
-        else:
-            obs = Components.Observables(*inp)
-        assert len(obs) == 100
-        assert np.all(obs.pxs == kinematic[:, 0])
-        assert np.all(obs.pys == kinematic[:, 1])
-        assert np.all(obs.pzs == kinematic[:, 2])
-        assert np.all(obs.es == kinematic[:, 3])
-        assert np.all(obs.global_obs_ids == np.arange(100))
-        # read and write to disk
-        with TempTestDir("ObsTest") as dir_name:
-            obs.write(dir_name)
-            read_obs = Components.Observables.from_file(dir_name)
-            generic_equality_comp(obs, read_obs)
-
+    
 

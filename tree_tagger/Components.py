@@ -17,11 +17,12 @@ def flatten(nested):
             yield from flatten(part)
         else:
             yield part
-    raise StopIteration
+    return
+
 
 def detect_depth(nested):
     # assumed arrays are wider than deep
-    max_depth = 2
+    max_depth = 0
     for x in nested:
         if not hasattr(x, '__iter__'):
             return True, 0  # absolute end found
@@ -30,7 +31,12 @@ def detect_depth(nested):
             if abs_end:
                 return abs_end, x_depth+1
             max_depth = max(max_depth, x_depth+1)
+        else:
+            # if it contains an empty list keep looking for somethign not empty
+            # but also count it as at least one deep
+            max_depth = max(max_depth, 1)
     return False, max_depth
+
 
 def apply_array_func(func, *nested, depth=None):
     if depth is None:
@@ -43,103 +49,21 @@ def apply_array_func(func, *nested, depth=None):
 def _apply_array_func(func, depth, *nested):
     # all nested must have the same shape
     out = []
-    if depth==1:
-        for parts in zip(*nested):
-            if len(parts[0]) == 0:
-                out.append([])
-            else:
-                out.append(func(*parts))
+    if depth == 0:  # flat lists
+        #if len(nested[0]) != 0:
+        out = func(*nested)
     else:
         for parts in zip(*nested):
             out.append(_apply_array_func(func, depth-1, *parts))
-    return awkward.fromiter(out)
+    try:
+        return awkward.fromiter(out)
+    except TypeError:
+        return out
 
 
 def confine_angle(angle):
     """ confine an angle between -pi and pi"""
     return ((angle + np.pi)%(2*np.pi)) - np.pi
-
-
-# context manager for folder that holds data
-class DataIndex:
-    index_delimiter = '|'
-    index_columns = [('name', str), ('mutable', bool), ('size', int), ('save_name', str)]
-    def __init__(self, dir_name):
-        """ Context manager for folder that holds data
-        Designed to provide some checks that the contents of the folder are correct,
-        also provides paths fo opaning them """
-        self.dir_name = dir_name
-        # fetch the index file
-        self.index_name = os.path.join(dir_name, "index.txt")
-        self.contents = []
-        try:
-            with open(self.index_name, 'r') as index_file:
-                reader = csv.reader(index_file, delimiter=self.index_delimiter)
-                for row in reader:
-                    assert len(row) == len(self.index_columns)
-                    processed = {col: col_type(x) for ((col, col_type), x)
-                                 in zip(self.index_columns, row)}
-                    self.contents.append(processed)
-            self.verify_index()
-        except FileNotFoundError:  # new Datafolder, make an index
-            self.contents = self._generate_contents()
-            self._write_index()
-
-    def _generate_contents(self):
-        print(f"Creating index for {self.dir_name}")
-        in_dir = os.listdir(self.dir_name)
-        contents = []
-        for save_name in in_dir:
-            print(save_name)
-            name = input("name= ")
-            is_mutable = InputTools.yesNo_question("mutable= ")
-            path = os.path.join(self.dir_name, save_name)
-            size = os.stat(path).st_size
-            contents.append({'name': name, 'mutable': is_mutable,
-                             'size': size, 'save_name': save_name})
-        return contents
-
-    def verify_index(self, check_mutables=False):
-        """ check the index file is correct about the contents of the Data folder """
-        in_dir = os.listdir(self.dir_name)
-        index_save = os.path.split(self.index_name)[-1]
-        # check for the index file itself
-        if index_save in in_dir:
-            in_dir.remove(index_save)
-        else:
-            raise FileNotFoundError(f"{index_save} not in {self.dir_name}")
-        # look for other files
-        for file_data in self.contents:
-            if file_data['save_name'] in in_dir:
-                in_dir.remove(file_data['save_name'])
-            else:
-                raise FileNotFoundError(f"{file_data['save_name']} not in {self.dir_name}")
-            path = os.path.join(self.dir_name, file_data['save_name'])
-            if not file_data['mutable'] or check_mutables:
-                found_size = os.stat(path).st_size
-                if found_size != file_data['size']:
-                    raise OSError(f"{path} is size {found_size} - expected size={file_data['size']}")
-        # if the file isn't in the index it shouldn't be in the dir
-        if len(in_dir) > 0:
-            raise FileExistsError(f"Unindexed files found in {self.dir_name}; {in_dir}")
-
-    def _write_index(self):
-        with open(self.index_name, 'w') as index_file:
-            writer = csv.writer(index_file, delimiter=self.index_delimiter)
-            for entry in self.contents:
-                line = [str(entry[col_name]) for col_name, _ in self.index_columns]
-                writer.writerow(line)
-
-    def __enter__(self):
-        return self.contents
-
-    def __exit__(self, *args):
-        for entry in self.contents:
-            if 'size' not in entry:
-                path = os.path.join(self.dir_name, entry['save_name'])
-                entry['size'] = os.stat(path).st_size
-        self.verify_index()
-        self._write_index()
 
 
 def safe_convert(cls, string):
@@ -171,7 +95,7 @@ class SafeLorentz(hepmath.LorentzVector):
     def rapidity(self):
         """ overwrite the method in LorentzVector with a more robust method """
         if self.perp2 == 0 and self.e == abs(self.pz):
-            large_num = 10**10
+            large_num = np.inf
             return np.sign(self.pz)*large_num + self.pz
         if self.pz == 0.:
             return 0.
@@ -209,10 +133,15 @@ class EventWise:
         # nomally a jagged array
         self.dir_name = dir_name
         self.save_name = save_name
+        # by using None as the default value it os possible to detect non entry
         if columns is not None:
             self.columns = columns
+        else:
+            self.columns = []
         if contents is not None:
             self._column_contents = contents
+        else:
+            self._column_contents = {}
         assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
 
     def add_to_index(self, contents, name=None, mutable=True):
@@ -224,7 +153,8 @@ class EventWise:
     def __getattr__(self, attr_name):
         """ the columns are all avalible attrs """
         # capitalise raises the case of the first letter
-        if attr_name[0].upper() + attr_name[1:] in self.columns:
+        attr_name = attr_name[0].upper() + attr_name[1:]
+        if attr_name in self.columns:
             if self.selected_index is not None:
                 return self._column_contents[attr_name][self.selected_index]
             return self._column_contents[attr_name]
@@ -253,20 +183,29 @@ class EventWise:
         all_content = {'column_order': column_order, **self._column_contents}
         awkward.save(path, all_content, mode='w')
 
+    @classmethod
+    def from_file(cls, path):
+        contents = awkward.load(path)
+        columns = list(contents['column_order'])
+        new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
+        return new_eventWise
+
     def append(self, *args):
         if len(args) == 2:
             new_columns = args[0]
             new_content = args[1]
-            for name in new_columns:
-                if name in self.columns:
-                    self.remove(name)
+            assert sorted(new_columns) == sorted(new_content.keys())
         else:
             new_content = args[0]
             new_columns = new_content.keys()
-            for name in new_columns:
-                if name in self.columns:
-                    self.remove(name)
-        self.columns += new_columns
+        # enforce the first letter of each attrbute to be capital
+        New_columns = [c[0].upper() + c[1:] for c in new_columns]
+        new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
+        # delete existing duplicates
+        for name in New_columns:
+            if name in self.columns:
+                self.remove(name)
+        self.columns += New_columns
         self._column_contents = {**self._column_contents, **new_content}
         self.write()
 
@@ -283,17 +222,10 @@ class EventWise:
         for c in to_remove:
             self.remove(c)
 
-    @classmethod
-    def from_file(cls, path):
-        contents = awkward.load(path)
-        columns = list(contents['column_order'])
-        new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
-        return new_eventWise
-
 
 def add_rapidity(eventWise, base_name=''):
     if base_name != '':
-        if not base_name.endwith('_'):
+        if not base_name.endswith('_'):
             base_name += '_'
     pts = getattr(eventWise, base_name+"PT")
     pzs = getattr(eventWise, base_name+"Pz")
@@ -311,15 +243,15 @@ def add_rapidity(eventWise, base_name=''):
         es = getattr(eventWise, base_name+"Energy")
         for pt, pz, e in zip(pts, pzs, es):
             if pt == 0 and e == np.abs(pz):
-                large_num = 10**10
+                large_num = np.inf  # change to large number???
                 rap_here.append(np.sign(pz)*large_num + pz)
             elif pz == 0.:
                 rap_here.append(0)
             else:
                 m2 = e**2 - pz**2 - pt**2
-                m2 = min(m2, 0.)  # m2 should be strictly positive, but floating point happens
-                mag_rap = 0.5*np.log((pt**2 + m2)/((e + np.abs(pz))**2))
-                rap_here.append(-np.sign(pz) * mag_rap)
+                m2 = max(m2, 0.)  # m2 should be strictly positive, but floating point happens
+                mag_rap = 0.5*np.log((pt**2 + m2)/((e - np.abs(pz))**2))
+                rap_here.append(np.sign(pz) * mag_rap)
         rapidities.append(awkward.fromiter(rap_here))
     eventWise.selected_index = None
     rapidities = awkward.fromiter(rapidities)
@@ -331,48 +263,45 @@ def add_thetas(eventWise, basename=None):
     contents = {}
     if basename is None:
         # find all the things with an angular property
-        phi_cols = [c[:-4] for c in eventWise.columns if c.endswith("_Phi")]
-        missing_theta = [c for c in phi_cols if (c+"_Theta") not in eventWise.columns]
+        phi_cols = [c[:-3] for c in eventWise.columns if c.endswith("Phi")]
+        missing_theta = [c for c in phi_cols if (c+"Theta") not in eventWise.columns]
     else:
         missing_theta = [basename]
     for name in missing_theta:
-        avalible_components = [c[len(name)+1:] for c in eventWise.columns
+        avalible_components = [c[len(name):] for c in eventWise.columns
                                if c.startswith(name)]
         if (set(("PT", "Pz")) <= set(avalible_components) or
-            set(("Birr", "PT")) <= set(avalible_components) or
+            #set(("Birr", "PT")) <= set(avalible_components) or  # problem, we don't have a direction
             set(("Birr", "Pz")) <= set(avalible_components) or
             set(("Px", "Py", "Pz")) <= set(avalible_components)):
             # then we will work with momentum
-            if "Pz" in avalible_components:
-                pz = getattr(eventWise, name+"_Pz")
-                if "Birr" in avalible_components:
-                    birr = getattr(eventWise, name+"_Birr")
-                    theta = np.arccos(pz/birr)
-                else:
-                    if "PT" in avalible_components:
-                        pt = getattr(eventWise, name+"_PT")
-                    else:
-                        pt = np.sqrt(getattr(eventWise, name+"_Px")**2 +
-                                     getattr(eventWise, name+"_Py")**2)
-                    theta = np.arctan(pt/pz)
+            #if "Pz" in avalible_components:
+            pz = getattr(eventWise, name+"Pz")
+            if "Birr" in avalible_components:
+                birr = getattr(eventWise, name+"Birr")
+                theta = np.arccos(pz/birr)
             else:
-                birr = getattr(eventWise, name+"_Birr")
-                pt = getattr(eventWise, name+"_PT")
-                theta = np.arcsin(pt/birr)
-        elif "ET" in avalible_components:
-            # we work with energy
-            et = getattr(eventWise, name+"_ET")
-            e = getattr(eventWise, name+"_Energy")
-            theta = np.arcsin(et/e)
+                if "PT" in avalible_components:
+                    pt = getattr(eventWise, name+"PT")
+                else:
+                    pt = np.sqrt(getattr(eventWise, name+"Px")**2 +
+                                 getattr(eventWise, name+"Py")**2)
+                # tan(theta) = oposite/adjacent = pt/pz
+                theta = np.arctan2(pt, pz)
+            #else:
+            #    birr = getattr(eventWise, name+"Birr")
+            #    pt = getattr(eventWise, name+"PT")
+            #    theta = np.arcsin(pt/birr)
+        #elif "ET" in avalible_components:  # TODO, need to add a workaround for towers
+        #    # we work with energy          # problem is knowing direction
+        #    et = getattr(eventWise, name+"ET")
+        #    e = getattr(eventWise, name+"Energy")
+        #    theta = np.arcsin(et/e)
         else:
             print(f"Couldn't calculate Theta for {name}")
             continue
-        columns.append(name + "_Theta")
-        contents[name+"_Theta"] = theta
-    if "Theta" not in eventWise.columns:
-        theta = np.arctan(eventWise.PT/eventWise.Pz)
-        columns.append("Theta")
-        contents["Theta"] = theta
+        columns.append(name + "Theta")
+        contents[name+"Theta"] = theta
     eventWise.append(columns, contents)
 
 
@@ -399,13 +328,14 @@ def add_pseudorapidity(eventWise, basename=None):
 
 
 def theta_to_pseudorapidity(theta_list):
-    tan_theta = np.tan(theta_list)
-    mag_tan_theta = np.abs(tan_theta)
-    infinite = mag_tan_theta <= 0.
+    restricted_theta = np.minimum(theta_list, np.pi - theta_list)
+    tan_restricted = np.tan(np.abs(restricted_theta)/2)
+    infinite = tan_restricted <= 0.
     pseudorapidity = np.full_like(theta_list, np.inf)
-    pseudorapidity[~infinite] = np.log(mag_tan_theta/2)
-    pseudorapidity *= -np.sign(tan_theta)
+    pseudorapidity[~infinite] = -np.log(tan_restricted[~infinite])
+    pseudorapidity[theta_list>np.pi/2] *= -1.
     return pseudorapidity
+
 
 class RootReadout(EventWise):
     """ Reads arbitary components from a root file created by Delphes """
@@ -418,7 +348,7 @@ class RootReadout(EventWise):
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)
         self._unpack_TRefs()
-        super().__init__(dir_name, save_name)
+        super().__init__(dir_name, save_name, columns=self.columns, contents=self._column_contents)
 
     def add_component(self, component_name, key_prefix=''):
         if key_prefix != '':
@@ -464,7 +394,7 @@ class RootReadout(EventWise):
                     while attr_names[index]+str(n) in attr_names:
                         n += 1
                     attr_names[index] += str(n)
-        assert len(set(attr_names)) == len(attr_names), f"Duplicates in columns; {attr_names}"
+        assert len(set(attr_names)) == len(attr_names), f"Duplicates in columns; {[n for i, n in enumerate(attr_names) if n in attr_names[i+1:]]}"
         new_column_contents = {name: all_arrays[key]
                                for key, name in zip(full_keys, attr_names)}
         self._column_contents = {**new_column_contents, **self._column_contents}

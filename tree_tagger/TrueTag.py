@@ -95,8 +95,8 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     max_angle2 = max_angle**2
     for event_n in range(start_point, end_point):
-        if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break

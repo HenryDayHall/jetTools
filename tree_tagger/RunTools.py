@@ -11,9 +11,10 @@ from copy import deepcopy
 from ipdb import set_trace as st
 import torch
 import numpy as np
-from tree_tagger import Constants, Datasets, LinkingNN, RecursiveNN
+from tree_tagger import Constants, Datasets, LinkingNN, RecursiveNN, StandardNN
 from matplotlib import pyplot as plt
 import matplotlib.animation
+import sklearn
 
 
 def remove_file_extention(path):
@@ -37,6 +38,7 @@ def str_is_type(s_type, s, accept_none=False):
 
 class Run:
     """ lazy loading, be aware that loading the nets will usually mean loading the datasets"""
+    chatty = False
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
     setting_names = ["net_type", "latent_dimension", "data_folder",  # nature of the net itself
@@ -138,8 +140,9 @@ class Run:
                     else:
                         #it lacks a table
                         self.empty_run = True
-            # now process the info line
-            self.settings = self.process_info_line(info_line)
+            # now process the info line, or don't if settings are gien as an arg
+            self.settings = kwargs.get("settings", self.process_info_line(info_line))
+            self.fill_defaults()
         except FileNotFoundError:
             print("New run being created")
             self.empty_run = True
@@ -150,10 +153,10 @@ class Run:
                 csv_file.write(' '.join(self.column_headings) + '\n')
         # if the net is empty these things should not exist
         if self.empty_run:
-            if self.settings['auc'] is not None:
+            if self.settings['auc'] is not None and self.chatty:
                 print("Warning, found auc {} in empty run".format(self.settings['auc']))
                 self.settings['auc'] = None
-            if self.settings['lowest_loss'] is not None:
+            if self.settings['lowest_loss'] is not None and self.chatty:
                 print("Warning, found lowest_loss {} in empty run".format(self.settings['lowest_loss']))
                 self.settings['lowest_loss'] = None
         self.settings["pretty_name"] = run_name
@@ -304,7 +307,7 @@ class Run:
         # there should definetly be column headdings before data in the table
         assert not hasattr(self, 'table') or len(self.table)==0, "Data in table before column headdings chosen!"
         self.__column_headings = column_headings
-        self.table = np.array([]).reshape((0, len(self.column_headings)))
+        self.table = np.array([]).reshape((0, len(column_headings)))
 
 
     def process_info_line(self, info_line):
@@ -321,13 +324,16 @@ class Run:
             assert Run.arg_tests[key](args[key]), "problem with {}".format(key)
             # convert and store
             args[key] = Run.arg_convert[key](args[key])
+        return args
+
+    def fill_defaults(self):
         # find out if anything didn't get added
         for arg_name in self.setting_names:
-            if arg_name not in args.keys():
-                print("Missing {}, assuming default value {}"
-                      .format(arg_name, self.arg_defaults[arg_name]))
-                args[arg_name] = self.arg_defaults[arg_name]
-        return args
+            if arg_name not in self.settings.keys():
+                if self.chatty:
+                    print("Missing {}, assuming default value {}"
+                          .format(arg_name, self.arg_defaults[arg_name]))
+                self.settings[arg_name] = self.arg_defaults[arg_name]
 
     def get_time(self):
         # pick the first timestamp
@@ -335,10 +341,6 @@ class Run:
         time_0 = time.gmtime(t_0)
         self.time = datetime.datetime(*time_0[:6])
         return self.time
-
-    def add_auc(self):
-        _, _, auc = calculate_roc(self, self.settings['data_folder'])
-        self.settings['auc'] = auc
 
     def write(self, with_nets=True):
         # just clear the file and start from scratch
@@ -381,6 +383,15 @@ class Run:
             param_dicts = [p.state_dict() for p in param_dicts]
         self._last_net_state_dicts = deepcopy(param_dicts)
 
+    def apply_to_test(self, net=None, test_input=None):
+        raise NotImplementedError
+
+    def add_auc(self):
+        output, truth = self.apply_to_test()
+        auc = sklearn.metrics.roc_auc_score(truth, output)
+        self.settings["auc"] = auc
+        return auc
+
 
 class LinkingRun(Run):
     # the list arguments in the info line
@@ -388,11 +399,9 @@ class LinkingRun(Run):
     setting_names = Run.setting_names + ["database_name", "hepmc_name"]
     # the tests for identifying the arguments
     arg_tests = {**Run.arg_tests,
-                 "database_name" : os.path.exists,
                  "num_events"    : lambda s: str_is_type(int, s)}
 
     arg_convert = {**Run.arg_convert, 
-                   "database_name" : lambda s: s,
                    "num_events"  : int}
 
     arg_defaults = {"data_folder"   : "big_ds",
@@ -447,20 +456,16 @@ class LinkingRun(Run):
 
 class JetWiseRun(Run):
     arg_tests = {**Run.arg_tests,
-                 "database_name" : os.path.exists,
-                 "n_jets"    : lambda s: str_is_type(int, s),
-                 "jet_name"  : lambda s: True,
-                 "net_type"  : lambda s: True}
+                 "n_train_jets"    : lambda s: str_is_type(int, s),
+                 "jet_name"  : lambda s: True}
 
     arg_convert = {**Run.arg_convert, 
-                   "database_name" : lambda s: s,
-                   "n_jets"  : int,
-                   "jet_name": lambda s: s, 
-                   "net_type": lambda s: s}
+                   "n_train_jets"  : int,
+                   "jet_name": lambda s: s}
 
     arg_defaults = {"data_folder" : "fakereco",
-                    "database_name" : "/home/henry/lazy/h1bBatch2_hepmc.awkd",
-                    "n_jets"  : -1,
+                    "database_name" : "megaIgnore/toCopy/generous_cuts.awkd",
+                    "n_train_jets"  : -1,
                     "jet_name"  : "FastJet",
                     "latent_dimension" : 10,  # ignored by a BDT
                     "time"        : 3000,
@@ -468,7 +473,7 @@ class JetWiseRun(Run):
                     "inital_lr"   : 0.01,
                     "weight_decay": 0.01,
                     "loss_type"   : "BCE",
-                    "net_type"    : "bdt",
+                    "net_type"    : "jetwise_default",
                     "auc"         : None,
                     "lowest_loss" : None,
                     "notes"       : ""}
@@ -478,7 +483,7 @@ class JetWiseRun(Run):
         if self._dataset is None:
             self._dataset = Datasets.JetWiseDataset(database_name=self.settings["database_name"],
                                                     jet_name=self.settings["jet_name"],
-                                                    n_jets=self.settings["n_jets"])
+                                                    n_train_jets=self.settings["n_train_jets"])
         return self._dataset
         
 
@@ -487,7 +492,51 @@ class JetWiseRun(Run):
 
 
 class FlatJetRun(JetWiseRun):
+    def __init__(self, *args, **kwargs):
+        self.arg_defaults['net_type'] = 'standard'
+        super().__init__(*args, **kwargs)
+
+    @property
+    def dataset(self, shuffle=False):
+        if self._dataset is None:
+            try:
+                self._dataset = Datasets.FlatJetDataset.from_file(self.settings["database_name"],
+                                                                  self.settings["data_folder"])
+            except FileNotFoundError:
+                self._dataset = Datasets.FlatJetDataset(database_name=self.settings["database_name"],
+                                                        jet_name=self.settings["jet_name"],
+                                                        n_train_jets=self.settings["n_train_jets"])
+        return self._dataset
+
+    def _nets_from_state_dict(self, state_dicts):
+        # Device configuration
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        else:
+            device = torch.device('cpu')
+        net = StandardNN.SimpleLinear(device, self.dataset.num_inputs,
+                                      self.settings['latent_dimension'], 
+                                      self.dataset.num_targets)
+        return [net]
+
+
+    def apply_to_test(self):
+        # Device configuration
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        else:
+            device = torch.device('cpu')
+        if not self.dataset.is_torch:
+            self.dataset.to_torch(device)
+        test_jets = self.dataset.test_jets
+        net = self.best_nets[0].to(device)
+        output = net.forward(test_jets)
+        return output, self.dataset.test_truth
+
+
+class SklearnJetRun(FlatJetRun):
     net_extention = ".sklrn"
+    chatty=False
     arg_tests = {**JetWiseRun.arg_tests,
                  "max_depth"      : lambda s: str_is_type(int, s),
                  "n_estimators"   : lambda s: str_is_type(int, s),
@@ -503,6 +552,10 @@ class FlatJetRun(JetWiseRun):
                     "n_estimators"  : 200,
                     "algorithm_name": "SAMME"}
 
+    def __init__(self, *args, **kwargs):
+        self.arg_defaults['net_type'] = 'bdt'
+        super().__init__(*args, **kwargs)
+
     def _load_state_dicts(self):
         try:
             self._last_net_state_dicts = []
@@ -511,7 +564,7 @@ class FlatJetRun(JetWiseRun):
                     self._last_net_state_dicts.append(state_file.read())
         except FileNotFoundError:
             # if the run is not empty there should be a last net
-            if not self.empty_run:
+            if not self.empty_run and self.chatty:
                 print("Warning; not an empty run, but no last net found!")
         try:
             self._best_net_state_dicts = []
@@ -519,21 +572,9 @@ class FlatJetRun(JetWiseRun):
                 with open(name, 'rb') as state_file:
                     self._best_net_state_dicts.append(state_file.read())
         except FileNotFoundError:
-            if not self.empty_run:
+            if not self.empty_run and self.chatty:
                 print("Warning; not an empty run, but no best net found!")
 
-    @property
-    def dataset(self, shuffle=False):
-        if self._dataset is None:
-            try:
-                self._dataset = Datasets.FlatJetDataset.from_file(self.settings["database_name"],
-                                                                  self.settings["data_folder"])
-            except FileNotFoundError:
-                self._dataset = Datasets.FlatJetDataset(database_name=self.settings["database_name"],
-                                                        jet_name=self.settings["jet_name"],
-                                                        n_jets=self.settings["n_jets"])
-        return self._dataset
-        
     def save_net(self, net, file_name):
         with open(file_name, 'wb') as pickle_file:
             if type(net) == bytes:
@@ -554,6 +595,19 @@ class FlatJetRun(JetWiseRun):
     def _nets_from_state_dict(self, state_dicts):
         nets = [pickle.loads(s) for s in state_dicts]
         return nets
+
+    def get_test_input(self):
+        return np.nan_to_num(self.dataset.test_jets.astype('float32'))
+
+    def apply_to_test(self, net=None, test_inputs=None):
+        if net is None:
+            bdt = self.best_nets[0]
+            dataset = self.dataset
+            output = bdt.decision_function(self.get_test_input())
+            test_truth = dataset.test_truth.flatten()
+            return output, test_truth
+        output = net.decision_function(test_inputs)
+        return output, None
 
 
 class RecursiveRun(JetWiseRun):
@@ -578,7 +632,7 @@ class RecursiveRun(JetWiseRun):
         if self._dataset is None:
             self._dataset = Datasets.JetTreesDataset(database_name=self.settings["database_name"],
                                                      jet_name=self.settings["jet_name"],
-                                                     n_jets=self.settings["n_jets"],)
+                                                     n_train_jets=self.settings["n_train_jets"],)
         return self._dataset
         
 
@@ -592,6 +646,31 @@ class RecursiveRun(JetWiseRun):
                                          self.settings['latent_dimension'], 
                                          self.dataset.num_targets)
         return [net]
+
+    def get_test_input(self):
+        return self.dataset.test_events()
+
+    def apply_to_test(self, net=None, test_input=None):
+        if net is None:
+            events = self.get_test_input()
+            net = self.best_nets[0]
+            if torch.cuda.is_available():
+                device = torch.device('cuda')
+            else:
+                device = torch.device('cpu')
+            net.to(device)
+        else:
+            events=test_input
+        n_test = len(events)
+        truth = np.empty(n_test, dtype=int)
+        outputs = np.empty(n_test, dtype=float)
+        for i, event_data in enumerate(events):
+            truth_here, walker = event_data
+            outputs[i] = net(walker).detach().item()
+            truth[i] = truth_here
+        # do the sigmoid
+        outputs = 1/(1+np.exp(-outputs))
+        return outputs, truth
 
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):

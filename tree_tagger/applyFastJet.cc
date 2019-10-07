@@ -70,7 +70,7 @@ int _traverse(PseudoJet root,
     // has form {my_id, input_id, mother_id, daughter1_id, daughter2_id}
     vector<int> root_ints = {this_id, root.user_index(), mother_id, -1, -1};
     ints.push_back(root_ints);
-    vector<double> root_doubles = {root.pt(), root.rap(), root.phi_std(), root.e()};
+    vector<double> root_doubles = {root.pt(), root.rap(), root.phi_std(), root.e(), root.px(), root.py(), root.pz()};
     doubles.push_back(root_doubles);
     stack_idx.push_back(0); // says where the stack item is in terms of ints/floats idx
     int idx_here = stack_idx.back();
@@ -91,7 +91,7 @@ int _traverse(PseudoJet root,
             ints[idx_here][3] = daughter1_id;
             vector<int> daughter1_ints = {daughter1_id, pieces[0].user_index(), this_id, -1, -1};
             ints.push_back(daughter1_ints);
-            vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].rap(), pieces[0].phi_std(), pieces[0].e()};
+            vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].rap(), pieces[0].phi_std(), pieces[0].e(), pieces[0].px(), pieces[0].py(), pieces[0].pz()};
             doubles.push_back(daughter1_doubles);
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[0]);
@@ -99,7 +99,7 @@ int _traverse(PseudoJet root,
             ints[idx_here][4] = daughter2_id;
             vector<int> daughter2_ints = {daughter2_id, pieces[1].user_index(), this_id, -1, -1};
             ints.push_back(daughter2_ints);
-            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].rap(), pieces[1].phi_std(), pieces[1].e()};
+            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].rap(), pieces[1].phi_std(), pieces[1].e(), pieces[0].px(), pieces[0].py(), pieces[0].pz()};
             doubles.push_back(daughter2_doubles);
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[1]);
@@ -261,6 +261,9 @@ int main(int argc, char * argv[]) {
                        << "rapidity" << sep
                        << "phi" << sep
                        << "e"
+                       << "px"
+                       << "py"
+                       << "pz"
                        << std::endl;
 
    // Write out
@@ -274,7 +277,10 @@ int main(int argc, char * argv[]) {
        double_file << doubles[i][0] << sep 
                    << doubles[i][1] << sep
                    << doubles[i][2] << sep
-                   << doubles[i][3]
+                   << doubles[i][3] << sep
+                   << doubles[i][4] << sep
+                   << doubles[i][5] << sep
+                   << doubles[i][6]
                    << std::endl;
    }
 }
