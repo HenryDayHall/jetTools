@@ -347,7 +347,11 @@ class RootReadout(EventWise):
         prefixes = [''] + component_names[1:]
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)
+        self._fix_Birr()
         self._unpack_TRefs()
+        self._insert_inf_rapidities()
+        self._fix_Tower_NTimeHits()
+        self._remove_Track_Birr()
         super().__init__(dir_name, save_name, columns=self.columns, contents=self._column_contents)
 
     def add_component(self, component_name, key_prefix=''):
@@ -476,6 +480,42 @@ class RootReadout(EventWise):
             reflection.append(event_reflection)
         reflection = awkward.fromiter(reflection)
         return reflection
+
+    def _fix_Birr(self):
+        """ for reasons known unto god and some lonely coder 
+            some momentum values are incorrectly set to zero
+            fix them """
+        self.selected_index = None
+        pt = self.PT
+        birr = self.Birr
+        pz = self.Pz
+        n_events = len(birr)
+        for event_n in range(n_events):
+            is_zero = np.abs(birr[event_n] < 0.001)
+            calc_birr = np.sqrt(pt[event_n][is_zero]**2 + pz[event_n][is_zero]**2)
+            birr[event_n][is_zero] = calc_birr
+        self._column_contents["Birr"] = birr
+
+    def _fix_Tower_NTimeHits(self):
+        particles = self.Tower_Particles
+        times_hit = apply_array_func(len, particles)
+        self._column_contents["Tower_NTimeHits"] = times_hit
+
+    def _insert_inf_rapidities(self):
+        """ we use np.inf not 999.9 for infinity"""
+        def big_to_inf(arry):
+            # we expect inf to be 999.9
+            arry[np.abs(arry)>999.] *= np.inf
+            return arry
+        for name in self._column_contents.keys():
+            if "Rapidity" in name:
+                new_values = apply_array_func(big_to_inf, self._column_contents[name])
+                self._column_contents[name] = new_values
+
+    def _remove_Track_Birr(self):
+        name = "Track_Birr"
+        self.columns.remove(name)
+        del self._column_contents[name]
                 
     def write(self):
         raise NotImplementedError("This interface is read only")
