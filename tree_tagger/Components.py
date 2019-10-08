@@ -337,34 +337,62 @@ def theta_to_pseudorapidity(theta_list):
     return pseudorapidity
 
 
+def add_PT(eventWise, basename=None):
+    columns = []
+    contents = {}
+    if basename is None:
+        # find all the things with px, py
+        px_cols = [c[:-2] for c in eventWise.columns if c.endswith("Px")]
+        pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c in px_cols]
+        missing_pt = [c for c in pxpy_cols if (c+"PT") not in eventWise.columns]
+    else:
+        missing_pt = [basename]
+    for name in missing_pt:
+        px = getattr(eventWise, name+"Px")
+        py = getattr(eventWise, name+"Py")
+        pt = apply_array_func(lambda x, y: np.sqrt(x**2 + y**2), px, py)
+        columns.append(name + "PT")
+        contents[name+"PT"] = pt
+    eventWise.append(columns, contents)
+
+
 class RootReadout(EventWise):
     """ Reads arbitary components from a root file created by Delphes """
-    def __init__(self, dir_name, save_name, component_names):
+    def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None):
         # read the root file
         path = os.path.join(dir_name, save_name)
-        self._root_file = uproot.open(path)["Delphes"]
+        self._root_file = uproot.open(path)[component_of_root_file]
+        if key_selection_function is not None:
+            self._key_selection_function = key_selection_function
+        else:
+            # remove keys starting with lower case letters (they seem to be junk)
+            def func(key):
+                return (key.decode().split('.', 1)[1][0]).isupper()
+            self._key_selection_function = func
         # the first component has no prefix
         prefixes = [''] + component_names[1:]
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)
-        self._fix_Birr()
-        self._unpack_TRefs()
-        self._insert_inf_rapidities()
-        self._fix_Tower_NTimeHits()
-        self._remove_Track_Birr()
+        if "Delphes" in component_of_root_file:
+            # some tweeks for files produced by Delphes
+            self._fix_Birr()
+            self._unpack_TRefs()
+            self._insert_inf_rapidities()
+            self._fix_Tower_NTimeHits()
+            self._remove_Track_Birr()
         super().__init__(dir_name, save_name, columns=self.columns, contents=self._column_contents)
 
     def add_component(self, component_name, key_prefix=''):
         if key_prefix != '':
+            key_prefix = key_prefix[0].upper() + key_prefix[1:]
             # check it ends in an underscore
             if not key_prefix.endswith('_'):
                 key_prefix += '_'
             # check that this prefix is not seen anywhere else
             for key in self._column_contents.keys():
                 assert not key.startswith(key_prefix)
-        # remove keys starting with lower case letters (they seem to be junk)
         full_keys = [k for k in self._root_file[component_name].keys()
-                     if (k.decode().split('.', 1)[1][0]).isupper()]
+                     if self._key_selection_function(k)]
         all_arrays = self._root_file.arrays(full_keys)
         # process the keys to ensure they are usable a attribute names and unique
         attr_names = []
@@ -381,7 +409,7 @@ class RootReadout(EventWise):
             new_attr = ''.join(filter(str.isalnum, new_attr))
             if new_attr in rename:
                 new_attr = rename[new_attr]
-            new_attr = key_prefix + new_attr
+            new_attr = key_prefix + new_attr[0].upper() + new_attr[1:]
             if new_attr[0].isdigit():
                 # atribute naems can contain numbers 
                 # but they must not start with one

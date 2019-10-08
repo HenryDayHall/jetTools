@@ -407,6 +407,28 @@ def test_add_pseudorapidity():
             ew.B_PseudoRapidity
 
 
+def test_add_PT():
+    # particles could go down each axial direction
+    input_output = [
+            ('x', 1.),
+            ('-x', 1.),
+            ('y', 1.),
+            ('-y', 1.),
+            ('z', 0.),
+            ('-z', 0.),
+            ('45', 1.)]
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "PT.awkd"
+        for inp, out in input_output:
+            particle = Particle(inp, 0)
+            contents = {"Px": particle.px, "Py": particle.py}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+                                      contents=contents)
+            Components.add_PT(ew, '')
+            tst.assert_allclose(ew.PT[0], out)
+
+
 def test_RootReadout():
     root_file = "/home/henry/lazy/dataset2/h1bBatch2.root"
     dir_name, save_name = os.path.split(root_file)
@@ -414,6 +436,8 @@ def test_RootReadout():
     rr = Components.RootReadout(dir_name, save_name, components)
     n_events = len(rr.Energy)
     test_events = np.random.randint(0, n_events, 20)
+    idents = PDGNames.Identities()
+    all_ids = set(idents.particle_data[:, idents.columns["id"]])
     for event_n in test_events:
         rr.selected_index = event_n
         # sanity checks on particle values
@@ -433,8 +457,6 @@ def test_RootReadout():
         filt = np.logical_and(np.abs(rr.Rapidity) < 7., np.isfinite(rapidity_calculated))
         tst.assert_allclose(rr.Rapidity[filt], rapidity_calculated[filt], atol=0.01, rtol=0.01)
         # valid PID
-        idents = PDGNames.Identities()
-        all_ids = set(idents.particle_data[:, idents.columns["id"]])
         assert set(np.abs(rr.PID)).issubset(all_ids)
         # sanity checks on Towers
         # energy

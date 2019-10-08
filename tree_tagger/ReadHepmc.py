@@ -24,6 +24,7 @@ class Hepmc(Components.EventWise):
                              "N_orphans", "N_out", "N_vertex_weights"]
         self.vertex_convertions  = [int, int, float, float, float, float,
                                     int, int, int]
+        # parents and children hold list indices
         self.particle_cols = ["Particle_barcode", "MCPID", "Px", "Py", "Pz", "Energy", "Generated_mass",
                               "Status_code", "Polarization_theta", "Polarization_phi",
                               "End_vertex_barcode", "N_flow_codes", "Flow_codes", "Antiflow_codes",
@@ -52,6 +53,8 @@ class Hepmc(Components.EventWise):
             # self.check_colour_flow()  # never worked... colour flow doesn't seem to be conserved
             # change the savename to indicate the processing
             save_name = save_name.split('.', 1)[0] + '_hepmc.awkd'
+            kwargs["columns"] = self.columns
+            kwargs["contents"] = self._column_contents
         super().__init__(dir_name, save_name, **kwargs)
         self.n_particles = sum([len(evt) for evt in self.Particle_barcode])
         self.n_vertices = sum([len(evt) for evt in self.Vertex_barcode])
@@ -222,10 +225,7 @@ class Hepmc(Components.EventWise):
                     self.__getattr__(name)[-1].append(convertion(line[vertex_indices[name]]))
             elif line[0] == 'P':  # new particle
                 for convertion, name in zip(self.particle_convertions, particle_indices):
-                    try:
-                        self.__getattr__(name)[-1].append(convertion(line[particle_indices[name]]))
-                    except Exception:
-                        st()
+                    self.__getattr__(name)[-1].append(convertion(line[particle_indices[name]]))
                 # now deal with the two speciel cases
                 self.Start_vertex_barcode[-1].append(last_vertex_barcode)
                 if len(line) > len(particle_indices):  # there are flow codes
@@ -284,30 +284,6 @@ class Hepmc(Components.EventWise):
             self.Cross_section_pb[event_n] = float(header_line[i])
             i += 1
             self.Cross_section_error_pb[event_n] = float(header_line[i])
-
-
-# TODO use methods in Components
-def add_PT_Theta_Phi(eventWise):
-    pt, theta, phi = [], [], []
-    n_events = len(eventWise.Px)
-    for event_n in range(n_events):
-        if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
-        eventWise.selected_index = event_n
-        pt_here = np.sqrt(np.square(eventWise.Px) +
-                          np.square(eventWise.Py))
-        pt.append(awkward.fromiter(pt_here))
-        theta_here = np.where(eventWise.Pz != 0,
-                              np.arctan(pt_here/eventWise.Pz),
-                              np.pi)
-        theta.append(awkward.fromiter(theta_here))
-        phi_here = np.arctan(eventWise.Px/eventWise.Py)
-        phi.append(phi_here)
-    content = {"PT": awkward.fromiter(pt),
-               "Theta": awkward.fromiter(theta),
-               "Phi": awkward.fromiter(phi)}
-    columns = list(content.keys())
-    eventWise.append(columns, content)
 
 
 def main():
