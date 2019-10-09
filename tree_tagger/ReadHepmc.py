@@ -78,9 +78,9 @@ class Hepmc(Components.EventWise):
 
     def _assign_heritage(self):
         # this section requires numpy indexing on the barcodes
-        self.Start_vertex_barcode = awkward.fromiter(self.Start_vertex_barcode)
-        self.End_vertex_barcode = awkward.fromiter(self.End_vertex_barcode)
-        self.Vertex_barcode = awkward.fromiter(self.Vertex_barcode)
+        self._column_contents["Start_vertex_barcode"] = awkward.fromiter(self.Start_vertex_barcode)
+        self._column_contents["End_vertex_barcode"] = awkward.fromiter(self.End_vertex_barcode)
+        self._column_contents["Vertex_barcode"] = awkward.fromiter(self.Vertex_barcode)
         # each event will have completely seperate heritage
         for event_n, (barcodes, start_barcodes, end_barcodes) in enumerate(zip(self.Vertex_barcode,
                                                                                self.Start_vertex_barcode,
@@ -138,12 +138,9 @@ class Hepmc(Components.EventWise):
                         link_counter[antiflow] += 1
                 del link_counter[None]
                 for flow in link_counter:
-                    try:
-                        assert link_counter[flow] == 0, f"Vertex barcode {vertex_b} " + \
-                                                        f"has {link_counter[flow]} outgoing colour " +\
-                                                        f"flows for colour flow {flow}"
-                    except Exception:
-                        st()
+                    assert link_counter[flow] == 0, f"Vertex barcode {vertex_b} " + \
+                                                    f"has {link_counter[flow]} outgoing colour " +\
+                                                    f"flows for colour flow {flow}"
 
 
     def _parse_events(self, filepath, start=0, stop=np.inf):
@@ -174,11 +171,11 @@ class Hepmc(Components.EventWise):
         # start by adding default entries, incase anythign dosn't get content
         add_row = self.particle_cols + self.vertex_cols
         for name in add_row:
-            table = self.__getattr__(name)
+            table = self._column_contents[name]
             table.append([])
         add_default = [c for c in self.columns if c not in add_row]
         for name in add_default:
-            table = self.__getattr__(name)
+            table = self._column_contents[name]
             table.append(np.nan)
         # first process the event line
         self._process_event_line(event_n, event_line)
@@ -214,7 +211,7 @@ class Hepmc(Components.EventWise):
         # for speed reason avpid function calls
         last_vertex_barcode = int(next_line[vertex_barcode_index])
         for convertion, name in zip(self.vertex_convertions, vertex_indices):
-            self.__getattr__(name)[-1].append(convertion(next_line[vertex_indices[name]]))
+            self._column_contents[name][-1].append(convertion(next_line[vertex_indices[name]]))
         # now everythng should be particles and vertices
         for line in csv_reader:
             if line[0] == 'E':  # reached next event
@@ -222,10 +219,10 @@ class Hepmc(Components.EventWise):
             elif line[0] == 'V':  # new vertex
                 last_vertex_barcode = int(line[vertex_barcode_index])
                 for convertion, name in zip(self.vertex_convertions, vertex_indices):
-                    self.__getattr__(name)[-1].append(convertion(line[vertex_indices[name]]))
+                    self._column_contents[name][-1].append(convertion(line[vertex_indices[name]]))
             elif line[0] == 'P':  # new particle
                 for convertion, name in zip(self.particle_convertions, particle_indices):
-                    self.__getattr__(name)[-1].append(convertion(line[particle_indices[name]]))
+                    self._column_contents[name][-1].append(convertion(line[particle_indices[name]]))
                 # now deal with the two speciel cases
                 self.Start_vertex_barcode[-1].append(last_vertex_barcode)
                 if len(line) > len(particle_indices):  # there are flow codes

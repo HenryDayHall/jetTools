@@ -62,18 +62,23 @@ def marry(hepmc, root_particles):
     columns += sorted(per_particle_hepmc_cols)
     for name in per_particle_hepmc_cols:
         contents[name] = hepmc.__getattr__(name)
+    # firgure out which of the root columns are per particle and which are per event
+    per_particle_root_cols = []
+    per_event_root_cols = []
+    for name in root_particles.columns:
+        values = getattr(root_particles, name)
+        _, depth = Components.detect_depth(values[:])
+        if depth == 0:
+            per_event_root_cols.append(name)
+        else:
+            per_particle_root_cols.append(name)
     # record what has what level of granularity
-    contents['per_event'] = awkward.fromiter(per_event_hepmc_cols)
+    contents['per_event'] = awkward.fromiter(per_event_root_cols + per_event_hepmc_cols)
     contents['per_vertex'] = awkward.fromiter(per_vertex_hepmc_cols.values())
-    contents['per_particle'] = awkward.fromiter(root_particles.columns + per_particle_hepmc_cols)
+    contents['per_particle'] = awkward.fromiter(per_particle_root_cols + per_particle_hepmc_cols)
     # make the new object and save it
     save_name = root_particles.save_name.split('.', 1)[0] + '_particles.awkd'
     dir_name = root_particles.dir_name
-    try:
-        new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
-        new_eventWise.write()
-    except Exception:
-        st()
-        new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
-        return new_eventWise
+    new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
+    new_eventWise.write()
 

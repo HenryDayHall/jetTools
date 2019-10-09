@@ -24,7 +24,8 @@ def detect_depth(nested):
     # assumed arrays are wider than deep
     max_depth = 0
     for x in nested:
-        if not hasattr(x, '__iter__'):
+        # some thigs have ittr methods, but are the end goal
+        if isinstance(x, (str, bytes)) or not hasattr(x, '__iter__'):
             return True, 0  # absolute end found
         elif len(x) > 0:
             abs_end, x_depth = detect_depth(x) 
@@ -358,7 +359,7 @@ def add_PT(eventWise, basename=None):
 
 class RootReadout(EventWise):
     """ Reads arbitary components from a root file created by Delphes """
-    def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None):
+    def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None, all_prefixed=False):
         # read the root file
         path = os.path.join(dir_name, save_name)
         self._root_file = uproot.open(path)[component_of_root_file]
@@ -369,8 +370,11 @@ class RootReadout(EventWise):
             def func(key):
                 return (key.decode().split('.', 1)[1][0]).isupper()
             self._key_selection_function = func
-        # the first component has no prefix
-        prefixes = [''] + component_names[1:]
+        if all_prefixed:
+            prefixes = component_names
+        else:
+            # the first component has no prefix
+            prefixes = [''] + component_names[1:]
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)
         if "Delphes" in component_of_root_file:
