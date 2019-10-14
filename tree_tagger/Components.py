@@ -8,7 +8,6 @@ import os
 import csv
 from ipdb import set_trace as st
 import numpy as np
-from skhep import math as hepmath
 from tree_tagger import Constants, PDGNames, InputTools
 
 def flatten(nested):
@@ -87,36 +86,6 @@ def safe_convert(cls, string):
     elif cls == bool: 
         return Constants.lowerCase_truthies.get(string.lower(), True)
     else: return cls(string)
-
-
-class SafeLorentz(hepmath.LorentzVector):
-    """ Like the hepmath lorentz vector class,
-        but with some substritutions for robust behavior """
-        
-    def rapidity(self):
-        """ overwrite the method in LorentzVector with a more robust method """
-        if self.perp2 == 0 and self.e == abs(self.pz):
-            large_num = np.inf
-            return np.sign(self.pz)*large_num + self.pz
-        if self.pz == 0.:
-            return 0.
-        m2 = max(self.m2, 0.)
-        mag_rap = 0.5*np.log((self.perp2 + m2)/((self.e + abs(self.pz))**2))
-        return -np.sign(self.pz) * mag_rap
-
-    @property
-    def et(self):
-        if self.p == 0:
-            return 0
-        else:
-            return super(SafeLorentz, self).et
-
-    def setptetaphie(self, pt, eta, phi, e):
-        # the default method, but using numpy to deal with possible infinity in pz
-        inputs = [pt*np.cos(phi), pt*np.sin(phi),
-                  pt*np.nan_to_num(np.sinh(eta), False),
-                  e]
-        self.setpxpypze(*inputs)
 
 
 class EventWise:
@@ -242,17 +211,7 @@ def add_rapidity(eventWise, base_name=''):
         pts = getattr(eventWise, base_name+"PT")
         pzs = getattr(eventWise, base_name+"Pz")
         es = getattr(eventWise, base_name+"Energy")
-        for pt, pz, e in zip(pts, pzs, es):
-            if pt == 0 and e == np.abs(pz):
-                large_num = np.inf  # change to large number???
-                rap_here.append(np.sign(pz)*large_num + pz)
-            elif pz == 0.:
-                rap_here.append(0)
-            else:
-                m2 = e**2 - pz**2 - pt**2
-                m2 = max(m2, 0.)  # m2 should be strictly positive, but floating point happens
-                mag_rap = 0.5*np.log((pt**2 + m2)/((e - np.abs(pz))**2))
-                rap_here.append(np.sign(pz) * mag_rap)
+        rap_here = ptpze_to_rapidity(pts, pzs, es)
         rapidities.append(awkward.fromiter(rap_here))
     eventWise.selected_index = None
     rapidities = awkward.fromiter(rapidities)
@@ -288,7 +247,7 @@ def add_thetas(eventWise, basename=None):
                     pt = np.sqrt(getattr(eventWise, name+"Px")**2 +
                                  getattr(eventWise, name+"Py")**2)
                 # tan(theta) = oposite/adjacent = pt/pz
-                theta = np.arctan2(pt, pz)
+                theta = ptpz_to_theta(pt, pz)
             #else:
             #    birr = getattr(eventWise, name+"Birr")
             #    pt = getattr(eventWise, name+"PT")
@@ -328,6 +287,14 @@ def add_pseudorapidity(eventWise, basename=None):
     eventWise.append(columns, contents)
 
 
+def ptpz_to_theta(pt_list, pz_list):
+    return np.arctan2(pt_list, pz_list)
+
+
+def pxpy_to_phipt(px_list, py_list):
+    return np.arctan2(py_list, px_list), np.sqrt(px_list**2 + py_list**2)
+
+
 def theta_to_pseudorapidity(theta_list):
     restricted_theta = np.minimum(theta_list, np.pi - theta_list)
     tan_restricted = np.tan(np.abs(restricted_theta)/2)
@@ -335,7 +302,26 @@ def theta_to_pseudorapidity(theta_list):
     pseudorapidity = np.full_like(theta_list, np.inf)
     pseudorapidity[~infinite] = -np.log(tan_restricted[~infinite])
     pseudorapidity[theta_list>np.pi/2] *= -1.
-    return pseudorapidity
+    return type(theta_list)(pseudorapidity)
+
+
+def ptpze_to_rapidity(pt_list, pz_list, e_list):
+    # can apply it to arrays of floats or floats, not ints
+    rapidity = np.zeros_like(e_list)
+    # deal with the infinite rapidities
+    large_num = np.inf  # change to large number???
+    inf_mask = np.logical_and(pt_list == 0, e_list == np.abs(pz_list))
+    rapidity[inf_mask] = large_num
+    # don't caculate rapidity that should be exactly 0 either
+    to_calculate = np.logical_and(~inf_mask, pz_list != 0)
+    e_use = np.array(e_list)[to_calculate]
+    pz_use = np.array(pz_list)[to_calculate]
+    pt2_use = np.array(pt_list)[to_calculate]**2
+    m2 = np.clip(e_use**2 - pz_use**2 - pt2_use, 0, None)
+    mag_rapidity = 0.5*np.log((pt2_use + m2)/((e_use - np.abs(pz_use))**2))
+    rapidity[to_calculate] = mag_rapidity
+    rapidity *= np.sign(pz_list)
+    return type(pt_list)(rapidity)
 
 
 def add_PT(eventWise, basename=None):
@@ -537,7 +523,7 @@ class RootReadout(EventWise):
         """ we use np.inf not 999.9 for infinity"""
         def big_to_inf(arry):
             # we expect inf to be 999.9
-            arry[np.abs(arry)>999.] *= np.inf
+            arry[np.nan_to_num(np.abs(arry))>999.] *= np.inf
             return arry
         for name in self._column_contents.keys():
             if "Rapidity" in name:

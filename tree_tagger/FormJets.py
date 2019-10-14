@@ -53,7 +53,7 @@ class PseudoJet:
                 # these are forced into list format
                 self._ints = self._ints.tolist()
                 self._floats = self._floats.tolist()
-            self.root_jetInputIdxs = kwargs.get('root_jetInputIdxs', None)
+            self.root_jetInputIdxs = kwargs.get('root_jetInputIdxs', [])
         else:
             assert "JetInputs_PT" in eventWise.columns, "eventWise must have JetInputs"
             assert isinstance(eventWise.selected_index, int), "selected index should be int"
@@ -109,6 +109,8 @@ class PseudoJet:
         # capitalise raises the case of the first letter
         attr_name = attr_name[0].upper() + attr_name[1:]
         if attr_name in self._float_contents:
+            if len(self) == 0:  # if there are no pesudojets, there are no contents
+                return np.nan
             # floats return a cumulative value
             col_num = getattr(self, self._float_contents[attr_name])
             cumulative = 0
@@ -120,10 +122,10 @@ class PseudoJet:
                       num_obs += 1
             if num_obs == 0:
                 return 0.
-            # some attrs should be averages instead of cumulative
-            average_attrs = ["Phi", "Rapidity"]
-            if attr_name in average_attrs:
-                cumulative /= num_obs
+            # some attrs should behave diferently
+            if attr_name in ["Rapidity", "Pseudorapidity"]:
+                print("Aaaaaaah")  # how did it end up like this
+                raise AttributeError  # it was only a kiss, it was only a kiss
             if attr_name == 'Phi':  # make sure it's -pi to pi
                 cumulative = Components.confine_angle(cumulative)
             return cumulative
@@ -135,15 +137,38 @@ class PseudoJet:
 
     @property
     def P(self):
+        if len(self) == 0:
+            return np.nan
         return np.linalg.norm([self.Px, self.Py, self.Pz])
 
+    @property
+    def Theta(self):
+        if len(self) == 0:
+            return np.nan
+        theta = Components.ptpz_to_theta(self.PT, self.Pz)
+        return theta
+
+    @property
+    def Pseudorapidity(self):
+        if len(self) == 0:
+            return np.nan
+        pseudorapidity = Components.theta_to_pseudorapidity(self.Theta)
+        return pseudorapidity
+
+    @property
+    def Rapidity(self):
+        if len(self) == 0:
+            return np.nan
+        rapidity = Components.ptpze_to_rapidity(self.PT, self.Pz, self.Energy)
+        return rapidity
+
     @classmethod
-    def write_event(cls, pseudojets, jet_name="Pseudojet", event_num=None, eventWise=None):
+    def write_event(cls, pseudojets, jet_name="Pseudojet", event_index=None, eventWise=None):
         """Save a handful of jets together """
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
-        if event_num is None:
-            event_num = eventWise.selected_index
+        if event_index is None:
+            event_index = eventWise.selected_index
         save_columns = [ "_DeltaRs", "_ExponentMulti",
                         "_RootInputIdx"]
         save_columns = [jet_name + c for c in save_columns]
@@ -155,20 +180,20 @@ class PseudoJet:
         arrays = {name: list(getattr(eventWise, name, [])) for name in save_columns}
         # check there are enough event rows
         for name in save_columns:
-            while len(arrays[name]) <= event_num:
+            while len(arrays[name]) <= event_index:
                 arrays[name].append([])
         for jet in pseudojets:
             assert jet.eventWise == pseudojets[0].eventWise
-            arrays[jet_name + "_DeltaRs"][event_num].append(jet.deltaR)
-            arrays[jet_name + "_ExponentMulti"][event_num].append(jet.exponent_multiplyer)
-            arrays[jet_name + "_RootInputIdx"][event_num].append(awkward.fromiter(jet.root_jetInputIdxs))
+            arrays[jet_name + "_DeltaRs"][event_index].append(jet.deltaR)
+            arrays[jet_name + "_ExponentMulti"][event_index].append(jet.exponent_multiplyer)
+            arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
             for col_num, name in enumerate(jet.int_columns):
-                arrays[name][event_num].append(ints[:, col_num])
+                arrays[name][event_index].append(ints[:, col_num])
             floats = awkward.fromiter(jet._floats)
             for col_num, name in enumerate(jet.float_columns):
-                arrays[name][event_num].append(floats[:, col_num])
+                arrays[name][event_index].append(floats[:, col_num])
         arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
         eventWise.append(arrays)
 
@@ -186,7 +211,7 @@ class PseudoJet:
             float_columns[idx] = float_columns[idx].replace("_Rapidity", "_PseudoRapidity")
         save_name = eventWise.save_name
         dir_name = eventWise.dir_name
-        avalible = len(getattr(eventWise, jet_name + "_Ints"))
+        avalible = len(getattr(eventWise, int_columns[0]))
         # decide on the start and stop points
         if batch_start is None:
             batch_start = 0
@@ -221,10 +246,6 @@ class PseudoJet:
             jets.append(new_jet)
         return jets
 
-
-    def write(self, dir_name):
-        self.write_event([self], f"single{self.eventWise.selected_index}Jet", event_num=0) 
-
     def _calculate_roots(self):
         self.root_jetInputIdxs = []
         # should only bee needed for reading from file
@@ -238,10 +259,7 @@ class PseudoJet:
                 self.root_jetInputIdxs.append(pid)
 
     @classmethod
-    def read(cls, dir_name, selected_index=0, eventWise=None, jet_name="PseudoJet", fastjet_format=False):
-        if not fastjet_format:
-            file_name = os.path.join(dir_name, f"single{selected_index}.npz")
-            return cls.multi_from_file(file_name)[0]
+    def read_fastjet(cls, dir_name, selected_index=0, eventWise=None, jet_name="PseudoJet"):
         #  fastjet format
         assert eventWise is not None
         ifile_name = os.path.join(dir_name, f"fastjet_ints.csv")
@@ -331,6 +349,8 @@ class PseudoJet:
 
     def split(self):
         assert self.currently_avalible == 0, "Need to assign_parents before splitting"
+        if len(self) == 0:
+            return []
         self.JetList = []
         # ensure the split has the same order every time
         self.root_jetInputIdxs = sorted(self.root_jetInputIdxs)
@@ -542,24 +562,32 @@ class PseudoJet:
         rank = max(self._ints[pseudojet_index1][self._Rank_col],
                    self._ints[pseudojet_index2][self._Rank_col]) + 1
         # inputidx, parent, child1, child2 rank
+        # child1 shoul
         ints = [new_id,
                 -1,
                 self._ints[pseudojet_index1][self._InputIdx_col],
                 self._ints[pseudojet_index2][self._InputIdx_col],
                 rank]
         # PT px py pz eta phi energy join_distance
+        # it's easier conceptually to calculate pt, phi and rapidity afresh than derive them
+        # from the exisiting pt, phis and rapidity
         floats = [f1 + f2 for f1, f2 in
                   zip(self._floats[pseudojet_index1],
                       self._floats[pseudojet_index2])]
-        # some columns shole be averages not sums
-        average_cols = [self._Phi_col, self._Rapidity_col]
-        for col_num in average_cols:
-            floats[col_num] /= 2.
+        px = floats[self._Px_col]
+        py = floats[self._Py_col]
+        pz = floats[self._Pz_col]
+        energy = floats[self._Energy_col]
+        phi, pt = Components.pxpy_to_phipt(px, py)
+        floats[self._PT_col] = pt
+        floats[self._Phi_col] = phi
+        if self.from_PseudoRapidity:
+            theta = Components.ptpz_to_theta(pt, pz)
+            floats[self._Rapidity_col] = Components.theta_to_pseudorapidity(theta)
+        else:
+            floats[self._Rapidity_col] = Components.ptpze_to_rapidity(pt, pz, energy)
         # fix the distance
         floats[self._JoinDistance_col] = distance
-        # get the angle between 0 and 2pi 
-        floats[self._Phi_col] = Components.confine_angle(floats[self._Phi_col])
-        # all the rest are just cumulative
         return ints, floats
 
     def __len__(self):
@@ -665,7 +693,7 @@ def produce_summary(eventWise, event):
         writer.writerows(summary)
 
 
-def run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise, jet_name="FastJet", capture_out=False):
+def run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer, jet_name="FastJet", capture_out=False):
     if exponent_multiplyer == -1:
         # antikt algorithm
         algorithm_num = 1
@@ -680,10 +708,10 @@ def run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise, jet_name="Fast
         out = subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)],
                              stdout=subprocess.PIPE)
         out = out.stdout.decode("utf-8")
-        fastjets = PseudoJet.read(dir_name, fastjet_format=True)
+        fastjets = PseudoJet.read_fastjet(dir_name)
         return fastjets, out
     subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)])
-    fastjets = PseudoJet.read(dir_name, eventWise=eventWise, jet_name=jet_name, fastjet_format=True)
+    fastjets = PseudoJet.read_fastjet(dir_name, eventWise=eventWise, jet_name=jet_name)
     return fastjets
 
 
@@ -706,7 +734,7 @@ def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, ba
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
         produce_summary(eventWise, event_n)
-        fastjets = run_FastJet(dir_name, deltaR, exponent_multiplyer, eventWise, jet_name=jet_name)
+        fastjets = run_FastJet(eventWise, dir_name, deltaR, exponent_multiplyer, jet_name=jet_name)
         fastjets = fastjets.split()
         try:
             os.remove(os.path.join(dir_name, 'summary_observables.csv'))
