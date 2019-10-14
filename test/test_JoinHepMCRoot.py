@@ -5,6 +5,7 @@ from tools import TempTestDir, generic_equality_comp
 import os
 from ipdb import set_trace as st
 
+
 def test_marry():
     # get a root file
     root_file = "/home/henry/lazy/dataset2/h1bBatch2.root"

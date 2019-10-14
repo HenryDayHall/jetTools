@@ -238,6 +238,7 @@ def test_EventWise():
         assert list(blank_ew.columns) == ["A"]
 
 
+# warnings
 def test_add_rapidity():
     large_num = np.inf
     pts = awkward.fromiter([[0., 0., 0., 0.,  0., 1., 1.,  1., 1., 10.]])

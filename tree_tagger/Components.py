@@ -91,8 +91,6 @@ def safe_convert(cls, string):
 class EventWise:
     """ The most basic properties of collections that exist in an eventwise sense """
     # putting them out here ensures they will be overwritten
-    columns = []
-    _column_contents = {}
     auxilleries = []
     selected_index = None
     EVENT_DEPTH=1 # events, objects in events
@@ -302,7 +300,9 @@ def theta_to_pseudorapidity(theta_list):
     pseudorapidity = np.full_like(theta_list, np.inf)
     pseudorapidity[~infinite] = -np.log(tan_restricted[~infinite])
     pseudorapidity[theta_list>np.pi/2] *= -1.
-    return type(theta_list)(pseudorapidity)
+    if not hasattr(theta_list, '__iter__'):
+        pseudorapidity = float(pseudorapidity)
+    return pseudorapidity
 
 
 def ptpze_to_rapidity(pt_list, pz_list, e_list):
@@ -321,7 +321,9 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
     mag_rapidity = 0.5*np.log((pt2_use + m2)/((e_use - np.abs(pz_use))**2))
     rapidity[to_calculate] = mag_rapidity
     rapidity *= np.sign(pz_list)
-    return type(pt_list)(rapidity)
+    if not hasattr(pt_list, '__iter__'):
+        rapidity = float(rapidity)
+    return rapidity
 
 
 def add_PT(eventWise, basename=None):
@@ -361,6 +363,8 @@ class RootReadout(EventWise):
         else:
             # the first component has no prefix
             prefixes = [''] + component_names[1:]
+        self.columns = []
+        self._column_contents = {}
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)
         if "Delphes" in component_of_root_file:
