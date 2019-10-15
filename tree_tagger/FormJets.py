@@ -768,7 +768,7 @@ def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, ba
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
         produce_summary(eventWise, event_n)
-        fastjets = run_FastJet(eventWise, dir_name, deltaR, exponent_multiplyer, jet_name=jet_name)
+        fastjets = run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer, jet_name=jet_name)
         fastjets = fastjets.split()
         try:
             os.remove(os.path.join(dir_name, 'summary_observables.csv'))
@@ -782,6 +782,7 @@ def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, ba
 def homejet_multiappy(eventWise, deltaR=0.4, exponentMulti=0, jet_name=None, batch_length=100):
     if jet_name is None:
         jet_name = "HomeJet"
+    eventWise.selected_index = None
     n_events = len(eventWise.JetInputs_Energy)
     start_point = len(getattr(eventWise, jet_name+"_Energy", []))
     if start_point >= n_events:
@@ -802,7 +803,7 @@ def homejet_multiappy(eventWise, deltaR=0.4, exponentMulti=0, jet_name=None, bat
         jets = pseudojet.split()
         try:
             PseudoJet.write_event(jets, jet_name=jet_name,
-                                  event_num=event_n, eventWise=eventWise)
+                                  event_index=event_n, eventWise=eventWise)
         except:
             return jets, jet_name
     return False
@@ -880,9 +881,9 @@ def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
         center_phi = phi[jet_n]
         center_rap = rap[jet_n]
         end_points = np.where([c==-1 for c in child1[jet_n]])[0]
-        #for end_idx in end_points:
-        #    ax.plot([center_rap, part_rap[jet_n][end_idx]], [center_phi, part_phi[jet_n][end_idx]],
-        #            linewidth=np.sqrt(part_Energy[jet_n][end_idx]), alpha=0.5, color=colour)
+        for end_idx in end_points:
+            ax.plot([center_rap, part_rap[jet_n][end_idx]], [center_phi, part_phi[jet_n][end_idx]],
+                    linewidth=np.sqrt(part_Energy[jet_n][end_idx]), alpha=0.5, color=colour)
         if jet_n == 0:
             plt.scatter(part_rap[jet_n][end_points], part_phi[jet_n][end_points], s=part_Energy[jet_n][end_points], c=[colour],label=jet_name)
         else:
