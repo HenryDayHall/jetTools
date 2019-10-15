@@ -198,12 +198,13 @@ class PseudoJet:
         eventWise.append(arrays)
 
     @classmethod
-    def multi_from_file(cls, file_name, jet_name="Pseudojet", batch_start=None, batch_end=None):
+    def multi_from_file(cls, file_name, event_idx, jet_name="Pseudojet", batch_start=None, batch_end=None):
         """ read a handful of jets from file """
         int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
         float_columns = [c.replace('Pseudojet', jet_name) for c in cls.float_columns]
         # could write a version that just read one jet if needed
         eventWise = Components.EventWise.from_file(file_name)
+        eventWise.selected_index = event_idx
         # check if its a pseudorapidty jet
         if jet_name + "_Rapidity" not in eventWise.columns:
             assert jet_name + "_PseudoRapidity" in eventWise.columns
@@ -267,9 +268,9 @@ class PseudoJet:
         # first line will be the tech specs and columns
         with open(ifile_name, 'r') as ifile:
             header = ifile.readline()[1:]
-        header = header.split(' ')
-        deltaR = float(header[1].split('=')[1])
-        algorithm_name = header[2]
+        header = header.split()
+        deltaR = float(header[0].split('=')[1])
+        algorithm_name = header[1]
         if algorithm_name == 'kt_algorithm':
             exponent_multiplyer = 1
         elif algorithm_name == 'cambridge_algorithm':
@@ -278,41 +279,69 @@ class PseudoJet:
             exponent_multiplyer = -1
         else:
             raise ValueError(f"Algorithm {algorithm_name} not recognised")
+        # get the colums for the header
+        icolumns = {name: i for i, name in enumerate(header[header.index("Columns;") + 1:])}
+        # and from this get the columns
         # the file of fast_ints contains
         fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
-        assert len(fast_ints) > 0, "No ints found!"
+        n_fastjet_int_cols = len(icolumns)
         if len(fast_ints.shape) == 1:
-            fast_ints = fast_ints.reshape((1, -1))
+            fast_ints = fast_ints.reshape((-1, n_fastjet_int_cols))
+        else:
+            assert fast_ints.shape[1] == n_fastjet_int_cols
         # check that all the input idx have come through
-        assert set(eventWise.JetInputs_SourceIdx).issubset(set(fast_ints[:, 1])), "Problem with inpu idx"
-        next_free = max(fast_ints[:, 1]) + 1
+        assert set(eventWise.JetInputs_SourceIdx).issubset(set(fast_ints[:, icolumns["InputIdx"]])), "Problem with inpu idx"
+        next_free = np.max(fast_ints[:, icolumns["InputIdx"]], initial=-1) + 1
         fast_idx_dict = {}
-        for line_idx, i in fast_ints[:, :2]:
+        for line_idx, i in fast_ints[:, [icolumns["pseudojet_id"], icolumns["InputIdx"]]]:
             if i == -1:
                 fast_idx_dict[line_idx] = next_free
                 next_free += 1
             else:
                 fast_idx_dict[line_idx] = i
         fast_idx_dict[-1]=-1
-        fast_ints = np.vectorize(fast_idx_dict.__getitem__)(fast_ints[:, [0, 2, 3, 4]])
+        fast_ints = np.vectorize(fast_idx_dict.__getitem__,
+                                 otypes=[np.float])(fast_ints[:, [icolumns["pseudojet_id"],
+                                                                  icolumns["parent_id"],
+                                                                  icolumns["child1_id"],
+                                                                  icolumns["child2_id"]]])
+        # now the Inputidx is the first one and the pseudojet_id can be removed
+        del icolumns["pseudojet_id"]
+        icolumns = {name: i-1 for name, i in icolumns.items()}
         # check that the parent child relationship is reflexive
         for line in fast_ints:
             identifier = f"pseudojet inputIdx={line[0]} "
-            if line[2] == -1:
-                assert line[3] == -1, identifier + "has only one child"
+            if line[icolumns["child1_id"]] == -1:
+                assert line[icolumns["child2_id"]] == -1, identifier + "has only one child"
             else:
-                assert line[2] != line[3], identifier + " child1 and child1 are same"
-                child1_line = fast_ints[fast_ints[:, 0] == line[2]][0]
+                assert line[icolumns["child1_id"]] != line[icolumns["child2_id"]], identifier + " child1 and child2 are same"
+                child1_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
+                                        == line[icolumns["child1_id"]]][0]
                 assert child1_line[1] == line[0], identifier + " first child dosn't acknowledge parent"
-                child2_line = fast_ints[fast_ints[:, 0] == line[3]][0]
+                child2_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
+                                        == line[icolumns["child2_id"]]][0]
                 assert child2_line[1] == line[0], identifier + " second child dosn't acknowledge parent"
             if line[1] != -1:
-                assert line[0] != line[1], identifier + "is it's own mother"
-                parent_line = fast_ints[fast_ints[:, 0] == line[1]][0]
-                assert line[0] in parent_line[2:4], identifier + " parent doesn't acknowledge child"
+                assert line[icolumns["InputIdx"]] != line[icolumns["parent_id"]], identifier + "is it's own mother"
+                parent_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
+                                        == line[icolumns["parent_id"]]][0]
+                assert line[0] in parent_line[[icolumns["child1_id"],
+                                               icolumns["child2_id"]]], identifier + " parent doesn't acknowledge child"
+        # now read float header
+        # first line will be the columns
+        with open(ffile_name, 'r') as ffile:
+            fcolumns = ffile.readline()[1:].split()
+        n_fastjet_float_cols = len(fcolumns)
+        for fcol, expected in zip(fcolumns, PseudoJet.float_columns):
+            assert expected.endswith(fcol)
         fast_floats = np.genfromtxt(ffile_name, skip_header=1)
+        if len(fast_ints) == 0:
+            assert len(fast_floats) == 0, "No ints found, but floats are present!"
+            print("Warning, no values from fastjet.")
         if len(fast_floats.shape) == 1:
-            fast_floats = fast_floats.reshape((1, -1))
+            fast_floats = fast_floats.reshape((-1, n_fastjet_float_cols))
+        else:
+            assert fast_floats.shape[1] == n_fastjet_float_cols
         if len(fast_ints.shape) > 1:
             num_rows = fast_ints.shape[0]
             assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
@@ -321,10 +350,26 @@ class PseudoJet:
         else:
             num_rows = 0
         ints = np.full((num_rows, len(cls.int_columns)), -1, dtype=int)
-        floats = np.full((num_rows, len(cls.float_columns)), -1, dtype=float)
+        floats = np.zeros((num_rows, len(cls.float_columns)), dtype=float)
         if len(fast_ints) > 0:
             ints[:, :4] = fast_ints
             floats[:, :7] = fast_floats
+        # make ranks
+        rank = -1
+        rank_col = len(icolumns)
+        ints[ints[:, icolumns["child1_id"]] == -1, rank_col] = rank
+        # parents of the lowest rank is the next rank
+        this_rank = set(ints[ints[:, icolumns["child1_id"]] == -1, icolumns["parent_id"]])
+        while len(this_rank) > 0:
+            rank += 1
+            next_rank = []
+            for i in this_rank:
+                ints[ints[:, icolumns["InputIdx"]] == i, rank_col] = rank
+                parent = ints[ints[:, icolumns["InputIdx"]] == i, icolumns["parent_id"]]
+                if parent != -1 and parent not in next_rank:
+                    next_rank.append(parent)
+            this_rank = next_rank
+        # create the pseudojet
         new_pseudojet = cls(ints=ints, floats=floats,
                             eventWise=eventWise,
                             deltaR=deltaR,
@@ -332,19 +377,6 @@ class PseudoJet:
                             jet_name=jet_name)
         new_pseudojet.currently_avalible = 0
         new_pseudojet._calculate_roots()
-        # make ranks
-        rank = 0
-        ints[ints[:, 2]==-1, 4] = rank
-        this_rank = ints[ints[:, 2] == -1, 1]
-        while len(this_rank) > 0:
-            rank += 1
-            next_rank = []
-            for i in this_rank:
-                ints[ints[:, 0] == i, 4] = rank
-                parent = ints[ints[:, 0] == i, 1]
-                if parent != -1 and parent not in next_rank:
-                    next_rank.append(parent)
-            this_rank = next_rank
         return new_pseudojet
 
     def split(self):
@@ -603,8 +635,8 @@ class PseudoJet:
 
 def filter_obs(eventWise, existing_idx_selection):
     assert eventWise.selected_index is not None
-    has_track = eventWise.Particle_Track[existing_idx_selection] >= 0
-    has_tower = eventWise.Particle_Tower[existing_idx_selection] >= 0
+    has_track = eventWise.Particle_Track[existing_idx_selection.tolist()] >= 0
+    has_tower = eventWise.Particle_Tower[existing_idx_selection.tolist()] >= 0
     observable = np.logical_or(has_track, has_tower)
     new_selection = existing_idx_selection[observable]
     return new_selection
@@ -613,21 +645,23 @@ def filter_obs(eventWise, existing_idx_selection):
 def filter_ends(eventWise, existing_idx_selection):
     assert eventWise.selected_index is not None
     is_end = [len(c) == 0 for c in 
-              eventWise.Children[existing_idx_selection]]
+              eventWise.Children[existing_idx_selection.tolist()]]
     new_selection = existing_idx_selection[is_end]
     return new_selection
 
 
-def filter_pt_eta(eventWise, existing_idx_selection, min_pt=5., max_eta=2.5):
+def filter_pt_eta(eventWise, existing_idx_selection, min_pt=.5, max_eta=2.5):
     assert eventWise.selected_index is not None
     # filter PT
-    sufficient_pt = eventWise.PT[existing_idx_selection] > min_pt
+    sufficient_pt = eventWise.PT[existing_idx_selection.tolist()] > min_pt
     updated_selection = existing_idx_selection[sufficient_pt]
-    zero_pseudorapidity = eventWise.Pz[updated_selection] == 0
-    tan_theta = eventWise.PT[updated_selection]/eventWise.Pz[updated_selection]
-    pseudorapidity_choice = np.abs(np.log(np.abs(tan_theta)/2)) < max_eta
-    pseudorapidity_choice[zero_pseudorapidity] = 0
-    updated_selection = updated_selection[pseudorapidity_choice]
+    if "Pseudorapidity" in eventWise.columns:
+        pseudorapidity_here = eventWise.Pseudorapidity[updated_selection.tolist()]
+    else:
+        theta_here = Components.ptpz_to_theta(eventWise.PT[updated_selection.tolist()], eventWise.Pz[updated_selection.tolist()])
+        pseudorapidity_here = Components.theta_to_pseudorapidity(theta_here)
+    pseudorapidity_choice = np.abs(pseudorapidity_here) < max_eta
+    updated_selection = updated_selection[pseudorapidity_choice.tolist()]
     return updated_selection
 
 
@@ -685,7 +719,7 @@ def produce_summary(eventWise, event):
                          eventWise.JetInputs_Pz,
                          eventWise.JetInputs_Energy)).T
     summary = summary.astype(str)
-    header = f"# summary file for {eventWise}\n"
+    header = f"# summary file for {eventWise}, event {event}\n"
     file_name = os.path.join(eventWise.dir_name, f"summary_observables.csv")
     with open(file_name, 'w') as summ_file:
         summ_file.write(header)
@@ -738,7 +772,7 @@ def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, ba
         fastjets = fastjets.split()
         try:
             os.remove(os.path.join(dir_name, 'summary_observables.csv'))
-            PseudoJet.write_event(fastjets, jet_name=jet_name, event_num=event_n, eventWise=eventWise)
+            PseudoJet.write_event(fastjets, jet_name=jet_name, event_index=event_n, eventWise=eventWise)
         except Exception as e:
             print(e)        
             return fastjets

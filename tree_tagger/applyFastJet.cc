@@ -71,6 +71,7 @@ int _traverse(PseudoJet root,
     vector<int> root_ints = {this_id, root.user_index(), mother_id, -1, -1};
     ints.push_back(root_ints);
     vector<double> root_doubles = {root.pt(), root.rap(), root.phi_std(), root.e(), root.px(), root.py(), root.pz()};
+    //std::cout<< "root doubles |" << root_doubles[0] << " "<<root_doubles[1] << " "<<root_doubles[2] << " "<<root_doubles[3] << " "<<root_doubles[4] << " "<<root_doubles[5] << " "<<root_doubles[6] << " "<< std::endl;
     doubles.push_back(root_doubles);
     stack_idx.push_back(0); // says where the stack item is in terms of ints/floats idx
     int idx_here = stack_idx.back();
@@ -92,14 +93,18 @@ int _traverse(PseudoJet root,
             vector<int> daughter1_ints = {daughter1_id, pieces[0].user_index(), this_id, -1, -1};
             ints.push_back(daughter1_ints);
             vector<double> daughter1_doubles = {pieces[0].pt(), pieces[0].rap(), pieces[0].phi_std(), pieces[0].e(), pieces[0].px(), pieces[0].py(), pieces[0].pz()};
+            //std::cout<< "Daughter 1 |" << pieces[0].pt() << " " << pieces[0].rap() << " " << pieces[0].phi_std() << " " << pieces[0].e() << " " <<  pieces[0].px() << " " << pieces[0].py() << " " << pieces[0].pz() << std::endl;
             doubles.push_back(daughter1_doubles);
+            //std::cout<< "Daughter 1 |" << doubles.back()[0] << " "<<doubles.back()[1] << " "<<doubles.back()[2] << " "<<doubles.back()[3] << " "<<doubles.back()[4] << " "<<doubles.back()[5] << " "<<doubles.back()[6] << " "<< std::endl;
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[0]);
 
             ints[idx_here][4] = daughter2_id;
             vector<int> daughter2_ints = {daughter2_id, pieces[1].user_index(), this_id, -1, -1};
             ints.push_back(daughter2_ints);
-            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].rap(), pieces[1].phi_std(), pieces[1].e(), pieces[0].px(), pieces[0].py(), pieces[0].pz()};
+            vector<double> daughter2_doubles = {pieces[1].pt(), pieces[1].rap(), pieces[1].phi_std(), pieces[1].e(), pieces[1].px(), pieces[1].py(), pieces[1].pz()};
+            //std::cout<< "Daughter 2 |" << pieces[1].pt() << " " << pieces[1].rap() << " " << pieces[1].phi_std() << " " << pieces[1].e() << " " <<  pieces[1].px() << " " << pieces[1].py() << " " << pieces[1].pz()<< std::endl;
+            //std::cout<< "Daughter 2 |" << daughter2_doubles[0] << " "<<daughter2_doubles[1] << " "<<daughter2_doubles[2] << " "<<daughter2_doubles[3] << " "<<daughter2_doubles[4] << " "<<daughter2_doubles[5] << " "<<daughter2_doubles[6] << " "<< std::endl;
             doubles.push_back(daughter2_doubles);
             stack_idx.push_back(ints.size() - 1);
             stack.push_back(pieces[1]);
@@ -140,11 +145,12 @@ static void fj(vector<double>& a, // a = flat vector of observations
     //std::ofstream n_file(n_output_name, std::ios_base::app);
     string sep = " ";
     for (unsigned int i = 0; i < a.size(); i += 5) {
+        //std::cout << "Inputs " << i/5 << " e=" << a[i+4] << " px=" << a[i+1] << " py=" << a[i+2] <<  " pz=" << a[i+3] << std::endl;
         //                               px    py      pz      e
         fastjet::PseudoJet p = PseudoJet(a[i+1], a[i+2], a[i+3], a[i+4]);
         // this is the input_id
         p.set_user_index((int) a[i]);
-        //std::cout << "Particle " << i/5 << " pt=" << p.pt() << " eta=" << p.eta() << " phi=" << p.phi_std() << " e=" << p.e() << std::endl;
+        //std::cout << "Particle " << i/5 << " pt=" << p.pt() << " eta=" << p.eta() << " phi=" << p.phi_std() << " e=" << p.e() << " px=" << p.px() << " py=" << p.py() <<  " pz=" << p.pz() << std::endl;
         //n_file << p.px() << sep
         //     << p.py() << sep
         //     << p.pz() << sep
@@ -249,21 +255,21 @@ int main(int argc, char * argv[]) {
    int_file << "# " << "deltaR=" << R << sep
                     << algorithm_name << sep
                     << "Columns;" << sep
-                    << "psudojet_id" << sep
-                    << "input_id" << sep
-                    << "mother_id" << sep
-                    << "daughter1_id" << sep
-                    << "daughter2_id"
+                    << "pseudojet_id" << sep
+                    << "InputIdx" << sep
+                    << "parent_id" << sep
+                    << "child1_id" << sep
+                    << "child2_id"
                     << std::endl;
    string d_output_name = dir_name + "fastjet_doubles.csv";
    std::ofstream double_file(d_output_name);
-   double_file << "# " << "pt" << sep
-                       << "rapidity" << sep
-                       << "phi" << sep
-                       << "e"
-                       << "px"
-                       << "py"
-                       << "pz"
+   double_file << "# " << "PT" << sep
+                       << "Rapidity" << sep
+                       << "Phi" << sep
+                       << "Energy" << sep
+                       << "Px" << sep
+                       << "Py" << sep
+                       << "Pz"
                        << std::endl;
 
    // Write out

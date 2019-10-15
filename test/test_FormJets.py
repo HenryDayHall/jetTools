@@ -4,6 +4,8 @@ from ipdb import set_trace as st
 import numpy as np
 from tree_tagger import Components, FormJets
 from tools import TempTestDir
+from test_Components import AwkdArrays
+import awkward
 
 
 class SimpleClusterSamples:
@@ -145,29 +147,35 @@ class SimpleClusterSamples:
         return order
 
     @classmethod
-    def match_ints_floats(cls, ints1, floats1, ints2, floats2):
+    def match_ints_floats(cls, ints1, floats1, ints2, floats2, compare_distance=True):
         ints_order = cls.match_ints(ints1, ints2)
         floats1 = np.array(floats1)[ints_order]
         floats2 = np.array(floats2)
+        if not compare_distance:
+            floats1 = floats1[:, :-1]
+            floats2 = floats2[:, :-1]
         tst.assert_allclose(floats1, floats2, atol=0.0001, err_msg="Floats don't match")
 
 
+def set_JetInputs(eventWise, floats):
+    columns = [name.replace("Pseudojet", "JetInputs") for name in FormJets.PseudoJet.float_columns
+               if "Distance" not in name]
+    contents = {name: awkward.fromiter([floats[:, i]]) for i, name in enumerate(columns)}
+    columns.append("JetInputs_SourceIdx")
+    contents["JetInputs_SourceIdx"] = awkward.fromiter([np.arange(len(floats))])
+    eventWise.append(contents)
 
-def clustering_algorithm(empty_ew, make_pseudojets):
+
+def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
     # for the randomly places components, accept some error for floating point
     n_random_tries = 100
     n_acceptable_fails = 5
     config_list = [getattr(SimpleClusterSamples, f"config_{i}") for i in range(1, 7)]
-    # there are two ways to construct a pseudojet
-    # 1. telling it ints and floats as constructor arguments
-    # 2. letting it read ints and floats from an eventwise object
-    # We start with the first method and do checks on the behavior of pseudojet
     for config in config_list:
         # an empty set of ints should safely return an empty pseudojet
         empty_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
                                              ints = SimpleClusterSamples.empty_inp['ints'],
                                              floats = SimpleClusterSamples.empty_inp['floats'])
-        empty_pseudojet.assign_parents()
         assert len(empty_pseudojet._ints) == 0
         assert len(empty_pseudojet._floats) == 0
         jets = empty_pseudojet.split()
@@ -176,70 +184,73 @@ def clustering_algorithm(empty_ew, make_pseudojets):
         one_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
                                            ints = SimpleClusterSamples.one_inp['ints'],
                                            floats = SimpleClusterSamples.one_inp['floats'])
-        one_pseudojet.assign_parents()
-        tst.assert_allclose(one_pseudojet._ints, SimpleClusterSamples.one_inp['ints'])
-        tst.assert_allclose(one_pseudojet._floats, SimpleClusterSamples.one_inp['floats'])
+        SimpleClusterSamples.match_ints_floats(one_pseudojet._ints, one_pseudojet._floats,
+                                               SimpleClusterSamples.one_inp['ints'],
+                                               SimpleClusterSamples.one_inp['floats'],
+                                               compare_distance=compare_distance)
         jets = one_pseudojet.split()
         assert len(jets) == 1
-        tst.assert_allclose(jets[0]._ints, SimpleClusterSamples.one_inp['ints'])
-        tst.assert_allclose(jets[0]._floats, SimpleClusterSamples.one_inp['floats'])
+        SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
+                                               SimpleClusterSamples.one_inp['ints'],
+                                               SimpleClusterSamples.one_inp['floats'],
+                                               compare_distance=compare_distance)
         # two tracks degenerate should join
         two_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
-                                           ints = SimpleClusterSamples.two_degenerate['ints'],
-                                           floats = SimpleClusterSamples.two_degenerate['floats'])
-        two_pseudojet.assign_parents()
+                                        ints = SimpleClusterSamples.two_degenerate['ints'],
+                                        floats = SimpleClusterSamples.two_degenerate['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.degenerate_join['ints'],
-                                               SimpleClusterSamples.degenerate_join['floats'])
+                                               SimpleClusterSamples.degenerate_join['floats'],
+                                               compare_distance=compare_distance)
         jets = two_pseudojet.split()
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
                                                SimpleClusterSamples.degenerate_join['ints'],
-                                               SimpleClusterSamples.degenerate_join['floats'])
+                                               SimpleClusterSamples.degenerate_join['floats'],
+                                               compare_distance=compare_distance)
         # two tracks close together should join
         two_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
                                            ints = SimpleClusterSamples.two_close['ints'],
                                            floats = SimpleClusterSamples.two_close['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
-                                               SimpleClusterSamples.two_close['ints'],
-                                               SimpleClusterSamples.two_close['floats'])
-        two_pseudojet.assign_parents()
-        SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.close_join['ints'],
-                                               SimpleClusterSamples.close_join['floats'])
+                                               SimpleClusterSamples.close_join['floats'],
+                                               compare_distance=compare_distance)
         jets = two_pseudojet.split()
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
                                                SimpleClusterSamples.close_join['ints'],
-                                               SimpleClusterSamples.close_join['floats'])
+                                               SimpleClusterSamples.close_join['floats'],
+                                               compare_distance=compare_distance)
         # two tracks far apart should not join
         two_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
                                            ints = SimpleClusterSamples.two_oposite['ints'],
                                            floats = SimpleClusterSamples.two_oposite['floats'])
-        two_pseudojet.assign_parents()
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.two_oposite['ints'],
-                                               SimpleClusterSamples.two_oposite['floats'])
+                                               SimpleClusterSamples.two_oposite['floats'],
+                                               compare_distance=compare_distance)
         jets = two_pseudojet.split()
         assert len(jets) == 2
         regroup_ints = np.vstack([jets[0]._ints, jets[1]._ints])
         regroup_floats = np.vstack([jets[0]._floats, jets[1]._floats])
         SimpleClusterSamples.match_ints_floats(regroup_ints, regroup_floats,
                                                SimpleClusterSamples.two_oposite['ints'],
-                                               SimpleClusterSamples.two_oposite['floats'])
+                                               SimpleClusterSamples.two_oposite['floats'],
+                                               compare_distance=compare_distance)
         # split two tracks in phi
         phis = np.linspace(-np.pi, np.pi, 11)
         for phi in phis:
             start, expected_end = SimpleClusterSamples.phi_split(config, phi)
             pseudojets = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
                                             ints=start['ints'], floats=start['floats'])
-            pseudojets.assign_parents()
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
             end_floats = np.vstack([j._floats for j in jets])
             if len(end_ints) == len(expected_end['ints']):
                 SimpleClusterSamples.match_ints_floats(pseudojets._ints, pseudojets._floats,
-                                                       end_ints, end_floats)
+                                                       end_ints, end_floats,
+                                                       compare_distance=compare_distance)
             else:
                 assert False, f"phi={phi} to 0. didn't behave as expected"
             
@@ -251,7 +262,6 @@ def clustering_algorithm(empty_ew, make_pseudojets):
             start, expected_end = SimpleClusterSamples.pair_production(config)
             pseudojets = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
                                             ints=start['ints'], floats=start['floats'])
-            pseudojets.assign_parents()
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
             end_floats = np.vstack([j._floats for j in jets])
@@ -264,7 +274,6 @@ def clustering_algorithm(empty_ew, make_pseudojets):
                 if fails > n_acceptable_fails:
                     assert False, f"{fails} out of {i} incorrect clusters from homejet"
 
-                                                
 
 def test_PseudoJet():
     with TempTestDir("pseudojet") as dir_name:
@@ -275,19 +284,30 @@ def test_PseudoJet():
         empty_name = "empty.awkd"
         empty_path = os.path.join(dir_name, empty_name)
         empty_ew = Components.EventWise(dir_name, empty_name)
-        make_jets = FormJets.PseudoJet
-        clustering_algorithm(empty_ew, make_jets)
+        # method 1
+        def make_jets1(eventWise, deltaR, exponent_multiplyer, ints, floats):
+            pseudojets = FormJets.PseudoJet(eventWise, deltaR, exponent_multiplyer, ints=ints, floats=floats)
+            pseudojets.assign_parents()
+            return pseudojets
+        clustering_algorithm(empty_ew, make_jets1)
+        # method 2
+        def make_jets2(eventWise, deltaR, exponent_multiplyer, ints, floats):
+            set_JetInputs(eventWise, floats)
+            eventWise.selected_index = 0
+            pseudojets = FormJets.PseudoJet(eventWise, deltaR, exponent_multiplyer)
+            pseudojets.assign_parents()
+            return pseudojets
+        clustering_algorithm(empty_ew, make_jets2)
         # test the save method
         test_inp = SimpleClusterSamples.one_inp
         name = "TestA"
         test_jet = FormJets.PseudoJet(empty_ew, 1., -1., ints=test_inp['ints'], floats=test_inp['floats'], jet_name=name)
         FormJets.PseudoJet.write_event([test_jet], name, event_index=2)
         # read out again
-        jets = FormJets.PseudoJet.multi_from_file(empty_path, name)
-        # expect two empty jets then one with the specified inputs
-        assert len(jets[0]) == 0
-        assert len(jets[1]) == 0
-        SimpleClusterSamples.match_ints_floats(test_inp['ints'], test_inp['floats'], jets[2]._ints, jets[2]._floats)
+        jets = FormJets.PseudoJet.multi_from_file(empty_path, event_idx=2, jet_name=name)
+        # expect only one jet
+        assert len(jets) == 1
+        SimpleClusterSamples.match_ints_floats(test_inp['ints'], test_inp['floats'], jets[0]._ints, jets[0]._floats)
         # test collective properties
         test_inp = SimpleClusterSamples.empty_inp
         test_jet = FormJets.PseudoJet(empty_ew, 1., -1., ints=test_inp['ints'], floats=test_inp['floats'])
@@ -308,5 +328,228 @@ def test_PseudoJet():
                                         jet.Px, jet.Py, jet.Pz, jet.JoinDistance,
                                         jet.Pseudorapidity, jet.Theta])
             tst.assert_allclose(expected_summaries, found_summaries)
+
+
+def test_filter_obs():
+    with TempTestDir("filter_obs") as dir_name:
+        name = "test.awkd"
+        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+                contents={"Particle_Track": AwkdArrays.event_ints, "Particle_Tower": AwkdArrays.event_ints})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], [0]),
+                ([0, 1], [0, 1])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_obs(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+        all_unseen = awkward.fromiter([[-1, -1], [-1]])
+        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+                contents={"Particle_Track": AwkdArrays.event_ints, "Particle_Tower": all_unseen})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], [0]),
+                ([0, 1], [0, 1])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_obs(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+                contents={"Particle_Track": all_unseen, "Particle_Tower": AwkdArrays.event_ints})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], [0]),
+                ([0, 1], [0, 1])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_obs(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+                contents={"Particle_Track": all_unseen, "Particle_Tower": all_unseen})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], []),
+                ([0, 1], [])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_obs(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+        one_unseen = awkward.fromiter([[-1, 1], [2]])
+        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+                contents={"Particle_Track": one_unseen, "Particle_Tower": all_unseen})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], []),
+                ([0, 1], [1])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_obs(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+
+
+def test_filter_ends():
+    with TempTestDir("filter_ends") as dir_name:
+        name = "test.awkd"
+        ew = Components.EventWise(dir_name, name, columns=["Children"],
+                                  contents={"Children": AwkdArrays.empty_jets})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], [0]),
+                ([0, 1], [0, 1])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_ends(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+        ew = Components.EventWise(dir_name, name, columns=["Children"],
+                                  contents={"Children": AwkdArrays.empty_jet})
+        ew.selected_index = 0
+        input_outputs = [
+                ([], []),
+                ([0], [0]),
+                ([0, 1], [0])]
+        for inp, expected in input_outputs:
+            out = FormJets.filter_ends(ew, np.array(inp))
+            tst.assert_allclose(out, expected)
+
+
+def test_filter_pt_eta():
+    with TempTestDir("filter_pt_eta") as dir_name:
+        name = "test.awkd"
+        ew = Components.EventWise(dir_name, name, columns=["PT", "Pseudorapidity"],
+                contents={"PT": AwkdArrays.event_floats, "Pseudorapidity": AwkdArrays.event_floats})
+        ew.selected_index = 0
+        input_outputs = [
+                (0.05, 1., [], []),
+                (0.05, 1., [0], [0]),
+                (0.05, 1., [0, 1], [0, 1]),
+                (0.15, 1., [], []),
+                (0.15, 1., [0], []),
+                (0.15, 1., [0, 1], [ 1])]
+        for pt, eta, inp, expected in input_outputs:
+            out = FormJets.filter_pt_eta(ew, np.array(inp), pt, eta)
+            tst.assert_allclose(out, expected)
+        pt = awkward.fromiter([[0.1, 0.1, 0.1, 0.1, 0.1]])
+        pz = awkward.fromiter([[0., 0.1, 100., -0.1, -100.]])
+        ew = Components.EventWise(dir_name, name, columns=["PT", "Pz"],
+                contents={"PT": pt, "Pz": pz})
+        ew.selected_index = 0
+        input_outputs = [
+                (0.05, 1., [], []),
+                (0.05, 1., [0, 1, 2, 3, 4], [0, 1, 3]),
+                (0.05, .1, [], []),
+                (0.05, .1, [0, 1, 2, 3, 4], [0])]
+        for pt, eta, inp, expected in input_outputs:
+            out = FormJets.filter_pt_eta(ew, np.array(inp), pt, eta)
+            tst.assert_allclose(out, expected)
+
+
+def test_create_JetInputs():
+    with TempTestDir("create_JetInputs") as dir_name:
+        name = "test.awkd"
+        columns = [name[len("Pseudojet_"):] for name in FormJets.PseudoJet.float_columns
+                   if "Distance" not in name]
+        floats = SimpleClusterSamples.two_oposite['floats']
+        contents = {name: awkward.fromiter([x]) for name, x in zip(columns, floats.T)}
+        def return_all(_, current_idx):
+            return current_idx
+        def return_second(_, current_idx):
+            return current_idx[1:2]
+        ew = Components.EventWise(dir_name, name, columns=columns, contents=contents)
+        FormJets.create_jetInputs(ew, filter_functions=[return_all])
+        for name in contents:
+            ji_name = "JetInputs_" + name
+            idx = columns.index(name)
+            assert hasattr(ew, ji_name)
+            tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx]])
+        ew.remove_prefix("JetInputs")
+        FormJets.create_jetInputs(ew, filter_functions=[return_second])
+        for name in contents:
+            ji_name = "JetInputs_" + name
+            idx = columns.index(name)
+            assert hasattr(ew, ji_name)
+            tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx][1:2]])
+        # test batching
+        columns = [name[len("Pseudojet_"):] for name in FormJets.PseudoJet.float_columns
+                   if "Distance" not in name]
+        contents = {name: awkward.fromiter([x, x, x]) for name, x in zip(columns, floats.T)}
+        ew = Components.EventWise(dir_name, name, columns=columns, contents=contents)
+        FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=0)
+        for name in contents:
+            ji_name = "JetInputs_" + name
+            assert not hasattr(ew, ji_name)
+        FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=1)
+        for name in contents:
+            ji_name = "JetInputs_" + name
+            assert hasattr(ew, ji_name)
+            idx = columns.index(name)
+            tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx]])
+        FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=1)
+        for name in contents:
+            ji_name = "JetInputs_" + name
+            assert hasattr(ew, ji_name)
+            idx = columns.index(name)
+            tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx], floats.T[idx]])
+
+
+def test_produce_summary():
+    with TempTestDir("produce_summary") as dir_name:
+        name = "test.awkd"
+        n_jet_inputs = len(FormJets.PseudoJet.float_columns)-1
+        path = os.path.join(dir_name, "summary_observables.csv")
+        # try an empty event
+        empty_ew = Components.EventWise(dir_name, name)
+        jet_inputs = np.array([]).reshape((-1, n_jet_inputs))
+        set_JetInputs(empty_ew, jet_inputs)
+        empty_ew.selected_index = 0
+        FormJets.produce_summary(empty_ew, 0)
+        with open(path, 'r') as summary_file:
+            text = summary_file.readlines()
+        assert text[0][0] == '#'
+        assert '0' in text[0]
+        assert len(text) == 1
+        # an event filled with 0
+        num_tracks = 20
+        jet_inputs = np.zeros((num_tracks, n_jet_inputs))
+        set_JetInputs(empty_ew, jet_inputs)
+        empty_ew.selected_index = 0
+        FormJets.produce_summary(empty_ew, 0)
+        with open(path, 'r') as summary_file:
+            text = summary_file.readlines()
+        assert text[0][0] == '#'
+        assert '0' in text[0]
+        assert len(text) == num_tracks + 1
+        content = np.genfromtxt(path)
+        tst.assert_allclose(content[:, 0], np.arange(num_tracks))
+        tst.assert_allclose(content[:, 1:], np.zeros((num_tracks, 4)))
+        # an event filled with random numbers
+        num_tracks = 20
+        jet_inputs = np.random.rand(num_tracks, n_jet_inputs)
+        set_JetInputs(empty_ew, jet_inputs)
+        empty_ew.selected_index = 0
+        FormJets.produce_summary(empty_ew, 0)
+        with open(path, 'r') as summary_file:
+            text = summary_file.readlines()
+        assert text[0][0] == '#'
+        assert '0' in text[0]
+        assert len(text) == num_tracks + 1
+        content = np.genfromtxt(path)
+        input_idx = [4, 5, 6, 3]
+        tst.assert_allclose(content[:, 0], np.arange(num_tracks))
+        tst.assert_allclose(content[:, 1:], jet_inputs[:, input_idx])
+        
+
+def test_run_FastJet():
+    with TempTestDir("fastjet") as dir_name:
+        empty_name = "empty.awkd"
+        empty_path = os.path.join(dir_name, empty_name)
+        empty_ew = Components.EventWise(dir_name, empty_name)
+        # can only run fastjet by setting jet inputs
+        # as a summary must be produced
+        def make_jets3(eventWise, deltaR, exponent_multiplyer, ints, floats):
+            set_JetInputs(eventWise, floats)
+            eventWise.selected_index = 0
+            FormJets.produce_summary(eventWise, 0)
+            return FormJets.run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer)
+        clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
 
 
