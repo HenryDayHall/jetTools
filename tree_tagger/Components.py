@@ -224,6 +224,9 @@ def add_thetas(eventWise, basename=None):
         phi_cols = [c[:-3] for c in eventWise.columns if c.endswith("Phi")]
         missing_theta = [c for c in phi_cols if (c+"Theta") not in eventWise.columns]
     else:
+        if len(basename) > 0:
+            if not basename.endswith('_'):
+                basename = basename + '_'
         missing_theta = [basename]
     for name in missing_theta:
         avalible_components = [c[len(name):] for c in eventWise.columns
@@ -273,10 +276,10 @@ def add_pseudorapidity(eventWise, basename=None):
         if "Theta" in eventWise.columns and "PseudoRapidity" not in eventWise.columns:
             missing_ps.append('')
     else:
-        if basename == '':
-            missing_ps = [basename]
-        else:
-            missing_ps = [basename + '_']
+        if len(basename) > 0:
+            if not basename.endswith('_'):
+                basename = basename + '_'
+        missing_ps = [basename]
     for name in missing_ps:
         theta = getattr(eventWise, name+"Theta")
         pseudorapidity = apply_array_func(theta_to_pseudorapidity, theta)
@@ -335,6 +338,9 @@ def add_PT(eventWise, basename=None):
         pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c in px_cols]
         missing_pt = [c for c in pxpy_cols if (c+"PT") not in eventWise.columns]
     else:
+        if len(basename) > 0:
+            if not basename.endswith('_'):
+                basename = basename + '_'
         missing_pt = [basename]
     for name in missing_pt:
         px = getattr(eventWise, name+"Px")

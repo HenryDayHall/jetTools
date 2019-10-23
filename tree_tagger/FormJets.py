@@ -260,14 +260,34 @@ class PseudoJet:
                 self.root_jetInputIdxs.append(pid)
 
     @classmethod
-    def read_fastjet(cls, dir_name, selected_index=0, eventWise=None, jet_name="PseudoJet"):
+    def read_fastjet(cls, arg, eventWise, jet_name="PseudoJet"):
         #  fastjet format
-        assert eventWise is not None
-        ifile_name = os.path.join(dir_name, f"fastjet_ints.csv")
-        ffile_name = os.path.join(dir_name, f"fastjet_doubles.csv")
+        assert eventWise.selected_index is not None
+        if isinstance(arg, str):
+            ifile_name = os.path.join(arg, f"fastjet_ints.csv")
+            ffile_name = os.path.join(arg, f"fastjet_doubles.csv")
+            fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
+            fast_floats = np.genfromtxt(ffile_name, skip_header=1)
+            with open(ifile_name, 'r') as ifile:
+                header = ifile.readline()[1:]
+            with open(ffile_name, 'r') as ffile:
+                fcolumns = ffile.readline()[1:].split()
+        else:
+            header = arg[0].decode()[1:]
+            arrays = [[]]
+            a_type = int
+            for line in arg[1:]:
+                line = line.decode().strip()
+                if line[0] == '#':  # moves from the ints to the doubles
+                    arrays.append([])
+                    a_type = float
+                    fcolumns = line[1:].split()
+                else:
+                    arrays[-1].append([a_type(x) for x in line.split()])
+            assert len(arrays) == 2, f"Problem wiht input; \n{arg}"
+            fast_ints = np.array(arrays[0], dtype=int)
+            fast_floats = np.array(arrays[1], dtype=float)
         # first line will be the tech specs and columns
-        with open(ifile_name, 'r') as ifile:
-            header = ifile.readline()[1:]
         header = header.split()
         deltaR = float(header[0].split('=')[1])
         algorithm_name = header[1]
@@ -283,14 +303,14 @@ class PseudoJet:
         icolumns = {name: i for i, name in enumerate(header[header.index("Columns;") + 1:])}
         # and from this get the columns
         # the file of fast_ints contains
-        fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
         n_fastjet_int_cols = len(icolumns)
         if len(fast_ints.shape) == 1:
             fast_ints = fast_ints.reshape((-1, n_fastjet_int_cols))
         else:
             assert fast_ints.shape[1] == n_fastjet_int_cols
         # check that all the input idx have come through
-        assert set(eventWise.JetInputs_SourceIdx).issubset(set(fast_ints[:, icolumns["InputIdx"]])), "Problem with inpu idx"
+        n_inputs = len(eventWise.JetInputs_SourceIdx)
+        assert set(np.arange(n_inputs)).issubset(set(fast_ints[:, icolumns["InputIdx"]])), "Problem with inpu idx"
         next_free = np.max(fast_ints[:, icolumns["InputIdx"]], initial=-1) + 1
         fast_idx_dict = {}
         for line_idx, i in fast_ints[:, [icolumns["pseudojet_id"], icolumns["InputIdx"]]]:
@@ -327,14 +347,9 @@ class PseudoJet:
                                         == line[icolumns["parent_id"]]][0]
                 assert line[0] in parent_line[[icolumns["child1_id"],
                                                icolumns["child2_id"]]], identifier + " parent doesn't acknowledge child"
-        # now read float header
-        # first line will be the columns
-        with open(ffile_name, 'r') as ffile:
-            fcolumns = ffile.readline()[1:].split()
         n_fastjet_float_cols = len(fcolumns)
         for fcol, expected in zip(fcolumns, PseudoJet.float_columns):
             assert expected.endswith(fcol)
-        fast_floats = np.genfromtxt(ffile_name, skip_header=1)
         if len(fast_ints) == 0:
             assert len(fast_floats) == 0, "No ints found, but floats are present!"
             print("Warning, no values from fastjet.")
@@ -711,23 +726,29 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
         return contents, mask, columns, sources, e
 
 
-def produce_summary(eventWise, event):
-    eventWise.selected_index = event
-    summary = np.vstack((eventWise.JetInputs_SourceIdx,
+def produce_summary(eventWise, to_file=True):
+    assert eventWise.selected_index is not None
+    n_inputs = len(eventWise.JetInputs_SourceIdx)
+    summary = np.vstack((np.arange(n_inputs),
                          eventWise.JetInputs_Px,
                          eventWise.JetInputs_Py,
                          eventWise.JetInputs_Pz,
                          eventWise.JetInputs_Energy)).T
     summary = summary.astype(str)
-    header = f"# summary file for {eventWise}, event {event}\n"
-    file_name = os.path.join(eventWise.dir_name, f"summary_observables.csv")
-    with open(file_name, 'w') as summ_file:
-        summ_file.write(header)
-        writer = csv.writer(summ_file, delimiter=' ')
-        writer.writerows(summary)
+    if to_file:
+        header = f"# summary file for {eventWise}, event {eventWise.selected_index}\n"
+        file_name = os.path.join(eventWise.dir_name, f"summary_observables.csv")
+        with open(file_name, 'w') as summ_file:
+            summ_file.write(header)
+            writer = csv.writer(summ_file, delimiter=' ')
+            writer.writerows(summary)
+    else:
+        rows = [' '.join(row) for row in summary]
+        return '\n'.join(rows).encode()
 
 
-def run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer, jet_name="FastJet", capture_out=False):
+def run_FastJet(eventWise, deltaR, exponent_multiplyer, jet_name="FastJet", use_pipe=True):
+    assert eventWise.selected_index is not None
     if exponent_multiplyer == -1:
         # antikt algorithm
         algorithm_num = 1
@@ -738,18 +759,63 @@ def run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer, jet_name="Fast
     else:
         raise ValueError(f"exponent_multiplyer should be -1, 0 or 1, found {exponent_multiplyer}")
     program_name = "./tree_tagger/applyFastJet"
-    if capture_out:
-        out = subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)],
-                             stdout=subprocess.PIPE)
-        out = out.stdout.decode("utf-8")
-        fastjets = PseudoJet.read_fastjet(dir_name)
-        return fastjets, out
-    subprocess.run([program_name, dir_name, str(deltaR), str(algorithm_num)])
-    fastjets = PseudoJet.read_fastjet(dir_name, eventWise=eventWise, jet_name=jet_name)
+    if use_pipe:
+        summary_lines = produce_summary(eventWise, False)
+        out = run_applyfastjet(summary_lines, str(deltaR).encode(), 
+                                  str(algorithm_num).encode())
+        fastjets = PseudoJet.read_fastjet(out, eventWise, jet_name=jet_name)
+        return fastjets
+    produce_summary(eventWise)
+    subprocess.run([program_name, str(deltaR), str(algorithm_num), eventWise.dir_name])
+    fastjets = PseudoJet.read_fastjet(eventWise.dir_name, eventWise=eventWise, jet_name=jet_name)
     return fastjets
 
 
-def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, batch_length=100):
+def run_applyfastjet(input_lines, deltaR, algorithm_num, program_path="./tree_tagger/applyFastJet", tries=0):
+    '''
+    Run applyfastjet, sending the provided input lines to stdin
+    
+
+    Parameters
+    ----------
+    input_lines: list of byte array
+         contents of the input as byte arrays
+
+    Returns
+    -------
+    output_lines: list of byte array
+         the data that applyfastjet prints to stdout
+
+    '''
+    # input liens should eb one long byte string
+    assert isinstance(input_lines, bytes)
+    process = subprocess.Popen([program_path, deltaR, algorithm_num],
+                               stdout=subprocess.PIPE,
+                               stdin=subprocess.PIPE)
+    while process.poll() is None:
+        output_lines = None
+        process_output = process.stdout.readline()
+        if process_output[:2] == b' *': # all system prompts start with *
+            # note that SusHi reads the input file several times
+            if b'**send input file to stdin' in process_output:
+                process.stdin.write(input_lines)
+                process.stdin.flush()
+                process.stdin.close()
+            elif b'**output file starts here' in process_output:
+                process.wait()  # ok let it complete
+                output_lines = process.stdout.readlines()
+    if output_lines is None:
+        print("Error! No output, retrying that input")
+        tries += 1
+        if tries > 5:
+            print("Tried this 5 times... already")
+            st()
+        # recursive call
+        output_lines = run_applyfastjet(input_lines, deltaR, algorithm_num, program_path, tries)
+    return output_lines
+
+
+def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, batch_length=100, use_pipe=True):
     if jet_name is None:
         jet_name = "FastJet"
     eventWise.selected_index = None
@@ -767,8 +833,7 @@ def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, ba
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
-        produce_summary(eventWise, event_n)
-        fastjets = run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer, jet_name=jet_name)
+        fastjets = run_FastJet(eventWise, deltaR, exponent_multiplyer, jet_name=jet_name, use_pipe=use_pipe)
         fastjets = fastjets.split()
         try:
             os.remove(os.path.join(dir_name, 'summary_observables.csv'))

@@ -30,17 +30,10 @@ class CSVRow
 
             std::stringstream   lineStream(line);
             std::string         cell;
-
             m_data.clear();
             while(std::getline(lineStream, cell, ' '))
             {
                 m_data.push_back(cell);
-            }
-            // This checks for a trailing comma with no data after it.
-            if (!lineStream && cell.empty())
-            {
-                // If there was a trailing comma then add an empty element.
-                m_data.push_back("");
             }
         }
     private:
@@ -206,87 +199,125 @@ static void fj(vector<double>& a, // a = flat vector of observations
 
 }
 
+void output_ints(std::ostream& int_file, vector<vector<int>> ints, double R,
+                 std::string algorithm_name, std::string sep=" "){
+    int_file << "# " << "deltaR=" << R << sep
+                     << algorithm_name << sep
+                     << "Columns;" << sep
+                     << "pseudojet_id" << sep
+                     << "InputIdx" << sep
+                     << "parent_id" << sep
+                     << "child1_id" << sep
+                     << "child2_id"
+                     << std::endl;
+    for(int i=0; i<ints.size(); i++){
+        int_file << ints[i][0] << sep 
+                 << ints[i][1] << sep
+                 << ints[i][2] << sep
+                 << ints[i][3] << sep
+                 << ints[i][4]
+                 << std::endl;
+    }
+}
+
+
+void output_doubles(std::ostream& double_file, vector<vector<double>> doubles,
+                    std::string sep=" "){
+    double_file << "# " << "PT" << sep
+                        << "Rapidity" << sep
+                        << "Phi" << sep
+                        << "Energy" << sep
+                        << "Px" << sep
+                        << "Py" << sep
+                        << "Pz"
+                        << std::endl;
+
+    for(int i=0; i<doubles.size(); i++){
+        double_file << doubles[i][0] << sep 
+                    << doubles[i][1] << sep
+                    << doubles[i][2] << sep
+                    << doubles[i][3] << sep
+                    << doubles[i][4] << sep
+                    << doubles[i][5] << sep
+                    << doubles[i][6]
+                    << std::endl;
+    }
+}
+
 
 int main(int argc, char * argv[]) {
-    if(argc != 4){
+    bool read_pipe = true;
+    if(argc < 3 || argc > 4){
         std::cout << "The arguments should be "
-                  << "<folder name> "
                   << "<deltaR> "
-                  << "<algorithm_num>" << std::endl;
+                  << "<algorithm_num> "
+                  << "<folder_name(optional)> " << std::endl;
         return 1;
     }
-    // the argument shoulf be the directory of the files
-    std::string dir_name(argv[1]);
-    if(dir_name.back() != '/'){
-        dir_name = dir_name + "/";
-    }
-    std::string input_name = dir_name + "summary_observables.csv";
-    std::ifstream file(input_name);
-    CSVRow row;
-    vector<double> a;
-    // first row is a header
-    file >> row;
-    while(file >> row) {
-        // these values come from the observabels/summary file
-        a.push_back(std::stod(row[0]));  //global_obs_id
-        a.push_back(std::stod(row[1]));  //px
-        a.push_back(std::stod(row[2]));  //py
-        a.push_back(std::stod(row[3]));  //pz
-        a.push_back(std::stod(row[4]));  //e
-    }
-   vector< vector<int> > ints;  // for geometry results
-   vector< vector<double> > doubles; //  for kinematics results
-   vector< double > masses;  // per jet results
-   vector< double > pts;  // per jet results
-
-   // run the algorithm
-   double R = atof(argv[2]);
-   int algorithm = atoi(argv[3]);
+   double R = atof(argv[1]);
+   int algorithm = atoi(argv[2]);
    string algorithm_name = algorithm == 0 ? "kt_algorithm" : (algorithm == 1 ? "antikt_algorithm" : "cambridge_algorithm");
-   fj(a, ints, doubles , masses, pts, R, algorithm);
+    vector<double> a;  // store the inputs
 
-   //std::cout << "Read " << ints.size()/4 << " particles\n";
+    std::string dir_name;  // needed for file output too
+    if(argc == 4){
+        read_pipe = false;
+        // the argument should be the directory of the files
+        dir_name = argv[3];
+        if(dir_name.back() != '/'){
+            dir_name = dir_name + "/";
+        }
+        std::string input_name = dir_name + "summary_observables.csv";
+        std::ifstream file(input_name);
+        CSVRow row;
+        // first row is a header
+        file >> row;
+        while(file >> row) {
+            // these values come from the observabels/summary file
+            a.push_back(std::stod(row[0]));  //global_obs_id
+            a.push_back(std::stod(row[1]));  //px
+            a.push_back(std::stod(row[2]));  //py
+            a.push_back(std::stod(row[3]));  //pz
+            a.push_back(std::stod(row[4]));  //e
+        }
+    }else{ // listen to the pipe
+        // prompt the python program to talk
+        std::cout << " **send input file to stdin\n";
+        CSVRow row;
+        while (std::cin >> row){
+            // these values come from the pipe
+            a.push_back(std::stod(row[0]));  //global_obs_id
+            a.push_back(std::stod(row[1]));  //px
+            a.push_back(std::stod(row[2]));  //py
+            a.push_back(std::stod(row[3]));  //pz
+            a.push_back(std::stod(row[4]));  //e
+        }
 
-   //prepare to write
-   string sep = " ";
+    }
 
-   string i_output_name = dir_name + "fastjet_ints.csv";
-   std::ofstream int_file(i_output_name);
-   int_file << "# " << "deltaR=" << R << sep
-                    << algorithm_name << sep
-                    << "Columns;" << sep
-                    << "pseudojet_id" << sep
-                    << "InputIdx" << sep
-                    << "parent_id" << sep
-                    << "child1_id" << sep
-                    << "child2_id"
-                    << std::endl;
-   string d_output_name = dir_name + "fastjet_doubles.csv";
-   std::ofstream double_file(d_output_name);
-   double_file << "# " << "PT" << sep
-                       << "Rapidity" << sep
-                       << "Phi" << sep
-                       << "Energy" << sep
-                       << "Px" << sep
-                       << "Py" << sep
-                       << "Pz"
-                       << std::endl;
+    //store the outputs
+    vector< vector<int> > ints;  // for geometry results
+    vector< vector<double> > doubles; //  for kinematics results
+    vector< double > masses;  // per jet results
+    vector< double > pts;  // per jet results
 
-   // Write out
-   for(int i =0; i < ints.size(); i++){
-       int_file << ints[i][0] << sep 
-                << ints[i][1] << sep
-                << ints[i][2] << sep
-                << ints[i][3] << sep
-                << ints[i][4]
-                << std::endl;
-       double_file << doubles[i][0] << sep 
-                   << doubles[i][1] << sep
-                   << doubles[i][2] << sep
-                   << doubles[i][3] << sep
-                   << doubles[i][4] << sep
-                   << doubles[i][5] << sep
-                   << doubles[i][6]
-                   << std::endl;
-   }
+    // run the algorithm
+    fj(a, ints, doubles , masses, pts, R, algorithm);
+
+    //std::cout << "Read " << ints.size()/4 << " particles\n";
+
+    //prepare to write
+    string sep = " ";
+    if(read_pipe){
+        std::cout << " **output file starts here\n";
+        output_ints(std::cout, ints, R, algorithm_name, sep);
+        output_doubles(std::cout, doubles, sep);
+    }else{
+        string i_output_name = dir_name + "fastjet_ints.csv";
+        std::ofstream int_file = std::ofstream(i_output_name);
+        string d_output_name = dir_name + "fastjet_doubles.csv";
+        std::ofstream double_file(d_output_name);
+        output_ints(int_file, ints, R, algorithm_name, sep);
+        output_doubles(double_file, doubles, sep);
+    }
 }

@@ -92,7 +92,7 @@ def normalize_jets(eventWise, jet_name, new_name):
 def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
     eventWise.selected_index = None
     jet_cols = [(c, c.replace(jet_name, new_name))
-                for c in eventWise.columns if jet_name in c]
+                for c in eventWise.columns if c.startswith(jet_name)]
     per_track_var = getattr(eventWise, jet_name+"_Energy")
     n_events = len(per_track_var)
     mask = apply_array_func(lambda lst: len(lst)>=min_tracks, per_track_var, depth=eventWise.JET_DEPTH)
@@ -103,10 +103,7 @@ def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
         for event_n, mask_here in enumerate(mask):
             eventWise.selected_index = event_n
             values_here = getattr(eventWise, name)
-            try:
-                values.append(values_here[mask_here])
-            except IndexError:
-                st()
+            values.append(values_here[mask_here])
         filtered_outs[new_name] = awkward.fromiter(values)
     eventWise.append(filtered_outs)
 

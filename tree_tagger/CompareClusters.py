@@ -1,4 +1,5 @@
 """ compare two jet clustering techniques """
+from ipdb import set_trace as st
 from tree_tagger import Components
 import sklearn.metrics
 from matplotlib import pyplot as plt
@@ -14,6 +15,7 @@ def rand_score(eventWise, jet_name1, jet_name2):
     num_inputs_per_event = Components.apply_array_func(len, eventWise.JetInputs_SourceIdx[:num_common_events])
     scores = []
     for event_n, n_inputs in enumerate(num_inputs_per_event):
+        st()
         labels1 = -np.ones(n_inputs)
         for i, jet in enumerate(selection1[event_n]):
             labels1[jet[jet < n_inputs]] = i
@@ -21,6 +23,7 @@ def rand_score(eventWise, jet_name1, jet_name2):
         labels2 = -np.ones(n_inputs)
         for i, jet in enumerate(selection2[event_n]):
             labels2[jet[jet < n_inputs]] = i
+        assert -1 not in labels2
         score = sklearn.metrics.adjusted_rand_score(labels1, labels2)
         scores.append(score)
     return scores

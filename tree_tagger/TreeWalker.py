@@ -5,6 +5,10 @@
 # make the jets into parented trees 
 # there should be a Jet class that is an extention of ParentedTree from nltk
 # use Scikit learn RobustScalar to rescale the data
+# plotting command
+#convert -delay 20 *.png jet.gif
+#ffmpeg -i fasteventpic/frame%03d.png -c:v libx264 fasteventpic/jet.mp4
+#ffmpeg -i homeeventpic/frame%03d.png -c:v libx264 homeeventpic/jet.mp4
 import numpy as np
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
@@ -250,7 +254,7 @@ def quick_vid():
     import FormJets
     save_name = "homepic" 
     assert not os.path.exists(save_name)
-    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt_chpt.awkd")
     eventWise.selected_index = int(input("Event num? "))
     print(f"This event has {len(eventWise.HomeJet_Px)} jets.")
     lengthy_jets = [(i, len(j)) for i, j in enumerate(eventWise.HomeJet_Parents)
@@ -283,7 +287,7 @@ def whole_event(nodisplay=False):
         print(f"Getting fast motion. Jet {i}")
         root = np.where(eventWise.FastJet_InputIdx[i]
                         == eventWise.FastJet_RootInputIdx[i][0])[0][0]
-        fast_walker = TreeWalker(eventWise, "FastJet", i, root)
+        fast_walker = TreeWalker(eventWise, "FastJet", eventWise.selected_index, i, root)
         motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
         if len(motion) == 0:
             st()
@@ -313,7 +317,7 @@ def whole_event(nodisplay=False):
         print(f"Getting home motion. Jet {i}")
         root = np.where(eventWise.HomeJet_InputIdx[i]
                         == eventWise.HomeJet_RootInputIdx[i][0])[0][0]
-        home_walker = TreeWalker(eventWise, "HomeJet", i, root)
+        home_walker = TreeWalker(eventWise, "HomeJet", eventWise.selected_index, i, root)
         motion, size, color = tree_motion(home_walker.leaf[1:3], home_walker, steps_between)
         motions.append(motion); sizes.append(size); colours.append(color)
     if nodisplay:
@@ -342,7 +346,7 @@ def whole_event_behavior(nodisplay=False):
     import FormJets
     import Components
     obs_dir = "test"
-    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt_chpt.awkd")
     eventWise.selected_index = int(input("Event num? "))
     deltaR = eventWise.HomeJet_DeltaRs[0]
     exponent_multiplyer = eventWise.HomeJet_ExponentMulti[0]
@@ -354,7 +358,7 @@ def whole_event_behavior(nodisplay=False):
         print(f"Getting fast motion. Jet {i}")
         root = np.where(eventWise.FastJet_InputIdx[i]
                         == eventWise.FastJet_RootInputIdx[i][0])[0][0]
-        fast_walker = TreeWalker(eventWise, "FastJet", i, root)
+        fast_walker = TreeWalker(eventWise, eventWise.selected_index, "FastJet", i, root)
         jet_behavior, jet_jump = join_behaviors(fast_walker)
         fast_behavior += jet_behavior
         fast_jump += jet_jump
@@ -366,7 +370,7 @@ def whole_event_behavior(nodisplay=False):
         print(f"Getting home motion. Jet {i}")
         root = np.where(eventWise.HomeJet_InputIdx[i]
                         == eventWise.HomeJet_RootInputIdx[i][0])[0][0]
-        home_walker = TreeWalker(eventWise, "HomeJet", i, root)
+        home_walker = TreeWalker(eventWise, eventWise.selected_index,"HomeJet", i, root)
         jet_behavior, jet_jump = join_behaviors(home_walker)
         home_behavior += jet_behavior
         home_jump += jet_jump
@@ -411,6 +415,6 @@ def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump
 
 if __name__ == '__main__':
     #quick_vid()
-    #whole_event()
-    whole_event_behavior()
+    whole_event()
+    #whole_event_behavior()
 

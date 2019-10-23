@@ -501,7 +501,7 @@ def test_produce_summary():
         jet_inputs = np.array([]).reshape((-1, n_jet_inputs))
         set_JetInputs(empty_ew, jet_inputs)
         empty_ew.selected_index = 0
-        FormJets.produce_summary(empty_ew, 0)
+        FormJets.produce_summary(empty_ew)
         with open(path, 'r') as summary_file:
             text = summary_file.readlines()
         assert text[0][0] == '#'
@@ -512,7 +512,7 @@ def test_produce_summary():
         jet_inputs = np.zeros((num_tracks, n_jet_inputs))
         set_JetInputs(empty_ew, jet_inputs)
         empty_ew.selected_index = 0
-        FormJets.produce_summary(empty_ew, 0)
+        FormJets.produce_summary(empty_ew)
         with open(path, 'r') as summary_file:
             text = summary_file.readlines()
         assert text[0][0] == '#'
@@ -526,7 +526,7 @@ def test_produce_summary():
         jet_inputs = np.random.rand(num_tracks, n_jet_inputs)
         set_JetInputs(empty_ew, jet_inputs)
         empty_ew.selected_index = 0
-        FormJets.produce_summary(empty_ew, 0)
+        FormJets.produce_summary(empty_ew)
         with open(path, 'r') as summary_file:
             text = summary_file.readlines()
         assert text[0][0] == '#'
@@ -543,13 +543,17 @@ def test_run_FastJet():
         empty_name = "empty.awkd"
         empty_path = os.path.join(dir_name, empty_name)
         empty_ew = Components.EventWise(dir_name, empty_name)
-        # can only run fastjet by setting jet inputs
-        # as a summary must be produced
+        # can run fast jets via summary files or the pipe
         def make_jets3(eventWise, deltaR, exponent_multiplyer, ints, floats):
             set_JetInputs(eventWise, floats)
             eventWise.selected_index = 0
-            FormJets.produce_summary(eventWise, 0)
-            return FormJets.run_FastJet(dir_name, eventWise, deltaR, exponent_multiplyer)
+            FormJets.produce_summary(eventWise)
+            return FormJets.run_FastJet(eventWise, deltaR, exponent_multiplyer, use_pipe=False)
         clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
+        def make_jets4(eventWise, deltaR, exponent_multiplyer, ints, floats):
+            set_JetInputs(eventWise, floats)
+            eventWise.selected_index = 0
+            return FormJets.run_FastJet(eventWise, deltaR, exponent_multiplyer, use_pipe=True)
+        clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
 
 
