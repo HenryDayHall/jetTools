@@ -107,21 +107,46 @@ class EventWise:
         else:
             self.columns = []
         if contents is not None:
-            self._column_contents = contents
+            self._column_contents = {k:v for k, v in contents.items()}
         else:
             self._column_contents = {}
         assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
+        self._alias_dict = self._gen_alias()
+    
+    def _gen_alias(self):
+        alias_dict = {}
+        if 'alias' in self._column_contents:
+            for row in self._column_contents['alias']:
+                alias_dict[row[0]] = row[1]
+                self.columns.append(row[0])
+        else:
+            self._column_contents['alias'] = awkward.fromiter([])
+        return alias_dict
 
-    def add_to_index(self, contents, name=None, mutable=True):
-        """ add this dataset to the file index """
-        if name is None:
-            name = self.save_name.split('.', 1)[0]
-        contents.append({'name': name, 'save_name': self.save_name, 'mutable':mutable})
+    def _remove_alias(self, to_remove):
+        alias_list = list(self._column_contents['alias'][:, 0])
+        alias_idx = alias_list.index(to_remove)
+        # if to_remove is not infact an alias the line above will throw an error
+        del self._alias_dict[to_remove]
+        del alias_list[alias_idx]
+        self._column_contents['alias'] = awkward.fromiter(alias_list)
+        self.columns.remove(to_remove)
+
+    def add_alias(self, name, target):
+        assert target in self.columns
+        assert name not in self.columns
+        alias_list = self._column_contents['alias']
+        alias_list += [name, target]
+        self._column_contents['alias'] = awkward.fromiter(alias_list)
+        self._alias_dict[name] = target
+        self.columns.append(name)
 
     def __getattr__(self, attr_name):
         """ the columns are all avalible attrs """
         # capitalise raises the case of the first letter
         attr_name = attr_name[0].upper() + attr_name[1:]
+        # if it is an alias get the true name
+        attr_name = self._alias_dict.get(attr_name, attr_name)
         if attr_name in self.columns:
             if self.selected_index is not None:
                 return self._column_contents[attr_name][self.selected_index]
@@ -143,7 +168,8 @@ class EventWise:
         """ write to disk """
         path = os.path.join(self.dir_name, self.save_name)
         assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
-        column_order = awkward.fromiter(self.columns)
+        non_alias_cols = [c for c in self.columns if c not in self._alias_dict]
+        column_order = awkward.fromiter(non_alias_cols)
         try:
             del self._column_contents['column_order']
         except KeyError:
@@ -178,17 +204,86 @@ class EventWise:
         self.write()
 
     def remove(self, col_name):
-        if col_name not in self.columns:
-            raise KeyError(f"Don't have a column called {col_name}")
-        self.columns.remove(col_name)
-        if type(self._column_contents) != dict:
-            self._column_contents = {k:v for k, v in self._column_contents.items()}
-        del self._column_contents[col_name]
+        if col_name in self._alias_dict:
+            self._remove_alias(col_name)
+        else:
+            if col_name not in self.columns:
+                raise KeyError(f"Don't have a column called {col_name}")
+            self.columns.remove(col_name)
+            if type(self._column_contents) != dict:
+                self._column_contents = {k:v for k, v in self._column_contents.items()}
+            del self._column_contents[col_name]
 
     def remove_prefix(self, col_prefix):
         to_remove = [c for c in self.columns if c.startswith(col_prefix)]
         for c in to_remove:
             self.remove(c)
+
+    def split(self, per_event_component="Energy", **kwargs):
+        #TODO  finishe this
+        self.selected_index = None
+        # decide where the fragments will go
+        name_format = self.save_name.split('.', 1)[0] + "_fragment{}.awkd"
+        if 'dir_name' in kwargs:
+            save_dir = kwargs['dir_name']
+        else:
+            save_dir = os.path.join(self.dir_name, name_format[:-7])
+        try:
+            os.mkdir(save_dir)
+        except FileExistsError:
+            pass
+        # not all the components are obliged to have the same number of items,
+        # a component is identified as being the correct length, and all components
+        # of that length are split between the fragments
+        if not isinstance(per_event_component, str):
+            # if a list of per event compoenents are given
+            # it should eb verified that they are all the same length
+            to_check = set(per_event_component[1:])
+            per_event_component = per_event_component[0]
+        else:
+            to_check = set()
+        n_events = len(getattr(self, per_event_component))
+        # work out which lists have this property
+        per_event_cols = [c for c in self._column_contents.keys()
+                          if len(self._column_contents[c]) == n_events]
+        assert to_check.issubset(per_event_cols)
+        # if known_per_event
+        if "n_fragments" in kwargs:
+            n_fragments = kwargs["n_fragments"]
+            fragment_length = int(n_events/n_fragments)
+        elif "fragment_length" in kwargs:
+            fragment_length = kwargs['fragment_length']
+            # must round up in the case of uneven length fragments
+            n_fragments = int(np.ceil(n_events/fragment_length))
+        lower_bounds = [i*fragment_length for i in range(n_fragments)]
+        upper_bounds = lower_bounds[1:] + [n_events]
+        new_contents = []
+        for lower, upper in zip(lower_bounds, upper_bounds):
+            new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
+            new_contents.append(new_content)
+        unchanged_parts = {k: self._column_contents[k][:] for k in self._column_contents.keys()
+                           if k not in per_event_cols}
+        no_dups = kwargs.get('no_dups', True)  # if no dupes only put the unchanged content in the first event
+        if no_dups:
+            new_contents0 = {**new_contents[0], **unchanged_parts}
+            ew0 = type(self)(save_dir, name_format.format(0),
+                             columns=self.columns, contents=new_contents0)
+            new_columns = per_event_cols
+        else:
+            for i in range(n_fragments):
+                new_contents[i] = {**new_contents[i], **unchanged_parts}
+            ew0 = type(self)(save_dir, name_format.format(0),
+                             columns=self.columns, contents=new_contents[0])
+            new_columns = self.columns
+        ew0.write()
+        for i, new_content in enumerate(new_content[1:]):
+            ew = type(self)(save_dir, name_format.format(i + 1),
+                            columns=new_columns, contents=new_content)
+            ew.write()
+        return save_dir
+
+            
+
 
 
 def add_rapidity(eventWise, base_name=''):
@@ -551,4 +646,8 @@ class RootReadout(EventWise):
     @classmethod
     def from_file(cls, path, component_name):
         return cls(*os.path.split(path), component_name)
+
+def angular_distance(phi1, phi2):
+    angular_diffrence = abs(self._floats[row][phi_col] - self._floats[column][phi_col]) % (2*np.pi)
+    return min(angular_diffrence, 2*np.pi - angular_diffrence)
 
