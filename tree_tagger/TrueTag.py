@@ -114,13 +114,13 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
         print("Problem")
         return content
 
-display=True
+display=False  # note needs full simulation
 if display:  # have to comment out to run without display
 
     def main():
         from tree_tagger import Components, DrawBarrel
         repeat = True
-        eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+        eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt.awkd")
         jet_name = "HomeJet"
         while repeat:
             eventWise.selected_index = int(input("Event num: "))

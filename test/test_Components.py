@@ -190,15 +190,15 @@ def test_EventWise():
         blank_ew = Components.EventWise(dir_name, save_name)
         assert blank_ew.columns == []
         # add to index
-        contents = []
-        blank_ew.add_to_index(contents)
-        expected =  {"name": "blank", "save_name": save_name,
-                     "mutable": True}
-        assert generic_equality_comp(contents[-1], expected)
-        blank_ew.add_to_index(contents, name="a", mutable=False)
-        expected =  {"name": "a", "save_name": save_name,
-                     "mutable": False}
-        assert generic_equality_comp(contents[-1], expected)
+        #contents = []
+        #blank_ew.add_to_index(contents)
+        #expected =  {"name": "blank", "save_name": save_name,
+        #             "mutable": True}
+        #assert generic_equality_comp(contents[-1], expected)
+        #blank_ew.add_to_index(contents, name="a", mutable=False)
+        #expected =  {"name": "a", "save_name": save_name,
+        #             "mutable": False}
+        #assert generic_equality_comp(contents[-1], expected)
         # getting attributes
         with pytest.raises(AttributeError):
             getattr(blank_ew, "PT")

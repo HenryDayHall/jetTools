@@ -1,4 +1,5 @@
 """Low level components, format apes that of root """
+import pickle
 import warnings
 import uproot
 import awkward
@@ -95,6 +96,8 @@ class EventWise:
     selected_index = None
     EVENT_DEPTH=1 # events, objects in events
     JET_DEPTH=2 # events, jets, objects in jets
+    _alias_dict = {}  # need to make a blank defalut alias dict incase the __getattr__
+    # method is calle dbefore th eobject is initialised
 
     def __init__(self, dir_name, save_name, columns=None, contents=None):
         # the init method must generate some table of items,
@@ -219,15 +222,48 @@ class EventWise:
         for c in to_remove:
             self.remove(c)
 
-    def split(self, per_event_component="Energy", **kwargs):
-        #TODO  finishe this
+    def fragment(self, per_event_component, **kwargs):
+        if not isinstance(per_event_component, str):
+            n_events = len(getattr(self, per_event_component[0]))
+        else:
+            n_events = len(getattr(self, per_event_component))
+        if "n_fragments" in kwargs:
+            n_fragments = kwargs["n_fragments"]
+            fragment_length = int(n_events/n_fragments)
+        elif "fragment_length" in kwargs:
+            fragment_length = kwargs['fragment_length']
+            # must round up in the case of uneven length fragments
+            n_fragments = int(np.ceil(n_events/fragment_length))
+        lower_bounds = [i*fragment_length for i in range(n_fragments)]
+        upper_bounds = lower_bounds[1:] + [n_events]
+        return self.split(upper_bounds, lower_bounds, per_event_component, part_name="fragment", **kwargs)
+    def split_unfinished(self, per_event_component, unfinished_component, **kwargs):
+        self.selected_index = None
+        if not isinstance(per_event_component, str):
+            n_events = len(getattr(self, per_event_component[0]))
+        else:
+            n_events = len(getattr(self, per_event_component))
+        if not isinstance(unfinished_component, str):
+            # check they all have the same length
+            lengths = set([len(getattr(self, name)) for name in unfinished_component])
+            assert len(lengths) == 1, "Error not all unfinished components have the same length"
+            num_unfinished = list(lengths)[0]
+        else:
+            num_unfinished = len(getattr(self, unfinished_component))
+        assert num_unfinished < n_events
+        lower_bounds = [0, num_unfinished]
+        upper_bounds = [num_unfinished, n_events]
+        return self.split(upper_bounds, lower_bounds, per_event_component, part_name="progress", **kwargs)
+
+    def split(self, upper_bounds, lower_bounds, per_event_component="Energy", part_name="part", **kwargs):
+        # not thread safe....
         self.selected_index = None
         # decide where the fragments will go
-        name_format = self.save_name.split('.', 1)[0] + "_fragment{}.awkd"
+        name_format = self.save_name.split('.', 1)[0] + "_" + part_name + "{}.awkd"
         if 'dir_name' in kwargs:
             save_dir = kwargs['dir_name']
         else:
-            save_dir = os.path.join(self.dir_name, name_format[:-7])
+            save_dir = os.path.join(self.dir_name, name_format.replace('{}.awkd', ''))
         try:
             os.mkdir(save_dir)
         except FileExistsError:
@@ -247,16 +283,6 @@ class EventWise:
         per_event_cols = [c for c in self._column_contents.keys()
                           if len(self._column_contents[c]) == n_events]
         assert to_check.issubset(per_event_cols)
-        # if known_per_event
-        if "n_fragments" in kwargs:
-            n_fragments = kwargs["n_fragments"]
-            fragment_length = int(n_events/n_fragments)
-        elif "fragment_length" in kwargs:
-            fragment_length = kwargs['fragment_length']
-            # must round up in the case of uneven length fragments
-            n_fragments = int(np.ceil(n_events/fragment_length))
-        lower_bounds = [i*fragment_length for i in range(n_fragments)]
-        upper_bounds = lower_bounds[1:] + [n_events]
         new_contents = []
         for lower, upper in zip(lower_bounds, upper_bounds):
             new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
@@ -264,26 +290,72 @@ class EventWise:
         unchanged_parts = {k: self._column_contents[k][:] for k in self._column_contents.keys()
                            if k not in per_event_cols}
         no_dups = kwargs.get('no_dups', True)  # if no dupes only put the unchanged content in the first event
+        all_paths = []
+        i = 0
+        # this bit isn't thread safe and could create a race condition
+        while name_format.format(i) in os.listdir(save_dir):
+            i+=1
+        name0 = name_format.format(i)
+        all_paths.append(os.path.join(save_dir, name0))
         if no_dups:
             new_contents0 = {**new_contents[0], **unchanged_parts}
-            ew0 = type(self)(save_dir, name_format.format(0),
+            ew0 = type(self)(save_dir, name0,
                              columns=self.columns, contents=new_contents0)
             new_columns = per_event_cols
         else:
-            for i in range(n_fragments):
+            for i in range(len(upper_bounds)):
                 new_contents[i] = {**new_contents[i], **unchanged_parts}
-            ew0 = type(self)(save_dir, name_format.format(0),
+            ew0 = type(self)(save_dir, name0,
                              columns=self.columns, contents=new_contents[0])
             new_columns = self.columns
         ew0.write()
-        for i, new_content in enumerate(new_content[1:]):
-            ew = type(self)(save_dir, name_format.format(i + 1),
+        for new_content in new_contents[1:]:
+            # this bit isn't thread safe and could create a race condition
+            while name_format.format(i) in os.listdir(save_dir):
+                i+=1
+            name = name_format.format(i)
+            all_paths.append(os.path.join(save_dir, name))
+            ew = type(self)(save_dir, name,
                             columns=new_columns, contents=new_content)
             ew.write()
-        return save_dir
+        return all_paths
 
-            
-
+    @classmethod
+    def combine(cls, dir_name, save_base, fragments=None, check_for_dups=False, del_fragments=False):
+        in_dir = os.listdir(dir_name)
+        if fragments is None:
+            fragments = [name for name in in_dir
+                         if name.startswith(save_base) 
+                         and name.endswith(".awkd")]
+        columns = []
+        contents = {}
+        for fragment in fragments:
+            path = os.path.join(dir_name, fragment)
+            content_here = awkward.load(path)
+            pickle_strs = {}  # when checking for dups
+            for key in content_here:
+                if key not in contents:
+                    contents[key] = list(content_here[key])
+                elif check_for_dups:
+                    # then add iff not a duplicate of the existign data
+                    if key not in pickle_strs:
+                        pickle_strs[key] = pickle.dumps(content_here[key])
+                    elif pickle.dumps(content_here[key]) != pickle_strs[key]:
+                        contents[key] += list(content_here[key])
+                else:
+                    contents[key] += list(content_here[key])
+            column_here = list(contents['column_order'])
+            for name in column_here:
+                if name not in columns:
+                    columns.append(name)
+        for key in contents.keys():
+            contents[key] = awkward.fromiter(contents[key])
+        new_eventWise = cls(dir_name, save_base+"_joined.awkd", columns=columns, contents=contents)
+        new_eventWise.write()
+        if del_fragments:
+            for fragment in fragments:
+                os.remove(os.path.join(dir_name, fragment))
+        return new_eventWise
 
 
 def add_rapidity(eventWise, base_name=''):
@@ -446,6 +518,28 @@ def add_PT(eventWise, basename=None):
     eventWise.append(columns, contents)
 
 
+def add_phi(eventWise, basename=None):
+    columns = []
+    contents = {}
+    if basename is None:
+        # find all the things with px, py
+        px_cols = [c[:-2] for c in eventWise.columns if c.endswith("Px")]
+        pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c in px_cols]
+        missing_phi = [c for c in pxpy_cols if (c+"Phi") not in eventWise.columns]
+    else:
+        if len(basename) > 0:
+            if not basename.endswith('_'):
+                basename = basename + '_'
+        missing_phi = [basename]
+    for name in missing_phi:
+        px = getattr(eventWise, name+"Px")
+        py = getattr(eventWise, name+"Py")
+        phi = apply_array_func(lambda x, y: np.arctan2(y, x), px, py)
+        columns.append(name + "Phi")
+        contents[name+"Phi"] = phi
+    eventWise.append(columns, contents)
+
+
 class RootReadout(EventWise):
     """ Reads arbitary components from a root file created by Delphes """
     def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None, all_prefixed=False):
@@ -593,11 +687,7 @@ class RootReadout(EventWise):
                 # this is the level on which the indices refer
                 for i, ref_list in enumerate(event):
                     for ref in ref_list:
-                        try:
-                            event_reflection[ref] = i
-                        except IndexError:
-                            st()
-                            print(i)
+                        event_reflection[ref] = i
             else:
                 raise NotImplementedError
             reflection.append(event_reflection)
@@ -648,6 +738,6 @@ class RootReadout(EventWise):
         return cls(*os.path.split(path), component_name)
 
 def angular_distance(phi1, phi2):
-    angular_diffrence = abs(self._floats[row][phi_col] - self._floats[column][phi_col]) % (2*np.pi)
+    angular_diffrence = abs(phi1 - phi2) % (2*np.pi)
     return min(angular_diffrence, 2*np.pi - angular_diffrence)
 

@@ -243,7 +243,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         for phi in phis:
             start, expected_end = SimpleClusterSamples.phi_split(config, phi)
             pseudojets = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
-                                            ints=start['ints'], floats=start['floats'])
+                                            ints = start['ints'], floats = start['floats'])
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
             end_floats = np.vstack([j._floats for j in jets])
@@ -275,7 +275,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                     assert False, f"{fails} out of {i} incorrect clusters from homejet"
 
 
-def test_PseudoJet():
+def test_Traditional():
     with TempTestDir("pseudojet") as dir_name:
         # there are two ways to construct a pseudojet
         # 1. telling it ints and floats as constructor arguments
@@ -284,9 +284,10 @@ def test_PseudoJet():
         empty_name = "empty.awkd"
         empty_path = os.path.join(dir_name, empty_name)
         empty_ew = Components.EventWise(dir_name, empty_name)
+        empty_ew.selected_index = 0
         # method 1
         def make_jets1(eventWise, deltaR, exponent_multiplyer, ints, floats):
-            pseudojets = FormJets.PseudoJet(eventWise, deltaR, exponent_multiplyer, ints=ints, floats=floats)
+            pseudojets = FormJets.Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer, ints_floats=(ints, floats))
             pseudojets.assign_parents()
             return pseudojets
         clustering_algorithm(empty_ew, make_jets1)
@@ -294,30 +295,32 @@ def test_PseudoJet():
         def make_jets2(eventWise, deltaR, exponent_multiplyer, ints, floats):
             set_JetInputs(eventWise, floats)
             eventWise.selected_index = 0
-            pseudojets = FormJets.PseudoJet(eventWise, deltaR, exponent_multiplyer)
+            pseudojets = FormJets.Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
             pseudojets.assign_parents()
             return pseudojets
         clustering_algorithm(empty_ew, make_jets2)
         # test the save method
         test_inp = SimpleClusterSamples.one_inp
         name = "TestA"
-        test_jet = FormJets.PseudoJet(empty_ew, 1., -1., ints=test_inp['ints'], floats=test_inp['floats'], jet_name=name)
-        FormJets.PseudoJet.write_event([test_jet], name, event_index=2)
+        test_jet = FormJets.Traditional(empty_ew, deltaR=1., exponent_multiplyer=-1.,
+                                        ints_floats=(test_inp['ints'], test_inp['floats']), jet_name=name)
+        FormJets.Traditional.write_event([test_jet], name, event_index=2)
         # read out again
-        jets = FormJets.PseudoJet.multi_from_file(empty_path, event_idx=2, jet_name=name)
+        jets = FormJets.Traditional.multi_from_file(empty_path, event_idx=2, jet_name=name)
         # expect only one jet
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(test_inp['ints'], test_inp['floats'], jets[0]._ints, jets[0]._floats)
         # test collective properties
         test_inp = SimpleClusterSamples.empty_inp
-        test_jet = FormJets.PseudoJet(empty_ew, 1., -1., ints=test_inp['ints'], floats=test_inp['floats'])
+        empty_ew.selected_index = 0
+        test_jet = FormJets.Traditional(empty_ew, deltaR=1., exponent_multiplyer=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         expected_summaries = np.full(10, np.nan)
         found_summaries = np.array([test_jet.PT, test_jet.Rapidity, test_jet.Phi, test_jet.Energy,
                                     test_jet.Px, test_jet.Py, test_jet.Pz, test_jet.JoinDistance,
                                     test_jet.Pseudorapidity, test_jet.Theta])
         tst.assert_allclose(expected_summaries, found_summaries)
         test_inp = SimpleClusterSamples.one_inp
-        test_jet = FormJets.PseudoJet(empty_ew, 1., -1., ints=test_inp['ints'], floats=test_inp['floats'])
+        test_jet = FormJets.Traditional(empty_ew, deltaR=1., exponent_multiplyer=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         test_jet.assign_parents()
         test_jets = test_jet.split()
         for expected, jet in zip(test_inp['floats'], test_jets):
@@ -547,7 +550,6 @@ def test_run_FastJet():
         def make_jets3(eventWise, deltaR, exponent_multiplyer, ints, floats):
             set_JetInputs(eventWise, floats)
             eventWise.selected_index = 0
-            FormJets.produce_summary(eventWise)
             return FormJets.run_FastJet(eventWise, deltaR, exponent_multiplyer, use_pipe=False)
         clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
         def make_jets4(eventWise, deltaR, exponent_multiplyer, ints, floats):

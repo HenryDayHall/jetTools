@@ -1,4 +1,6 @@
 import numpy as np
+import scipy
+import scipy.spatial
 import awkward
 import subprocess
 import os
@@ -21,34 +23,38 @@ class PseudoJet:
                      "Pseudojet_Py",
                      "Pseudojet_Pz",
                      "Pseudojet_JoinDistance"]
-    def __init__(self, eventWise=None, deltaR=1., exponent_multiplyer=-1, **kwargs):
-        self.deltaR = deltaR
-        self.exponent_multiplyer = exponent_multiplyer
-        self.exponent = 2 * exponent_multiplyer
+    def __init__(self, eventWise, selected_index=None, jet_name='PseudoJet', from_PseudoRapidity=False,
+                 ints_floats=None, **kwargs):
         # jets can have a varient name
         # this allows multiple saves in the same file
-        self.jet_name = kwargs.get('jet_name', 'Pseudojet')
+        self.jet_name = jet_name
+        self.jet_parameters = {}
+        dict_jet_params = kwargs.get('dict_jet_params', {})
+        for key in dict_jet_params:  # create the formatting of a eventWise column
+            key = key.replace(' ', '')
+            key = key[0].upper() + key[1:]
+            self.jet_parameters[key] = dict_jet_params[key]
         self.int_columns = [c.replace('Pseudojet', self.jet_name) for c in self.int_columns]
         self.float_columns = [c.replace('Pseudojet', self.jet_name) for c in self.float_columns]
-        self.from_PseudoRapidity = kwargs.get("from_PseudoRapidity", False)
+        self.from_PseudoRapidity = from_PseudoRapidity
         if self.from_PseudoRapidity:
             idx = next(i for i, c in enumerate(self.float_columns) if c.endswith("_Rapidity"))
             self.float_columns[idx] = self.float_columns[idx].replace("_Rapidity", "_PseudoRapidity")
         # make a table of ints and a table of floats
         # lists not arrays, becuase they will grow
         self._set_column_numbers()
-        if eventWise is not None:
-            self.eventWise = eventWise
+        if isinstance(eventWise, str):
+            assert selected_index is not None, "If loading eventWise form file must specify and index"
+            self.eventWise = Components.EventWise.from_file(eventWise)
         else:
-            assert 'eventWise_dir_name' in kwargs, "Must give eventWise or the instruction for it"
-            eventWise_dir_name = kwargs["eventWise_dir_name"]
-            eventWise_save_name = kwargs["eventWise_save_name"]
-            eventWise_selected_index = kwargs["eventWise_selected_index"]
-            self.eventWise = Components.EventWise(eventWise_dir_name, eventWise_save_name)
-            self.eventWise.selected_index = eventWise_selected_index
-        if 'ints' in kwargs:
-            self._ints = kwargs['ints']
-            self._floats = kwargs['floats']
+            self.eventWise = eventWise
+        if selected_index is not None:
+            self.eventWise.selected_index = selected_index
+        assert self.eventWise.selected_index is not None, "Must specify an index (event number) for the eventWise"
+        if ints_floats is not None:
+            assert len(ints_floats) == 2
+            self._ints = ints_floats[0]
+            self._floats = ints_floats[1]
             if isinstance(self._ints, np.ndarray):
                 # these are forced into list format
                 self._ints = self._ints.tolist()
@@ -111,28 +117,28 @@ class PseudoJet:
         if attr_name in self._float_contents:
             if len(self) == 0:  # if there are no pesudojets, there are no contents
                 return np.nan
-            # floats return a cumulative value
+            # floats return the value of the root
+            # or list if more than one root
             col_num = getattr(self, self._float_contents[attr_name])
-            cumulative = 0
-            num_obs = 0
-            for floats, ints in zip(self._floats, self._ints):
-                  if (ints[self._Child1_col] == -1 and
-                      ints[self._Child2_col] == -1):
-                      cumulative += floats[col_num]
-                      num_obs += 1
-            if num_obs == 0:
-                return 0.
-            # some attrs should behave diferently
-            if attr_name in ["Rapidity", "Pseudorapidity"]:
-                print("Aaaaaaah")  # how did it end up like this
-                raise AttributeError  # it was only a kiss, it was only a kiss
+            values = np.array([floats[col_num] for floats, ints in zip(self._floats, self._ints)
+                               if ints[self._Parent_col] == -1])
             if attr_name == 'Phi':  # make sure it's -pi to pi
-                cumulative = Components.confine_angle(cumulative)
-            return cumulative
+                values = Components.confine_angle(values)
+            if len(values) == 0:
+                return 0.
+            if len(values) == 1:
+                return values[0]
+            return values
         elif attr_name in self._int_contents:
             # ints return every value
             col_num = getattr(self, self._int_contents[attr_name])
             return np.array([ints[col_num] for ints in self._ints])
+        elif attr_name == "Rapidity":
+            # if the jet was constructed with pseudorapidity we might still want to know the rapidity
+            return Components.ptpze_to_rapidity(self.PT, self.Pz, self.Energy)
+        elif attr_name =="Pseudorapidity":
+            # vice verca
+            return Components.theta_to_pseudorapidity(self.Theta)
         raise AttributeError(f"{self.__class__.__name__} does not have {attr_name}")
 
     @property
@@ -148,20 +154,6 @@ class PseudoJet:
         theta = Components.ptpz_to_theta(self.PT, self.Pz)
         return theta
 
-    @property
-    def Pseudorapidity(self):
-        if len(self) == 0:
-            return np.nan
-        pseudorapidity = Components.theta_to_pseudorapidity(self.Theta)
-        return pseudorapidity
-
-    @property
-    def Rapidity(self):
-        if len(self) == 0:
-            return np.nan
-        rapidity = Components.ptpze_to_rapidity(self.PT, self.Pz, self.Energy)
-        return rapidity
-
     @classmethod
     def write_event(cls, pseudojets, jet_name="Pseudojet", event_index=None, eventWise=None):
         """Save a handful of jets together """
@@ -169,9 +161,9 @@ class PseudoJet:
             eventWise = pseudojets[0].eventWise
         if event_index is None:
             event_index = eventWise.selected_index
-        save_columns = [ "_DeltaRs", "_ExponentMulti",
-                        "_RootInputIdx"]
-        save_columns = [jet_name + c for c in save_columns]
+        save_columns = ["_RootInputIdx"]
+        save_columns += [jet_name + c for c in save_columns]
+        save_columns += [jet_name + "_Param" + c for c in pseudojets[0].jet_parameters.keys()]
         int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
         float_columns = [c.replace('Pseudojet', jet_name) for c in cls.float_columns]
         save_columns += float_columns
@@ -184,8 +176,10 @@ class PseudoJet:
                 arrays[name].append([])
         for jet in pseudojets:
             assert jet.eventWise == pseudojets[0].eventWise
-            arrays[jet_name + "_DeltaRs"][event_index].append(jet.deltaR)
-            arrays[jet_name + "_ExponentMulti"][event_index].append(jet.exponent_multiplyer)
+            for key, item in jet.jet_parameters.items():
+                # includes things like deltaR and exponent multipliers
+                name = jet_name + "_Param" + key
+                arrays[name][event_index].append(item)
             arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
@@ -194,7 +188,12 @@ class PseudoJet:
             floats = awkward.fromiter(jet._floats)
             for col_num, name in enumerate(jet.float_columns):
                 arrays[name][event_index].append(floats[:, col_num])
-        arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
+        try:
+            arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
+        except TypeError:
+            st()
+            name
+            foo = arrays[name]
         eventWise.append(arrays)
 
     @classmethod
@@ -223,8 +222,12 @@ class PseudoJet:
         # get from the file
         jets = []
         for i in range(batch_start, batch_end):
-            deltaR = getattr(eventWise, jet_name + "_DeltaRs")[i]
-            exponent_multi = getattr(eventWise, jet_name + "_ExponentMulti")[i]
+            param_prefix = jet_name + "_Param"
+            param_columns = [c for c in eventWise.columns if c.startswith(param_prefix)]
+            param_dict = {name: getattr(eventWise, name) for name in param_columns}
+            for key in param_dict:
+                assert len(set(param_dict[key])) == 1
+                param_dict[key] = param_dict[key][0]
             roots = getattr(eventWise, jet_name + "_RootInputIdx")[i]
             # need to reassemble to ints and the floats
             int_values = []
@@ -235,22 +238,18 @@ class PseudoJet:
             for name in float_columns:
                 float_values.append(np.array(getattr(eventWise, name)[i]).reshape((-1, 1)))
             floats = np.hstack(float_values)
-            new_jet = cls(deltaR=deltaR,
-                          exponent_multiplier=exponent_multi,
-                          eventWise_save_name=save_name,
-                          eventWise_dir_name=dir_name,
-                          eventWise_selected_index=i,
-                          ints=ints.tolist(),
-                          floats=floats.tolist(),
-                          root_jetInputIdxs=roots)
+            new_jet = cls(eventWise=file_name,
+                          selected_index=i,
+                          ints_floats=(ints.tolist(), floats.tolist()),
+                          root_jetInputIdxs=roots,
+                          dict_jet_params=param_dict)
             new_jet.currently_avalible = 0  # assumed since we are reading from file
             jets.append(new_jet)
         return jets
 
     def _calculate_roots(self):
         self.root_jetInputIdxs = []
-        # should only bee needed for reading from file
-        assert self.currently_avalible == 0, "Assign parents before you calculate roots"
+        # should only bee needed for reading from file self.currently_avalible == 0, "Assign parents before you calculate roots"
         pseudojet_ids = self.InputIdx
         parent_ids = self.Parent
         for mid, pid in zip(parent_ids, pseudojet_ids):
@@ -258,141 +257,6 @@ class PseudoJet:
                 mid not in pseudojet_ids or
                 mid == pid):
                 self.root_jetInputIdxs.append(pid)
-
-    @classmethod
-    def read_fastjet(cls, arg, eventWise, jet_name="PseudoJet"):
-        #  fastjet format
-        assert eventWise.selected_index is not None
-        if isinstance(arg, str):
-            ifile_name = os.path.join(arg, f"fastjet_ints.csv")
-            ffile_name = os.path.join(arg, f"fastjet_doubles.csv")
-            fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
-            fast_floats = np.genfromtxt(ffile_name, skip_header=1)
-            with open(ifile_name, 'r') as ifile:
-                header = ifile.readline()[1:]
-            with open(ffile_name, 'r') as ffile:
-                fcolumns = ffile.readline()[1:].split()
-        else:
-            header = arg[0].decode()[1:]
-            arrays = [[]]
-            a_type = int
-            for line in arg[1:]:
-                line = line.decode().strip()
-                if line[0] == '#':  # moves from the ints to the doubles
-                    arrays.append([])
-                    a_type = float
-                    fcolumns = line[1:].split()
-                else:
-                    arrays[-1].append([a_type(x) for x in line.split()])
-            assert len(arrays) == 2, f"Problem wiht input; \n{arg}"
-            fast_ints = np.array(arrays[0], dtype=int)
-            fast_floats = np.array(arrays[1], dtype=float)
-        # first line will be the tech specs and columns
-        header = header.split()
-        deltaR = float(header[0].split('=')[1])
-        algorithm_name = header[1]
-        if algorithm_name == 'kt_algorithm':
-            exponent_multiplyer = 1
-        elif algorithm_name == 'cambridge_algorithm':
-            exponent_multiplyer = 0
-        elif algorithm_name == 'antikt_algorithm':
-            exponent_multiplyer = -1
-        else:
-            raise ValueError(f"Algorithm {algorithm_name} not recognised")
-        # get the colums for the header
-        icolumns = {name: i for i, name in enumerate(header[header.index("Columns;") + 1:])}
-        # and from this get the columns
-        # the file of fast_ints contains
-        n_fastjet_int_cols = len(icolumns)
-        if len(fast_ints.shape) == 1:
-            fast_ints = fast_ints.reshape((-1, n_fastjet_int_cols))
-        else:
-            assert fast_ints.shape[1] == n_fastjet_int_cols
-        # check that all the input idx have come through
-        n_inputs = len(eventWise.JetInputs_SourceIdx)
-        assert set(np.arange(n_inputs)).issubset(set(fast_ints[:, icolumns["InputIdx"]])), "Problem with inpu idx"
-        next_free = np.max(fast_ints[:, icolumns["InputIdx"]], initial=-1) + 1
-        fast_idx_dict = {}
-        for line_idx, i in fast_ints[:, [icolumns["pseudojet_id"], icolumns["InputIdx"]]]:
-            if i == -1:
-                fast_idx_dict[line_idx] = next_free
-                next_free += 1
-            else:
-                fast_idx_dict[line_idx] = i
-        fast_idx_dict[-1]=-1
-        fast_ints = np.vectorize(fast_idx_dict.__getitem__,
-                                 otypes=[np.float])(fast_ints[:, [icolumns["pseudojet_id"],
-                                                                  icolumns["parent_id"],
-                                                                  icolumns["child1_id"],
-                                                                  icolumns["child2_id"]]])
-        # now the Inputidx is the first one and the pseudojet_id can be removed
-        del icolumns["pseudojet_id"]
-        icolumns = {name: i-1 for name, i in icolumns.items()}
-        # check that the parent child relationship is reflexive
-        for line in fast_ints:
-            identifier = f"pseudojet inputIdx={line[0]} "
-            if line[icolumns["child1_id"]] == -1:
-                assert line[icolumns["child2_id"]] == -1, identifier + "has only one child"
-            else:
-                assert line[icolumns["child1_id"]] != line[icolumns["child2_id"]], identifier + " child1 and child2 are same"
-                child1_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
-                                        == line[icolumns["child1_id"]]][0]
-                assert child1_line[1] == line[0], identifier + " first child dosn't acknowledge parent"
-                child2_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
-                                        == line[icolumns["child2_id"]]][0]
-                assert child2_line[1] == line[0], identifier + " second child dosn't acknowledge parent"
-            if line[1] != -1:
-                assert line[icolumns["InputIdx"]] != line[icolumns["parent_id"]], identifier + "is it's own mother"
-                parent_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
-                                        == line[icolumns["parent_id"]]][0]
-                assert line[0] in parent_line[[icolumns["child1_id"],
-                                               icolumns["child2_id"]]], identifier + " parent doesn't acknowledge child"
-        n_fastjet_float_cols = len(fcolumns)
-        for fcol, expected in zip(fcolumns, PseudoJet.float_columns):
-            assert expected.endswith(fcol)
-        if len(fast_ints) == 0:
-            assert len(fast_floats) == 0, "No ints found, but floats are present!"
-            print("Warning, no values from fastjet.")
-        if len(fast_floats.shape) == 1:
-            fast_floats = fast_floats.reshape((-1, n_fastjet_float_cols))
-        else:
-            assert fast_floats.shape[1] == n_fastjet_float_cols
-        if len(fast_ints.shape) > 1:
-            num_rows = fast_ints.shape[0]
-            assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
-        elif len(fast_ints) > 0:
-            num_rows = 1
-        else:
-            num_rows = 0
-        ints = np.full((num_rows, len(cls.int_columns)), -1, dtype=int)
-        floats = np.zeros((num_rows, len(cls.float_columns)), dtype=float)
-        if len(fast_ints) > 0:
-            ints[:, :4] = fast_ints
-            floats[:, :7] = fast_floats
-        # make ranks
-        rank = -1
-        rank_col = len(icolumns)
-        ints[ints[:, icolumns["child1_id"]] == -1, rank_col] = rank
-        # parents of the lowest rank is the next rank
-        this_rank = set(ints[ints[:, icolumns["child1_id"]] == -1, icolumns["parent_id"]])
-        while len(this_rank) > 0:
-            rank += 1
-            next_rank = []
-            for i in this_rank:
-                ints[ints[:, icolumns["InputIdx"]] == i, rank_col] = rank
-                parent = ints[ints[:, icolumns["InputIdx"]] == i, icolumns["parent_id"]]
-                if parent != -1 and parent not in next_rank:
-                    next_rank.append(parent)
-            this_rank = next_rank
-        # create the pseudojet
-        new_pseudojet = cls(ints=ints, floats=floats,
-                            eventWise=eventWise,
-                            deltaR=deltaR,
-                            exponent_multiplyer=exponent_multiplyer,
-                            jet_name=jet_name)
-        new_pseudojet.currently_avalible = 0
-        new_pseudojet._calculate_roots()
-        return new_pseudojet
 
     def split(self):
         assert self.currently_avalible == 0, "Need to assign_parents before splitting"
@@ -406,12 +270,11 @@ class PseudoJet:
             group_idx = [self.idx_from_inpIdx(ID) for ID in group]
             ints = [self._ints[i] for i in group_idx]
             floats = [self._floats[i] for i in group_idx]
-            jet = PseudoJet(deltaR=self.deltaR, exponent_multiplyer=self.exponent_multiplyer,
-                            ints=ints, floats=floats,
-                            jet_name=self.jet_name,
-                            eventWise_selected_index=self.eventWise.selected_index,
-                            eventWise_dir_name=self.eventWise.dir_name,
-                            eventWise_save_name=self.eventWise.save_name)
+            jet = type(self)(ints_floats=(ints, floats),
+                             jet_name=self.jet_name,
+                             selected_index=self.eventWise.selected_index,
+                             eventWise=self.eventWise,
+                             dict_jet_params=self.jet_parameters)
             jet.currently_avalible = 0
             jet.root_jetInputIdxs = [root]
             self.JetList.append(jet)
@@ -419,43 +282,10 @@ class PseudoJet:
     
     def _calculate_distances(self):
         # this is caluculating all the distances
-        self._distances = np.full((self.currently_avalible, self.currently_avalible), np.inf)
-        # for speed, make local variables
-        pt_col  = self._PT_col 
-        rap_col = self._Rapidity_col
-        phi_col = self._Phi_col
-        exponent = self.exponent
-        deltaR2 = self.deltaR**2
-        for row in range(self.currently_avalible):
-            for column in range(self.currently_avalible):
-                if column > row:
-                    continue  # we only need a triangular matrix due to symmetry
-                elif self._floats[row][pt_col] == 0:
-                    distance = 0  # soft radation might as well be at 0 distance
-                elif column == row:
-                    distance = self._floats[row][pt_col]**exponent * deltaR2
-                else:
-                    angular_diffrence = abs(self._floats[row][phi_col] - self._floats[column][phi_col]) % (2*np.pi)
-                    angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
-                    distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
-                               ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
-                               (angular_distance)**2)
-                self._distances[row, column] = distance
+        raise NotImplementedError
 
     def _recalculate_one(self, cluster_num):
-        for row in range(self.currently_avalible):
-            column = cluster_num
-            if column > row:
-                row, column = column, row  # keep the upper triangular form
-            if column == row:
-                distance = self._floats[row][self._PT_col]**self.exponent * self.deltaR**2
-            else:
-                angular_diffrence = abs(self._floats[row][self._Phi_col] - self._floats[column][self._Phi_col]) % (2*np.pi)
-                angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
-                distance = min(self._floats[row][self._PT_col]**self.exponent, self._floats[column][self._PT_col]**self.exponent) *\
-                           ((self._floats[row][self._Rapidity_col] - self._floats[column][self._Rapidity_col])**2 +
-                           (angular_distance)**2)
-            self._distances[row, column] = distance
+        raise NotImplementedError
 
     def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance):
         new_pseudojet_ints, new_pseudojet_floats = self._combine(pseudojet_index1, pseudojet_index2, distance)
@@ -473,13 +303,8 @@ class PseudoJet:
         self._floats[pseudojet_index2] = new_pseudojet_floats
         # one less pseudojet avalible
         self.currently_avalible -= 1
-        
-        # delete the first row and column of the merge
-        self._distances = np.delete(self._distances, (pseudojet_index1), axis=0)
-        self._distances = np.delete(self._distances, (pseudojet_index1), axis=1)
-
         # now recalculate for the new pseudojet
-        self._recalculate_one(pseudojet_index2)
+        self._recalculate_one(pseudojet_index1, pseudojet_index2)
 
     def _remove_pseudojet(self, pseudojet_index):
         # move the first pseudojet to the back without replacement
@@ -648,6 +473,295 @@ class PseudoJet:
         return ints_eq and floats_eq
 
 
+class Traditional(PseudoJet):
+    def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        if dict_jet_params is None:
+            dict_jet_params = {}
+        stripped_params = {name.split("_Param")[-1]:name for name in dict_jet_params}
+        if 'DeltaR' in stripped_params:
+            assert 'deltaR' not in kwargs
+            self.deltaR = dict_jet_params[stripped_params['DeltaR']]
+        else:
+            self.deltaR = kwargs['deltaR']
+            del kwargs['deltaR']
+            dict_jet_params['DeltaR'] = self.deltaR
+        if 'ExponentMultiplyer' in stripped_params:
+            assert 'exponent_multiplyer' not in kwargs
+            self.exponent_multiplyer = dict_jet_params[stripped_params['ExponentMultiplyer']]
+        else:
+            self.exponent_multiplyer = kwargs['exponent_multiplyer']
+            del kwargs['exponent_multiplyer']
+            dict_jet_params['ExponentMultiplyer'] = self.exponent_multiplyer
+        self.exponent = 2 * self.exponent_multiplyer
+        super().__init__(eventWise, dict_jet_params=dict_jet_params, **kwargs)
+
+    def _calculate_distances(self):
+        # this is caluculating all the distances
+        self._distances = np.full((self.currently_avalible, self.currently_avalible), np.inf)
+        # for speed, make local variables
+        pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        exponent = self.exponent
+        deltaR2 = self.deltaR**2
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column > row:
+                    continue  # we only need a triangular matrix due to symmetry
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    distance = self._floats[row][pt_col]**exponent * deltaR2
+                else:
+                    angular_distance = Components.angular_distance(self._floats[row][phi_col], self._floats[column][phi_col])
+                    distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
+                               ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
+                               (angular_distance)**2)
+                self._distances[row, column] = distance
+
+    def _recalculate_one(self, remove_index, replace_index):
+        # delete the first row and column of the merge
+        self._distances = np.delete(self._distances, (remove_index), axis=0)
+        self._distances = np.delete(self._distances, (remove_index), axis=1)
+
+        # calculate new values into the second column
+        for row in range(self.currently_avalible):
+            column = replace_index
+            if column > row:
+                row, column = column, row  # keep the upper triangular form
+            if column == row:
+                distance = self._floats[row][self._PT_col]**self.exponent * self.deltaR**2
+            else:
+                angular_diffrence = abs(self._floats[row][self._Phi_col] - self._floats[column][self._Phi_col]) % (2*np.pi)
+                angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
+                distance = min(self._floats[row][self._PT_col]**self.exponent, self._floats[column][self._PT_col]**self.exponent) *\
+                           ((self._floats[row][self._Rapidity_col] - self._floats[column][self._Rapidity_col])**2 +
+                           (angular_distance)**2)
+            self._distances[row, column] = distance
+
+    @classmethod
+    def read_fastjet(cls, arg, eventWise, jet_name="FastJet"):
+        #  fastjet format
+        assert eventWise.selected_index is not None
+        if isinstance(arg, str):
+            ifile_name = os.path.join(arg, f"fastjet_ints.csv")
+            ffile_name = os.path.join(arg, f"fastjet_doubles.csv")
+            fast_ints = np.genfromtxt(ifile_name, skip_header=1, dtype=int)
+            fast_floats = np.genfromtxt(ffile_name, skip_header=1)
+            with open(ifile_name, 'r') as ifile:
+                header = ifile.readline()[1:]
+            with open(ffile_name, 'r') as ffile:
+                fcolumns = ffile.readline()[1:].split()
+        else:
+            header = arg[0].decode()[1:]
+            arrays = [[]]
+            a_type = int
+            for line in arg[1:]:
+                line = line.decode().strip()
+                if line[0] == '#':  # moves from the ints to the doubles
+                    arrays.append([])
+                    a_type = float
+                    fcolumns = line[1:].split()
+                else:
+                    arrays[-1].append([a_type(x) for x in line.split()])
+            assert len(arrays) == 2, f"Problem wiht input; \n{arg}"
+            fast_ints = np.array(arrays[0], dtype=int)
+            fast_floats = np.array(arrays[1], dtype=float)
+        # first line will be the tech specs and columns
+        header = header.split()
+        deltaR = float(header[0].split('=')[1])
+        algorithm_name = header[1]
+        if algorithm_name == 'kt_algorithm':
+            exponent_multiplyer = 1
+        elif algorithm_name == 'cambridge_algorithm':
+            exponent_multiplyer = 0
+        elif algorithm_name == 'antikt_algorithm':
+            exponent_multiplyer = -1
+        else:
+            raise ValueError(f"Algorithm {algorithm_name} not recognised")
+        # get the colums for the header
+        icolumns = {name: i for i, name in enumerate(header[header.index("Columns;") + 1:])}
+        # and from this get the columns
+        # the file of fast_ints contains
+        n_fastjet_int_cols = len(icolumns)
+        if len(fast_ints.shape) == 1:
+            fast_ints = fast_ints.reshape((-1, n_fastjet_int_cols))
+        else:
+            assert fast_ints.shape[1] == n_fastjet_int_cols
+        # check that all the input idx have come through
+        n_inputs = len(eventWise.JetInputs_SourceIdx)
+        assert set(np.arange(n_inputs)).issubset(set(fast_ints[:, icolumns["InputIdx"]])), "Problem with inpu idx"
+        next_free = np.max(fast_ints[:, icolumns["InputIdx"]], initial=-1) + 1
+        fast_idx_dict = {}
+        for line_idx, i in fast_ints[:, [icolumns["pseudojet_id"], icolumns["InputIdx"]]]:
+            if i == -1:
+                fast_idx_dict[line_idx] = next_free
+                next_free += 1
+            else:
+                fast_idx_dict[line_idx] = i
+        fast_idx_dict[-1]=-1
+        fast_ints = np.vectorize(fast_idx_dict.__getitem__,
+                                 otypes=[np.float])(fast_ints[:, [icolumns["pseudojet_id"],
+                                                                  icolumns["parent_id"],
+                                                                  icolumns["child1_id"],
+                                                                  icolumns["child2_id"]]])
+        # now the Inputidx is the first one and the pseudojet_id can be removed
+        del icolumns["pseudojet_id"]
+        icolumns = {name: i-1 for name, i in icolumns.items()}
+        # check that the parent child relationship is reflexive
+        for line in fast_ints:
+            identifier = f"pseudojet inputIdx={line[0]} "
+            if line[icolumns["child1_id"]] == -1:
+                assert line[icolumns["child2_id"]] == -1, identifier + "has only one child"
+            else:
+                assert line[icolumns["child1_id"]] != line[icolumns["child2_id"]], identifier + " child1 and child2 are same"
+                child1_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
+                                        == line[icolumns["child1_id"]]][0]
+                assert child1_line[1] == line[0], identifier + " first child dosn't acknowledge parent"
+                child2_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
+                                        == line[icolumns["child2_id"]]][0]
+                assert child2_line[1] == line[0], identifier + " second child dosn't acknowledge parent"
+            if line[1] != -1:
+                assert line[icolumns["InputIdx"]] != line[icolumns["parent_id"]], identifier + "is it's own mother"
+                parent_line = fast_ints[fast_ints[:, icolumns["InputIdx"]]
+                                        == line[icolumns["parent_id"]]][0]
+                assert line[0] in parent_line[[icolumns["child1_id"],
+                                               icolumns["child2_id"]]], identifier + " parent doesn't acknowledge child"
+        n_fastjet_float_cols = len(fcolumns)
+        for fcol, expected in zip(fcolumns, PseudoJet.float_columns):
+            assert expected.endswith(fcol)
+        if len(fast_ints) == 0:
+            assert len(fast_floats) == 0, "No ints found, but floats are present!"
+            print("Warning, no values from fastjet.")
+        if len(fast_floats.shape) == 1:
+            fast_floats = fast_floats.reshape((-1, n_fastjet_float_cols))
+        else:
+            assert fast_floats.shape[1] == n_fastjet_float_cols
+        if len(fast_ints.shape) > 1:
+            num_rows = fast_ints.shape[0]
+            assert len(fast_ints) == len(fast_floats), f"len({ifile_name}) != len({ffile_name})"
+        elif len(fast_ints) > 0:
+            num_rows = 1
+        else:
+            num_rows = 0
+        ints = np.full((num_rows, len(cls.int_columns)), -1, dtype=int)
+        floats = np.zeros((num_rows, len(cls.float_columns)), dtype=float)
+        if len(fast_ints) > 0:
+            ints[:, :4] = fast_ints
+            floats[:, :7] = fast_floats
+        # make ranks
+        rank = -1
+        rank_col = len(icolumns)
+        ints[ints[:, icolumns["child1_id"]] == -1, rank_col] = rank
+        # parents of the lowest rank is the next rank
+        this_rank = set(ints[ints[:, icolumns["child1_id"]] == -1, icolumns["parent_id"]])
+        while len(this_rank) > 0:
+            rank += 1
+            next_rank = []
+            for i in this_rank:
+                ints[ints[:, icolumns["InputIdx"]] == i, rank_col] = rank
+                parent = ints[ints[:, icolumns["InputIdx"]] == i, icolumns["parent_id"]]
+                if parent != -1 and parent not in next_rank:
+                    next_rank.append(parent)
+            this_rank = next_rank
+        # create the pseudojet
+        new_pseudojet = cls(ints_floats=(ints, floats),
+                            eventWise=eventWise,
+                            deltaR=deltaR,
+                            exponent_multiplyer=exponent_multiplyer,
+                            jet_name=jet_name)
+        new_pseudojet.currently_avalible = 0
+        new_pseudojet._calculate_roots()
+        return new_pseudojet
+
+
+class Spectral(PseudoJet):
+    def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        if dict_jet_params is None:
+            dict_jet_params = {}
+        stripped_params = {name.split("_Param")[-1]:name for name in dict_jet_params}
+        if 'DeltaR' in stripped_params:
+            assert 'deltaR' not in kwargs
+            self.deltaR = dict_jet_params[stripped_params['DeltaR']]
+        else:
+            self.deltaR = kwargs['deltaR']
+            del kwargs['deltaR']
+            dict_jet_params['DeltaR'] = self.deltaR
+        if 'NumEigenvectors' in stripped_params:
+            assert 'num_eigenvectors' not in kwargs
+            self.num_eigenvectors = dict_jet_params[stripped_params['NumEigenvectors']]
+        else:
+            self.num_eigenvectors = kwargs['num_eigenvectors']
+            del kwargs['num_eigenvectors']
+            dict_jet_params['NumEigenvectors'] = self.num_eigenvectors
+        if 'ExponentMultiplyer' in stripped_params:
+            assert 'exponent_multiplyer' not in kwargs
+            self.exponent_multiplyer = dict_jet_params[stripped_params['ExponentMultiplyer']]
+        else:
+            self.exponent_multiplyer = kwargs['exponent_multiplyer']
+            del kwargs['exponent_multiplyer']
+            dict_jet_params['ExponentMultiplyer'] = self.exponent_multiplyer
+        self.exponent = 2 * self.exponent_multiplyer
+        super().__init__(eventWise, dict_jet_params=dict_jet_params, **kwargs)
+
+    def _calculate_distances(self):
+        if len(self._ints) == 1:
+            self._distances = np.array([[0]])
+            return
+        # to start with create a 'normal' distance measure
+        # this can be based on any of the three algorithms
+        distances = np.zeros((self.currently_avalible, self.currently_avalible))
+        # for speed, make local variables
+        pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        exponent = self.exponent
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column != row:
+                    angular_distance = Components.angular_distance(self._floats[row][phi_col], self._floats[column][phi_col])
+                    distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
+                               ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
+                               (angular_distance)**2)
+                distances[row, column] = distance
+        # now we are in posessio of a standard distance matrix for all points,
+        # a graph laplacien can be calculated
+        laplacien = -np.copy(distances)
+        for row_n, row in enumerate(distances):
+            laplacien[row_n, row_n] = np.sum(row[:row_n]) + np.sum(row[row_n+1:])
+        # get the eigenvectors (we know the smallest will be identity)
+        eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.num_eigenvectors+1))
+        self.eigenvectors = eigenvectors  # make publically visible
+        np.testing.assert_allclose(0, eigenvalues[0], atol=0.001)
+        np.testing.assert_allclose(np.ones(self.currently_avalible), eigenvectors[:, 0]/eigenvectors[0, 0])
+        # now treating the columns of this matrix as the new points get euclidien distances
+        self._distances = scipy.spatial.distance.squareform(
+                scipy.spatial.distance.pdist(eigenvectors[:, 1:]))
+        # if the clustering is not going to stop at 1 we must put something in the diagonal
+        # for want of anything else to do with it, this may as well be deltaR**2 times track PT**(exponent)
+        diagonal = np.array([self.deltaR**2 * row[pt_col]**exponent for row in self._floats])
+        # normalize
+        diagonal /= np.mean(diagonal)
+        self._distances += np.diag(diagonal)
+
+
+    def _recalculate_one(self, remove_index, replace_index):
+        # we don't have a lot of choice here
+        # without recalculating the eigenvalues we must take an average of the points we join
+        removed = np.delete(self._distances[remove_index], remove_index)
+        replaced = np.delete(self._distances[replace_index], replace_index)
+        # delete the first row and column of the merge
+        self._distances = np.delete(self._distances, (remove_index), axis=0)
+        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        new_distances = (removed + self._distances[replace_index])/2
+        self._distances[replace_index] = new_distances
+        self._distances[:, replace_index] = new_distances
+
+
 def filter_obs(eventWise, existing_idx_selection):
     assert eventWise.selected_index is not None
     has_track = eventWise.Particle_Track[existing_idx_selection.tolist()] >= 0
@@ -763,11 +877,11 @@ def run_FastJet(eventWise, deltaR, exponent_multiplyer, jet_name="FastJet", use_
         summary_lines = produce_summary(eventWise, False)
         out = run_applyfastjet(summary_lines, str(deltaR).encode(), 
                                   str(algorithm_num).encode())
-        fastjets = PseudoJet.read_fastjet(out, eventWise, jet_name=jet_name)
+        fastjets = Traditional.read_fastjet(out, eventWise, jet_name=jet_name)
         return fastjets
     produce_summary(eventWise)
     subprocess.run([program_name, str(deltaR), str(algorithm_num), eventWise.dir_name])
-    fastjets = PseudoJet.read_fastjet(eventWise.dir_name, eventWise=eventWise, jet_name=jet_name)
+    fastjets = Traditional.read_fastjet(eventWise.dir_name, eventWise=eventWise, jet_name=jet_name)
     return fastjets
 
 
@@ -815,112 +929,59 @@ def run_applyfastjet(input_lines, deltaR, algorithm_num, program_path="./tree_ta
     return output_lines
 
 
-def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, batch_length=100, use_pipe=True):
+def fastjet_multiapply(eventWise, deltaR, exponent_multiplyer, jet_name=None, batch_length=100, use_pipe=True, silent=False):
     if jet_name is None:
         jet_name = "FastJet"
     eventWise.selected_index = None
     dir_name = eventWise.dir_name
     n_events = len(eventWise.JetInputs_Energy)
     start_point = len(getattr(eventWise, jet_name+"_Energy", []))
-    if start_point >= n_events:
+    if start_point >= n_events and not silent:
         print("Finished")
         return True
     end_point = min(n_events, start_point+batch_length)
-    print(f" Will stop at {100*end_point/n_events}%")
+    if not silent:
+        print(f" Will stop at {100*end_point/n_events}%")
     for event_n in range(start_point, end_point):
-        if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+        if event_n % 10 == 0 and not silent:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
         fastjets = run_FastJet(eventWise, deltaR, exponent_multiplyer, jet_name=jet_name, use_pipe=use_pipe)
         fastjets = fastjets.split()
-        try:
+        if not use_pipe:
             os.remove(os.path.join(dir_name, 'summary_observables.csv'))
-            PseudoJet.write_event(fastjets, jet_name=jet_name, event_index=event_n, eventWise=eventWise)
-        except Exception as e:
-            print(e)        
-            return fastjets
-    return False
+        Traditional.write_event(fastjets, jet_name=jet_name, event_index=event_n, eventWise=eventWise)
+    return end_point == n_events
 
 
-def homejet_multiappy(eventWise, deltaR=0.4, exponentMulti=0, jet_name=None, batch_length=100):
+def homejet_multiapply(eventWise, deltaR=0.4, exponentMulti=0, jet_name=None, batch_length=100, silent=False):
     if jet_name is None:
         jet_name = "HomeJet"
     eventWise.selected_index = None
     n_events = len(eventWise.JetInputs_Energy)
     start_point = len(getattr(eventWise, jet_name+"_Energy", []))
-    if start_point >= n_events:
+    if start_point >= n_events and not silent:
         print("Finished")
         return True
     end_point = min(n_events, start_point+batch_length)
-    print(f" Will stop at {100*end_point/n_events}%")
+    if not silent:
+        print(f" Will stop at {100*end_point/n_events}%")
     for event_n in range(start_point, end_point):
-        if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+        if event_n % 10 == 0 and not silent:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
-        pseudojet = PseudoJet(eventWise, deltaR=deltaR,
-                              exponent_multiplyer=exponentMulti,
-                              jet_name=jet_name)
+        pseudojet = Traditional(eventWise, deltaR=deltaR,
+                                exponent_multiplyer=exponentMulti,
+                                jet_name=jet_name)
         pseudojet.assign_parents()
         jets = pseudojet.split()
-        try:
-            PseudoJet.write_event(jets, jet_name=jet_name,
-                                  event_index=event_n, eventWise=eventWise)
-        except:
-            return jets, jet_name
-    return False
-
-
-def main():
-    ax = plt.gca()
-    # colourmap
-    colours = plt.get_cmap('gist_rainbow')
-    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
-    filter_funcs = [filter_obs, filter_pt_eta]
-    if "JetInputs_Energy" not in eventWise.columns:
-        create_jetInputs(eventWise, filter_funcs)
-    eventWise.selected_index = 0
-    deltaR = 0.4
-    pseudojet = PseudoJet(eventWise, deltaR, 0., jet_name="HomejetR1KT")
-    pseudojet.assign_parents()
-    pjets = pseudojet.split()
-    # plot the pseudojets
-    pseudo_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets))]
-    for c, pjet in zip(pseudo_colours, pjets):
-        obs_idx = pjet.local_obs_idx()
-        plt.scatter(np.array(pjet._floats)[obs_idx, pjet._Rapidity_col],
-                    np.array(pjet._floats)[obs_idx, pjet._Phi_col],
-                    c=[c], marker='v', s=30, alpha=0.6)
-        plt.scatter([pjet.Rapidity], [pjet.Phi], c='black', marker='o', s=10)
-        plt.scatter([pjet.Rapidity], [pjet.Phi], c=[c], marker='o', s=9)
-        circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=(0,0,0,0.2), fill=False)
-        ax.add_artist(circle)
-    plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PseudoJets")
-    # get soem fast jets
-    produce_summary(eventWise, 0)
-    fastjets = run_FastJet(eventWise.dir_name, deltaR, 0, eventWise)
-    # plot the fastjet
-    fjets = fastjets.split()
-    pseudo_colours = [colours(i) for i in np.linspace(0.6, 1., len(fjets))]
-    for c, fjet in zip(pseudo_colours, fjets):
-        obs_idx = fjet.local_obs_idx()
-        plt.scatter(np.array(fjet._floats)[obs_idx, fjet._Rapidity_col],
-                    np.array(fjet._floats)[obs_idx, fjet._Phi_col],
-                    c=[c], marker='^', s=30, alpha=0.6)
-        plt.scatter([fjet.Rapidity], [fjet.Phi], c='black', marker='o', s=10)
-        plt.scatter([fjet.Rapidity], [fjet.Phi], c=[c], marker='o', s=9)
-        circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=(0,0,0,0.2), fill=False)
-        ax.add_artist(circle)
-    plt.scatter([], [], c=[c], marker='^', s=25, alpha=0.6, label="FastJets")
-    plt.legend()
-    plt.title("Jets")
-    plt.xlabel("rapidity")
-    plt.ylabel("phi")
-    plt.show()
-    return pjets
+        Traditional.write_event(jets, jet_name=jet_name,
+                              event_index=event_n, eventWise=eventWise)
+    return n_events == end_point
 
 
 def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
@@ -958,6 +1019,41 @@ def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
     ax.legend()
     ew.selected_index = None
     
+
+def main():
+    ax = plt.gca()
+    # colourmap
+    colours = plt.get_cmap('gist_rainbow')
+    eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt_arthur.awkd")
+    if "JetInputs_Energy" not in eventWise.columns:
+        filter_funcs = [filter_ends, filter_pt_eta]
+        if "JetInputs_Energy" not in eventWise.columns:
+            create_jetInputs(eventWise, filter_funcs)
+    eventWise.selected_index = 0
+    deltaR = 0.4
+    pseudojet_traditional = Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=0., jet_name="HomejetR1KT")
+    pseudojet_traditional.assign_parents()
+    pjets_traditional = pseudojet_traditional.split()
+    # plot the pseudojets
+    pseudo_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets))]
+    for c, pjet in zip(pseudo_colours, pjets_traditional):
+        obs_idx = pjet.local_obs_idx()
+        plt.scatter(np.array(pjet._floats)[obs_idx, pjet._Rapidity_col],
+                    np.array(pjet._floats)[obs_idx, pjet._Phi_col],
+                    c=[c], marker='v', s=30, alpha=0.6)
+        plt.scatter([pjet.Rapidity], [pjet.Phi], c='black', marker='o', s=10)
+        plt.scatter([pjet.Rapidity], [pjet.Phi], c=[c], marker='o', s=9)
+        circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=(0,0,0,0.2), fill=False)
+        ax.add_artist(circle)
+    plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PseudoJets")
+    plt.legend()
+    plt.title("Jets")
+    plt.xlabel("rapidity")
+    plt.ylabel("phi")
+    plt.show()
+    return pjets
+
+
 if __name__ == '__main__':
     #main()
     pass

@@ -278,7 +278,7 @@ def whole_event(nodisplay=False):
     home_save_name = "homeeventpic"
     assert not os.path.exists(fast_save_name)
     assert not os.path.exists(home_save_name)
-    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt.awkd")
     eventWise.selected_index = int(input("Event num? "))
     steps_between = 10
     print("Starting fastjet")
