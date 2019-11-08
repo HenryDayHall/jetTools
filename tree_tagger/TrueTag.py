@@ -14,13 +14,17 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2):
     each tag will be assigned to a jet
     both tag particles and jets must offer rap and phi methods
     """
-    phi_distance = np.vstack([[eventWise.Phi[tag_i] - np.mean(jet_phi) for jet_phi
-                              in getattr(eventWise, jet_name+"_Phi")]
-                             for tag_i in tag_idx])
+    root_name = jet_name + "_RootInputIdx"
+    inputidx_name = jet_name + "_InputIdx"
+    attr_name = jet_name + "_Phi"
+    phi_distance = np.vstack([[eventWise.Phi[tag_i] - jet_phi for jet_phi
+                               in eventWise.match_indices(attr_name, root_name, inputidx_name)]
+                              for tag_i in tag_idx])
     phi_distance[phi_distance > np.pi] = 2*np.pi - phi_distance[phi_distance > np.pi]
-    rap_distance = np.vstack([[eventWise.Rapidity[tag_i] - np.mean(jet_rap) for jet_rap
-                              in getattr(eventWise, jet_name+"_Rapidity")]
-                             for tag_i in tag_idx])
+    attr_name = jet_name + "_Rapidity"
+    rap_distance = np.vstack([[eventWise.Rapidity[tag_i] - jet_rap for jet_rap
+                               in eventWise.match_indices(attr_name, root_name, inputidx_name)]
+                              for tag_i in tag_idx])
     dist2 = np.square(phi_distance) + np.square(rap_distance)
     closest = np.argmin(dist2, axis=1)
     dist2_closest = np.min(dist2, axis=1)
@@ -28,13 +32,9 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2):
     return closest
 
 
-def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True, max_angle2=np.inf):
+def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True):
     """ tag jets based on particles emmited by the hard scattering 
         follows taggable partilces to last tagable decendant"""
-    # check if the selected event containes jets
-    jet_energies = getattr(eventWise, jet_name+"_Energy")
-    if len(jet_energies) == 0:
-        return []
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
@@ -65,16 +65,7 @@ def from_hard_interaction(eventWise, jet_name, hard_interaction_pids=[25, 35], t
     if convergent_roots:
         pass
         #print(f"{convergent_roots} b hadrons merge, may not form expected number of jets")
-    jets_tags = [[] for _ in jet_energies]
-    if tag_idx: # there may not be any of the particles we wish to tag in the event
-        closest_matches = allocate(eventWise, jet_name, tag_idx, max_angle2)
-    else:
-        closest_matches = []
-    # keep only the indices for space reasons
-    for match, particle in zip(closest_matches, tag_idx):
-        if match != -1:
-            jets_tags[match].append(particle)
-    return jets_tags
+    return tag_idx
 
 
 def add_tags(eventWise, jet_name, max_angle, batch_length=100):
@@ -101,7 +92,16 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
             print(f"Completed event {event_n-1}")
             break
         eventWise.selected_index = event_n
-        tags = from_hard_interaction(eventWise, jet_name, tag_pids=tag_pids, max_angle2=max_angle2)
+        tags = tag_particle_indices(eventWise, tag_pids=tag_pids)
+        jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
+        if tags: # there may not be any of the particles we wish to tag in the event
+            closest_matches = allocate(eventWise, jet_name, tags, max_angle2)
+        else:
+            closest_matches = []
+        # keep only the indices for space reasons
+        for match, particle in zip(closest_matches, tags):
+            if match != -1:
+                jets_tags[match].append(particle)
         jet_tags.append(awkward.fromiter(tags))
         tagpids = [eventWise.MCPID[jet] for jet in tags]
         jet_tagpids.append(awkward.fromiter(tagpids))

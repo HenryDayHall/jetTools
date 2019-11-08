@@ -188,12 +188,7 @@ class PseudoJet:
             floats = awkward.fromiter(jet._floats)
             for col_num, name in enumerate(jet.float_columns):
                 arrays[name][event_index].append(floats[:, col_num])
-        try:
-            arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
-        except TypeError:
-            st()
-            name
-            foo = arrays[name]
+        arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
         eventWise.append(arrays)
 
     @classmethod
@@ -284,27 +279,28 @@ class PseudoJet:
         # this is caluculating all the distances
         raise NotImplementedError
 
-    def _recalculate_one(self, cluster_num):
+    def _recalculate_one(self, remove_index, replace_index):
         raise NotImplementedError
 
     def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance):
-        new_pseudojet_ints, new_pseudojet_floats = self._combine(pseudojet_index1, pseudojet_index2, distance)
+        replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
+        new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance)
         # move the first pseudojet to the back without replacement
-        pseudojet1_ints = self._ints.pop(pseudojet_index1)
-        pseudojet1_floats = self._floats.pop(pseudojet_index1)
+        pseudojet1_ints = self._ints.pop(remove_index)
+        pseudojet1_floats = self._floats.pop(remove_index)
         self._ints.append(pseudojet1_ints)
         self._floats.append(pseudojet1_floats)
         # move the second pseudojet to the back but replace it with the new pseudojet
-        pseudojet2_ints = self._ints[pseudojet_index2]
-        pseudojet2_floats = self._floats[pseudojet_index2]
+        pseudojet2_ints = self._ints[replace_index]
+        pseudojet2_floats = self._floats[replace_index]
         self._ints.append(pseudojet2_ints)
         self._floats.append(pseudojet2_floats)
-        self._ints[pseudojet_index2] = new_pseudojet_ints
-        self._floats[pseudojet_index2] = new_pseudojet_floats
+        self._ints[replace_index] = new_pseudojet_ints
+        self._floats[replace_index] = new_pseudojet_floats
         # one less pseudojet avalible
         self.currently_avalible -= 1
         # now recalculate for the new pseudojet
-        self._recalculate_one(pseudojet_index1, pseudojet_index2)
+        self._recalculate_one(remove_index, replace_index)
 
     def _remove_pseudojet(self, pseudojet_index):
         # move the first pseudojet to the back without replacement
@@ -520,6 +516,8 @@ class Traditional(PseudoJet):
                 self._distances[row, column] = distance
 
     def _recalculate_one(self, remove_index, replace_index):
+        # delete the larger index keep the smaller index
+        assert remove_index > replace_index
         # delete the first row and column of the merge
         self._distances = np.delete(self._distances, (remove_index), axis=0)
         self._distances = np.delete(self._distances, (remove_index), axis=1)
@@ -705,9 +703,8 @@ class Spectral(PseudoJet):
         super().__init__(eventWise, dict_jet_params=dict_jet_params, **kwargs)
 
     def _calculate_distances(self):
-        if len(self._ints) == 1:
-            self._distances = np.array([[0]])
-            return
+        if self.currently_avalible < 2:
+            return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
         distances = np.zeros((self.currently_avalible, self.currently_avalible))
@@ -722,16 +719,20 @@ class Spectral(PseudoJet):
                     distance = distances[column, row]  # the matrix is symmetric
                 elif self._floats[row][pt_col] == 0:
                     distance = 0  # soft radation might as well be at 0 distance
-                elif column != row:
+                elif column == row:
+                    # not used
+                    continue
+                else:
                     angular_distance = Components.angular_distance(self._floats[row][phi_col], self._floats[column][phi_col])
                     distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
                                ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
                                (angular_distance)**2)
                 distances[row, column] = distance
         # now we are in posessio of a standard distance matrix for all points,
+        weights = np.exp(-(distances**2))
         # a graph laplacien can be calculated
-        laplacien = -np.copy(distances)
-        for row_n, row in enumerate(distances):
+        laplacien = -np.copy(weights)
+        for row_n, row in enumerate(weights):
             laplacien[row_n, row_n] = np.sum(row[:row_n]) + np.sum(row[row_n+1:])
         # get the eigenvectors (we know the smallest will be identity)
         eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.num_eigenvectors+1))
@@ -743,20 +744,20 @@ class Spectral(PseudoJet):
                 scipy.spatial.distance.pdist(eigenvectors[:, 1:]))
         # if the clustering is not going to stop at 1 we must put something in the diagonal
         # for want of anything else to do with it, this may as well be deltaR**2 times track PT**(exponent)
-        diagonal = np.array([self.deltaR**2 * row[pt_col]**exponent for row in self._floats])
+        diagonal = np.array([row[pt_col]**exponent for row in self._floats])
         # normalize
-        diagonal /= np.mean(diagonal)
+        diagonal *= self.deltaR**2/np.mean(diagonal)
         self._distances += np.diag(diagonal)
 
-
     def _recalculate_one(self, remove_index, replace_index):
-        # we don't have a lot of choice here
-        # without recalculating the eigenvalues we must take an average of the points we join
-        removed = np.delete(self._distances[remove_index], remove_index)
-        replaced = np.delete(self._distances[replace_index], replace_index)
-        # delete the first row and column of the merge
+        # replace the lower index and remove the higher index
+        assert remove_index > replace_index
+        removed = self._distances[remove_index]
+        removed = np.delete(removed, remove_index)
         self._distances = np.delete(self._distances, (remove_index), axis=0)
         self._distances = np.delete(self._distances, (remove_index), axis=1)
+        # we don't have a lot of choice here
+        # without recalculating the eigenvalues we must take an average of the points we join
         new_distances = (removed + self._distances[replace_index])/2
         self._distances[replace_index] = new_distances
         self._distances[:, replace_index] = new_distances
@@ -1018,6 +1019,31 @@ def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
     ax.set_ylabel("$\\phi$")
     ax.legend()
     ew.selected_index = None
+
+def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
+    alpha=0.4
+    leg_size = np.sqrt(leg_size)
+    for end, size in zip(leg_ends, leg_size):
+        line = np.vstack((body, end))
+        # work out if this leg crossed the edge
+        if np.abs(line[0, 1] - line[1, 1]) > np.pi:
+            # work out the x coord of the axis cross
+            top = np.argmax(line[:, 1])
+            bottom = (top+1)%2
+            distance_ratio = (np.pi - line[top, 1])/(np.pi + line[bottom, 1])
+            x_top = distance_ratio * (line[bottom, 0] - line[top, 0])
+            x_bottom = (line[top, 0] - line[bottom, 0])/distance_ratio
+            plt.plot([line[top, 0], x_top], [line[top, 1], np.pi], 
+                     c=colour, linewidth=size, alpha=alpha)
+            plt.plot([line[bottom, 0], x_bottom], [line[bottom, 1], -np.pi], 
+                     c=colour, linewidth=size, alpha=alpha)
+                     
+        else:
+            plt.plot(line[:, 0], line[:, 1],
+                     c=colour, linewidth=size, alpha=alpha)
+    plt.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size-1)
+    plt.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size+1)
+
     
 
 def main():
@@ -1025,35 +1051,54 @@ def main():
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
     eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt_arthur.awkd")
+    # create inputs if needed
     if "JetInputs_Energy" not in eventWise.columns:
         filter_funcs = [filter_ends, filter_pt_eta]
         if "JetInputs_Energy" not in eventWise.columns:
             create_jetInputs(eventWise, filter_funcs)
     eventWise.selected_index = 0
     deltaR = 0.4
-    pseudojet_traditional = Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=0., jet_name="HomejetR1KT")
+    alpha=0.4
+    pseudojet_traditional = Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=0., jet_name="HomeJet")
     pseudojet_traditional.assign_parents()
     pjets_traditional = pseudojet_traditional.split()
     # plot the pseudojets
-    pseudo_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets))]
-    for c, pjet in zip(pseudo_colours, pjets_traditional):
-        obs_idx = pjet.local_obs_idx()
-        plt.scatter(np.array(pjet._floats)[obs_idx, pjet._Rapidity_col],
-                    np.array(pjet._floats)[obs_idx, pjet._Phi_col],
-                    c=[c], marker='v', s=30, alpha=0.6)
-        plt.scatter([pjet.Rapidity], [pjet.Phi], c='black', marker='o', s=10)
-        plt.scatter([pjet.Rapidity], [pjet.Phi], c=[c], marker='o', s=9)
-        circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=(0,0,0,0.2), fill=False)
-        ax.add_artist(circle)
-    plt.scatter([], [], c=[c], marker='v', s=30, alpha=0.6, label="PseudoJets")
+    # traditional_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets_traditional))]
+    traditional_colours = ['red' for _ in pjets_traditional]
+    for c, pjet in zip(traditional_colours, pjets_traditional):
+        obs_idx = [i for i, child1 in enumerate(pjet.Child1) if child1==-1]
+        input_rap = np.array(pjet._floats)[obs_idx, pjet._Rapidity_col]
+        input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
+        leg_ends = np.vstack((input_rap, input_phi)).T
+        input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
+        plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
+        #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=c, fill=False)
+        #ax.add_artist(circle)
+    plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
+    pseudojet_spectral = Spectral(eventWise, deltaR=deltaR, exponent_multiplyer=0., num_eigenvectors=5, jet_name="SpectralJet")
+    pseudojet_spectral.assign_parents()
+    pjets_spectral = pseudojet_spectral.split()
+    # plot the pseudojets
+    #spectral_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_spectral))]
+    spectral_colours = ['blue' for _ in pjets_spectral]
+    for c, pjet in zip(spectral_colours, pjets_spectral):
+        obs_idx = [i for i, child1 in enumerate(pjet.Child1) if child1==-1]
+        input_rap = np.array(pjet._floats)[obs_idx, pjet._Rapidity_col]
+        input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
+        leg_ends = np.vstack((input_rap, input_phi)).T
+        input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
+        plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
+        #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=deltaR, edgecolor=c, fill=False)
+        #ax.add_artist(circle)
+    plt.plot([], [], c=c, alpha=alpha, label="SpectralJet")
     plt.legend()
     plt.title("Jets")
     plt.xlabel("rapidity")
+    plt.ylim(-np.pi, np.pi)
     plt.ylabel("phi")
     plt.show()
-    return pjets
+    return pjets_spectral
 
 
 if __name__ == '__main__':
-    #main()
-    pass
+    main()

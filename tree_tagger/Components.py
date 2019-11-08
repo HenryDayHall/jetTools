@@ -156,6 +156,30 @@ class EventWise:
             return self._column_contents[attr_name]
         raise AttributeError(f"{self.__class__.__name__} does not have {attr_name}")
 
+    def match_indices(self, attr_name, match_from, match_to=None, event_n=None):
+        """
+        return the elements of each row for which match_for and match_to are equal
+        one of match_from or match_to may be projected to make the required dimentions
+        """
+        if event_n is None:
+            assert self.selected_index is not None
+        else:
+            self.selected_index = event_n
+        attr = getattr(self, attr_name)
+        if isinstance(match_from, str):
+            match_from = getattr(self, match_from)
+        if isinstance(match_to, str):
+            match_to = getattr(self, match_to)
+        if match_to is not None:
+            try:
+                out = [row[f==t] for f, t, row in zip(match_from, match_to, attr)]
+            except TypeError:
+                mask = match_from == match_to
+                out = [row[m] for m, row in zip(mask, attr)]
+        else:
+            out = [row[m] for m, row in zip(match_from, attr)]
+        return awkward.fromiter(out)
+
     def __dir__(self):
         new_attrs = set(super().__dir__() + self.columns)
         return sorted(new_attrs)
@@ -237,6 +261,7 @@ class EventWise:
         lower_bounds = [i*fragment_length for i in range(n_fragments)]
         upper_bounds = lower_bounds[1:] + [n_events]
         return self.split(upper_bounds, lower_bounds, per_event_component, part_name="fragment", **kwargs)
+
     def split_unfinished(self, per_event_component, unfinished_component, **kwargs):
         self.selected_index = None
         if not isinstance(per_event_component, str):
@@ -250,7 +275,13 @@ class EventWise:
             num_unfinished = list(lengths)[0]
         else:
             num_unfinished = len(getattr(self, unfinished_component))
-        assert num_unfinished < n_events
+        assert num_unfinished <= n_events
+        if num_unfinished == n_events:
+            # the whole thing is unfinished
+            return None, os.path.join(self.dir_name, self.save_dir)
+        if num_unfinished == 0:
+            # the event is complete
+            return os.path.join(self.dir_name, self.save_dir), None
         lower_bounds = [0, num_unfinished]
         upper_bounds = [num_unfinished, n_events]
         return self.split(upper_bounds, lower_bounds, per_event_component, part_name="progress", **kwargs)
@@ -285,38 +316,39 @@ class EventWise:
         assert to_check.issubset(per_event_cols)
         new_contents = []
         for lower, upper in zip(lower_bounds, upper_bounds):
-            new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
-            new_contents.append(new_content)
+            if lower > upper:
+                raise ValueError(f"lower bound {lower} greater than upper bound {upper}")
+            elif lower == upper:
+                # append none as a placeholder
+                new_contents.append(None)
+            else:
+                new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
+                new_contents.append(new_content)
         unchanged_parts = {k: self._column_contents[k][:] for k in self._column_contents.keys()
                            if k not in per_event_cols}
         no_dups = kwargs.get('no_dups', True)  # if no dupes only put the unchanged content in the first event
         all_paths = []
         i = 0
-        # this bit isn't thread safe and could create a race condition
-        while name_format.format(i) in os.listdir(save_dir):
-            i+=1
-        name0 = name_format.format(i)
-        all_paths.append(os.path.join(save_dir, name0))
-        if no_dups:
-            new_contents0 = {**new_contents[0], **unchanged_parts}
-            ew0 = type(self)(save_dir, name0,
-                             columns=self.columns, contents=new_contents0)
-            new_columns = per_event_cols
-        else:
-            for i in range(len(upper_bounds)):
-                new_contents[i] = {**new_contents[i], **unchanged_parts}
-            ew0 = type(self)(save_dir, name0,
-                             columns=self.columns, contents=new_contents[0])
-            new_columns = self.columns
-        ew0.write()
-        for new_content in new_contents[1:]:
+        add_unsplit = True
+        for new_content in new_contents:
+            if new_content is None:
+                all_paths.append(None)
+                continue
             # this bit isn't thread safe and could create a race condition
             while name_format.format(i) in os.listdir(save_dir):
                 i+=1
             name = name_format.format(i)
+            if add_unsplit:
+                new_content = {**new_content, **unchanged_parts}
+                ew = type(self)(save_dir, name,
+                                columns=self.columns, contents=new_content)
+                if no_dups:
+                    # don't do this again
+                    add_unsplit = False
+            else:
+                ew = type(self)(save_dir, name,
+                                columns=per_event_cols, contents=new_content)
             all_paths.append(os.path.join(save_dir, name))
-            ew = type(self)(save_dir, name,
-                            columns=new_columns, contents=new_content)
             ew.write()
         return all_paths
 
