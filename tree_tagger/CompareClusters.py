@@ -1,4 +1,5 @@
 """ compare two jet clustering techniques """
+import awkward
 from ipdb import set_trace as st
 from tree_tagger import Components, TrueTag
 import sklearn.metrics
@@ -27,6 +28,7 @@ def rand_score(eventWise, jet_name1, jet_name2):
         score = sklearn.metrics.adjusted_rand_score(labels1, labels2)
         scores.append(score)
     return scores
+
 
 def visulise_scores(scores, jet_name1, jet_name2, score_name="Rand score"):
     plt.hist(scores, bins=40, density=True, histtype='stepfilled')
@@ -72,26 +74,33 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
     return pseudojet_vars1, pseudojet_vars2, num_unconnected
 
 
-def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None):
+def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.):
     if event_n is None:
         assert eventWise.selected_index is not None
     else:
         eventWise.selected_index = event_n
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
-    jet_rapidity = eventWise.match_indices(jet_name+"_Rapidity", inputidx_name, rootinputidx_name)
-    jet_phi = eventWise.match_indices(jet_name+"_Phi", inputidx_name, rootinputidx_name)
-    jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name)
-
+    jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
+    if jet_pt_cut is None:
+        mask = np.ones_like(jet_pt)
+    else:
+        mask = jet_pt>jet_pt_cut
+        if not np.any(mask):
+            empty = np.array([]).reshape((-1, 3))
+            return empty, empty
+    jet_pt = jet_pt[mask]
+    jet_rapidity = eventWise.match_indices(jet_name+"_Rapidity", inputidx_name, rootinputidx_name).flatten()[mask]
+    jet_phi = eventWise.match_indices(jet_name+"_Phi", inputidx_name, rootinputidx_name).flatten()[mask]
     tag_idx = TrueTag.tag_particle_indices(eventWise, tag_pids=tag_pids)
     tag_rapidity = eventWise.Rapidity[tag_idx]
     tag_phi = eventWise.Phi[tag_idx]
     tag_pt = eventWise.PT[tag_idx]
     # normalise the tag_pt and jet_pts, it's reasonable to think these could be corrected to match
-    normed_jet_pt = sklearn.preprocessing.normalize(jet_pt)
-    normed_tag_pt = sklearn.preprocessing.normalize(tag_pt)
+    normed_jet_pt = sklearn.preprocessing.normalize(jet_pt.reshape(1, -1)).flatten()
+    normed_tag_pt = sklearn.preprocessing.normalize(tag_pt.reshape(1, -1)).flatten()
     # divide tag and jet rapidity by the abs mean of both, effectivly collectivly normalising them
-    abs_mean = np.mean(np.mean(np.abs(jet_rapidity)), np.mean(np.abs(tag_rapidity)))
+    abs_mean = np.mean((np.mean(np.abs(jet_rapidity)), np.mean(np.abs(tag_rapidity))))
     normed_jet_rapidity = jet_rapidity/abs_mean
     normed_tag_rapidity = tag_rapidity/abs_mean
     # divide the phi coordinates by pi for the same effect
@@ -100,8 +109,8 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None):
     # find angular distances as they are invarient of choices
     phi_distance = np.vstack([[j_phi - t_phi for j_phi in normed_jet_phi]
                              for t_phi in normed_tag_phi])
-    # remeber that these vlaues are normalised
-    phi_distance[phi_distance > 2] = 4 - phi_distance[phi_distance > np.pi]
+    # remeber that these values are normalised
+    phi_distance[phi_distance > 2] = 4 - phi_distance[phi_distance > 2]
     rapidity_distance = np.vstack([[j_rapidity - t_rapidity for j_rapidity in normed_jet_rapidity]
                                    for t_rapidity in normed_tag_rapidity])
     angle_dist2 = np.square(phi_distance) + np.square(rapidity_distance)
@@ -112,15 +121,38 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None):
     for tag_idx in np.argsort(tag_pt):
         this_pt = normed_tag_pt[tag_idx]
         new_pt_dist2 = np.square(current_pt_offset_for_jet + this_pt)
-        allocate_to = np.argmin(new_pt_dist2 + angle_dist2)
+        allocate_to = np.argmin(new_pt_dist2 + angle_dist2[tag_idx])
         matched_jet[tag_idx] = allocate_to
         current_pt_offset_for_jet[allocate_to] += this_pt
-    # now calculate the real distance
-    deltaPhi_closest_jets = np.array([np.abs(t_phi - jet_phi[c]) for t_phi, c in zip(tag_phi, matched_jet)])
-    deltaRapidity_closest_jets = np.array([np.abs(t_rapidity - jet_rapidity[c]) for t_rapidity, c in zip(tag_rapidity, matched_jet)])
-    deltaPT_closest_jets = np.array([np.abs(t_pt - jet_pt[c]) for t_pt, c in zip(tag_pt, matched_jet)])
-    return deltaPT_closest_jets, deltaPhi_closest_jets, deltaRapidity_closest_jets
+    # now calculate what fraction of jet PT the tag actually receves
+    chosen_jets = list(set(matched_jet))
+    pt_fragment = np.zeros_like(matched_jet, dtype=float)
+    for jet_idx in chosen_jets:
+        tag_idx_here = np.where(matched_jet == jet_idx)[0]
+        pt_fragment[tag_idx_here] = tag_pt[tag_idx_here]/np.sum(tag_pt[tag_idx_here])
+    tag_coords = np.vstack((tag_pt, tag_rapidity, tag_phi)).transpose()
+    jet_coords = np.vstack((jet_pt[matched_jet]*pt_fragment, jet_rapidity[matched_jet], jet_phi[matched_jet])).transpose()
+    return tag_coords, jet_coords
     
+def fit_all_to_tags(eventWise, jet_name):
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_name + "_Energy"))
+    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    tag_coords = []
+    jet_coords = []
+    for event_n in range(n_events):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        eventWise.selected_index = event_n
+        n_jets = len(getattr(eventWise, jet_name + "_Energy"))
+        if n_jets > 0:
+            tag_c, jet_c = fit_to_tags(eventWise, jet_name, tag_pids=tag_pids)
+            tag_coords.append(tag_c)
+            jet_coords.append(jet_c)
+    tag_coords = np.vstack(tag_coords)
+    jet_coords = np.vstack(jet_coords)
+    return tag_coords, jet_coords
+
 
     
     
