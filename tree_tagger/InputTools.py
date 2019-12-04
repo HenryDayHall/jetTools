@@ -10,6 +10,49 @@ import glob
 try: input = raw_input
 except NameError: pass
 
+up = '\x1b[A'
+down = '\x1b[B'
+
+def get_previous(function_name, message):
+    delimiter = ','
+    message = message.replace(delimiter, '_')
+    memory_file = './autofill_memory.csv'
+    try:
+        existing = np.loadtxt(memory_file, delimiter=delimiter, dtype=str)
+        if len(existing) == 0:
+            return ''
+        existing = existing.reshape((-1, 3))
+    except OSError:
+        return ''
+    match,  = np.where((existing[:, :2] == [function_name, message]).all(axis=1))
+    if len(match) == 0:
+        return ''
+    else:
+        return existing[match[0], 2]
+    
+
+def set_previous(function_name, message, previous):
+    if previous in ['', up, down]:
+        return
+    delimiter = ','
+    message = message.replace(delimiter, '_')
+    memory_file = './autofill_memory.csv'
+    try:
+        existing = np.loadtxt(memory_file, delimiter=delimiter, dtype=str)
+        if len(existing) == 0:
+            existing = np.array([[function_name, message, previous]])
+        else:
+            existing = existing.reshape((-1, 3))
+            match = np.where((existing[:, :2] == [function_name, message]).all(axis=1))[0]
+            if len(match) == 0:
+                existing = np.vstack((existing, [function_name, message, previous]))
+            else:
+                existing[match[0], 2] = previous
+    except OSError:
+        existing = np.array([[function_name, message, previous]])
+    np.savetxt(memory_file, existing, delimiter=delimiter, header="Memory of user inputs", fmt='%s')
+
+
 def get_file_name(message, file_ending=''):
     """ Get a file name from the user, with tab completion.    
 
@@ -28,29 +71,15 @@ def get_file_name(message, file_ending=''):
         The input from the user (not forced to be a file name)
     
     """
+    previous_choice = get_previous("get_file_name", message)
     # file tab completion
     def path_completer(start, state):
         line = readline.get_line_buffer().split()
         matching = [x for x in glob.glob(start+'*'+file_ending)]
-        # grab matching directories too
-        if os.path.isdir(start): # user gave a dir
-            real_dir = start
-            user_dir = start
-            user_incomplete = ''
-        else:  # user gave incomplete dir or other
-            user_dir, user_incomplete = os.path.split(start)
-            if user_dir in ('', '.', './'):  # current dir
-                real_dir = '.'  # needed so os.walk works
-            else:  # it's a directory (hopefully...)
-                real_dir = user_dir
-        dirs_here = next(os.walk(real_dir))[1]
-        # go back to the format the user chose
-        matching_dirs = [os.path.join(user_dir, name) + '/' for name in dirs_here
-                         if name.startswith(user_incomplete)]
-        matching += matching_dirs
+        matching += [x for x in glob.glob(start+'*/')]
         return matching[state]
-
-    filename = tab_complete(path_completer, message)
+    filename = tab_complete(path_completer, message, previous_choice)
+    set_previous("get_file_name", message, filename)
     return filename
 
 
@@ -68,13 +97,14 @@ def get_dir_name(message):
         The input from the user (not forced to be a file name)
     
     """
+    previous_choice = get_previous("get_dir_name", message)
     # dir tab completion
     def path_completer(start, state):
         line = readline.get_line_buffer().split()
         matching = [x for x in glob.glob(start+'*/')]
         return matching[state]
-
-    dir_name = tab_complete(path_completer, message)
+    dir_name = tab_complete(path_completer, message, previous_choice)
+    set_previous("get_dir_name", message, dir_name)
     return dir_name
 
 
@@ -95,20 +125,19 @@ def list_complete(message, possibilities):
         The input from the user (not forced to be in the list)
     
     """
+    previous_choice = get_previous("list_complete", message)
     def list_completer(text, state):
-        line   = readline.get_line_buffer()
-        
+        line = readline.get_line_buffer()
         if not line:
             return [c + " " for c in possibilities][state]
-        
         else:
             return [c + " " for c in possibilities if c.startswith(line)][state]
-
-    selection = tab_complete(list_completer, message)
+    selection = tab_complete(list_completer, message, previous_choice)
+    set_previous("list_complete", message, selection)
     return selection
 
 
-def tab_complete(possibilities_function, message):
+def tab_complete(possibilities_function, message, previous=None):
     """ Create a tab completion based on a function
 
     Parameters
@@ -133,9 +162,11 @@ def tab_complete(possibilities_function, message):
     readline.set_completer_delims('\t')
     readline.set_completer(possibilities_function)
     readline.parse_and_bind("tab: complete")
-    filename = input(message)
+    if previous not in [None, '']:
+        readline.add_history(previous)
+    user_input = input(message)
     readline.set_completer()  # remove tab completion
-    return filename
+    return user_input
 
 
 def yesNo_question(question):
@@ -200,6 +231,7 @@ def get_time(question):
     seconds = 0. if seconds=='' else float(seconds)
     return 60*60*hours + 60*minutes + seconds
 
+
 def select_values(pretty_name, column_names, defaults, value_class=np.float):
     print("Select {}".format(pretty_name))
     if column_names is not None:
@@ -217,6 +249,7 @@ def select_values(pretty_name, column_names, defaults, value_class=np.float):
         chosen = np.array([value_class(i) for i in split_inp[:n_columns]])
     print("{} = [{}]".format(pretty_name, ', '.join([str(c) for c in chosen])))
     return chosen
+
 
 def select_value(pretty_name, default, value_class=np.float):
     print("Select {}".format(pretty_name))

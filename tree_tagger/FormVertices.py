@@ -64,7 +64,8 @@ def closest_approches(start_points, direction_vectors):
     numerator = dir_dot_dir * (start_dot_dir.T - sd_diagonal.T) - dir_self.T * (sd_diagonal - start_dot_dir)
     parellels = 0.5*(start_dot_dir/dir_self - sd_diagonal/dir_self)
     # if the denominator is zero the lines are parrellel
-    closest_multiples = np.where(denominator!=0, numerator/denominator, parellels)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        closest_multiples = np.where(denominator != 0, numerator/denominator, parellels)
     return closest_multiples
 
 
@@ -103,12 +104,12 @@ def distance2_midpoints(start_points, direction_vectors, closest_multiples, midp
 
 # for akt deltaR=0.4 this works best with threshold 0.02
 def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, threshold=0.02):
-    vertex_name = f"{jet_name}_{vertex_name}Vertex"
-    assignment_name = vertex_name + "Assignment"
+    jet_vertex_name = f"{jet_name}_{vertex_name}Vertex"
+    assignment_name = f"{jet_name}_{vertex_name}Assignment"
     jet_inputidx_name = jet_name + "_InputIdx"
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_inputidx_name))
-    vertex_locations = getattr(eventWise, vertex_name, awkward.fromiter([]))
+    vertex_locations = getattr(eventWise, jet_vertex_name, awkward.fromiter([]))
     vertex_locations = vertex_locations.tolist()
     track_assignment = getattr(eventWise, assignment_name, awkward.fromiter([]))
     track_assignment = track_assignment.tolist()
@@ -184,7 +185,7 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
             track_assignment[-1].append(awkward.fromiter(assignments))
         vertex_locations[-1] = awkward.fromiter(vertex_locations[-1])
         track_assignment[-1] = awkward.fromiter(track_assignment[-1])
-    eventWise.append({vertex_name: awkward.fromiter(vertex_locations),
+    eventWise.append({jet_vertex_name: awkward.fromiter(vertex_locations),
                       assignment_name: awkward.fromiter(track_assignment)})
 
 
@@ -233,7 +234,6 @@ def compare_vertices(eventWise, jet_name, vertex_name):
     primary_displacement = np.sqrt(np.array(primary_displacement))
     secondary_displacement = np.sqrt(np.array(secondary_displacement))
     return imagined_vertices, imagined_displacement, missed_vertices, missed_displacement, primary_displacement, secondary_displacement
-
 
 
 

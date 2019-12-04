@@ -1,4 +1,5 @@
 from numpy import testing as tst
+import warnings
 import os
 from ipdb import set_trace as st
 import numpy as np
@@ -9,12 +10,12 @@ import awkward
 
 
 class SimpleClusterSamples:
-    config_1 = {'deltaR': 1., 'exponent_multiplyer': 0}
-    config_2 = {'deltaR': 1., 'exponent_multiplyer': 1}
-    config_3 = {'deltaR': 1., 'exponent_multiplyer': -1}
-    config_4 = {'deltaR': .4, 'exponent_multiplyer': 0}
-    config_5 = {'deltaR': .4, 'exponent_multiplyer': 1}
-    config_6 = {'deltaR': .4, 'exponent_multiplyer': -1}
+    config_1 = {'DeltaR': 1., 'ExponentMultiplier': 0}
+    config_2 = {'DeltaR': 1., 'ExponentMultiplier': 1}
+    config_3 = {'DeltaR': 1., 'ExponentMultiplier': -1}
+    config_4 = {'DeltaR': .4, 'ExponentMultiplier': 0}
+    config_5 = {'DeltaR': .4, 'ExponentMultiplier': 1}
+    config_6 = {'DeltaR': .4, 'ExponentMultiplier': -1}
     # there is no garantee on left right child order, or global order of pseudojets
     empty_inp = {'ints': np.array([]).reshape((-1, 5)), 'floats': np.array([]).reshape((-1, 8))}
     one_inp = {'ints': np.array([[0, -1, -1, -1, -1]]),
@@ -79,9 +80,9 @@ class SimpleClusterSamples:
         vec_1 = np.array([np.cos(phi_1), np.sin(phi_1)])
         vec_2 = np.array([np.cos(phi_2), np.sin(phi_2)])
         angle = np.arccos(np.clip(np.dot(vec_1, vec_2), -1., 1.))
-        distance = np.min(np.power(two['floats'][:, 0], 2*config['exponent_multiplyer'])) * \
+        distance = np.min(np.power(two['floats'][:, 0], 2*config['ExponentMultiplier'])) * \
                    ((two['floats'][0, 1] - two['floats'][1, 1])**2 + angle**2)
-        beam_distance = (config['deltaR']**2)*np.min(np.power(two['floats'][:, 0], 2*config['exponent_multiplyer']))
+        beam_distance = (config['DeltaR']**2)*np.min(np.power(two['floats'][:, 0], 2*config['ExponentMultiplier']))
         if distance > beam_distance:
             # don't join
             return two, two
@@ -173,7 +174,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
     config_list = [getattr(SimpleClusterSamples, f"config_{i}") for i in range(1, 7)]
     for config in config_list:
         # an empty set of ints should safely return an empty pseudojet
-        empty_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+        empty_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                              ints = SimpleClusterSamples.empty_inp['ints'],
                                              floats = SimpleClusterSamples.empty_inp['floats'])
         assert len(empty_pseudojet._ints) == 0
@@ -181,7 +182,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         jets = empty_pseudojet.split()
         assert len(jets) == 0
         # one track should return one pseudojet
-        one_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+        one_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                            ints = SimpleClusterSamples.one_inp['ints'],
                                            floats = SimpleClusterSamples.one_inp['floats'])
         SimpleClusterSamples.match_ints_floats(one_pseudojet._ints, one_pseudojet._floats,
@@ -195,7 +196,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                                                SimpleClusterSamples.one_inp['floats'],
                                                compare_distance=compare_distance)
         # two tracks degenerate should join
-        two_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                         ints = SimpleClusterSamples.two_degenerate['ints'],
                                         floats = SimpleClusterSamples.two_degenerate['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
@@ -209,7 +210,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                                                SimpleClusterSamples.degenerate_join['floats'],
                                                compare_distance=compare_distance)
         # two tracks close together should join
-        two_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                            ints = SimpleClusterSamples.two_close['ints'],
                                            floats = SimpleClusterSamples.two_close['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
@@ -223,7 +224,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                                                SimpleClusterSamples.close_join['floats'],
                                                compare_distance=compare_distance)
         # two tracks far apart should not join
-        two_pseudojet = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                            ints = SimpleClusterSamples.two_oposite['ints'],
                                            floats = SimpleClusterSamples.two_oposite['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
@@ -242,7 +243,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         phis = np.linspace(-np.pi, np.pi, 11)
         for phi in phis:
             start, expected_end = SimpleClusterSamples.phi_split(config, phi)
-            pseudojets = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+            pseudojets = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                             ints = start['ints'], floats = start['floats'])
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
@@ -260,7 +261,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         fails = 0
         for i in range(n_random_tries):
             start, expected_end = SimpleClusterSamples.pair_production(config)
-            pseudojets = make_pseudojets(empty_ew, config['deltaR'], config['exponent_multiplyer'],
+            pseudojets = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
                                             ints=start['ints'], floats=start['floats'])
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
@@ -286,23 +287,23 @@ def test_Traditional():
         empty_ew = Components.EventWise(dir_name, empty_name)
         empty_ew.selected_index = 0
         # method 1
-        def make_jets1(eventWise, deltaR, exponent_multiplyer, ints, floats):
-            pseudojets = FormJets.Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer, ints_floats=(ints, floats))
+        def make_jets1(eventWise, DeltaR, ExponentMultiplier, ints, floats):
+            pseudojets = FormJets.Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=ExponentMultiplier, ints_floats=(ints, floats))
             pseudojets.assign_parents()
             return pseudojets
         clustering_algorithm(empty_ew, make_jets1)
         # method 2
-        def make_jets2(eventWise, deltaR, exponent_multiplyer, ints, floats):
+        def make_jets2(eventWise, DeltaR, ExponentMultiplier, ints, floats):
             set_JetInputs(eventWise, floats)
             eventWise.selected_index = 0
-            pseudojets = FormJets.Traditional(eventWise, deltaR=deltaR, exponent_multiplyer=exponent_multiplyer)
+            pseudojets = FormJets.Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=ExponentMultiplier)
             pseudojets.assign_parents()
             return pseudojets
         clustering_algorithm(empty_ew, make_jets2)
         # test the save method
         test_inp = SimpleClusterSamples.one_inp
         name = "TestA"
-        test_jet = FormJets.Traditional(empty_ew, deltaR=1., exponent_multiplyer=-1.,
+        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1.,
                                         ints_floats=(test_inp['ints'], test_inp['floats']), jet_name=name)
         FormJets.Traditional.write_event([test_jet], name, event_index=2)
         # read out again
@@ -313,14 +314,14 @@ def test_Traditional():
         # test collective properties
         test_inp = SimpleClusterSamples.empty_inp
         empty_ew.selected_index = 0
-        test_jet = FormJets.Traditional(empty_ew, deltaR=1., exponent_multiplyer=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
+        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         expected_summaries = np.full(10, np.nan)
         found_summaries = np.array([test_jet.PT, test_jet.Rapidity, test_jet.Phi, test_jet.Energy,
                                     test_jet.Px, test_jet.Py, test_jet.Pz, test_jet.JoinDistance,
                                     test_jet.Pseudorapidity, test_jet.Theta])
         tst.assert_allclose(expected_summaries, found_summaries)
         test_inp = SimpleClusterSamples.one_inp
-        test_jet = FormJets.Traditional(empty_ew, deltaR=1., exponent_multiplyer=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
+        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         test_jet.assign_parents()
         test_jets = test_jet.split()
         for expected, jet in zip(test_inp['floats'], test_jets):
@@ -451,6 +452,7 @@ def test_create_JetInputs():
         name = "test.awkd"
         columns = [name[len("Pseudojet_"):] for name in FormJets.PseudoJet.float_columns
                    if "Distance" not in name]
+        columns_unchanged = [c for c in columns]  # because the ew will change the columns list
         floats = SimpleClusterSamples.two_oposite['floats']
         contents = {name: awkward.fromiter([x]) for name, x in zip(columns, floats.T)}
         def return_all(_, current_idx):
@@ -459,14 +461,14 @@ def test_create_JetInputs():
             return current_idx[1:2]
         ew = Components.EventWise(dir_name, name, columns=columns, contents=contents)
         FormJets.create_jetInputs(ew, filter_functions=[return_all])
-        for name in contents:
+        for name in columns_unchanged:
             ji_name = "JetInputs_" + name
             idx = columns.index(name)
             assert hasattr(ew, ji_name)
             tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx]])
         ew.remove_prefix("JetInputs")
         FormJets.create_jetInputs(ew, filter_functions=[return_second])
-        for name in contents:
+        for name in columns_unchanged:
             ji_name = "JetInputs_" + name
             idx = columns.index(name)
             assert hasattr(ew, ji_name)
@@ -477,17 +479,17 @@ def test_create_JetInputs():
         contents = {name: awkward.fromiter([x, x, x]) for name, x in zip(columns, floats.T)}
         ew = Components.EventWise(dir_name, name, columns=columns, contents=contents)
         FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=0)
-        for name in contents:
+        for name in columns_unchanged:
             ji_name = "JetInputs_" + name
             assert not hasattr(ew, ji_name)
         FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=1)
-        for name in contents:
+        for name in columns_unchanged:
             ji_name = "JetInputs_" + name
             assert hasattr(ew, ji_name)
             idx = columns.index(name)
             tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx]])
         FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=1)
-        for name in contents:
+        for name in columns_unchanged:
             ji_name = "JetInputs_" + name
             assert hasattr(ew, ji_name)
             idx = columns.index(name)
@@ -542,20 +544,23 @@ def test_produce_summary():
         
 
 def test_run_FastJet():
-    with TempTestDir("fastjet") as dir_name:
-        empty_name = "empty.awkd"
-        empty_path = os.path.join(dir_name, empty_name)
-        empty_ew = Components.EventWise(dir_name, empty_name)
-        # can run fast jets via summary files or the pipe
-        def make_jets3(eventWise, deltaR, exponent_multiplyer, ints, floats):
-            set_JetInputs(eventWise, floats)
-            eventWise.selected_index = 0
-            return FormJets.run_FastJet(eventWise, deltaR, exponent_multiplyer, use_pipe=False)
-        clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
-        def make_jets4(eventWise, deltaR, exponent_multiplyer, ints, floats):
-            set_JetInputs(eventWise, floats)
-            eventWise.selected_index = 0
-            return FormJets.run_FastJet(eventWise, deltaR, exponent_multiplyer, use_pipe=True)
-        clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
+    # ignoring warnings here
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        with TempTestDir("fastjet") as dir_name:
+            empty_name = "empty.awkd"
+            empty_path = os.path.join(dir_name, empty_name)
+            empty_ew = Components.EventWise(dir_name, empty_name)
+            # can run fast jets via summary files or the pipe
+            def make_jets3(eventWise, DeltaR, ExponentMultiplier, ints, floats):
+                set_JetInputs(eventWise, floats)
+                eventWise.selected_index = 0
+                return FormJets.run_FastJet(eventWise, DeltaR, ExponentMultiplier, use_pipe=False)
+            clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
+            def make_jets4(eventWise, DeltaR, ExponentMultiplier, ints, floats):
+                set_JetInputs(eventWise, floats)
+                eventWise.selected_index = 0
+                return FormJets.run_FastJet(eventWise, DeltaR, ExponentMultiplier, use_pipe=True)
+            clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
 
 

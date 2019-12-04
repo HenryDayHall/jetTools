@@ -238,6 +238,153 @@ def test_EventWise():
         assert list(blank_ew.columns) == ["A"]
 
 
+def test_split():
+    with TempTestDir("tst") as dir_name:
+        # splitting a blank ew should result in only Nones
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        ew.append({"Energy": awkward.fromiter([])})
+        parts = ew.split([0, 0, 0], [0, 0, 0])
+        for part in parts:
+            assert part is None
+        # otherwise things should be possible to divide into events
+        # try with 10 events
+        n_events = 10
+        content_1 = awkward.fromiter(np.arange(n_events))
+        content_2 = awkward.fromiter(np.random.rand(n_events))
+        content_3 = awkward.fromiter([np.random.rand(np.random.randint(5)) for _ in range(n_events)])
+        content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
+                                       for _ in range(np.random.randint(5))]
+                                      for _ in range(n_events)])
+        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        # check nothing changes in the original
+        tst.assert_allclose(ew.c1, content_1)
+        tst.assert_allclose(ew.c2, content_2)
+        tst.assert_allclose(ew.c3.flatten(), content_3.flatten())
+        tst.assert_allclose(ew.c4.flatten().flatten(), content_4.flatten().flatten())
+        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
+        tst.assert_allclose(ew.c1, content_1)
+        tst.assert_allclose(ew.c2, content_2)
+        tst.assert_allclose(ew.c3.flatten(), content_3.flatten())
+        tst.assert_allclose(ew.c4.flatten().flatten(), content_4.flatten().flatten())
+        # check the segments contain what they should
+        ew0 = Components.EventWise.from_file(paths[0])
+        assert len(ew0.c1) == 5
+        tst.assert_allclose(ew0.c1, content_1[:5])
+        tst.assert_allclose(ew0.c2, content_2[:5])
+        tst.assert_allclose(ew0.c3.flatten(), content_3[:5].flatten())
+        tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[:5].flatten().flatten())
+        ew1 = Components.EventWise.from_file(paths[1])
+        assert len(ew1.c1) == 2
+        tst.assert_allclose(ew1.c1, content_1[5:7])
+        tst.assert_allclose(ew1.c2, content_2[5:7])
+        tst.assert_allclose(ew1.c3.flatten(), content_3[5:7].flatten())
+        tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[5:7].flatten().flatten())
+        assert paths[2] is None
+        ew3 = Components.EventWise.from_file(paths[3])
+        assert len(ew3.c1) == 3
+        tst.assert_allclose(ew3.c1, content_1[7:])
+        tst.assert_allclose(ew3.c2, content_2[7:])
+        tst.assert_allclose(ew3.c3.flatten(), content_3[7:].flatten())
+        tst.assert_allclose(ew3.c4.flatten().flatten(), content_4[7:].flatten().flatten())
+        assert np.all(["dog" in name for name in paths if name is not None])
+
+def test_fragment():
+    with TempTestDir("tst") as dir_name:
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        # try with 12 events
+        n_events = 12
+        content_1 = awkward.fromiter(np.arange(n_events))
+        content_2 = awkward.fromiter(np.random.rand(n_events))
+        content_3 = awkward.fromiter([np.random.rand(np.random.randint(5)) for _ in range(n_events)])
+        content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
+                                       for _ in range(np.random.randint(5))]
+                                      for _ in range(n_events)])
+        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        # we can fragment 2 ways, first by number of fragments
+        paths = ew.fragment('c1', n_fragments=3)
+        for i, path in enumerate(paths):
+            ew0 = Components.EventWise.from_file(path)
+            assert len(ew0.c1) == 4
+            idxs = slice(i*4, (i+1)*4)
+            tst.assert_allclose(ew0.c1, content_1[idxs])
+            tst.assert_allclose(ew0.c2, content_2[idxs])
+            tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
+            tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+        # we can fragment 2 ways, first by number of fragments
+        paths = ew.fragment('c1', fragment_length=3)
+        for i, path in enumerate(paths):
+            ew0 = Components.EventWise.from_file(path)
+            assert len(ew0.c1) == 3
+            idxs = slice(i*3, (i+1)*3)
+            tst.assert_allclose(ew0.c1, content_1[idxs])
+            tst.assert_allclose(ew0.c2, content_2[idxs])
+            tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
+            tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+
+
+def test_split_unfinished():
+    with TempTestDir("tst") as dir_name:
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        # try with 12 events
+        n_events = 12
+        n_unfinished = 2
+        content_1 = awkward.fromiter(np.arange(n_events))
+        content_2 = awkward.fromiter(np.random.rand(n_events-n_unfinished))
+        content_3 = awkward.fromiter([np.random.rand(np.random.randint(5)) for _ in range(n_events)])
+        content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
+                                       for _ in range(np.random.randint(5))]
+                                      for _ in range(n_events)])
+        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        paths = ew.split_unfinished('c1', 'c2')
+        ew0 = Components.EventWise.from_file(paths[0])
+        assert len(ew0.c1) == n_events - n_unfinished
+        idxs = slice(n_events-n_unfinished)
+        tst.assert_allclose(ew0.c1, content_1[idxs])
+        tst.assert_allclose(ew0.c2, content_2[idxs])
+        tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
+        tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+        ew1 = Components.EventWise.from_file(paths[1])
+        assert len(ew1.c1) == n_unfinished
+        idxs = slice(n_events-n_unfinished, None)
+        tst.assert_allclose(ew1.c1, content_1[idxs])
+        tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
+        tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+
+def test_combine():
+    with TempTestDir("tst") as dir_name:
+        # splitting a blank ew should result in only Nones
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        # try with 10 events
+        n_events = 10
+        content_1 = awkward.fromiter(np.arange(n_events))
+        content_2 = awkward.fromiter(np.random.rand(n_events))
+        content_3 = awkward.fromiter([np.random.rand(np.random.randint(5)) for _ in range(n_events)])
+        content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
+                                       for _ in range(np.random.randint(5))]
+                                      for _ in range(n_events)])
+        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
+        dir_name = os.path.split(paths[0])[0]
+        recombined = Components.EventWise.combine(dir_name, "test")
+        # tere in no order garentee, so get the new order from c1
+        order = np.argsort(recombined.c1)
+        tst.assert_allclose(recombined.c1[order], content_1)
+        tst.assert_allclose(recombined.c2[order], content_2)
+        tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
+        for i in range(n_events):
+            tst.assert_allclose(recombined.c4[order[i]].flatten().flatten(), content_4[i].flatten().flatten())
+
+        
+
+def test_recursive_combine():
+    pass
+
+
 # warnings
 def test_add_rapidity():
     large_num = np.inf
@@ -450,7 +597,8 @@ def test_RootReadout():
         # angles
         tst.assert_allclose(rr.Phi, np.arctan2(rr.Py, rr.Px), atol=0.001, rtol=0.01)
         m2 = rr.Energy**2 - rr.Pz**2 - rr.PT**2
-        rapidity_calculated = 0.5*np.log((rr.PT**2 + m2)/(rr.Energy - np.abs(rr.Pz))**2)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            rapidity_calculated = 0.5*np.log((rr.PT**2 + m2)/(rr.Energy - np.abs(rr.Pz))**2)
         rapidity_calculated[np.isnan(rapidity_calculated)] = np.inf
         rapidity_calculated *= np.sign(rr.Pz)
         # im having dificulty matching the rapitity cauclation at all infinite points

@@ -91,15 +91,12 @@ def safe_convert(cls, string):
 
 class EventWise:
     """ The most basic properties of collections that exist in an eventwise sense """
-    # putting them out here ensures they will be overwritten
-    auxilleries = []
     selected_index = None
     EVENT_DEPTH=1 # events, objects in events
     JET_DEPTH=2 # events, jets, objects in jets
-    _alias_dict = {}  # need to make a blank defalut alias dict incase the __getattr__
-    # method is calle dbefore th eobject is initialised
 
     def __init__(self, dir_name, save_name, columns=None, contents=None):
+        self._loaded_contents = {}  # keep columns that have been accessed in ram
         # the init method must generate some table of items,
         # nomally a jagged array
         self.dir_name = dir_name
@@ -110,7 +107,8 @@ class EventWise:
         else:
             self.columns = []
         if contents is not None:
-            self._column_contents = {k:v for k, v in contents.items()}
+            # maintain lazy loading
+            self._column_contents = contents
         else:
             self._column_contents = {}
         assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
@@ -146,14 +144,25 @@ class EventWise:
 
     def __getattr__(self, attr_name):
         """ the columns are all avalible attrs """
+        # if _alias_dict gets here then it doent exist yet
+        if attr_name == '_alias_dict':
+            # we can safely return an empty dict
+            return {}
         # capitalise raises the case of the first letter
         attr_name = attr_name[0].upper() + attr_name[1:]
         # if it is an alias get the true name
         attr_name = self._alias_dict.get(attr_name, attr_name)
         if attr_name in self.columns:
-            if self.selected_index is not None:
-                return self._column_contents[attr_name][self.selected_index]
-            return self._column_contents[attr_name]
+            try:  # start by assuming it has been loaded
+                if self.selected_index is not None:
+                    return self._loaded_contents[attr_name][self.selected_index]
+                return self._loaded_contents[attr_name]
+            except KeyError:  # it hasn't been loaded
+                self._loaded_contents[attr_name] = self._column_contents[attr_name][:]
+                return getattr(self, attr_name)
+            except AttributeError: # we dont have a loaded dict yet
+                self._loaded_contents = {}
+                return getattr(self, attr_name)
         raise AttributeError(f"{self.__class__.__name__} does not have {attr_name}")
 
     def match_indices(self, attr_name, match_from, match_to=None, event_n=None):
@@ -240,11 +249,28 @@ class EventWise:
             if type(self._column_contents) != dict:
                 self._column_contents = {k:v for k, v in self._column_contents.items()}
             del self._column_contents[col_name]
+            if col_name in self._loaded_contents:
+                del self._loaded_contents[col_name]
 
     def remove_prefix(self, col_prefix):
         to_remove = [c for c in self.columns if c.startswith(col_prefix)]
         for c in to_remove:
             self.remove(c)
+
+    def rename(self, old_name, new_name):
+        if old_name in self._alias_dict:
+            target = self._alias_dict[old_name]
+            self._remove_alias(old_name)
+            self.add_alias(new_name, target)
+        else:
+            if old_name not in self.columns:
+                raise KeyError(f"Don't have a column called {old_name}")
+            self.columns[self.columns.index(old_name)] = new_name
+            if type(self._column_contents) != dict:
+                self._column_contents = {k:v for k, v in self._column_contents.items()}
+            self._column_contents[new_name] = self._column_contents[old_name]
+            del self._column_contents[old_name]
+
 
     def fragment(self, per_event_component, **kwargs):
         if not isinstance(per_event_component, str):
@@ -260,7 +286,7 @@ class EventWise:
             n_fragments = int(np.ceil(n_events/fragment_length))
         lower_bounds = [i*fragment_length for i in range(n_fragments)]
         upper_bounds = lower_bounds[1:] + [n_events]
-        return self.split(upper_bounds, lower_bounds, per_event_component, part_name="fragment", **kwargs)
+        return self.split(lower_bounds, upper_bounds, per_event_component, part_name="fragment", **kwargs)
 
     def split_unfinished(self, per_event_component, unfinished_component, **kwargs):
         self.selected_index = None
@@ -278,15 +304,15 @@ class EventWise:
         assert num_unfinished <= n_events
         if num_unfinished == n_events:
             # the whole thing is unfinished
-            return None, os.path.join(self.dir_name, self.save_dir)
+            return None, os.path.join(self.dir_name, self.save_name)
         if num_unfinished == 0:
             # the event is complete
             return os.path.join(self.dir_name, self.save_dir), None
         lower_bounds = [0, num_unfinished]
         upper_bounds = [num_unfinished, n_events]
-        return self.split(upper_bounds, lower_bounds, per_event_component, part_name="progress", **kwargs)
+        return self.split(lower_bounds, upper_bounds, per_event_component, part_name="progress", **kwargs)
 
-    def split(self, upper_bounds, lower_bounds, per_event_component="Energy", part_name="part", **kwargs):
+    def split(self, lower_bounds, upper_bounds, per_event_component="Energy", part_name="part", **kwargs):
         # not thread safe....
         self.selected_index = None
         # decide where the fragments will go
@@ -353,6 +379,25 @@ class EventWise:
         return all_paths
 
     @classmethod
+    def recursive_combine(cls, dir_name, check_for_dups=False, del_framgents=True):
+        if dir_name.endswith('/'):
+            dir_name = dir_name[:-1]
+        root_dir = '/'.join(*dir_name.split('/')[:-1])
+        save_base = dir_name.split('/')[-1].split('_', 1)[0]
+        dir_content = os.listdir(dir_name)
+        fragments = [n for n in dir_content if n.endswith('.awkd')]
+        for name in fragments:
+            if name[:-4] in dir_content:
+                joined_name = cls.recursive_combine(name[:-4], check_for_dups, del_framgents)
+                os.replace(joined_name, name)
+        combined_eventWise = cls.combine(dir_name, save_base, fragments, check_for_dups, del_fragments=True)
+        joined_name = os.path.join(root_dir, save_base+".awkd")
+        os.rename(os.path.join(combined_eventWise.dir_name, combined_eventWise.save_name),
+                  joined_name)
+        os.rmdir(dir_name)
+        return joined_name
+
+    @classmethod
     def combine(cls, dir_name, save_base, fragments=None, check_for_dups=False, del_fragments=False):
         in_dir = os.listdir(dir_name)
         if fragments is None:
@@ -388,6 +433,77 @@ class EventWise:
             for fragment in fragments:
                 os.remove(os.path.join(dir_name, fragment))
         return new_eventWise
+
+
+def event_matcher(eventWise1, eventWise2):
+    eventWise1.selected_index = None
+    eventWise2.selected_index = None
+    common_columns = set(eventWise1.columns).intersection(set(eventWise2.columns))
+    common_columns = np.array(list(common_columns))
+    column_type = []
+    for name in common_columns:
+        part = getattr(eventWise1, name)
+        while hasattr(part[0], '__iter__'):
+            part = part.flatten()
+            if len(part) == 0 or isinstance(part[0], str):
+                break
+        if len(part) > 0:
+            column_type.append(type(part[0]))
+        else:
+            column_type.append(None)
+    column_type = np.array(column_type)
+    isint = np.array([col == np.int64 for col in column_type])
+    int_cols = common_columns[isint]
+    isfloat = np.array([ col == np.float64 for col in column_type])
+    float_cols = common_columns[isfloat]
+    assert "Event_n" in common_columns
+    length1 = len(eventWise1.Event_n)
+    order = np.full(length1, -1, dtype=int)
+    for i in range(length1):
+        possibles = np.where(eventWise2.Event_n == eventWise1.Event_n[i])[0]
+        if len(possibles) == 0:
+            continue
+        int2 = [getattr(eventWise2, col)[possibles] for col in int_cols]
+        int1 = [getattr(eventWise1, col)[i] for col in int_cols]
+        int_gap = np.zeros_like(possibles, dtype=int)
+        for col in int_cols:
+            f1 = getattr(eventWise1, col)[i]
+            f2s = getattr(eventWise2, col)[possibles]
+            try:
+                int_gap += [np.int64(np.nan_to_num(recursive_distance(f1, f2))) for f2 in f2s]
+            except:
+                int_ap = [np.int64(np.nan_to_num(recursive_distance(f1, f2))) for f2 in f2s]
+        possibles = possibles[int_gap==0]
+        if len(possibles) == 1:
+            order[i] = possibles[0]
+            continue
+        if len(possibles) == 0:
+            continue
+        float2 = [getattr(eventWise2, col)[possibles] for col in float_cols]
+        float1 = [getattr(eventWise1, col)[i] for col in float_cols]
+        float_gap = np.zeros_like(possibles, dtype=float)
+        for col in float_cols:
+            f1 = getattr(eventWise1, col)[i]
+            f2s = getattr(eventWise2, col)[possibles]
+            float_gap += [recursive_distance(f1, f2) for f2 in f2s]
+        best = np.argmin(float_gap)
+        order[i] = possibles[best]
+    return order
+                
+
+def recursive_distance(awkward1, awkward2):
+    distance = 0.
+    iter1 = hasattr(awkward1, '__iter__')
+    iter2 = hasattr(awkward2, '__iter__')
+    if iter1 and iter2:
+        if len(awkward1) != len(awkward2):
+            return np.inf
+        return np.sum([recursive_distance(a1, a2) for a1, a2 in zip(awkward1, awkward2)])
+    elif iter1 or iter2:
+        return np.inf
+    else:
+        distance += np.abs(awkward1 - awkward2)
+    return distance
 
 
 def add_rapidity(eventWise, base_name=''):
@@ -496,7 +612,8 @@ def pxpy_to_phipt(px_list, py_list):
 
 
 def theta_to_pseudorapidity(theta_list):
-    restricted_theta = np.minimum(theta_list, np.pi - theta_list)
+    with np.errstate(invalid='ignore'):
+        restricted_theta = np.minimum(theta_list, np.pi - theta_list)
     tan_restricted = np.tan(np.abs(restricted_theta)/2)
     infinite = tan_restricted <= 0.
     pseudorapidity = np.full_like(theta_list, np.inf)
@@ -522,7 +639,8 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
     m2 = np.clip(e_use**2 - pz_use**2 - pt2_use, 0, None)
     mag_rapidity = 0.5*np.log((pt2_use + m2)/((e_use - np.abs(pz_use))**2))
     rapidity[to_calculate] = mag_rapidity
-    rapidity *= np.sign(pz_list)
+    with np.errstate(invalid='ignore'):
+        rapidity *= np.sign(pz_list)
     if not hasattr(pt_list, '__iter__'):
         rapidity = float(rapidity)
     return rapidity
@@ -769,7 +887,8 @@ class RootReadout(EventWise):
     def from_file(cls, path, component_name):
         return cls(*os.path.split(path), component_name)
 
+
 def angular_distance(phi1, phi2):
-    angular_diffrence = abs(phi1 - phi2) % (2*np.pi)
-    return min(angular_diffrence, 2*np.pi - angular_diffrence)
+    angular_diffrence = np.abs(phi1 - phi2) % (2*np.pi)
+    return np.minimum(angular_diffrence, 2*np.pi - angular_diffrence)
 

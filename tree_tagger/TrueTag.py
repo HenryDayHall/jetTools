@@ -8,6 +8,7 @@ else:
 import numpy as np
 import awkward
 import os
+import scipy.stats
 
 def allocate(eventWise, jet_name, tag_idx, max_angle2):
     """
@@ -52,7 +53,11 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     tag_idx = []
     # now if there have decendants in the tag list favour the decendant
     convergent_roots = 0
+    i = 0
     while len(possible_tag) > 0:
+        i+=1
+        if i > 1000:
+            st()
         possible = possible_tag.pop()
         eligable_children = [child for child in eventWise.Children[possible]
                              if eventWise.MCPID[child] in tag_pids]
@@ -94,7 +99,8 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
         eventWise.selected_index = event_n
         tags = tag_particle_indices(eventWise, tag_pids=tag_pids)
         jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
-        if tags: # there may not be any of the particles we wish to tag in the event
+        if tags and jets_tags: # there may not be any of the particles we wish to tag in the event
+            # or there may not be any jets
             closest_matches = allocate(eventWise, jet_name, tags, max_angle2)
         else:
             closest_matches = []
@@ -113,6 +119,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     except Exception:
         print("Problem")
         return content
+
 
 display=False  # note needs full simulation
 if display:  # have to comment out to run without display
@@ -165,7 +172,5 @@ if display:  # have to comment out to run without display
 
     if __name__ == '__main__':
         main()
-
-
 
 

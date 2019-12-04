@@ -96,7 +96,6 @@ def void_test_ReadHepmc():
         print(f"Parent multipicity, conserved {np.mean(conserved_parent_multiplicity):.2f}, unconserved {np.mean(unconserved_parent_multiplicity):.2f}")
 
 
-
 def void_test_ReadHepmc2():
     hepmc_file = "/home/henry/Documents/PhD/jetTagger/tree_tagger/megaIgnore/billy_tag_2_pythia8_events.hepmc"
     dir_name, save_name = os.path.split(hepmc_file)
