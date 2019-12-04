@@ -603,7 +603,8 @@ def test_RootReadout():
         rapidity_calculated *= np.sign(rr.Pz)
         # im having dificulty matching the rapitity cauclation at all infinite points
         # this probably dosn't matter as high rapidity values are not seen anyway
-        filt = np.logical_and(np.abs(rr.Rapidity) < 7., np.isfinite(rapidity_calculated))
+        with np.errstate(invalid='ignore'):
+            filt = np.logical_and(np.abs(rr.Rapidity) < 7., np.isfinite(rapidity_calculated))
         tst.assert_allclose(rr.Rapidity[filt], rapidity_calculated[filt], atol=0.01, rtol=0.01)
         # valid PID
         assert set(np.abs(rr.PID)).issubset(all_ids)

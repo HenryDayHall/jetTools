@@ -688,10 +688,12 @@ class Traditional(PseudoJet):
 class Spectral(PseudoJet):
     # list the params with default values
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf, 
-                  'ExponentMultiplier': None}
+            'ExponentMultiplier': None, 'AffinityType': 'exponent',
+            'AffinityCutoff': None, 'Laplacien': 'unnormalised'}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
+        self.merger_indices = [] # need to track this
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
@@ -700,7 +702,7 @@ class Spectral(PseudoJet):
             return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
-        distances = np.zeros((self.currently_avalible, self.currently_avalible))
+        physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
         # for speed, make local variables
         pt_col  = self._PT_col 
         rap_col = self._Rapidity_col
@@ -709,7 +711,7 @@ class Spectral(PseudoJet):
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
                 if column < row:
-                    distance = distances[column, row]  # the matrix is symmetric
+                    distance = physical_distances[column, row]  # the matrix is symmetric
                 elif self._floats[row][pt_col] == 0:
                     distance = 0  # soft radation might as well be at 0 distance
                 elif column == row:
@@ -720,13 +722,45 @@ class Spectral(PseudoJet):
                     distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
                                ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
                                (angular_distance)**2)
-                distances[row, column] = distance
+                physical_distances[row, column] = distance
+        np.fill_diagonal(physical_distances, 0)
         # now we are in posessio of a standard distance matrix for all points,
-        weights = np.exp(-(distances**2))
+        # we can make an affinity calculation
+        if self.AffinityCutoff is not None:
+            cutoff_type = self.AffinityCutoff[0]
+            cutoff_param = self.AffinityCutoff[1]
+            if cutoff_type == 'knn':
+                if self.AffinityType == 'exponent':
+                    def calculate_affinity(distances):
+                        affinity = np.exp(-(distances**0.5))
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                elif self.AffinityType == 'linear':
+                    def calculate_affinity(distances):
+                        affinity = -distances**0.5
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+            elif cutoff_type == 'distance':
+                if self.AffinityType == 'exponent':
+                    def calculate_affinity(distances):
+                        affinity = np.exp(-(distances**0.5))
+                        affinity[distances > cutoff_param] = 0
+                elif self.AffinityType == 'linear':
+                    def calculate_affinity(distances):
+                        affinity = -distances**0.5
+                        affinity[distances > cutoff_param] = 0
+            else:
+                raise ValueError(f"cut off {cutoff_type} unknown")
+        affinity = calculate_affinity(physical_distances)
+        # this is make into a class fuction becuase it will b needed elsewhere
+        self.calculate_affinity = calculate_affinity
         # a graph laplacien can be calculated
-        laplacien = -np.copy(weights)
-        for row_n, row in enumerate(weights):
-            laplacien[row_n, row_n] = np.sum(row[:row_n]) + np.sum(row[row_n+1:])
+        np.fill_diagonal(affinity, 0)
+        self.diagonal = np.diag(np.sum(affinity, axis=1))
+        if self.Laplacien == 'unnormalised':
+            laplacien = self.diagonal - affinity
+        elif self.Laplacien == 'symmetric':
+            laplacien = self.diagonal - affinity
+            alt_diag = self.diagonal**(-0.5)
+            laplacien = np.matmul(alt_diag, np.matmul(laplacien, alt_diag))
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
@@ -744,34 +778,41 @@ class Spectral(PseudoJet):
         self._distances = scipy.spatial.distance.squareform(
                 scipy.spatial.distance.pdist(eigenvectors[:, 1:]))
         # if the clustering is not going to stop at 1 we must put something in the diagonal
-        # for want of anything else to do with it, this may as well be DeltaR**2 times track PT**(exponent)
-        diagonal = np.array([row[pt_col]**exponent for row in self._floats])
-        # normalize
-        try:
-            diagonal *= self.DeltaR**2/np.mean(diagonal)
-        except ValueError:
-            log_name = "spectral_log.txt"
-            lines = [f"opt = {opt}",
-                     f"DeltaR = \n{self.DeltaR}",
-                     f"distances {self._distances.shape} = \n{self._distances}",
-                     f"diagonal {diagonal.shape} = \n{diagonal}"]
-            print(lines)
-            with open(log_name, 'w') as log:
-                log.write('\n'.join(lines))
-        self._distances += np.diag(diagonal)
+        np.fill_diagonal(self._distances, np.inf)
 
     def _recalculate_one(self, remove_index, replace_index):
-        # replace the lower index and remove the higher index
+        # delete the larger index keep the smaller index
         assert remove_index > replace_index
-        removed = self._distances[remove_index]
-        removed = np.delete(removed, remove_index)
+        # delete the first row and column of the merge
         self._distances = np.delete(self._distances, (remove_index), axis=0)
         self._distances = np.delete(self._distances, (remove_index), axis=1)
-        # we don't have a lot of choice here
-        # without recalculating the eigenvalues we must take an average of the points we join
-        new_distances = (removed + self._distances[replace_index])/2
-        self._distances[replace_index] = new_distances
-        self._distances[:, replace_index] = new_distances
+        # calculate the physical distance of the new point from all original points
+        new_distances = np.zeros(self.diagonal.shape[0])
+        for column in range(self.currently_avalible):
+            row = replace_index
+            if column == row:
+                distance = 0.
+            else:
+                angular_diffrence = abs(self._floats[row][self._Phi_col] - self._floats[column][self._Phi_col]) % (2*np.pi)
+                angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
+                distance = min(self._floats[row][self._PT_col]**self.exponent, self._floats[column][self._PT_col]**self.exponent) *\
+                           ((self._floats[row][self._Rapidity_col] - self._floats[column][self._Rapidity_col])**2 +
+                           (angular_distance)**2)
+            new_distances[column] = distance
+        # from this get a new line of the laplacien
+        new_affinity = self.calculate_affinity(new_distances)
+        if self.Laplacien == 'unnormalised':
+            new_laplacien = new_affinity
+            new_laplacien[replace_index] = self.diagonal[replace_index, replace_index]
+        elif self.Laplacien == 'symmetric':
+            new_laplacien = new_affinity
+            new_laplacien[replace_index] = self.diagonal[replace_index, replace_index]
+            alt_diag = np.diag(self.diagonal)**(-0.5)
+            new_laplacien = alt_diag * (new_laplacien* alt_diag[replace_index])
+        # and make its position in vector space
+        new_position = np.dot(self.eigenvectors, new_laplacien)
+        self._distances[:, replace_index] = new_position
+        self._distances[replace_index] = new_position
 
 
 def filter_obs(eventWise, existing_idx_selection):
