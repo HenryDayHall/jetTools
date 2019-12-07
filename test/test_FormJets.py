@@ -164,7 +164,7 @@ def set_JetInputs(eventWise, floats):
     contents = {name: awkward.fromiter([floats[:, i]]) for i, name in enumerate(columns)}
     columns.append("JetInputs_SourceIdx")
     contents["JetInputs_SourceIdx"] = awkward.fromiter([np.arange(len(floats))])
-    eventWise.append(contents)
+    eventWise.append(**contents)
 
 
 def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
@@ -306,6 +306,7 @@ def test_Traditional():
         test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1.,
                                         ints_floats=(test_inp['ints'], test_inp['floats']), jet_name=name)
         FormJets.Traditional.write_event([test_jet], name, event_index=2)
+        test_jet.check_params(empty_ew)  # required to put in hyperparameters
         # read out again
         jets = FormJets.Traditional.multi_from_file(empty_path, event_idx=2, jet_name=name)
         # expect only one jet

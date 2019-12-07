@@ -41,13 +41,15 @@ def marry(hepmc, root_particles):
     hepmc.selected_index = None
     root_particles.selected_index = None
     # we will keep all of the root columns, but only a selection of the hepmc columns
-    columns = root_particles.columns
-    contents = root_particles._column_contents
+    # ensure a copy is made
+    columns = [name for name in root_particles.columns]
+    # forcefully read in here
+    contents = {key: getattr(root_particles, key) for key in columns}
     per_event_hepmc_cols = hepmc.event_information_cols + hepmc.weight_cols + \
                            hepmc.units_cols + hepmc.cross_section_cols
     columns += sorted(per_event_hepmc_cols)
     for name in per_event_hepmc_cols:
-        contents[name] = hepmc.__getattr__(name)
+        contents[name] = getattr(hepmc, name)
     # some get renamed
     per_vertex_hepmc_cols = {'Vertex_barcode': 'Vertex_barcode',
                              'X': 'Vertex_X',
@@ -56,7 +58,7 @@ def marry(hepmc, root_particles):
                              'Ctau': 'Vertex_Ctau'}
     columns += sorted(per_vertex_hepmc_cols.values())
     for name, new_name in per_vertex_hepmc_cols.items():
-        contents[new_name] = hepmc.__getattr__(name)
+        contents[new_name] = getattr(hepmc, name)
     per_particle_hepmc_cols = ['End_vertex_barcode', 'Start_vertex_barcode',
                                'Parents', 'Children', 'Is_root', 'Is_leaf']
     columns += sorted(per_particle_hepmc_cols)

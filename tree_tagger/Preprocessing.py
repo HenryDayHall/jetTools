@@ -61,8 +61,7 @@ def phi_rotation(eventWise):
         for name in remove_cols:
             phi_cols.remove(name)
     content = {name: awkward.fromiter(a) for name, a in content.items()}
-    columns = sorted(content.keys())
-    eventWise.append(columns, content)
+    eventWise.append(**content)
 
 
 def normalize_jets(eventWise, jet_name, new_name):
@@ -86,7 +85,7 @@ def normalize_jets(eventWise, jet_name, new_name):
                 return transformer.transform(np.array(vals).reshape((-1, 1)))
             out = apply_array_func(rescale, values)  # mixed depth if summary vars present
             normed_outs[new_name] = out
-    eventWise.append(normed_outs)
+    eventWise.append(**normed_outs)
 
 
 def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
@@ -105,7 +104,7 @@ def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
             values_here = getattr(eventWise, name)
             values.append(values_here[mask_here])
         filtered_outs[new_name] = awkward.fromiter(values)
-    eventWise.append(filtered_outs)
+    eventWise.append(**filtered_outs)
 
 
 def make_targets(eventWise, jet_name):
@@ -114,8 +113,7 @@ def make_targets(eventWise, jet_name):
     def target_func(array):
         return len(array) > 0
     contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags, depth=eventWise.EVENT_DEPTH)}
-    columns = sorted(contents.keys())
-    eventWise.append(columns, contents)
+    eventWise.append(**contents)
 
 
 def event_wide_observables(eventWise):
@@ -131,7 +129,7 @@ def event_wide_observables(eventWise):
         contents["Event_Ave"+name] = apply_array_func(np.mean, values, depth=eventWise.EVENT_DEPTH)
         contents["Event_Std"+name] = apply_array_func(np.std, values, depth=eventWise.EVENT_DEPTH)
     eventWise.selected_index = None
-    eventWise.append(contents)
+    eventWise.append(**contents)
 
 
 def jet_wide_observables(eventWise, jet_name):
@@ -159,5 +157,5 @@ def jet_wide_observables(eventWise, jet_name):
     # num_hits
     eventWise.selected_index = None
     contents[jet_name+"_size"] = apply_array_func(len, values, depth=eventWise.JET_DEPTH)
-    eventWise.append(contents)
+    eventWise.append(**contents)
 
