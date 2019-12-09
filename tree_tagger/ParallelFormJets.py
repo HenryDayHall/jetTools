@@ -156,10 +156,10 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    #DeltaR = np.linspace(0.2, 1., 5)
-    DeltaR=[0.4]
-    #exponents = [(-1, "AKT"), (0, "CA"), (1, "KT")]
-    exponents = [(1, "KT"), (.8, "8KT"), (.6, "6KT"), (.4, "4KT")]
+    DeltaR = np.linspace(0.2, 1., 5)
+    #DeltaR=[0.4]
+    exponents = [(-1, "AKT"), (0, "CA"), (1, "KT")]
+    #exponents = [(1, "KT"), (.8, "KTp8"), (.6, "KTp6"), (.4, "KTp4")]
     NumEigenvectors = [i+3 for i in range(4)]
     for exponent, exp_name in exponents:
         for dR in DeltaR:

@@ -7,7 +7,7 @@ import os
 # overall momentum is conserved, but internal to the particle shower it isn't conserved
 
 def void_test_ReadHepmc():
-    hepmc_file = "/home/henry/lazy/dataset2/h1bBatch2.hepmc"
+    hepmc_file = "/home/hadh1g17/tree_tagger_repo/megaIgnore/h1bBatch2.hepmc"
     dir_name, save_name = os.path.split(hepmc_file)
     n_events = 1
     hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)
@@ -162,7 +162,7 @@ def void_test_ReadHepmc2():
 
 def test_ReadHepmc():
     check_lines()
-    hepmc_file = "/home/henry/lazy/dataset2/h1bBatch2.hepmc"
+    hepmc_file = "/home/hadh1g17/tree_tagger_repo/megaIgnore/h1bBatch2.hepmc"
     dir_name, save_name = os.path.split(hepmc_file)
     n_events = 100
     hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)
@@ -211,7 +211,7 @@ def check_lines():
         'PID': 21, 'Px': 8.7041485130612273*10**(-14), 'Py': 6.5725203057809267*10**(-14), 'Pz': -876.93569382111320, 'Energy': 876.93569382111275})
     particles.append({'barcode': 8, 'Start_vertex_barcode': -6, 'End_vertex_barcode': -9,
         'PID': 35, 'Px': 105.03226729368578, 'Py': 58.130810880765388, 'Pz':-79.206726092116511, 'Energy':185.73747728206331})
-    hepmc_file = "/home/henry/lazy/dataset2/h1bBatch2.hepmc"
+    hepmc_file = "/home/hadh1g17/tree_tagger_repo/megaIgnore/h1bBatch2.hepmc"
     dir_name, save_name = os.path.split(hepmc_file)
     n_events = 1
     hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)

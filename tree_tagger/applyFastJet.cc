@@ -5,7 +5,7 @@
 //
 //At some poitn make this stop printing so much to file.....
 #include <iostream>
-#include "/home/henry/Programs/fastjet/include/fastjet/ClusterSequence.hh"
+#include "/scratch/hadh1g17/fastjet_install/include/fastjet/ClusterSequence.hh"
 #include <fstream>
 
 using namespace std;
