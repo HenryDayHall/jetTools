@@ -267,38 +267,38 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    DeltaR = np.linspace(0.2, 1., 5)
-    exponents = [-1, 0, 1]
-    for exponent in exponents:
-        for dR in DeltaR:
-            print(f"Exponent {exponent}")
-            print(f"DeltaR {dR}")
-            jet_class = "HomeJet"
-            jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
-            jet_id = records.append(jet_class, jet_params)
-            jet_params["jet_name"] = jet_class + str(jet_id)
-            generate_pool(eventWise_path, 'Traditional', jet_params, True)
-    records.write()
-    #DeltaR = np.linspace(0.05, 0.35, 4)
-    #exponents = [-1, 0]
-    #NumEigenvectors = [4, 8, np.inf]
+    #DeltaR = np.linspace(0.2, 1., 5)
+    #exponents = [-1, 0, 1]
     #for exponent in exponents:
     #    for dR in DeltaR:
-    #        for n_eig in NumEigenvectors:
-    #            print(f"Exponent {exponent}")
-    #            print(f"DeltaR {dR}")
-    #            print(f"NumEigenvectors {n_eig}")
-    #            jet_class = "SpectralMeanJet"
-    #            jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-    #                              NumEigenvectors=n_eig, Laplacien='symmetric')
-    #            jet_id = records.append(jet_class, jet_params)
-    #            jet_params["jet_name"] = jet_class + str(jet_id)
-    #            generate_pool(eventWise_path, 'SpectralMean', jet_params, True)
-    #            jet_class = "SpectralJet"
-    #            jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-    #                              NumEigenvectors=n_eig, Laplacien='symmetric')
-    #            jet_id = records.append(jet_class, jet_params)
-    #            jet_params["jet_name"] = jet_class + str(jet_id)
-    #            generate_pool(eventWise_path, 'Spectral', jet_params, True)
+    #        print(f"Exponent {exponent}")
+    #        print(f"DeltaR {dR}")
+    #        jet_class = "HomeJet"
+    #        jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
+    #        jet_id = records.append(jet_class, jet_params)
+    #        jet_params["jet_name"] = jet_class + str(jet_id)
+    #        generate_pool(eventWise_path, 'Traditional', jet_params, True)
     #records.write()
+    DeltaR = np.linspace(0.05, 0.4, 8)
+    exponents = [-1, 0, 1]
+    NumEigenvectors = [4, 8, np.inf]
+    for exponent in exponents:
+        for dR in DeltaR:
+            for n_eig in NumEigenvectors:
+                print(f"Exponent {exponent}")
+                print(f"DeltaR {dR}")
+                print(f"NumEigenvectors {n_eig}")
+                #jet_class = "SpectralMeanJet"
+                #jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                #                  NumEigenvectors=n_eig)
+                #jet_id = records.append(jet_class, jet_params)
+                #jet_params["jet_name"] = jet_class + str(jet_id)
+                #generate_pool(eventWise_path, 'SpectralMean', jet_params, True)
+                jet_class = "SpectralJet"
+                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                  NumEigenvectors=n_eig)
+                jet_id = records.append(jet_class, jet_params)
+                jet_params["jet_name"] = jet_class + str(jet_id)
+                generate_pool(eventWise_path, 'Spectral', jet_params, True)
+    records.write()
 

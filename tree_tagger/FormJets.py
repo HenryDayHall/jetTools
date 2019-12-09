@@ -712,7 +712,8 @@ class Spectral(PseudoJet):
     # list the params with default values
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf, 
             'ExponentMultiplier': None, 'AffinityType': 'exponent',
-            'AffinityCutoff': None, 'Laplacien': 'unnormalised'}
+            'AffinityCutoff': None, 'Laplacien': 'unnormalised',
+            'LaplacienScaling': True}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
@@ -802,13 +803,17 @@ class Spectral(PseudoJet):
         self.calculate_affinity = calculate_affinity
         # a graph laplacien can be calculated
         np.fill_diagonal(affinity, 0)
-        self.diagonal = np.diag(np.sum(affinity, axis=1))
+        diagonal = np.diag(np.sum(affinity, axis=1))
         if self.Laplacien == 'unnormalised':
-            laplacien = self.diagonal - affinity
+            laplacien = diagonal - affinity
         elif self.Laplacien == 'symmetric':
-            laplacien = self.diagonal - affinity
-            alt_diag = self.diagonal**(-0.5)
-            laplacien = np.matmul(alt_diag, np.matmul(laplacien, alt_diag))
+            laplacien = diagonal - affinity
+            self.alt_diag = np.diag(diagonal)**(-0.5)
+            diag_alt_diag = np.diag(self.alt_diag)
+            laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+            # the scaling required to bring the off idagona elements to the length of the diagnoal elements
+            self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
+            self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
@@ -858,8 +863,10 @@ class Spectral(PseudoJet):
         # from this get a new line of the laplacien
         new_laplacien = self.calculate_affinity(new_distances)
         if self.Laplacien == 'symmetric':
-            alt_diag = np.sum(new_laplacien, axis=1)**(-0.5)
-            new_laplacien = alt_diag * (new_laplacien* alt_diag[replace_index])
+            new_alt_diag = np.sum(new_laplacien)**(-0.5)
+            new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
+            # as this laplacien has no true diagnoal it needs rescaling
+            new_laplacien *= self.laplacien_scaling
         # and make its position in vector space
         new_position = np.dot(self.eigenvectors.T, new_laplacien)
         # reshuffle the eigenspace to reflect the moevment in the floats and ints 
@@ -1169,12 +1176,11 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
             # work out the x coord of the axis cross
             top = np.argmax(line[:, 1])
             bottom = (top+1)%2
-            distance_ratio = (np.pi - line[top, 1])/(np.pi + line[bottom, 1])
-            x_top = distance_ratio * (line[bottom, 0] - line[top, 0])
-            x_bottom = (line[top, 0] - line[bottom, 0])/distance_ratio
-            plt.plot([line[top, 0], x_top], [line[top, 1], np.pi], 
+            distance_ratio = np.abs((np.pi - line[top, 1])/(np.pi + line[bottom, 1]))
+            x_top = (line[bottom, 0] - line[top, 0])*distance_ratio
+            plt.plot([line[top, 0],  x_top], [line[top, 1], np.pi], 
                      c=colour, linewidth=size, alpha=alpha)
-            plt.plot([line[bottom, 0], x_bottom], [line[bottom, 1], -np.pi], 
+            plt.plot([line[bottom, 0],  x_top], [line[bottom, 1], -np.pi], 
                      c=colour, linewidth=size, alpha=alpha)
                      
         else:
@@ -1195,7 +1201,7 @@ def main():
         if "JetInputs_Energy" not in eventWise.columns:
             create_jetInputs(eventWise, filter_funcs)
     eventWise.selected_index = 0
-    DeltaR = 0.2
+    DeltaR = 0.4
     alpha = 0.4
     pseudojet_traditional = Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., jet_name="HomeJet")
     pseudojet_traditional.assign_parents()
@@ -1213,7 +1219,8 @@ def main():
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
-    pseudojet_spectral = Spectral(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., NumEigenvectors=5, jet_name="SpectralJet")
+    DeltaR = 0.2
+    pseudojet_spectral = Spectral(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., NumEigenvectors=5, Laplacien='symmetric', jet_name="SpectralJet")
     pseudojet_spectral.assign_parents()
     pjets_spectral = pseudojet_spectral.split()
     # plot the pseudojets
