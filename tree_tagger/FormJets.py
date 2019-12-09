@@ -716,13 +716,15 @@ class Spectral(PseudoJet):
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
-        self.merger_indices = [] # need to track this
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
         if self.currently_avalible < 2:
             self._distances = np.zeros((1, 1))
-            self._eigenspace = np.zeros((1, self.NumEigenvectors))
+            try:
+                self._eigenspace = np.zeros((1, self.NumEigenvectors))
+            except (ValueError, TypeError):
+                self._eigenspace = np.zeros((1, 1))
             return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
@@ -810,7 +812,7 @@ class Spectral(PseudoJet):
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
-        except ValueError:
+        except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
@@ -849,41 +851,61 @@ class Spectral(PseudoJet):
         # delete the first row and column of the merge
         self._distances = np.delete(self._distances, (remove_index), axis=0)
         self._distances = np.delete(self._distances, (remove_index), axis=1)
-        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
-        # move the replaced to the back, it will be repalced later
-        # move the removed object to the back without replacement
-        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
-                                      self._eigenspace[remove_index:],
-                                      self._eigenspace[[remove_index]],
-                                      self._eigenspace[[replace_index]]))
         # calculate the physical distance of the new point from all original points
         new_distances = [self._floats[replace_index][col] for col in [self._PT_col, self._Rapidity_col, self._Phi_col]]
         new_distances = np.tile(new_distances, (len(self._starting_position), 1))
         new_distances = np.sqrt(np.sum((new_distances - self._starting_position)**2, axis=1))
         # from this get a new line of the laplacien
-        new_affinity = self.calculate_affinity(new_distances)
-        if self.Laplacien == 'unnormalised':
-            new_laplacien = new_affinity
-            new_laplacien[replace_index] = self.diagonal[replace_index, replace_index]
-        elif self.Laplacien == 'symmetric':
-            new_laplacien = new_affinity
-            new_laplacien[replace_index] = self.diagonal[replace_index, replace_index]
-            alt_diag = np.diag(self.diagonal)**(-0.5)
+        new_laplacien = self.calculate_affinity(new_distances)
+        if self.Laplacien == 'symmetric':
+            alt_diag = np.sum(new_laplacien, axis=1)**(-0.5)
             new_laplacien = alt_diag * (new_laplacien* alt_diag[replace_index])
         # and make its position in vector space
         new_position = np.dot(self.eigenvectors.T, new_laplacien)
+        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
+        # move the replaced to the back, it will be repalced later
+        # move the removed object to the back without replacement
+        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
+                                      self._eigenspace[remove_index+1:],
+                                      self._eigenspace[[remove_index]],
+                                      self._eigenspace[[replace_index]]))
         self._eigenspace[replace_index] = new_position
+        # get the new disntance in eigenspace
+        new_distances = np.sqrt(np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1))
+        new_distances[replace_index] = self.DeltaR
+        self._distances[replace_index] = new_distances
+
+
+class SpectralMean(Spectral):
+    def _recalculate_one(self, remove_index, replace_index):
+        # delete the larger index keep the smaller index
+        assert remove_index > replace_index
+        # delete the first row and column of the merge
+        self._distances = np.delete(self._distances, (remove_index), axis=0)
+        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        # and make its position in eigenspace
+        new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
+        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
+        # move the replaced to the back, it will be repalced later
+        # move the removed object to the back without replacement
+        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
+                                      self._eigenspace[remove_index+1:],
+                                      self._eigenspace[[remove_index]],
+                                      self._eigenspace[[replace_index]]))
+        self._eigenspace[replace_index] = new_position
+        # get the new disntance in eigenspace
         new_distances = np.sqrt(np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1))
         new_distances[replace_index] = self.DeltaR
         self._distances[replace_index] = new_distances
 
 
 def get_jet_params(eventWise, jet_name):
-    prefix = jet_name + "_Param"
+    prefix = jet_name + "_"
     trim = len(prefix)
     columns = {name[trim:]: getattr(eventWise, name) for name in eventWise.hyperparameter_columns
                if name.startswith(prefix)}
     return columns
+
 
 def filter_obs(eventWise, existing_idx_selection):
     assert eventWise.selected_index is not None
@@ -1093,7 +1115,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
         jets = cluster_algorithm(eventWise, **cluster_parameters)
         jets = jets.split()
         if not checked and len(jets) > 0:
-            assert jets[0].check_params(), f"Jet parameters don't match recorded parameters for {jet_name}"
+            assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"
             checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
@@ -1166,15 +1188,15 @@ def main():
     ax = plt.gca()
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
-    eventWise = Components.EventWise.from_file("megaIgnore/basis_2k.awkd")
+    eventWise = Components.EventWise.from_file("megaIgnore/basis1_2k.awkd")
     # create inputs if needed
     if "JetInputs_Energy" not in eventWise.columns:
         filter_funcs = [filter_ends, filter_pt_eta]
         if "JetInputs_Energy" not in eventWise.columns:
             create_jetInputs(eventWise, filter_funcs)
     eventWise.selected_index = 0
-    DeltaR = 0.4
-    alpha=0.4
+    DeltaR = 0.2
+    alpha = 0.4
     pseudojet_traditional = Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., jet_name="HomeJet")
     pseudojet_traditional.assign_parents()
     pjets_traditional = pseudojet_traditional.split()
