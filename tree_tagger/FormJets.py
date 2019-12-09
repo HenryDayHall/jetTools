@@ -1188,7 +1188,7 @@ def main():
     ax = plt.gca()
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
-    eventWise = Components.EventWise.from_file("megaIgnore/basis1_2k.awkd")
+    eventWise = Components.EventWise.from_file("megaIgnore/basis_2k.awkd")
     # create inputs if needed
     if "JetInputs_Energy" not in eventWise.columns:
         filter_funcs = [filter_ends, filter_pt_eta]
@@ -1234,7 +1234,8 @@ def main():
     plt.xlabel("rapidity")
     plt.ylim(-np.pi, np.pi)
     plt.ylabel("phi")
-    plt.show()
+    #plt.show()
+    plt.savefig("test_plot.png")
     return pjets_spectral
 
 
