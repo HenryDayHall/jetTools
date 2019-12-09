@@ -474,6 +474,8 @@ class EventWise:
                     contents[name] = content_here[name]
             pickle_strs = {}  # when checking for dups
             for key in content_here:
+                if key in hyperparameter_columns:
+                    continue
                 if key not in contents:
                     contents[key] = list(content_here[key])
                 elif check_for_dups:
@@ -490,8 +492,9 @@ class EventWise:
                 if name not in columns:
                     columns.append(name)
         for key in contents.keys():
-            contents[key] = awkward.fromiter(contents[key])
-        new_eventWise = cls(dir_name, save_base+"_joined.awkd", columns=columns, contents=contents)
+            if key not in hyperparameter_columns:
+                contents[key] = awkward.fromiter(contents[key])
+        new_eventWise = cls(dir_name, save_base+"_joined.awkd", columns=columns, contents=contents, hyperparameter_columns=hyperparameter_columns)
         new_eventWise.write()
         if del_fragments:
             for fragment in fragments:
