@@ -46,7 +46,7 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
             vertices_here.append(vertex_indices)
         secondary_vertices.append(awkward.fromiter(vertices_here))
     secondary_vertices = awkward.fromiter(secondary_vertices)
-    eventWise.append({tag_vertex_name: secondary_vertices})
+    eventWise.append(**{tag_vertex_name: secondary_vertices})
 
 def closest_approches(start_points, direction_vectors):
     # https://geomalgorithms.com/a07-_distance.html
@@ -185,7 +185,7 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
             track_assignment[-1].append(awkward.fromiter(assignments))
         vertex_locations[-1] = awkward.fromiter(vertex_locations[-1])
         track_assignment[-1] = awkward.fromiter(track_assignment[-1])
-    eventWise.append({jet_vertex_name: awkward.fromiter(vertex_locations),
+    eventWise.append(**{jet_vertex_name: awkward.fromiter(vertex_locations),
                       assignment_name: awkward.fromiter(track_assignment)})
 
 

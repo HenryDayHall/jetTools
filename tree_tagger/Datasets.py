@@ -29,7 +29,7 @@ class EventWiseDataset(Dataset):
             test_mask = np.full(total_avalible, False, dtype=bool)
             test_mask[:num_test_events] = True
             np.random.shuffle(test_mask)
-            self.eventWise.append({"IsTestEvent": test_mask})
+            self.eventWise.append(IsTestEvent=test_mask)
         self.num_test = num_events*test_percent
         self._test_indices = np.random.shuffle(np.where(test_mask)[0])[:self.num_test]
         self._train_indices = np.random.shuffle(np.where(~test_mask)[0])[:num_events]
@@ -323,7 +323,7 @@ class JetWiseDataset(Dataset):
                 test_mask = np.full(total_events, False, dtype=bool)
                 test_mask[:num_test_events] = True
                 np.random.shuffle(test_mask)
-                self.eventWise.append({"IsTestEvent": test_mask})
+                self.eventWise.append(IsTestEvent=test_mask)
             if n_train_jets is -1 or n_train_jets > int(total_jets* (1-test_percent)):
                 n_train_jets = int(total_jets*(1-test_percent))
             test_events = np.where(test_mask)[0]

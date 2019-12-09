@@ -115,7 +115,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     content[name] = awkward.fromiter(jet_tags)
     content[namePID] = awkward.fromiter(jet_tagpids)
     try:
-        eventWise.append(content)
+        eventWise.append(**content)
     except Exception:
         print("Problem")
         return content

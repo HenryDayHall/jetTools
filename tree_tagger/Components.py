@@ -95,7 +95,7 @@ class EventWise:
     EVENT_DEPTH=1 # events, objects in events
     JET_DEPTH=2 # events, jets, objects in jets
 
-    def __init__(self, dir_name, save_name, columns=None, contents=None):
+    def __init__(self, dir_name, save_name, columns=None, contents=None, hyperparameter_columns=None):
         self._loaded_contents = {}  # keep columns that have been accessed in ram
         # the init method must generate some table of items,
         # nomally a jagged array
@@ -106,6 +106,10 @@ class EventWise:
             self.columns = columns
         else:
             self.columns = []
+        if hyperparameter_columns is not None:
+            self.hyperparameter_columns = hyperparameter_columns
+        else:
+            self.hyperparameter_columns = []
         if contents is not None:
             # maintain lazy loading
             self._column_contents = contents
@@ -113,6 +117,7 @@ class EventWise:
             self._column_contents = {}
         assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
         self._alias_dict = self._gen_alias()
+        self.hyperparameters = {}
     
     def _gen_alias(self):
         alias_dict = {}
@@ -163,6 +168,8 @@ class EventWise:
             except AttributeError: # we dont have a loaded dict yet
                 self._loaded_contents = {}
                 return getattr(self, attr_name)
+        if attr_name in self.hyperparameter_columns:
+            return self._column_contents[attr_name]
         raise AttributeError(f"{self.__class__.__name__} does not have {attr_name}")
 
     def match_indices(self, attr_name, match_from, match_to=None, event_n=None):
@@ -190,7 +197,7 @@ class EventWise:
         return awkward.fromiter(out)
 
     def __dir__(self):
-        new_attrs = set(super().__dir__() + self.columns)
+        new_attrs = set(super().__dir__() + self.columns + self.hyperparameter_columns)
         return sorted(new_attrs)
 
     def __str__(self):
@@ -210,27 +217,37 @@ class EventWise:
             del self._column_contents['column_order']
         except KeyError:
             pass
-        all_content = {'column_order': column_order, **self._column_contents}
+        non_alias_hcols = [c for c in self.hyperparameter_columns if c not in self._alias_dict]
+        hyperparameter_column_order = awkward.fromiter(non_alias_hcols)
+        try:
+            del self._column_contents['hyperparameter_column_order']
+        except KeyError:
+            pass
+        all_content = {'column_order': column_order,
+                       'hyperparameter_column_order': hyperparameter_column_order,
+                       **self._column_contents}
         awkward.save(path, all_content, mode='w')
 
     @classmethod
     def from_file(cls, path):
         contents = awkward.load(path)
         columns = list(contents['column_order'])
-        new_eventWise = cls(*os.path.split(path), columns=columns, contents=contents)
+        hyperparameter_columns = list(contents['hyperparameter_column_order'])
+        new_eventWise = cls(*os.path.split(path), columns=columns,
+                            hyperparameter_columns=hyperparameter_columns,
+                            contents=contents)
         return new_eventWise
 
-    def append(self, *args):
-        if len(args) == 2:
-            new_columns = args[0]
-            new_content = args[1]
-            assert sorted(new_columns) == sorted(new_content.keys())
-        else:
-            new_content = args[0]
-            new_columns = new_content.keys()
+    def append(self, **kwargs):
+        new_content = kwargs
+        new_columns = sorted(kwargs.keys())
         # enforce the first letter of each attrbute to be capital
         New_columns = [c[0].upper() + c[1:] for c in new_columns]
         new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
+        # check it's not in hyperparameters
+        for name in New_columns:
+            if name in self.hyperparameter_columns:
+                raise KeyError(f"Already have {name} as a hyperparameter column")
         # delete existing duplicates
         for name in New_columns:
             if name in self.columns:
@@ -239,13 +256,39 @@ class EventWise:
         self._column_contents = {**self._column_contents, **new_content}
         self.write()
 
+    def append_hyperparameters(self, **kwargs):
+        new_content = kwargs
+        new_columns = sorted(kwargs.keys())
+        # enforce the first letter of each attrbute to be capital
+        New_columns = [c[0].upper() + c[1:] for c in new_columns]
+        new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
+        # check none of there are itterables asside from strings
+        # assumption is that someone trying to set an itterable hyperparameter
+        # is actually setting an eventWise object
+        assert all([isinstance(content, str) or not hasattr(content, '__iter__')
+                    for content in new_content.values()])
+        # check it's not in columns
+        for name in New_columns:
+            if name in self.columns:
+                raise KeyError(f"Already have {name} as a column")
+        # delet duplicates
+        for name in New_columns:
+            if name in self.hyperparameter_columns:
+                self.remove(name)
+        self.hyperparameter_columns += New_columns
+        self._column_contents = {**self._column_contents, **new_content}
+        self.write()
+
     def remove(self, col_name):
         if col_name in self._alias_dict:
             self._remove_alias(col_name)
         else:
-            if col_name not in self.columns:
+            if col_name in self.columns:
+                self.columns.remove(col_name)
+            elif col_name in self.hyperparameter_columns:
+                self.hyperparameter_columns.remove(col_name)
+            else:
                 raise KeyError(f"Don't have a column called {col_name}")
-            self.columns.remove(col_name)
             if type(self._column_contents) != dict:
                 self._column_contents = {k:v for k, v in self._column_contents.items()}
             del self._column_contents[col_name]
@@ -270,7 +313,6 @@ class EventWise:
                 self._column_contents = {k:v for k, v in self._column_contents.items()}
             self._column_contents[new_name] = self._column_contents[old_name]
             del self._column_contents[old_name]
-
 
     def fragment(self, per_event_component, **kwargs):
         if not isinstance(per_event_component, str):
@@ -337,8 +379,9 @@ class EventWise:
             to_check = set()
         n_events = len(getattr(self, per_event_component))
         # work out which lists have this property
-        per_event_cols = [c for c in self._column_contents.keys()
+        per_event_cols = [c for c in self.columns
                           if len(self._column_contents[c]) == n_events]
+        per_event_cols += self.hyperparameter_columns
         assert to_check.issubset(per_event_cols)
         new_contents = []
         for lower, upper in zip(lower_bounds, upper_bounds):
@@ -367,13 +410,17 @@ class EventWise:
             if add_unsplit:
                 new_content = {**new_content, **unchanged_parts}
                 ew = type(self)(save_dir, name,
-                                columns=self.columns, contents=new_content)
+                                columns=self.columns,
+                                hyperparameter_columns=self.hyperparameter_columns,
+                                contents=new_content)
                 if no_dups:
                     # don't do this again
                     add_unsplit = False
             else:
                 ew = type(self)(save_dir, name,
-                                columns=per_event_cols, contents=new_content)
+                                columns=per_event_cols,
+                                hyperparameter_columns=self.hyperparameter_columns,
+                                contents=new_content)
             all_paths.append(os.path.join(save_dir, name))
             ew.write()
         return all_paths
@@ -405,10 +452,26 @@ class EventWise:
                          if name.startswith(save_base) 
                          and name.endswith(".awkd")]
         columns = []
+        hyperparameter_columns = []
         contents = {}
         for fragment in fragments:
             path = os.path.join(dir_name, fragment)
             content_here = awkward.load(path)
+            found_hcols = list(content_here.get("hyperparameter_column_order", []))
+            if hyperparameter_columns and found_hcols:  # check they are the same here
+                for name in found_hcols:
+                    if name not in hyperparameter_columns:
+                        hyperparameter_columns.append(name)
+                        contents[name] = content_here[name]
+                    error_msg = f"Missmatch in hyperparameter {name}"
+                    try:
+                        np.testing.assert_allclose(content_here[name], contents[name], err_msg=error_msg)
+                    except TypeError:
+                        assert content_here[name] == contents[name], error_msg
+            elif found_hcols:
+                hyperparameter_columns = found_hcols
+                for name in found_hcols:
+                    contents[name] = content_here[name]
             pickle_strs = {}  # when checking for dups
             for key in content_here:
                 if key not in contents:
@@ -419,6 +482,7 @@ class EventWise:
                         pickle_strs[key] = pickle.dumps(content_here[key])
                     elif pickle.dumps(content_here[key]) != pickle_strs[key]:
                         contents[key] += list(content_here[key])
+
                 else:
                     contents[key] += list(content_here[key])
             column_here = list(contents['column_order'])
@@ -528,11 +592,10 @@ def add_rapidity(eventWise, base_name=''):
         rapidities.append(awkward.fromiter(rap_here))
     eventWise.selected_index = None
     rapidities = awkward.fromiter(rapidities)
-    eventWise.append({base_name+"Rapidity": rapidities})
+    eventWise.append(**{base_name+"Rapidity": rapidities})
 
 
 def add_thetas(eventWise, basename=None):
-    columns = []
     contents = {}
     if basename is None:
         # find all the things with an angular property
@@ -576,13 +639,11 @@ def add_thetas(eventWise, basename=None):
         else:
             print(f"Couldn't calculate Theta for {name}")
             continue
-        columns.append(name + "Theta")
         contents[name+"Theta"] = theta
-    eventWise.append(columns, contents)
+    eventWise.append(**contents)
 
 
 def add_pseudorapidity(eventWise, basename=None):
-    columns = []
     contents = {}
     if basename is None:
         # find all the things with theta
@@ -598,9 +659,8 @@ def add_pseudorapidity(eventWise, basename=None):
     for name in missing_ps:
         theta = getattr(eventWise, name+"Theta")
         pseudorapidity = apply_array_func(theta_to_pseudorapidity, theta)
-        columns.append(name + "PseudoRapidity")
         contents[name+"PseudoRapidity"] = pseudorapidity
-    eventWise.append(columns, contents)
+    eventWise.append(**contents)
 
 
 def ptpz_to_theta(pt_list, pz_list):
@@ -647,7 +707,6 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
 
 
 def add_PT(eventWise, basename=None):
-    columns = []
     contents = {}
     if basename is None:
         # find all the things with px, py
@@ -663,13 +722,11 @@ def add_PT(eventWise, basename=None):
         px = getattr(eventWise, name+"Px")
         py = getattr(eventWise, name+"Py")
         pt = apply_array_func(lambda x, y: np.sqrt(x**2 + y**2), px, py)
-        columns.append(name + "PT")
         contents[name+"PT"] = pt
-    eventWise.append(columns, contents)
+    eventWise.append(**contents)
 
 
 def add_phi(eventWise, basename=None):
-    columns = []
     contents = {}
     if basename is None:
         # find all the things with px, py
@@ -685,9 +742,8 @@ def add_phi(eventWise, basename=None):
         px = getattr(eventWise, name+"Px")
         py = getattr(eventWise, name+"Py")
         phi = apply_array_func(lambda x, y: np.arctan2(y, x), px, py)
-        columns.append(name + "Phi")
         contents[name+"Phi"] = phi
-    eventWise.append(columns, contents)
+    eventWise.append(**contents)
 
 
 class RootReadout(EventWise):
@@ -709,6 +765,7 @@ class RootReadout(EventWise):
             # the first component has no prefix
             prefixes = [''] + component_names[1:]
         self.columns = []
+        self.hyperparameter_columns = []  # need to make this to prevent attr errors
         self._column_contents = {}
         for prefix, component in zip(prefixes, component_names):
             self.add_component(component, prefix)

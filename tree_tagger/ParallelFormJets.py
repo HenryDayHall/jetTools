@@ -1,4 +1,5 @@
 from tree_tagger import FormJets, Components, InputTools
+import tabulate
 import time
 import os
 import numpy as np
@@ -111,7 +112,56 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     print("Fragmenting eventwise")
     all_paths = eventWise.fragment("JetInputs_Energy", n_fragments=n_fragments)
     return all_paths
-            
+
+
+def display_grid(*eventWises, jet_name=None):
+    assert eventWises, "Must supply at least one eventWise"
+    if jet_name is None:
+        names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
+                 "SpectralJet": FormJets.Spectral}
+        jet_name = InputTools.list_complete("Which jet? ", names.keys())
+    default_params = names[jet_name].param_list
+    param_list = sorted(default_params.keys())
+    all_params = {}
+    for eventWise in eventWises:
+        matching_names = {name.split('_', 1)[0] for name in eventWise.columns
+                          if name.startswith(jet_name)}
+        for name in matching_names:
+            if name in all_params:
+                print(f"Name {name} appears in multiple eventWise")
+            else:
+                all_params[name] = FormJets.get_jet_params(eventWise, name)
+    horizontal_param = InputTools.list_complete("Horizontal param? ", param_list).stripped()
+    vertical_param = InputTools.list_complete("Vertical param? ", param_list).stripped()
+    horizontal_bins = sorted({p[horizontal_param] for p in all_params})
+    if isinstance(horizontal_bins[0], str):
+        def get_h_index(value):
+            return horizontal_bins.index(value)
+    else:
+        horizontal_bins = np.array(horizontal_bins)
+        def get_h_index(value):
+            return np.argmin(horizontal_bins - value)
+    vertical_bins = sorted({p[vertical_param] for p in all_params})
+    if isinstance(vertical_bins[0], str):
+        def get_v_index(value):
+            return vertical_bins.index(value)
+    else:
+        vertical_bins = np.array(vertical_bins)
+        def get_v_index(value):
+            return np.argmin(vertical_bins - value)
+    grid = [[[] for _ in horizontal_bins] for _ in vertical_bins]
+    for name, values in all_params.items():
+        v_index = get_v_index(values[vertical_param])
+        h_index = get_h_index(values[horizontal_param])
+        grid[v_index][h_index].append(name)
+    table = [[value] + [len(entry) for entry in row] for value, row in zip(vertical_bins, grid)]
+    first_row = [[vertical_param + "\\" + horizontal_param] + horizontal_bins]
+    table = first_row + table
+    tabulate.tabulate(table, headers="firstrow")
+    if InputTools.yesNo_question("Again? "):
+        display_grid(*eventWises)
+
+
 
 def generate_pool(eventWise_path, multiapply_function, jet_params, leave_one_free=False):
     batch_size = 50
@@ -159,7 +209,6 @@ if __name__ == '__main__':
     DeltaR = np.linspace(0.2, 1., 5)
     #DeltaR=[0.4]
     exponents = [(-1, "AKT"), (0, "CA"), (1, "KT")]
-    #exponents = [(1, "KT"), (.8, "KTp8"), (.6, "KTp6"), (.4, "KTp4")]
     NumEigenvectors = [i+3 for i in range(4)]
     for exponent, exp_name in exponents:
         for dR in DeltaR:

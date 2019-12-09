@@ -246,6 +246,7 @@ def create_axes_data(eventWise, axes_data=None):
     axes_data = {ax_name:{part: np.array(axes_data[ax_name][part]) for part in axes_data[ax_name]} for ax_name in axes_data}
     return axes_data 
 
+
 def comparison_grid1(axes_data, rapidity=True, pt=True, phi=True):
     axis_names = sorted(axes_data.keys())
     axis_names1 = [n for n in axis_names if len(n) < 4]

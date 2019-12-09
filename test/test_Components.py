@@ -211,14 +211,14 @@ def test_EventWise():
         # from file
         blank_ew_clone = Components.EventWise.from_file(save_path)
         assert generic_equality_comp(blank_ew.columns, blank_ew_clone.columns)
-        contents = {k:v for k, v in blank_ew._column_contents.items() if k!="column_order"}
-        contents_clone = {k:v for k, v in blank_ew_clone._column_contents.items() if k!="column_order"}
+        contents = {k:v for k, v in blank_ew._column_contents.items() if not k.endswith("column_order")}
+        contents_clone = {k:v for k, v in blank_ew_clone._column_contents.items() if not k.endswith("column_order")}
         assert generic_equality_comp(contents, contents_clone)
         # eq
         assert blank_ew == blank_ew_clone
         # append
-        blank_ew.append(["a"], {"a": AwkdArrays.empty})
-        blank_ew.append({"b": AwkdArrays.one_one})
+        blank_ew.append(**{"a": AwkdArrays.empty})
+        blank_ew.append(b = AwkdArrays.one_one)
         assert list(blank_ew.a) == []
         assert "A" in blank_ew.columns
         assert list(blank_ew.b) == [1]
@@ -233,7 +233,7 @@ def test_EventWise():
         with pytest.raises(AttributeError):
             blank_ew.b
         # remove prefix
-        blank_ew.append({"A": AwkdArrays.empty, "Bc": AwkdArrays.one_one, "Bd": AwkdArrays.minus_plus})
+        blank_ew.append(**{"A": AwkdArrays.empty, "Bc": AwkdArrays.one_one, "Bd": AwkdArrays.minus_plus})
         blank_ew.remove_prefix("B")
         assert list(blank_ew.columns) == ["A"]
 
@@ -243,7 +243,7 @@ def test_split():
         # splitting a blank ew should result in only Nones
         save_name = "test.awkd"
         ew = Components.EventWise(dir_name, save_name)
-        ew.append({"Energy": awkward.fromiter([])})
+        ew.append(Energy= awkward.fromiter([]))
         parts = ew.split([0, 0, 0], [0, 0, 0])
         for part in parts:
             assert part is None
@@ -256,8 +256,8 @@ def test_split():
         content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
-        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
-        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
+        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
         # check nothing changes in the original
         tst.assert_allclose(ew.c1, content_1)
         tst.assert_allclose(ew.c2, content_2)
@@ -302,7 +302,7 @@ def test_fragment():
         content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
-        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
         # we can fragment 2 ways, first by number of fragments
         paths = ew.fragment('c1', n_fragments=3)
         for i, path in enumerate(paths):
@@ -338,7 +338,7 @@ def test_split_unfinished():
         content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
-        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
         paths = ew.split_unfinished('c1', 'c2')
         ew0 = Components.EventWise.from_file(paths[0])
         assert len(ew0.c1) == n_events - n_unfinished
@@ -367,7 +367,7 @@ def test_combine():
         content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
-        ew.append({'c1': content_1, 'c2': content_2, 'c3': content_3, 'c4': content_4})
+        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
         paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
         dir_name = os.path.split(paths[0])[0]
         recombined = Components.EventWise.combine(dir_name, "test")

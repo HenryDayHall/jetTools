@@ -90,7 +90,7 @@ class PseudoJet:
     def _set_hyperparams(self, param_list, dict_jet_params, kwargs):
         if dict_jet_params is None:
             dict_jet_params = {}
-        stripped_params = {name.split("_Param")[-1]:name for name in dict_jet_params}
+        stripped_params = {name.split("_")[-1]:name for name in dict_jet_params}
         for name in param_list:
             if name in stripped_params:
                 assert name not in kwargs
@@ -178,8 +178,6 @@ class PseudoJet:
         """Make the dictionary to be appended to an eventWise for writing"""
         if arrays is None:
             save_columns = [jet_name + "_RootInputIdx"]
-            save_columns += [jet_name + c for c in save_columns]
-            save_columns += [jet_name + "_Param" + c for c in pseudojets[0].jet_parameters.keys()]
             int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
             float_columns = [c.replace('Pseudojet', jet_name) for c in cls.float_columns]
             save_columns += float_columns
@@ -192,10 +190,6 @@ class PseudoJet:
                 arrays[name].append([])
         for jet in pseudojets:
             assert jet.eventWise == pseudojets[0].eventWise
-            for key, item in jet.jet_parameters.items():
-                # includes things like DeltaR and exponent multipliers
-                name = jet_name + "_Param" + key
-                arrays[name][event_index].append(item)
             arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
@@ -206,6 +200,14 @@ class PseudoJet:
                 arrays[name][event_index].append(floats[:, col_num])
         return arrays
 
+    def create_param_dict(self):
+        jet_name = self.jet_name
+        # add any default values
+        defaults = {name:value for name, value in self.param_list.items()
+                    if name not in self.jet_parameters}
+        params = {**self.jet_parameters, **defaults}
+        return params
+
     @classmethod
     def write_event(cls, pseudojets, jet_name="Pseudojet", event_index=None, eventWise=None):
         """Save a handful of jets together """
@@ -215,7 +217,29 @@ class PseudoJet:
             event_index = eventWise.selected_index
         arrays = cls.create_updated_dict(pseudojets, jet_name, event_index, eventWise)
         arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
-        eventWise.append(arrays)
+        eventWise.append(**arrays)
+
+    def check_params(self, eventWise):
+        """ if the  eventWise contains params, verify they are the same, else write them"""
+        my_params = self.create_param_dict()
+        written_params = get_jet_params(eventWise, self.jet_name)
+        if written_params:  # if written params exist check they match the jets params
+            # returning false imediatly if not
+            if set(written_params.keys()) != set(my_params.keys()):
+                return False
+            for name in written_params:
+                try:
+                    same = np.allclose(written_params[name], my_params[name])
+                    if not same:
+                        return False
+                except TypeError:
+                    if written_params[name] != my_params[name]:
+                        return False
+        else:  # save the jets params
+            new_hyper = {self.jet_name + '_' + name: my_params[name] for name in my_params}
+            eventWise.append_hyperparameters(**new_hyper)
+        # if we get here everything went well
+        return True
 
     @classmethod
     def multi_from_file(cls, file_name, event_idx, jet_name="Pseudojet", batch_start=None, batch_end=None):
@@ -242,13 +266,9 @@ class PseudoJet:
             batch_end = avalible
         # get from the file
         jets = []
+        param_columns = [c for c in eventWise.hyperparameter_columns if c.startswith(jet_name)]
+        param_dict = {name: getattr(eventWise, name) for name in param_columns}
         for i in range(batch_start, batch_end):
-            param_prefix = jet_name + "_Param"
-            param_columns = [c for c in eventWise.columns if c.startswith(param_prefix)]
-            param_dict = {name: getattr(eventWise, name) for name in param_columns}
-            for key in param_dict:
-                assert len(set(param_dict[key])) == 1
-                param_dict[key] = param_dict[key][0]
             roots = getattr(eventWise, jet_name + "_RootInputIdx")[i]
             # need to reassemble to ints and the floats
             int_values = []
@@ -266,7 +286,7 @@ class PseudoJet:
                           dict_jet_params=param_dict)
             new_jet.currently_avalible = 0  # assumed since we are reading from file
             jets.append(new_jet)
-        return jets
+            return jets
 
     def _calculate_roots(self):
         self.root_jetInputIdxs = []
@@ -858,6 +878,13 @@ class Spectral(PseudoJet):
         self._distances[replace_index] = new_distances
 
 
+def get_jet_params(eventWise, jet_name):
+    prefix = jet_name + "_Param"
+    trim = len(prefix)
+    columns = {name[trim:]: getattr(eventWise, name) for name in eventWise.hyperparameter_columns
+               if name.startswith(prefix)}
+    return columns
+
 def filter_obs(eventWise, existing_idx_selection):
     assert eventWise.selected_index is not None
     has_track = eventWise.Particle_Track[existing_idx_selection.tolist()] >= 0
@@ -931,7 +958,7 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
         for name, source_name in zip(columns, sources):
             contents[name] += list(getattr(eventWise, source_name)[start_point:end_point][mask])
         contents = {k:awkward.fromiter(v) for k, v in contents.items()}
-        eventWise.append(contents)
+        eventWise.append(**contents)
     except Exception as e:
         return contents, mask, columns, sources, e
 
@@ -1056,6 +1083,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
         print(f" Will stop at {100*end_point/n_events}%")
     # updated_dict will be replaced in the first batch
     updated_dict = None
+    checked = False
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
@@ -1064,9 +1092,12 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
             continue  # there are no observables
         jets = cluster_algorithm(eventWise, **cluster_parameters)
         jets = jets.split()
+        if not checked and len(jets) > 0:
+            assert jets[0].check_params(), f"Jet parameters don't match recorded parameters for {jet_name}"
+            checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
-    eventWise.append(updated_dict)
+    eventWise.append(**updated_dict)
     return end_point == n_events
 
 
