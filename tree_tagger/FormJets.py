@@ -713,7 +713,7 @@ class Spectral(PseudoJet):
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf, 
             'ExponentMultiplier': None, 'AffinityType': 'exponent',
             'AffinityCutoff': None, 'Laplacien': 'unnormalised',
-            'LaplacienScaling': True}
+            'WithLaplacienScaling': False}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
@@ -811,6 +811,7 @@ class Spectral(PseudoJet):
             self.alt_diag = np.diag(diagonal)**(-0.5)
             diag_alt_diag = np.diag(self.alt_diag)
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        if self.WithLaplacienScaling:
             # the scaling required to bring the off idagona elements to the length of the diagnoal elements
             self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
             self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
@@ -865,6 +866,7 @@ class Spectral(PseudoJet):
         if self.Laplacien == 'symmetric':
             new_alt_diag = np.sum(new_laplacien)**(-0.5)
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
+        if self.WithLaplacienScaling:
             # as this laplacien has no true diagnoal it needs rescaling
             new_laplacien *= self.laplacien_scaling
         # and make its position in vector space
@@ -1176,8 +1178,8 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
             # work out the x coord of the axis cross
             top = np.argmax(line[:, 1])
             bottom = (top+1)%2
-            distance_ratio = np.abs((np.pi - line[top, 1])/(np.pi + line[bottom, 1]))
-            x_top = (line[bottom, 0] - line[top, 0])*distance_ratio
+            percent_to_top = np.abs((np.pi - line[top, 1])/(2*np.pi + line[bottom, 1] - line[top, 1]))
+            x_top = line[top, 0] + (line[bottom, 0] - line[top, 0])*percent_to_top
             plt.plot([line[top, 0],  x_top], [line[top, 1], np.pi], 
                      c=colour, linewidth=size, alpha=alpha)
             plt.plot([line[bottom, 0],  x_top], [line[bottom, 1], -np.pi], 
@@ -1219,7 +1221,7 @@ def main():
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
-    DeltaR = 0.2
+    DeltaR = 0.1
     pseudojet_spectral = Spectral(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., NumEigenvectors=5, Laplacien='symmetric', jet_name="SpectralJet")
     pseudojet_spectral.assign_parents()
     pjets_spectral = pseudojet_spectral.split()
