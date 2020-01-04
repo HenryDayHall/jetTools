@@ -224,6 +224,7 @@ class PseudoJet:
         my_params = self.create_param_dict()
         written_params = get_jet_params(eventWise, self.jet_name)
         if written_params:  # if written params exist check they match the jets params
+            st()
             # returning false imediatly if not
             if set(written_params.keys()) != set(my_params.keys()):
                 return False
@@ -908,11 +909,21 @@ class SpectralMean(Spectral):
         self._distances[replace_index] = new_distances
 
 
-def get_jet_params(eventWise, jet_name):
+def get_jet_params(eventWise, jet_name, add_defaults=False):
     prefix = jet_name + "_"
     trim = len(prefix)
     columns = {name[trim:]: getattr(eventWise, name) for name in eventWise.hyperparameter_columns
                if name.startswith(prefix)}
+    if add_defaults:
+        if jet_name.startswith("SpectralMean"):
+            defaults = SpectralMean.param_list
+        elif jet_name.startswith("Spectral"):
+            defaults = Spectral.param_list
+        else:
+            defaults = Traditional.param_list
+        not_found = {name: defaults[name] for name in defaults
+                     if name not in columns}
+        columns = {**columns, **not_found}
     return columns
 
 

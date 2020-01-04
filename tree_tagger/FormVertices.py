@@ -1,4 +1,7 @@
 """ Create primary and secondary vertices """
+# TODO these ponts can have time like spereation 
+# so the invarient length will be complex.....
+# then you cannot cluster in it.
 import numpy as np
 from numpy import testing as tst
 import awkward
@@ -28,19 +31,22 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
         x = eventWise.X
         y = eventWise.Y
         z = eventWise.Z
+        ctau = eventWise.Ctau
         vertices_here = []
         for jet in tag_idx:
             # all tag particles should come from the primary vertex
             # almost always at the origin but not quite always
             start_vertex_indices = np.where(bar_codes == start_bar_codes[jet])[0]
-            dist_primary2 = (x[start_vertex_indices]**2 +
-                             y[start_vertex_indices]**2 +
+            dist_primary2 = (ctau[start_vertex_indices]**2 -
+                             x[start_vertex_indices]**2 -
+                             y[start_vertex_indices]**2 -
                              z[start_vertex_indices]**2)
 
             # secondary vertices should be futher from the origin
             vertex_indices = np.where(bar_codes == end_bar_codes[jet])[0]
-            dist_secondary2 = (x[vertex_indices]**2 +
-                               y[vertex_indices]**2 +
+            dist_secondary2 = (ctau[vertex_indices]**2 -
+                               x[vertex_indices]**2 -
+                               y[vertex_indices]**2 -
                                z[vertex_indices]**2)
             assert np.all(dist_secondary2 > dist_primary2)
             vertices_here.append(vertex_indices)
@@ -48,7 +54,8 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
     secondary_vertices = awkward.fromiter(secondary_vertices)
     eventWise.append(**{tag_vertex_name: secondary_vertices})
 
-def closest_approches(start_points, direction_vectors):
+# this only works on numpy vectors due to the use of numpy dot product
+def closest_approches_np(start_points, direction_vectors):
     # https://geomalgorithms.com/a07-_distance.html
     # m_u = ((u.v)(v.u0 - v.v0) - (v.v)(u.u0 - u.v0))/((u.u)(v.v) - (u.v)**2)
     # m_v = ((u.u)(v.u0 - v.v0) - (u.v)(u.u0 - u.v0))/((u.u)(v.v) - (u.v)**2)
@@ -69,41 +76,127 @@ def closest_approches(start_points, direction_vectors):
     return closest_multiples
 
 
-def distance2_midpoints(start_points, direction_vectors, closest_multiples, midpoint2_limit = 900.):
+# this one works with the hepmath library
+# so four vectors can be put in.
+# should still work fine for regular numpy vectors
+def closest_approches(start_points, direction_vectors, dot=None):
+    # https://geomalgorithms.com/a07-_distance.html
+    # m_u = ((u.v)(v.u0 - v.v0) - (v.v)(u.u0 - u.v0))/((u.u)(v.v) - (u.v)**2)
+    # m_v = ((u.u)(v.u0 - v.v0) - (u.v)(u.u0 - u.v0))/((u.u)(v.v) - (u.v)**2)
+    # parellel = (u.v0)/(u.u) - (u.u0)/(u.u)
+    if dot is None:
+        n_lines = len(start_points)
+        assert len(direction_vectors) == n_lines
+        if not n_lines:
+            return np.array([])
+        dimensions = len(start_points[0])
+        dot = define_dot(dimensions)
+    start_dot_dir = np.array([[dot(s, d) for d in direction_vectors]
+                              for s in start_points])
+    dir_dot_dir = np.array([[dot(d1, d2) for d1 in direction_vectors]
+                              for d2 in direction_vectors])
+    dir_squared = np.diagonal(dir_dot_dir)
+    dir_self = np.tile(dir_squared, (n_lines, 1))
+    denominator = np.outer(dir_squared, dir_squared) - dir_dot_dir**2
+    sd_diagonal = np.tile(np.diagonal(start_dot_dir), (n_lines, 1))
+    numerator = dir_dot_dir * (start_dot_dir.T - sd_diagonal.T) - dir_self.T * (sd_diagonal - start_dot_dir)
+    parellels = 0.5*(start_dot_dir/dir_self - sd_diagonal/dir_self)
+    # if the denominator is zero the lines are parrellel
+    with np.errstate(divide='ignore', invalid='ignore'):
+        closest_multiples = np.where(denominator != 0, numerator/denominator, parellels)
+    return closest_multiples
+
+
+def approch_to_point(point, start_points, direction_vectors, dot=None):
+    if dot is None:
+        if not len(start_points):
+            return np.array([])
+        dimensions = len(start_points[0])
+        dot = define_dot(dimensions)
+    multipliers = 0.5*np.fromiter((dot(s - point, d)/dot(d, d)
+                                   for s, d in zip(start_points, direction_vectors)),
+                                  dtype=float)
+    return multipliers
+
+def define_dot(dimensions):
+    if dimensions == 4:
+        def dot(a, b):
+            return a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3]
+        return dot
+    elif dimensions == 3:
+        def dot(a, b):
+            return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+        return dot
+    else:
+        raise NotImplementedError
+
+
+def distance2_midpoints(start_points, direction_vectors, closest_multiples, midpoint2_limit=900.):
     n_lines = len(start_points)
+    if not n_lines:
+        return np.array([]), np.array([])
+    # could do this with three vectors of 4 vectors
+    # keep it flexable
+    dimensions = len(start_points[0])
+    dot = define_dot(dimensions)
+    #start_matrix = np.tile(start_points, (n_lines, 1, 1))
+    #direction_matrix = np.tile(direction_vectors, (n_lines, 1, 1))
+    #displacement_matrix = np.tile(closest_multiples, (dimensions, 1, 1)).transpose(1, 2, 0)*direction_matrix
+    #closest_matrix = start_matrix + displacement_matrix
+
+    closest_points = np.zeros((*closest_multiples.shape, dimensions))
     upper_triangle = np.triu_indices(n_lines)
-    start_matrix = np.tile(start_points, (n_lines, 1, 1))
-    direction_matrix = np.tile(direction_vectors, (n_lines, 1, 1))
-    displacement_matrix = np.tile(closest_multiples, (3, 1, 1)).transpose(1, 2, 0)*direction_matrix
-    closest_matrix = start_matrix + displacement_matrix
-    # if these "closest points" are more than 30cm from the origin they are no good
-    # will attempt to reduce in length
-    too_long = np.where(np.sum(closest_matrix**2, axis=2) > midpoint2_limit)
-    if len(too_long[0]) > 0:
-        a = np.sum(direction_matrix**2, axis=2)[too_long]
-        b = np.sum(direction_matrix*start_matrix, axis=2)[too_long]
-        c = np.sum(start_matrix**2, axis=2)[too_long]
-        signs = np.sign(closest_multiples[too_long])
-        descriminator = b**2 - 4*a*c
-        real = descriminator>0
-        new_multiples = np.zeros_like(a)
-        new_multiples[real] = (-b[real] + signs[real]*np.sqrt(descriminator[real]))/(2*a[real]*c[real])
-        closest_multiples[too_long] = new_multiples
-        displacement_matrix = np.tile(closest_multiples, (3, 1, 1)).transpose(1, 2, 0)*direction_matrix
-        closest_matrix = start_matrix + displacement_matrix
+    closest_points[upper_triangle] = np.array([start_points[j] + closest_multiples[i, j]*direction_vectors[j]
+                                                  for i, j in zip(*upper_triangle)])
+    lower_triangle = np.tril_indices(n_lines)
+    closest_points[lower_triangle] = np.array([start_points[i] + closest_multiples[i, j]*direction_vectors[i]
+                                                  for i, j in zip(*lower_triangle)])
+
+    midpoints = np.zeros_like(closest_points)
+    # make the matrix upper triangular
+    # this will prevent calculations being done twice
+    midpoints[upper_triangle] = (closest_points[upper_triangle] + np.swapaxes(closest_points, 0, 1)[upper_triangle])/2
+    # if these "midpoints" are more than 30cm from the origin they are no good
+    # infact they are likely nonsense
+    # two close-to-parallel lines in the most likely expalanation
+    displacement2 = np.array([[dot(m, m) for m in row] for row in midpoints])
+    too_long = np.where(displacement2 > midpoint2_limit)  # matrix coordinates
+    # instead take the mean of each closest approch to the origin
+    origin = np.zeros(dimensions)
+    row_approch = approch_to_point(origin, start_points[too_long[0]],
+                                   direction_vectors[too_long[0]],
+                                   dot=dot)
+    column_approch = approch_to_point(origin, start_points[too_long[1]],
+                                      direction_vectors[too_long[1]],
+                                      dot=dot)
+    # the upper triangle is the columns
+    closest_multiples[too_long] = column_approch
+    # the lower triangle is the rows
+    closest_multiples[too_long[1], too_long[0]] = row_approch
+    # now recalculate the midpoints
+    closest_points[too_long] = np.array([start_points[j] + closest_multiples[i, j]*direction_vectors[j]
+                                                  for i, j in zip(*too_long)])
+    closest_points[too_long[1], too_long[0]] = np.array([start_points[i] + closest_multiples[j, i]*direction_vectors[i]
+                                                  for i, j in zip(*too_long)])
+
+    midpoints[upper_triangle] = (closest_points[upper_triangle] + np.swapaxes(closest_points, 0, 1)[upper_triangle])/2
+        
     # mos of everything should be within 30cm now
     bridging_vectors = np.full((n_lines, n_lines, 3), np.nan)
-    bridging_vectors[upper_triangle] = closest_matrix[upper_triangle] - np.swapaxes(closest_matrix, 0, 1)[upper_triangle]
+    bridging_vectors[upper_triangle] = closest_points[upper_triangle] - np.swapaxes(closest_points, 0, 1)[upper_triangle]
     distances2 = np.sum(bridging_vectors**2, axis=2).T  # fill lower triangle
     distances2[upper_triangle] = distances2.T[upper_triangle]  # place in upper triangle
     midpoints = np.full((n_lines, n_lines, 3), np.nan)
-    midpoints[upper_triangle] = (closest_matrix[upper_triangle] + np.swapaxes(closest_matrix, 0, 1)[upper_triangle])/2
+    midpoints[upper_triangle] = (closest_points[upper_triangle] + np.swapaxes(closest_points, 0, 1)[upper_triangle])/2
     midpoints = midpoints.transpose(1, 0, 2)
     midpoints[upper_triangle] = midpoints.transpose(1, 0, 2)[upper_triangle]
     return distances2, midpoints
 
+
 # for akt deltaR=0.4 this works best with threshold 0.02
-def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, threshold=0.02):
+def find_vertices(eventWise, jet_name, vertex_name=None, batch_length=np.inf, threshold=0.02):
+    if vertex_name is None:
+        vertex_name = ''
     jet_vertex_name = f"{jet_name}_{vertex_name}Vertex"
     assignment_name = f"{jet_name}_{vertex_name}Assignment"
     jet_inputidx_name = jet_name + "_InputIdx"
@@ -127,9 +220,11 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
         x = eventWise.X
         y = eventWise.Y
         z = eventWise.Z
+        ctau = eventWise.Ctau
         px = eventWise.Px
         py = eventWise.Py
         pz = eventWise.Pz
+        e = eventWise.Energy
         n_jets = len(input_idx)
         vertex_locations.append([])
         track_assignment.append([])
@@ -142,10 +237,11 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
                 vertex_locations[-1].append(awkward.fromiter([]))
                 track_assignment[-1].append(awkward.fromiter([]))
                 continue
-            vertex_idx = np.array([np.where(bar_codes==code)[0][0]
-                                   for code in start_bar_codes[particle_idx]])
-            start_location = np.vstack((x[vertex_idx], y[vertex_idx], z[vertex_idx])).T
-            direction = np.vstack((px[particle_idx], py[particle_idx], pz[particle_idx])).T
+            vertex_idx = np.fromiter((np.where(bar_codes==code)[0][0]
+                                      for code in start_bar_codes[particle_idx]),
+                                     dtype=int)
+            start_location = np.vstack((ctau[vertex_idx], x[vertex_idx], y[vertex_idx], z[vertex_idx])).T
+            direction = np.vstack((e[particle_idx], px[particle_idx], py[particle_idx], pz[particle_idx])).T
             # calculate the multiple of each direction vector that gives 
             # the point of closest approch to every other vector
             multiple = closest_approches(start_location, direction)
@@ -165,10 +261,13 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
             if n_tracks < 4:
                 clusters = np.arange(len(selected_midpoints))
             else:  # do a higherarchical clustering
+                # TODO need to write a lorentz invarient clustering...
+                # or could be using radpidity coordinates
                 clusters = hierarchy.fclusterdata(selected_midpoints, threshold, criterion='distance')
             cluster_ids = sorted(set(clusters))
-            cluster_midpoints = np.array([np.mean(selected_midpoints[clusters == cid], axis=0)
-                                          for cid in cluster_ids])
+            cluster_midpoints = np.fromiter((np.mean(selected_midpoints[clusters == cid], axis=0)
+                                             for cid in cluster_ids),
+                                             dtype=float)
             # put whichever midpoint is closest to the front
             primary_idx = np.argmin(np.sum(cluster_midpoints**2, axis=1))
             primary_cid = cluster_ids[primary_idx]
@@ -189,6 +288,24 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
                       assignment_name: awkward.fromiter(track_assignment)})
 
 
+def vertex_uncertanty(eventWise, jet_name, vertex_name):
+    if vertex_name is None:
+        vertex_name = ''
+    jet_vertex_name = f"{jet_name}_{vertex_name}Vertex"
+    tag_vertex_name = jet_name + "_TrueSecondaryVertex"
+    assignment_name = f"{jet_name}_{vertex_name}Assignment"
+    eventWise.selected_index = None
+    vertex_locations = getattr(eventWise, jet_vertex_name, awkward.fromiter([]))
+    n_events = len(vertex_locations)
+    track_assignment = getattr(eventWise, assignment_name)
+    tag_locations = getattr(eventWise, tag_vertex_name)
+    for event_n in range(n_events):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        distances_to_tag
+
+
+# TODO make relativistic from here
 def compare_vertices(eventWise, jet_name, vertex_name):
     vertex_name = f"{jet_name}_{vertex_name}Vertex"
     tag_vertex_name = jet_name + "_TrueSecondaryVertex"
@@ -205,6 +322,7 @@ def compare_vertices(eventWise, jet_name, vertex_name):
         x = eventWise.X
         y = eventWise.Y
         z = eventWise.Z
+        ctau = eventWise.Ctau
         true_vertices = getattr(eventWise, tag_vertex_name)
         reco_vertices = getattr(eventWise, vertex_name)
         for true, reco in zip(true_vertices, reco_vertices):
@@ -212,6 +330,7 @@ def compare_vertices(eventWise, jet_name, vertex_name):
                 primary_displacement.append(np.sum(reco[0]**2))
             assigned = np.full(len(reco), False, dtype=bool)
             found = np.full(len(true), False, dtype=bool)
+            #true_pos = np.vstack((ctau[true], x[true], y[true], z[true])).T
             true_pos = np.vstack((x[true], y[true], z[true])).T
             if len(reco) > 1 and len(true) > 0:
                 distances2 = scipy.spatial.distance.cdist(np.array(reco[1:].tolist()), true_pos, metric='sqeuclidean')

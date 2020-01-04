@@ -159,3 +159,4 @@ def jet_wide_observables(eventWise, jet_name):
     contents[jet_name+"_size"] = apply_array_func(len, values, depth=eventWise.JET_DEPTH)
     eventWise.append(**contents)
 
+

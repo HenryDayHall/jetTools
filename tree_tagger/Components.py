@@ -265,8 +265,9 @@ class EventWise:
         # check none of there are itterables asside from strings
         # assumption is that someone trying to set an itterable hyperparameter
         # is actually setting an eventWise object
-        assert all([isinstance(content, str) or not hasattr(content, '__iter__')
-                    for content in new_content.values()])
+        #assert all([isinstance(content, str) or not hasattr(content, '__iter__')
+        #            for content in new_content.values()])
+        # scratch that, there are tuple hyper parameters too
         # check it's not in columns
         for name in New_columns:
             if name in self.columns:

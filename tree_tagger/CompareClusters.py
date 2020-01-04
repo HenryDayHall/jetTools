@@ -48,7 +48,6 @@ def visulise_scores(scores, jet_name1, jet_name2, score_name="Rand score"):
     plt.title(f"Similarity of {jet_name1} and {jet_name2} (for {len(scores)} events)")
 
 
-
 def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidity"):
     eventWise.selected_index = None
     selection1 = getattr(eventWise, jet_name1+"_InputIdx")
@@ -82,7 +81,7 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
     return pseudojet_vars1, pseudojet_vars2, num_unconnected
 
 
-def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.):
+def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30., min_tracks=2):
     if event_n is None:
         assert eventWise.selected_index is not None
     else:
@@ -90,66 +89,62 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
     jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
+    num_tracks = Components.apply_array_func(len, getattr(eventWise, jet_name+"_PT")).flatten()
     if jet_pt_cut is None:
         mask = np.ones_like(jet_pt)
     else:
         mask = jet_pt>jet_pt_cut
-        if not np.any(mask):
-            empty = np.array([]).reshape((-1, 3))
-            return empty, empty
+    if min_tracks is not None:
+        mask = np.logical_and(mask, num_tracks>(min_tracks-0.1))
+    if not np.any(mask):
+        empty = np.array([]).reshape((-1, 3))
+        return empty, empty, 0
+    n_jets = np.sum(mask)
     jet_pt = jet_pt[mask]
-    jet_rapidity = eventWise.match_indices(jet_name+"_Rapidity", inputidx_name, rootinputidx_name).flatten()[mask]
-    jet_phi = eventWise.match_indices(jet_name+"_Phi", inputidx_name, rootinputidx_name).flatten()[mask]
+    jet_e = eventWise.match_indices(jet_name+"_Energy", inputidx_name, rootinputidx_name).flatten()[mask]
+    jet_px = eventWise.match_indices(jet_name+"_Px", inputidx_name, rootinputidx_name).flatten()[mask]
+    jet_py = eventWise.match_indices(jet_name+"_Py", inputidx_name, rootinputidx_name).flatten()[mask]
+    jet_pz = eventWise.match_indices(jet_name+"_Pz", inputidx_name, rootinputidx_name).flatten()[mask]
     tag_idx = TrueTag.tag_particle_indices(eventWise, tag_pids=tag_pids)
     if len(tag_idx) == 0:
         empty = np.array([]).reshape((-1, 3))
-        return empty, empty
-    tag_rapidity = eventWise.Rapidity[tag_idx]
-    tag_phi = eventWise.Phi[tag_idx]
-    tag_pt = eventWise.PT[tag_idx]
-    try: # if there is not more than one jet these methods fail
-        # normalise the tag_pt and jet_pts, it's reasonable to think these could be corrected to match
-        normed_jet_pt = sklearn.preprocessing.normalize(jet_pt.reshape(1, -1)).flatten()
-    except ValueError:
-        normed_jet_pt = np.ones(1)
-    try:
-        normed_tag_pt = sklearn.preprocessing.normalize(tag_pt.reshape(1, -1)).flatten()
-    except ValueError:
-        normed_tag_pt = np.ones(1)
-    # divide tag and jet rapidity by the abs mean of both, effectivly collectivly normalising them
-    abs_mean = np.mean((np.mean(np.abs(jet_rapidity)), np.mean(np.abs(tag_rapidity))))
-    normed_jet_rapidity = jet_rapidity/abs_mean
-    normed_tag_rapidity = tag_rapidity/abs_mean
-    # divide the phi coordinates by pi for the same effect
-    normed_jet_phi = 2*jet_phi/np.pi
-    normed_tag_phi = 2*tag_phi/np.pi
-    # find angular distances as they are invarient of choices
-    phi_distance = np.vstack([[j_phi - t_phi for j_phi in normed_jet_phi]
-                             for t_phi in normed_tag_phi])
-    # remeber that these values are normalised
-    phi_distance[phi_distance > 2] = 4 - phi_distance[phi_distance > 2]
-    rapidity_distance = np.vstack([[j_rapidity - t_rapidity for j_rapidity in normed_jet_rapidity]
-                                   for t_rapidity in normed_tag_rapidity])
-    angle_dist2 = np.square(phi_distance) + np.square(rapidity_distance)
-    # starting with the highest PT tag working to the lowest PT tag
+        return empty, empty, n_jets
+    tag_e = eventWise.Energy[tag_idx]
+    tag_px = eventWise.Px[tag_idx]
+    tag_py = eventWise.Py[tag_idx]
+    tag_pz = eventWise.Pz[tag_idx]
+    # starting with the highest CoM2 tag working to the lowest
     # assign tags to jets and recalculate the distance as needed
-    matched_jet = np.zeros_like(tag_pt, dtype=int) - 1
-    current_pt_offset_for_jet = -np.copy(normed_jet_pt)
-    for tag_idx in np.argsort(tag_pt):
-        this_pt = normed_tag_pt[tag_idx]
-        new_pt_dist2 = np.square(current_pt_offset_for_jet + this_pt)
-        allocate_to = np.argmin(new_pt_dist2 + angle_dist2[tag_idx])
-        matched_jet[tag_idx] = allocate_to
-        current_pt_offset_for_jet[allocate_to] += this_pt
-    # now calculate what fraction of jet PT the tag actually receves
+    matched_jet = np.zeros_like(tag_e, dtype=int) - 1
+    jet_4vec = np.vstack((jet_e, jet_px, jet_py, jet_pz)).T
+    tag_4vec = np.vstack((tag_e, tag_px, tag_py, tag_pz)).T
+    current_4vec_ofset = -np.copy(jet_4vec)
+    tag_4vec2 = tag_4vec**2
+    s_tag = tag_4vec2[:, 0] - np.sum(tag_4vec2[:, 1:], axis=1)
+    for t_idx in np.argsort(s_tag):
+        this_4 = tag_4vec[t_idx]
+        dist2 = (current_4vec_ofset + this_4)**2
+        allocate_to = np.argmin(dist2[:, 0] - np.sum(dist2[:, 1:], axis=1))
+        matched_jet[t_idx] = allocate_to
+        current_4vec_ofset[allocate_to] += this_4
+    # now calculate what fraction of jet momentum the tag actually receves
     chosen_jets = list(set(matched_jet))
-    pt_fragment = np.zeros_like(matched_jet, dtype=float)
+    p_fragment = np.zeros_like(matched_jet, dtype=float)
     for jet_idx in chosen_jets:
         tag_idx_here = np.where(matched_jet == jet_idx)[0]
-        pt_fragment[tag_idx_here] = tag_pt[tag_idx_here]/np.sum(tag_pt[tag_idx_here])
-    tag_coords = np.vstack((tag_pt, tag_rapidity, tag_phi)).transpose()
-    jet_coords = np.vstack((jet_pt[matched_jet]*pt_fragment, jet_rapidity[matched_jet], jet_phi[matched_jet])).transpose()
-    return tag_coords, jet_coords
+        p_fragment[tag_idx_here] = s_tag[tag_idx_here]/np.sum(s_tag[tag_idx_here])
+    # now get the actual coords
+    # tag_idx is wrong var
+    tag_coords = np.vstack((eventWise.PT[tag_idx],
+                            eventWise.Rapidity[tag_idx],
+                            eventWise.Phi[tag_idx])).transpose()
+    jet_phi = eventWise.match_indices(jet_name+"_Phi", inputidx_name, rootinputidx_name).flatten()[mask]
+    jet_phi = jet_phi[matched_jet]
+    jet_4_coords = jet_4vec[matched_jet]*p_fragment.reshape(-1, 1)
+    jet_pt = np.sqrt(jet_4_coords[:, 1]**2 + jet_4_coords[:, 2]**2)
+    jet_rapidity = Components.ptpze_to_rapidity(jet_pt, jet_4_coords[:, 3], jet_4_coords[:, 0])
+    jet_coords = np.vstack((jet_pt, jet_rapidity, jet_phi)).transpose()
+    return tag_coords, jet_coords, n_jets
     
 
 def fit_all_to_tags(eventWise, jet_name, silent=False):
@@ -164,13 +159,13 @@ def fit_all_to_tags(eventWise, jet_name, silent=False):
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         n_jets = len(getattr(eventWise, jet_name + "_Energy"))
-        n_jets_formed.append(n_jets)
         if n_jets > 0:
-            tag_c, jet_c = fit_to_tags(eventWise, jet_name, tag_pids=tag_pids)
+            tag_c, jet_c, n_jets = fit_to_tags(eventWise, jet_name, tag_pids=tag_pids)
             tag_coords.append(tag_c)
             jet_coords.append(jet_c)
-    tag_coords = np.vstack(tag_coords)
-    jet_coords = np.vstack(jet_coords)
+        n_jets_formed.append(n_jets)
+    #tag_coords = np.vstack(tag_coords)
+    #jet_coords = np.vstack(jet_coords)
     return tag_coords, jet_coords, n_jets_formed
 
 
@@ -183,65 +178,228 @@ def score_rank(tag_coords, jet_coords):
     return scores, uncerts
 
 
-def comparison_grid1(records, rapidity=True, pt=True, phi=True):
-    # find everthing with an exponent multiplier nearly at one of there three
-    epsilon = 0.001
+def get_catigories(records, content):
+    catigories = {}
+    for name, i in records.indices.items():
+        if name in records.evaluation_columns:
+            continue
+        try:
+            possible = list(set(content[:, i]))
+        except TypeError:
+            possible = []
+            for x in content[:, i]:
+                if x not in possible:
+                    possible.append(x)
+        if len(possible) > 1:
+            try:
+                possible = sorted(possible)
+            except TypeError:  #  a conversion to str allows sorting anything really
+                possible.sort(key=str)
+            catigories[name] = possible
+    return catigories
+
+def print_remaining(content, records, columns):
+    indices = [records.indices[n] for n in columns]
+    here = [list(row[indices]) for row in content]
+    print(columns)
+    print(np.array(here))
+    print(f"Num remaining {len(here)}")
+
+def comparison_grid1(records):
     # we only want to look at the content that has been scored
     content = records.typed_array()[records.scored]
-    exp_mul = content[:, content.indices["ExponentMultiplier"]]
-    KTmask = np.abs(exp_mul - 1) < epsilon
-    CAmask = np.abs(exp_mul) < epsilon
-    AKTmask = np.abs(exp_mul + 1) < epsilon
-    axis_dict = {"AKT": AKTmask, "CA": CAmask, "KT": KTmask}
-    
-    fig, axes = plt.subplots(len(axis_dict), 2, sharex=True)
-    if len(axes.shape) < 2:
-        axes = [axes]
-    for ax_name, ax_pair in zip(axis_dict, axes):
-        mask = axis_dict[ax_name]
-        ax1, ax2 = ax_pair
-        ax1.set_xlabel("$\\Delta R$")
-        ax1.set_ylabel(f"{ax_name} rank score")
-        xs = content[mask, records.indices["DeltaR"]]
-        num_eig = content[mask, records.indices["NumEigenvectors"]]
-        if len(set(num_eig)) > 1:
-            max_eig = np.nanmax(num_eig)
-            colour_map = matplotlib.cm.get_cmap('viridis')
-            colours = colour_map(num_eig/max_eig)
-            colours = [tuple(c) for c in colours]
-            colour_ticks = ["No spectral"] + [str(c+1) for c in range(int(max_eig))]
+    # for homejet and fastjet we will just give best values
+    mask = [c not in ("HomeJet", "FastJet", "SpectralMeanJet") for c in content[:, 1]]
+    content = content[mask]
+    # now filter for a rasonable number of jets
+    min_jets = float(input("Give min mean jets; "))
+    max_jets = float(input("Give max mean jets; "))
+    mask = [False if c is None else (c > min_jets) and (c < max_jets) for c in content[:, records.indices["mean_njets"]]]
+    content = content[mask]
+
+    catigories = get_catigories(records, content)
+
+    # select a colour axis and an x axis
+    print(f"Avalible catigories are; {catigories.keys()}")
+    x_name = InputTools.list_complete("Select an x axis; ", catigories.keys()).strip()
+    x_values = catigories[x_name]
+    c_name = InputTools.list_complete("Select a colour axis; ", catigories.keys()).strip()
+    c_values = {v: i for i, v in enumerate(catigories[c_name])}
+    s_name = InputTools.list_complete("Select a shape axis; ", catigories.keys()).strip()
+    s_values = {v: i for i, v in enumerate(catigories[s_name])}
+    columns = list(catigories.keys())
+    print_remaining(content, records, columns)
+    selections = f"jet class = Spectral\n{min_jets} < mean num jets < {max_jets}\n"
+    # need to filter the rest down 
+    for name in catigories.keys():
+        if name in (x_name, c_name, s_name):
+            continue
+        columns.remove(name)
+        i = records.indices[name]
+        if name not in catigories:
+            selections += f"{name} == {content[0, i]}\n"
+            continue
+        values = catigories[name]
+        if isinstance(values[0], str):
+            print(f"filtering {name}, values are; {values}")
+            choice = InputTools.list_complete("Which one to keep? ", values).strip()
         else:
-            colours = None
-        rap_marker = 'v'
-        pt_marker = '^'
-        phi_marker = 'o'
-        if pt:
-            ax1.scatter(xs, content[mask, records.indices["score(PT)"]],
-                         marker=pt_marker, c=colours, label="PT")
-        if rapidity:
-            ax1.scatter(xs, content[mask, records.indices["score(Rapidity)"]],
-                         marker=rap_marker, c=colours, label="Rapidity")
-        ax2.set_xlabel("$\\Delta R$")
+            print(f"filtering {name}, values are; {list(enumerate(values))}")
+            choice = input("Which index to keep? ")
+            if choice != '':
+                choice = values[int(choice)]
+        if choice == '':
+            selections += f"{name} = any\n"
+            continue
+        selections += f"{name} = {choice}\n"
+        content = content[np.array(content[:, i].tolist()) == choice]
+        # update becuase some sections may be ruled out
+        catigories = get_catigories(records, content)
+        print_remaining(content, records, columns)
+    
+    fig, axes = plt.subplots(3, 3, sharex=True)
+    dimensions = ["PT", "Rapidity", "Phi"]
+    xs = np.array(content[:, records.indices[x_name]].tolist())
+    n_colours = len(c_values)
+    colour_map = matplotlib.cm.get_cmap('viridis')
+    colour_positons = [colour_map(c) for c in np.linspace(0., 1., n_colours)]
+    colour_coords = np.array([colour_positons[c_values[v]] for v in content[:, records.indices[c_name]]])
+    colour_ticks = [str(n) for n in c_values]
+    shape = np.array([s_values[s] for s in content[:, records.indices[s_name]]])
+    markers = ['v', '^', '1', 's', '*', '+', 'd', 'P', '8', 'X']
+    for dim, ax_trip in zip(dimensions, axes):
+        ax0, ax1, ax2 = ax_trip
+        ax0.set_axis_off()
+        if dim == dimensions[0]:
+            ax0.text(0, 0, selections)
+        ax1.set_xlabel(x_name)
+        ax1.set_ylabel(f"rank score {dim}")
+        ax1.invert_yaxis()
+        metric = f"score({dim})"
+        ys = np.array(content[:, records.indices[metric]].tolist())
+        for s_name in s_values:
+            mask = shape == s_values[s_name]
+            ax1.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], c=colour_coords[mask], label=str(s_name))
+        best_id, best = records.best(metric, "HomeJet")
+        ax1.axhline(best, *ax1.get_xlim() , label="best HomeJet", c='b')
+        ax1.text(0.5, best, "best traditional algorithm", c='b')
+        ax2.set_xlabel(x_name)
         ax2.set_ylabel("Symmetrised % diff")
-        if pt:
-            ax2.scatter(xs, content[mask, records.indices["symmetric_diff(PT)"]]*100, 
-                        marker=pt_marker, c=colours, label="PT")
-        if rapidity:
-            ax2.scatter(xs, content[mask, records.indices["symmetric_diff(Rapidity)"]]*100, 
-                        marker=rap_marker, c=colours, label="Rapidity")
-        if phi:
-            ax2.scatter(xs, content[mask, records.indices["symmetric_diff(Phi)"]]*100, 
-                        marker=phi_marker, c=colours, label="Phi")
+        ys = np.array(content[:, records.indices[f"symmetric_diff({dim})"]].tolist())
+        for s_name in s_values:
+            mask = shape == s_values[s_name]
+            ax2.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], c=colour_coords[mask], label=str(s_name))
         ax2.legend()
-        ax2.set_ylim(0, max(100, ax2.get_ylim()[1]))
-        if colours is not None:
-            norm = matplotlib.colors.Normalize(vmin=0, vmax=max_eig)
-            mapable = matplotlib.cm.ScalarMappable(norm=norm, cmap=colour_map)
-            mapable.set_array([])
-            cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, max_eig, len(colour_ticks)))
-            cbar.ax.set_yticklabels(colour_ticks)
+        mapable = plt.cm.ScalarMappable(cmap=colour_map)
+        mapable.set_array([])
+        cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, 1., len(colour_ticks)))
+        cbar.set_label(c_name)
+        cbar.ax.set_yticklabels(colour_ticks)
+    plt.savefig("Test.png")
     plt.show()
-    return axes_data
+
+
+def comparison1(records):
+    plt.rcParams.update({'font.size': 22})
+    # we only want to look at the content that has been scored
+    content = records.typed_array()[records.scored]
+    # for homejet and fastjet we will just give best values
+    mask = [c not in ("HomeJet", "FastJet", "SpectralMeanJet") for c in content[:, 1]]
+    content = content[mask]
+    # now filter for a rasonable number of jets
+    min_jets = float(input("Give min mean jets; "))
+    max_jets = float(input("Give max mean jets; "))
+    mask = [False if c is None else (c > min_jets) and (c < max_jets) for c in content[:, records.indices["mean_njets"]]]
+    content = content[mask]
+
+    catigories = get_catigories(records, content)
+
+    # select a colour axis and an x axis
+    print(f"Avalible catigories are; {catigories.keys()}")
+    x_name = InputTools.list_complete("Select an x axis; ", catigories.keys()).strip()
+    x_values = catigories[x_name]
+    c_name = InputTools.list_complete("Select a colour axis; ", catigories.keys()).strip()
+    c_values = {v: i for i, v in enumerate(catigories[c_name])}
+    s_name = InputTools.list_complete("Select a shape axis; ", catigories.keys()).strip()
+    s_values = {v: i for i, v in enumerate(catigories[s_name])}
+    columns = list(catigories.keys())
+    print_remaining(content, records, columns)
+    selections = f"jet class = Spectral\n{min_jets} < mean num jets < {max_jets}\n"
+    # need to filter the rest down 
+    for name in catigories.keys():
+        if name in (x_name, c_name, s_name):
+            continue
+        columns.remove(name)
+        i = records.indices[name]
+        if name not in catigories:
+            selections += f"{name} == {content[0, i]}\n"
+            continue
+        values = catigories[name]
+        if isinstance(values[0], str):
+            print(f"filtering {name}, values are; {values}")
+            choice = InputTools.list_complete("Which one to keep? ", values).strip()
+        else:
+            print(f"filtering {name}, values are; {list(enumerate(values))}")
+            choice = input("Which index to keep? ")
+            if choice != '':
+                choice = values[int(choice)]
+        if choice == '':
+            selections += f"{name} = any\n"
+            continue
+        selections += f"{name} = {choice}\n"
+        content = content[np.array(content[:, i].tolist()) == choice]
+        # update becuase some sections may be ruled out
+        catigories = get_catigories(records, content)
+        print_remaining(content, records, columns)
+    
+    dimensions = ["PT", "Rapidity", "Phi"]
+    xs = np.array(content[:, records.indices[x_name]].tolist())
+    n_colours = len(c_values)
+    colour_map = matplotlib.cm.get_cmap('viridis')
+    colour_positons = [colour_map(c) for c in np.linspace(0., 1., n_colours)]
+    colour_coords = np.array([colour_positons[c_values[v]] for v in content[:, records.indices[c_name]]])
+    colour_ticks = [str(n) for n in c_values]
+    shape = np.array([s_values[s] for s in content[:, records.indices[s_name]]])
+    markers = ['v', '^', '1', 's', '*', '+', 'd', 'P', '8', 'X']
+    for dim in dimensions:
+        if dim == dimensions[0]:
+            fig, ax0 = plt.subplots()
+            ax0.set_axis_off()
+            ax0.text(0, 0, selections)
+            plt.show()
+        fig, ax1 = plt.subplots()
+        ax1.set_xlabel(x_name)
+        ax1.set_ylabel(f"rank score {dim}")
+        ax1.invert_yaxis()
+        metric = f"score({dim})"
+        ys = np.array(content[:, records.indices[metric]].tolist())
+        for s_name in s_values:
+            mask = shape == s_values[s_name]
+            ax1.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], s=100, c=colour_coords[mask], label=str(s_name))
+        best_id, best = records.best(metric, "HomeJet")
+        ax1.axhline(best, *ax1.get_xlim() , label="best HomeJet", c='b')
+        ax1.text(0.5, best, "best traditional algorithm", c='b')
+        ax1.legend()
+        mapable = plt.cm.ScalarMappable(cmap=colour_map)
+        mapable.set_array([])
+        cbar = fig.colorbar(mapable, ax=ax1, ticks=np.linspace(0, 1., len(colour_ticks)))
+        cbar.ax.set_yticklabels(colour_ticks)
+        cbar.set_label(c_name)
+        plt.show()
+        fig, ax2 = plt.subplots()
+        ax2.set_xlabel(x_name)
+        ax2.set_ylabel("Symmetrised % diff")
+        ys = np.array(content[:, records.indices[f"symmetric_diff({dim})"]].tolist())
+        for s_name in s_values:
+            mask = shape == s_values[s_name]
+            ax2.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], s=100, c=colour_coords[mask], label=str(s_name))
+        ax2.legend()
+        mapable = plt.cm.ScalarMappable(cmap=colour_map)
+        mapable.set_array([])
+        cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, 1., len(colour_ticks)))
+        cbar.ax.set_yticklabels(colour_ticks)
+        cbar.set_label(c_name)
+        plt.show()
 
 
 def comparison_grid2(records, rapidity=True, pt=True, phi=True):
@@ -300,7 +458,6 @@ def comparison_grid2(records, rapidity=True, pt=True, phi=True):
         cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, max_eig, len(colour_ticks)))
         cbar.ax.set_yticklabels(colour_ticks)
     plt.show()
-    return axes_data
 
 
 def calculated_grid(records, jet_name=None):
@@ -340,8 +497,8 @@ def calculated_grid(records, jet_name=None):
     v_column = records.indices[vertical_param]
     for row in content:
         id_num = row[0]
-        v_index = get_v_index(row[h_column])
-        h_index = get_h_index(row[v_column])
+        v_index = get_v_index(row[v_column])
+        h_index = get_h_index(row[h_column])
         grid[v_index][h_index].append(id_num)
     table = [[value] + [len(entry) for entry in row] for value, row in zip(vertical_bins, grid)]
     first_row = [["\\".join([vertical_param, horizontal_param])] + horizontal_bins]
@@ -350,6 +507,23 @@ def calculated_grid(records, jet_name=None):
     print(str_table)
     if InputTools.yesNo_question("Again? "):
         calculated_grid(records)
+
+
+def soft_generic_equality(a, b):
+    try:
+        # floats, ints and arrays of these should work here
+        return np.allclose(a, b)
+    except TypeError:
+        try:  # strings and bools should work here
+            return a == b
+        except Exception:
+            # for whatever reason this is not possible
+            if len(a) == len(b): 
+                # by this point it's not a string
+                # maybe a tuple of objects, try each one seperatly
+                sections = [soft_generic_equality(aa, bb) for aa, bb in zip(a, b)]
+                return np.all(sections)
+            return False  # diferent lengths
 
 
 class Records:
@@ -376,7 +550,7 @@ class Records:
                 header = ['id', 'jet_class']
                 writer.writerow(header)
             self.content = []
-            self.param_name = []
+            self.param_names = []
             self.indices = {}
         self.next_uid = int(np.max(self.jet_ids, initial=0)) + 1
         self.uid_length = len(str(self.next_uid))
@@ -406,6 +580,8 @@ class Records:
                         typed = jet_classes[jet_class].param_list[param_name]
                     except KeyError:
                         typed = None
+                elif entry == 'nan':
+                    typed = None
                 elif entry == 'inf':
                     typed = np.inf
                 else:
@@ -416,7 +592,7 @@ class Records:
                         typed = entry
                 typed_content[-1].append(typed)
         # got to be an awkward array because numpy hates mixed types
-        return awkward.fromiter(typed_content)
+        return np.array(typed_content)
 
     @property
     def jet_ids(self):
@@ -460,7 +636,7 @@ class Records:
         self.next_uid += 1
         self.uid_length = len(str(self.next_uid))
         return chosen_id
-
+ 
     def scan(self, eventWise):
         eventWise.selected_index = None
         jet_names = {c.split('_', 1)[0] for c in eventWise.columns
@@ -470,13 +646,15 @@ class Records:
         starting_ids = self.jet_ids
         num_events = len(eventWise.JetInputs_Energy)
         content = self.typed_array()
+        scored = self.scored
+        self._add_param("match_error")
         for name in jet_names:
             try:
                 num_start = next(i for i, l in enumerate(name) if l.isdigit())
             except StopIteration:
                 print(f"{name} does not have an id number, may not be a jet")
                 continue
-            jet_params = FormJets.get_jet_params(eventWise, name)
+            jet_params = FormJets.get_jet_params(eventWise, name, add_defaults=True)
             jet_class = name[:num_start]
             id_num = int(name[num_start:])
             if id_num in starting_ids:
@@ -492,10 +670,12 @@ class Records:
                         self.content[idx][self.indices[p_name]] = jet_params[p_name]
                         content = self.typed_array()
                         continue  # no sense in checking it
-                    try:
-                        match = np.allclose(jet_params[p_name], row[self.indices[p_name]])
-                    except TypeError:
-                        match = jet_params[p_name] == row[self.indices[p_name]]
+                    value = row[self.indices[p_name]]
+                    if value is None or value is '':
+                        # it probably didn't get recorded before
+                        self.content[idx][self.indices[p_name]] = jet_params[p_name]
+                        continue  # no sense in checking now
+                    match = soft_generic_equality(value, jet_params[p_name])
                     if not match:
                         break
                 if match:
@@ -510,8 +690,17 @@ class Records:
                     elif num_found > num_events:  # wtf
                         raise ValueError(f"Jet {name} has more calculated events than there are jet input events")
                 else:
-                    self._add_param("match_error")
-                    self.content[idx][self.indices["match_error"]] = True
+                    # check if it's actually been clustered
+                    any_col = next(c for c in eventWise.columns if c.startswith(name))
+                    num_found = len(getattr(eventWise, any_col))
+                    # check if it's scored and if the jet class matches,
+                    if not scored[idx] and row[1] == jet_class and num_found==num_events:
+                        # it probably just got recorded wrong, take it over
+                        for p_name in self.indices:
+                            self.content[idx][self.indices[p_name]] = jet_params.get(p_name, '')
+                        match = True
+                    # else leave this as a match error
+                self.content[idx][self.indices["match_error"]] = not match
             else:  # this ID not found in jets
                 self.append(jet_class, jet_params, existing_idx=id_num, write_now=False)
                 added[name] = len(self.content) - 1
@@ -519,7 +708,6 @@ class Records:
         return existing, added
 
     def score(self, eventWise):
-        self._add_param(*self.evaluation_columns)
         print("Scanning eventWise")
         existing, added = self.scan(eventWise)
         all_jets = {**existing, **added}
@@ -527,7 +715,9 @@ class Records:
         print(f"Found  {num_names}")
         print("Making a continue file, delete it to halt the evauation")
         open("continue", 'w').close()
-        scored = self.scored
+        jet_ids = self.jet_ids
+        scored = {jid: s for jid, s in zip(jet_ids, self.scored)}
+        self._add_param(*self.evaluation_columns)
         for i, name in enumerate(all_jets):
             if i % 2 == 0:
                 print(f"{100*i/num_names}%", end='\r', flush=True)
@@ -541,18 +731,26 @@ class Records:
                     del eventWise
                     eventWise = Components.EventWise.from_file(path)
             row = self.content[all_jets[name]]
-            if not scored[i]:
+            if not scored[int(row[0])]:
                 tag_coords, jet_coords, n_jets_formed = fit_all_to_tags(eventWise, name, silent=True)
+                tag_coords = np.vstack(tag_coords)
+                jet_coords = np.vstack(jet_coords)
+                if len(jet_coords) > 0:
+                    scores, uncerts = score_rank(tag_coords, jet_coords)
+                    syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
+                else:
+                    scores = [0., 0., 0.]
+                    uncerts = [0., 0., 0.]
+                    syd = [[1.], [1.], [1.]]
+                    n_jets_formed = [0]
                 row[self.indices["mean_njets"]] = np.mean(n_jets_formed)
                 row[self.indices["std_njets"]] = np.std(n_jets_formed)
-                scores, uncerts = score_rank(tag_coords, jet_coords)
                 row[self.indices["score(PT)"]] = scores[0]
                 row[self.indices["score_uncert(PT)"]] = uncerts[0]
                 row[self.indices["score(Rapidity)"]] = scores[1]
                 row[self.indices["score_uncert(Rapidity)"]] = uncerts[1]
                 row[self.indices["score(Phi)"]] = scores[2]
                 row[self.indices["score_uncert(Phi)"]] = uncerts[2]
-                syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
                 # but the symetric difernce for phi should be angular
                 row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[0])
                 row[self.indices["symdiff_std(PT)"]] = np.std(syd[0])
@@ -560,9 +758,26 @@ class Records:
                 row[self.indices["symdiff_std(Rapidity)"]] = np.std(syd[1])
                 row[self.indices["symmetric_diff(Phi)"]] = np.mean(syd[2])
                 row[self.indices["symdiff_std(Phi)"]] = np.std(syd[2])
+                if np.nan in row:
+                    st()
+                    row
         self.write()
+
+    def best(self, metric, jet_class=None, invert=None):
+        mask = self.scored
+        content = self.typed_array()
+        if jet_class is not None:
+            mask = np.logical_and(mask, content[:, 1] == jet_class)
+        if invert is None:
+            invert = "symmetric_diff" in metric
+        sign = 1 - 2*invert
+        best_in_mask = np.argmax(sign*content[mask, self.indices[metric]])
+        return content[mask][best_in_mask, [0, self.indices[metric]]]
 
 
 if __name__ == '__main__':
-    pass
+    records = Records("records.csv")
+    comparison1(records)
+
+    
 
