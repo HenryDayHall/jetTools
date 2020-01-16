@@ -12,6 +12,7 @@ import torch
 TEST_DS="/home/henry/lazy/dataset2/h1bBatch2_particles.awkd"
 
 class EventWiseDataset(Dataset):
+    """ """
     def __init__(self, database_name=None, num_events=-1, test_percent=0.2, shuffle=True, all_events=None):
         torch.set_default_tensor_type('torch.DoubleTensor')
         self.database_name = database_name
@@ -38,6 +39,7 @@ class EventWiseDataset(Dataset):
         self._test_events = all_events[self._test_indices]
         
     def _process_events(self):
+        """ """
         raise NotImplementedError
 
 
@@ -50,13 +52,38 @@ class EventWiseDataset(Dataset):
 
     @property
     def test_events(self):
+        """ """
         return self._test_events
 
     def write(self, folder_name=None):
+        """
+        
+
+        Parameters
+        ----------
+        folder_name :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         raise NotImplementedError
 
     @classmethod
     def from_file(cls, database_name):
+        """
+        
+
+        Parameters
+        ----------
+        database_name :
+            
+
+        Returns
+        -------
+
+        """
         folder_name = os.path.split(database_name)[0]
         num_events, events = cls._read_file(folder_name)
         return cls(database_name=database_name, num_events=num_events,
@@ -64,11 +91,25 @@ class EventWiseDataset(Dataset):
 
     @classmethod
     def _read_file(cls, folder_name):
+        """
+        
+
+        Parameters
+        ----------
+        folder_name :
+            
+
+        Returns
+        -------
+
+        """
         raise NotImplementedError
 
 
 class TracksTowersDataset(EventWiseDataset):
+    """ """
     def _process_databaseHepmc(self):
+        """ """
         all_events = []
         n_events = len(self.all_indices)
         eventWise = self.eventWise
@@ -85,11 +126,13 @@ class TracksTowersDataset(EventWiseDataset):
 
     @property
     def track_dimensions(self):
+        """ """
         _, tracks, _, _ = self[0]
         return tracks.shape[1]
 
     @property
     def tower_dimensions(self):
+        """ """
         towers, _,  _, _ = self[0]
         return towers.shape[1]
 
@@ -99,6 +142,18 @@ class TracksTowersDataset(EventWiseDataset):
 
     @classmethod
     def _per_event_to_flat(cls, all_events):
+        """
+        
+
+        Parameters
+        ----------
+        all_events :
+            
+
+        Returns
+        -------
+
+        """
         # list the hieght of all the arrays
         cumulative_tower_entries = np.empty(len(all_events), dtype=int)
         cumulative_track_entries = np.empty(len(all_events), dtype=int)
@@ -126,6 +181,18 @@ class TracksTowersDataset(EventWiseDataset):
                 all_towers, all_tracks, all_prox, all_truth)
 
     def write(self, folder_name=None):
+        """
+        
+
+        Parameters
+        ----------
+        folder_name :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if folder_name is None:
             folder_name = os.path.split(self.database_name)[0]
         all_events = np.vstack((self._test_events, self._events))
@@ -147,6 +214,18 @@ class TracksTowersDataset(EventWiseDataset):
 
     @classmethod
     def from_file(cls, database_name):
+        """
+        
+
+        Parameters
+        ----------
+        database_name :
+            
+
+        Returns
+        -------
+
+        """
         folder_name = os.path.split(database_name)[0]
         num_events, events = cls._read_file(folder_name)
         return cls(database_name=database_name, num_events=num_events,
@@ -155,6 +234,28 @@ class TracksTowersDataset(EventWiseDataset):
     @classmethod
     def _flat_to_per_event(cls, cumulative_tower_entries, cumulative_track_entries,
                            all_towers, all_tracks, all_prox, all_truth):
+        """
+        
+
+        Parameters
+        ----------
+        cumulative_tower_entries :
+            
+        cumulative_track_entries :
+            
+        all_towers :
+            
+        all_tracks :
+            
+        all_prox :
+            
+        all_truth :
+            
+
+        Returns
+        -------
+
+        """
         n_events = len(cumulative_tower_entries)
         # split them by event
         towers_by_event = np.split(all_towers, cumulative_tower_entries[:-1])
@@ -182,6 +283,18 @@ class TracksTowersDataset(EventWiseDataset):
 
     @classmethod
     def _read_file(cls, folder_name):
+        """
+        
+
+        Parameters
+        ----------
+        folder_name :
+            
+
+        Returns
+        -------
+
+        """
         # read all the numpy arrays into a npz format
         numpy_save_name = os.path.join(folder_name, cls.numpy_save_name)
         array_dict = np.load(numpy_save_name)
@@ -208,6 +321,18 @@ class TracksTowersDataset(EventWiseDataset):
 
 
 def gen_overall_data(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index != None
     info = []
     track_energies = eventWise.Track_Energy
@@ -236,6 +361,20 @@ def gen_overall_data(eventWise):
 
 
 def gen_track_data(eventWise, event_info):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    event_info :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index != None
     num_tracks = len(eventWise.Track_Energy)
     track_components = ["Birr", "PT", "Eta", "Phi",
@@ -251,6 +390,20 @@ def gen_track_data(eventWise, event_info):
 
 
 def gen_tower_data(eventWise, event_info):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    event_info :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index != None
     num_towers = len(eventWise.Track_Energy)
     tower_components = ["Energy", "Eem", "Ehad",
@@ -266,7 +419,20 @@ def gen_tower_data(eventWise, event_info):
 
 # TODO no reason to nly take one pair from each set
 def simplifier(dataset, num_pairs=1):
-    """ simplify the problem """
+    """
+    simplify the problem
+
+    Parameters
+    ----------
+    dataset :
+        
+    num_pairs :
+         (Default value = 1)
+
+    Returns
+    -------
+
+    """
     all_events = np.vstack((dataset.test_events, dataset._events))
     reduced_events = []
     for tower_data, track_data, proximites, MC_truth in all_events:
@@ -297,6 +463,7 @@ def simplifier(dataset, num_pairs=1):
 
 
 class JetWiseDataset(Dataset):
+    """ """
     def __init__(self, database_name, jet_name="FastJet", n_train_jets=-1, shuffle=True, all_truth_jets=None):
         self.is_torch = False
         #print(f"Creating Dataset for {jet_name}")
@@ -356,6 +523,18 @@ class JetWiseDataset(Dataset):
         #print("Dataset initilised")
 
     def to_torch(self, device):
+        """
+        
+
+        Parameters
+        ----------
+        device :
+            
+
+        Returns
+        -------
+
+        """
         self.is_torch = True
         torch.set_default_tensor_type('torch.DoubleTensor')
         self.jets = torch.from_numpy(self.jets).to(device)
@@ -364,15 +543,40 @@ class JetWiseDataset(Dataset):
         #self.test_truth = torch.from_numpy(self.test_truth)
 
     def _event_idx_to_jet(self, idx_list):
+        """
+        
+
+        Parameters
+        ----------
+        idx_list :
+            
+
+        Returns
+        -------
+
+        """
         jet_idx = [np.arange(self._cumulative_jets[idx-1],
                              self._cumulative_jets[idx])
                    for idx in idx_list]
         return np.concatenate(jet_idx)
 
     def _process_jets(self):
+        """ """
         raise NotImplementedError
 
     def find_multijet_file(self, dir_name):
+        """
+        
+
+        Parameters
+        ----------
+        dir_name :
+            
+
+        Returns
+        -------
+
+        """
         in_dir = os.listdir(dir_name)
         possibles = [f for f in in_dir if f.startswith("pros_") and f.endswith(".npz")]
         if len(possibles) == 1:
@@ -386,14 +590,30 @@ class JetWiseDataset(Dataset):
 
     @property
     def num_targets(self):
+        """ """
         return self.truth.shape[1]
 
     @property
     def num_inputs(self):
+        """ """
         raise NotImplementedError
 
     @classmethod
     def save_name(cls, database_name, folder_name=None):
+        """
+        
+
+        Parameters
+        ----------
+        database_name :
+            
+        folder_name :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         ds_components = os.path.split(database_name)
         if folder_name is None:
             folder_name = ds_components[0]
@@ -405,6 +625,18 @@ class JetWiseDataset(Dataset):
         return save_name
 
     def write(self, folder_name=None):
+        """
+        
+
+        Parameters
+        ----------
+        folder_name :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         params = {"database_name": self.database_name,
                   "jet_name": self.jet_name,
                   "n_train_jets": len(self),
@@ -416,11 +648,39 @@ class JetWiseDataset(Dataset):
 
     @classmethod
     def from_file(cls, dataset_name, folder_name=None):
+        """
+        
+
+        Parameters
+        ----------
+        dataset_name :
+            
+        folder_name :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         params = cls._read_file(dataset_name, folder_name)
         return cls(**params)
 
     @classmethod
     def _read_file(cls, dataset_name, folder_name):
+        """
+        
+
+        Parameters
+        ----------
+        dataset_name :
+            
+        folder_name :
+            
+
+        Returns
+        -------
+
+        """
         content = np.load(cls.save_name(dataset_name, folder_name))
         params = content['params'][0]
         params['all_truth_jets'] = (content['all_truth'], content['all_jets'])
@@ -428,7 +688,9 @@ class JetWiseDataset(Dataset):
 
 
 class FlatJetDataset(JetWiseDataset):
+    """ """
     def _process_jets(self):
+        """ """
         per_event_columns = [c for c in self.eventWise.columns
                              if c.startswith("Event_")]
         per_jet_columns = [c for c in self.eventWise.columns if
@@ -477,17 +739,21 @@ class FlatJetDataset(JetWiseDataset):
 
     @property
     def test_events(self):
+        """ """
         if self._test is None:
             self._test = np.array(list(zip(self.test_truth, self.test_jets)))
         return self._test
 
     @property
     def num_inputs(self):
+        """ """
         return self.jets.shape[1]
 
 
 class JetTreesDataset(JetWiseDataset):
+    """ """
     def _process_jets(self):
+        """ """
         jets = np.empty((len(self.all_indices), 3))
         truths = np.empty((len(self.all_indices), 1))
         event_num = 0
@@ -526,6 +792,7 @@ class JetTreesDataset(JetWiseDataset):
 
     @property
     def test_events(self):
+        """ """
         if self._test is None:
             self._test = np.array(list(zip(self.test_truth,
                                            [TreeWalker.TreeWalker(self.eventWise, self.jet_name, 

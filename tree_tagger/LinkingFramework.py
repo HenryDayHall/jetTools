@@ -5,8 +5,29 @@ import operator
 import numpy as np
 
 def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperation):
-    """ Function to create a list of proximate particles in the other list
-        for both lists. L2 norm. """
+    """
+    Function to create a list of proximate particles in the other list
+        for both lists. L2 norm.
+
+    Parameters
+    ----------
+    etas_1 :
+        
+    phis_1 :
+        
+    etas_2 :
+        
+    phis_2 :
+        
+    eta_seperation :
+        
+    phi_seperation :
+        
+
+    Returns
+    -------
+
+    """
 
     # start by binning the data on the scale of the seperation
     eps = 0.001
@@ -84,6 +105,18 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
 
 
 def tower_track_proximity(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index != None
     division = 6
     eta_seperation = 5/division
@@ -97,7 +130,18 @@ def tower_track_proximity(eventWise):
 
 
 def MC_truth_links(eventWise):
-    """ the monte carlo truth links between tracks and towers """
+    """
+    the monte carlo truth links between tracks and towers
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index != None
     links = {}
     for j, gid in enumerate(eventWise.Track_Particle):
@@ -109,7 +153,20 @@ def MC_truth_links(eventWise):
 
 
 def high_dim_proximity(list_1, list_2):
-    """ findes the closest neighbour for each item of list_1 in list_2, in high dimensions """
+    """
+    findes the closest neighbour for each item of list_1 in list_2, in high dimensions
+
+    Parameters
+    ----------
+    list_1 :
+        
+    list_2 :
+        
+
+    Returns
+    -------
+
+    """
     # standard euclidean brute force
     # make matrices
     diffs = list_2[:, ...] - list_1[:, None]

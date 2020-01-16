@@ -4,12 +4,20 @@ import numpy as np
 from torch.utils.data.sampler import Sampler
 
 class ValidationRandomSampler(Sampler):
-    """Samples elements with a validation set held out,
+    """
+    Samples elements with a validation set held out,
     change validation set each epoch
 
-    Arguments:
-        n_folds: int
-        number of folds to use
+    Parameters
+    ----------
+    n_folds :
+        int
+    number :
+        of folds to use
+
+    Returns
+    -------
+
     """
 
     def __init__(self, sampler, n_folds, n_indices=None):
@@ -23,6 +31,7 @@ class ValidationRandomSampler(Sampler):
         self._first_fold()
 
     def _first_fold(self):
+        """ """
         self.validation_ID = 1
         np.random.shuffle(self.fold_allocation)
         self.validation_indices = np.where(self.fold_allocation == self.validation_ID)[0]
@@ -30,6 +39,7 @@ class ValidationRandomSampler(Sampler):
         self.__len = sum(self.is_nonval)
 
     def _increment_fold(self):
+        """ """
         self.validation_ID += 1
         if self.validation_ID >= self.n_folds:
             self.validation_ID = 0

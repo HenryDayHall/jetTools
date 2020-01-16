@@ -8,6 +8,7 @@ from ipdb import set_trace as st
 
 
 class Hepmc(Components.EventWise):
+    """ """
     def __init__(self, dir_name, save_name, start=0, stop=np.inf, **kwargs):
         self.event_information_cols = ["Event_n", "N_multi_particle_inter",
                                        "Event_scale", "Alpha_QCD", "Alpha_QED",
@@ -61,7 +62,7 @@ class Hepmc(Components.EventWise):
         self.n_events = len(self.Event_n)
 
     def _fix_column_contents(self):
-        """ to be called once the collumns are filed out """
+        """to be called once the collumns are filed out"""
         for name in self.prepared_contents:
             self.prepared_contents[name] = awkward.fromiter(self.prepared_contents[name])
         self._loaded_contents = {}
@@ -73,6 +74,7 @@ class Hepmc(Components.EventWise):
         return self.__str__()
 
     def _assign_heritage(self):
+        """ """
         # this section requires numpy indexing on the barcodes
         self.prepared_contents["Start_vertex_barcode"] = awkward.fromiter(self.prepared_contents["Start_vertex_barcode"])
         self.prepared_contents["End_vertex_barcode"] = awkward.fromiter(self.prepared_contents["End_vertex_barcode"])
@@ -113,6 +115,7 @@ class Hepmc(Components.EventWise):
             self.prepared_contents["Is_root"][event_n] = [p==[] for p in parents]
 
     def check_colour_flow(self):
+        """ """
         for event_n, vertex_barcodes in enumerate(self.prepared_contents["Vertex_barcode"]):
             start_barcodes = self.prepared_contents["Start_vertex_barcode"][event_n]
             end_barcodes = self.prepared_contents["End_vertex_barcode"][event_n]
@@ -140,6 +143,22 @@ class Hepmc(Components.EventWise):
 
 
     def _parse_events(self, filepath, start=0, stop=np.inf):
+        """
+        
+
+        Parameters
+        ----------
+        filepath :
+            
+        start :
+             (Default value = 0)
+        stop :
+             (Default value = np.inf)
+
+        Returns
+        -------
+
+        """
         assert os.path.exists(filepath), f"Can't see that file; {filepath}"
         with open(filepath, 'r') as this_file:
             csv_reader = csv.reader(this_file, delimiter=' ', quotechar='"')
@@ -164,6 +183,22 @@ class Hepmc(Components.EventWise):
                     break
 
     def _parse_event(self, event_n, event_line, csv_reader):
+        """
+        
+
+        Parameters
+        ----------
+        event_n :
+            
+        event_line :
+            
+        csv_reader :
+            
+
+        Returns
+        -------
+
+        """
         # start by adding default entries, incase anythign dosn't get content
         add_row = self.particle_cols + self.vertex_cols
         for name in add_row:
@@ -229,6 +264,20 @@ class Hepmc(Components.EventWise):
                     assert int(line[n_flow_index]) == 0
 
     def _process_event_line(self, event_n, event_line):
+        """
+        
+
+        Parameters
+        ----------
+        event_n :
+            
+        event_line :
+            
+
+        Returns
+        -------
+
+        """
         assert event_line[0][0] == 'E'
         i = 1
         self.prepared_contents["Event_n"][event_n] = int(event_line[i])
@@ -262,6 +311,20 @@ class Hepmc(Components.EventWise):
                        event_line[i:i+self.prepared_contents["Len_weight_list"][-1]]]
 
     def _process_header_line(self, event_n, header_line):
+        """
+        
+
+        Parameters
+        ----------
+        event_n :
+            
+        header_line :
+            
+
+        Returns
+        -------
+
+        """
         if header_line[0] == 'N':
             i = 1 # start from 1 because the first item is the key
             self.prepared_contents["N_weight_names"][event_n] = int(header_line[i])
@@ -280,6 +343,7 @@ class Hepmc(Components.EventWise):
 
 
 def main():
+    """ """
     filepath = "/home/henry/lazy/h1bBatch2.hepmc"
     event = Hepmc(filepath, 0, 1)
     return event

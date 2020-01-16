@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 
 
 def main():
+    """ """
     tst_dir = "./big_ds"
     in_tst = os.listdir(tst_dir)
     runs_in_tst = sorted([name for name in in_tst

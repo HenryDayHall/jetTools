@@ -14,8 +14,25 @@ import sklearn.preprocessing
 from matplotlib import pyplot as plt
 import numpy as np
 import scipy.stats
+import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting
 
 def rand_score(eventWise, jet_name1, jet_name2):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name1 :
+        
+    jet_name2 :
+        
+
+    Returns
+    -------
+
+    """
     # two jets clustered from the same eventWise should have
     # the same JetInput_SourceIdx, 
     # if I change this in the future I need to update this function
@@ -39,6 +56,24 @@ def rand_score(eventWise, jet_name1, jet_name2):
 
 
 def visulise_scores(scores, jet_name1, jet_name2, score_name="Rand score"):
+    """
+    
+
+    Parameters
+    ----------
+    scores :
+        
+    jet_name1 :
+        
+    jet_name2 :
+        
+    score_name :
+         (Default value = "Rand score")
+
+    Returns
+    -------
+
+    """
     plt.hist(scores, bins=40, density=True, histtype='stepfilled')
     mean = np.mean(scores)
     std = np.std(scores)
@@ -49,6 +84,24 @@ def visulise_scores(scores, jet_name1, jet_name2, score_name="Rand score"):
 
 
 def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidity"):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name1 :
+        
+    jet_name2 :
+        
+    var_name :
+         (Default value = "Rapidity")
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     selection1 = getattr(eventWise, jet_name1+"_InputIdx")
     selection2 = getattr(eventWise, jet_name2+"_InputIdx")
@@ -82,6 +135,28 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
 
 
 def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30., min_tracks=2):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    event_n :
+         (Default value = None)
+    tag_pids :
+         (Default value = None)
+    jet_pt_cut :
+         (Default value = 30.)
+    min_tracks :
+         (Default value = 2)
+
+    Returns
+    -------
+
+    """
     if event_n is None:
         assert eventWise.selected_index is not None
     else:
@@ -148,6 +223,22 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.
     
 
 def fit_all_to_tags(eventWise, jet_name, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
@@ -170,6 +261,20 @@ def fit_all_to_tags(eventWise, jet_name, silent=False):
 
 
 def score_rank(tag_coords, jet_coords):
+    """
+    
+
+    Parameters
+    ----------
+    tag_coords :
+        
+    jet_coords :
+        
+
+    Returns
+    -------
+
+    """
     dims = 3
     scores = np.zeros(dims)
     uncerts = np.zeros(dims)
@@ -179,6 +284,20 @@ def score_rank(tag_coords, jet_coords):
 
 
 def get_catigories(records, content):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        
+    content :
+        
+
+    Returns
+    -------
+
+    """
     catigories = {}
     for name, i in records.indices.items():
         if name in records.evaluation_columns:
@@ -198,14 +317,44 @@ def get_catigories(records, content):
             catigories[name] = possible
     return catigories
 
+
 def print_remaining(content, records, columns):
+    """
+    
+
+    Parameters
+    ----------
+    content :
+        
+    records :
+        
+    columns :
+        
+
+    Returns
+    -------
+
+    """
     indices = [records.indices[n] for n in columns]
     here = [list(row[indices]) for row in content]
     print(columns)
     print(np.array(here))
     print(f"Num remaining {len(here)}")
 
+
 def comparison_grid1(records):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        
+
+    Returns
+    -------
+
+    """
     # we only want to look at the content that has been scored
     content = records.typed_array()[records.scored]
     # for homejet and fastjet we will just give best values
@@ -300,6 +449,18 @@ def comparison_grid1(records):
 
 
 def comparison1(records):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        
+
+    Returns
+    -------
+
+    """
     plt.rcParams.update({'font.size': 22})
     # we only want to look at the content that has been scored
     content = records.typed_array()[records.scored]
@@ -403,6 +564,24 @@ def comparison1(records):
 
 
 def comparison_grid2(records, rapidity=True, pt=True, phi=True):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        
+    rapidity :
+         (Default value = True)
+    pt :
+         (Default value = True)
+    phi :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     # we only want to look at the content that has been scored
     content = records.typed_array()[records.scored]
     mask = np.abs(content[:, records.indices["DeltaR"]] - 0.4) < 0.001
@@ -461,6 +640,20 @@ def comparison_grid2(records, rapidity=True, pt=True, phi=True):
 
 
 def calculated_grid(records, jet_name=None):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        
+    jet_name :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
              "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean}
     if jet_name is None:
@@ -479,18 +672,66 @@ def calculated_grid(records, jet_name=None):
     horizontal_bins = sorted(catigories[horizontal_param])
     if isinstance(horizontal_bins[0], str):
         def get_h_index(value):
+            """
+            
+
+            Parameters
+            ----------
+            value :
+                
+
+            Returns
+            -------
+
+            """
             return horizontal_bins.index(value)
     else:
         horizontal_bins_a = np.array(horizontal_bins)
         def get_h_index(value):
+            """
+            
+
+            Parameters
+            ----------
+            value :
+                
+
+            Returns
+            -------
+
+            """
             return np.argmin(np.abs(horizontal_bins_a - value))
     vertical_bins = sorted(catigories[vertical_param])
     if isinstance(vertical_bins[0], str):
         def get_v_index(value):
+            """
+            
+
+            Parameters
+            ----------
+            value :
+                
+
+            Returns
+            -------
+
+            """
             return vertical_bins.index(value)
     else:
         vertical_bins_a = np.array(vertical_bins)
         def get_v_index(value):
+            """
+            
+
+            Parameters
+            ----------
+            value :
+                
+
+            Returns
+            -------
+
+            """
             return np.argmin(np.abs(vertical_bins_a - value))
     grid = [[[] for _ in horizontal_bins] for _ in vertical_bins]
     h_column = records.indices[horizontal_param]
@@ -510,6 +751,20 @@ def calculated_grid(records, jet_name=None):
 
 
 def soft_generic_equality(a, b):
+    """
+    
+
+    Parameters
+    ----------
+    a :
+        
+    b :
+        
+
+    Returns
+    -------
+
+    """
     try:
         # floats, ints and arrays of these should work here
         return np.allclose(a, b)
@@ -526,7 +781,68 @@ def soft_generic_equality(a, b):
             return False  # diferent lengths
 
 
+def parameter_comparison(records, y_name="score(PT)", c_name="mean_njets"):
+    columns = ['jet_type'] + records.param_names
+    array = records.typed_array()[records.scored]
+    y_col = array[:, columns.index(y_name) + 1].astype(float)
+    c_col = array[:, columns.index(c_name) + 1].astype(float)
+    mapper = bokeh.models.LinearColorMapper(palette=bokeh.palettes.Plasma10,
+                                            low=min(c_col), high=max(c_col))
+    data_dict = {}
+    for i, name in enumerate(columns):
+        if 'uncert' in name or 'std' in name:
+            continue
+        data_dict[name] = np.array([str(x) for x in array[:, i+1]])
+    hover = bokeh.models.HoverTool(tooltips=[(name, "@" + name) for name in data_dict])
+    plots = []
+    for i, name in enumerate(columns):
+        if name in records.evaluation_columns:
+            continue
+        col = i+1
+        col_content = array[:, col]
+        catigories = set(array[:, col])
+        # None prevents propper sorting
+        catigories.discard(None)
+        if len(catigories) == 0:
+            continue
+        catigories = sorted(catigories)
+        catigories += [None]
+        if hasattr(catigories[0], '__iter__'):
+            # it is either a string or a list,
+            # the axis spacing will be maufactured
+            scale = list(range(len(catigories)))
+            positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
+                                    dtype=float)
+            label_dict = {tick: str(cat) for cat, tick in zip(catigories, scale)}
+        else:
+            scale = np.array(catigories)
+            real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
+                               dtype=float)
+            ave_gap = np.mean(real[1:] - real[:-1])
+            scale[scale == -np.inf] = np.min(real) - ave_gap
+            scale[scale == np.inf] = np.max(real) + ave_gap
+            scale[scale == None] = np.min(real) - 2*ave_gap
+            positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
+                                    dtype=float)
+            # trim the labels
+            label_dict = {tick: str(cat)[:5] for cat, tick in zip(catigories, scale)}
+        points = {'x': positions, 'y': y_col, 'colour': c_col}
+        source = bokeh.models.ColumnDataSource(data={**points, **data_dict})
+        p = bokeh.plotting.figure(plot_width=850, plot_height=550, tools=[hover], title=name)
+        # p.xaxis.axis_label_text_font_size = "30pt" not working
+        p.xaxis.ticker = positions
+        p.xaxis.major_label_overrides = label_dict
+        if name == "DeltaR":
+            st()
+        p.circle('x', 'y', size=10, source=source,
+                 fill_color=bokeh.transform.transform('colour', mapper))
+        plots.append(p)
+    all_p = bokeh.layouts.column(*plots)
+    bokeh.io.show(all_p)
+
+
 class Records:
+    """ """
     delimiter = '\t'
     evaluation_columns = ("score(PT)", "score_uncert(PT)", "symmetric_diff(PT)", "symdiff_std(PT)",
                           "score(Rapidity)", "score_uncert(Rapidity)", "symmetric_diff(Rapidity)", "symdiff_std(Rapidity)",
@@ -556,14 +872,24 @@ class Records:
         self.uid_length = len(str(self.next_uid))
 
     def write(self):
+        """ """
         with open(self.file_path, 'w') as overwrite:
             writer = csv.writer(overwrite, delimiter=self.delimiter)
             all_rows = [['', 'jet_class'] + self.param_names] + self.content
             writer.writerows(all_rows)
 
     def typed_array(self):
-        """Convert the contents to an array of apropreate type,
-           fill blanks with default"""
+        """
+        Convert the contents to an array of apropreate type,
+           fill blanks with default
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        """
         jet_classes = {"HomeJet": FormJets.Traditional,
                        "FastJet": FormJets.Traditional,
                        "SpectralJet": FormJets.Spectral,
@@ -596,11 +922,13 @@ class Records:
 
     @property
     def jet_ids(self):
+        """ """
         ids = [int(row[0]) for row in self.content]
         return ids
 
     @property
     def scored(self):
+        """ """
         if 'mean_njets' not in self.param_names:
             return np.full(len(self.content), False)
         scored = [row[self.indices["mean_njets"]] not in ('', None)
@@ -608,6 +936,18 @@ class Records:
         return np.array(scored)
 
     def _add_param(self, *new_params):
+        """
+        
+
+        Parameters
+        ----------
+        *new_params :
+            
+
+        Returns
+        -------
+
+        """
         new_params = [n for n in new_params if n not in self.param_names]
         self.param_names += new_params
         self.indices = {name: i+2 for i, name in enumerate(self.param_names)}
@@ -615,7 +955,24 @@ class Records:
         self.content = [row + new_blanks for row in self.content]
 
     def append(self, jet_class, param_dict, existing_idx=None, write_now=True):
-        """ gives the new jet a unique ID and returns that value"""
+        """
+        gives the new jet a unique ID and returns that value
+
+        Parameters
+        ----------
+        jet_class :
+            
+        param_dict :
+            
+        existing_idx :
+             (Default value = None)
+        write_now :
+             (Default value = True)
+
+        Returns
+        -------
+
+        """
         if existing_idx is None:
             chosen_id = self.next_uid
         else:
@@ -638,6 +995,18 @@ class Records:
         return chosen_id
  
     def scan(self, eventWise):
+        """
+        
+
+        Parameters
+        ----------
+        eventWise :
+            
+
+        Returns
+        -------
+
+        """
         eventWise.selected_index = None
         jet_names = {c.split('_', 1)[0] for c in eventWise.columns
                      if (not c.startswith('JetInputs')) and 'Jet' in c}
@@ -708,6 +1077,18 @@ class Records:
         return existing, added
 
     def score(self, eventWise):
+        """
+        
+
+        Parameters
+        ----------
+        eventWise :
+            
+
+        Returns
+        -------
+
+        """
         print("Scanning eventWise")
         existing, added = self.scan(eventWise)
         all_jets = {**existing, **added}
@@ -764,6 +1145,22 @@ class Records:
         self.write()
 
     def best(self, metric, jet_class=None, invert=None):
+        """
+        
+
+        Parameters
+        ----------
+        metric :
+            
+        jet_class :
+             (Default value = None)
+        invert :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         mask = self.scored
         content = self.typed_array()
         if jet_class is not None:
@@ -778,6 +1175,4 @@ class Records:
 if __name__ == '__main__':
     records = Records("records.csv")
     comparison1(records)
-
-    
 

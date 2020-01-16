@@ -8,6 +8,26 @@ import multiprocessing
 from ipdb import set_trace as st
 
 def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+    run_condition :
+        
+    cluster_algorithm :
+        
+    cluster_parameters :
+        
+    batch_size :
+        
+
+    Returns
+    -------
+
+    """
     if isinstance(cluster_algorithm, str):
         # functions in modules are attributes too :)
         cluster_algorithm = getattr(FormJets, cluster_algorithm)
@@ -32,7 +52,22 @@ def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters,
 
 
 def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
-    """ make n fragments, splitting of unfinished components as needed """
+    """
+    make n fragments, splitting of unfinished components as needed
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+    n_fragments :
+        
+    jet_name :
+        
+
+    Returns
+    -------
+
+    """
     # if an awkd file is given, and a progress directory exists, change to that
     if eventWise_path.endswith('awkd') and os.path.exists(eventWise_path[:-5]+"_progress"):
         print("This awkd has already been split into progress")
@@ -116,6 +151,24 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
 
 
 def generate_pool(eventWise_path, multiapply_function, jet_params, leave_one_free=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+    multiapply_function :
+        
+    jet_params :
+        
+    leave_one_free :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     batch_size = 500
     # decide on a stop condition
     if os.path.exists('continue'):

@@ -9,6 +9,7 @@ from tree_tagger import CustomDataloader, CustomScheduler, CustomSampler, Traini
 # from torch.nn.utils import clip_grad_norm  this looks useful!
 
 class SimpleRecursor(nn.Module):
+    """ """
     def __init__(self, device, num_jet_feaures, latent_dimensions=100, num_classes=1):
         super().__init__()
         self.device = device
@@ -24,8 +25,19 @@ class SimpleRecursor(nn.Module):
         #self.node_labels = [] # truth values, don't use in simple case
 
     def traverse(self, node):
-        """ The recusive call
-        will go down the net from the given point and calculate correct memories """
+        """
+        The recusive call
+        will go down the net from the given point and calculate correct memories
+
+        Parameters
+        ----------
+        node :
+            
+
+        Returns
+        -------
+
+        """
         if node.is_leaf:
             # assume the dataset transforms to a sutable tensor
             # we need to put it on the device
@@ -47,6 +59,18 @@ class SimpleRecursor(nn.Module):
         return hidden_state
 
     def forward(self, root_node):
+        """
+        
+
+        Parameters
+        ----------
+        root_node :
+            
+
+        Returns
+        -------
+
+        """
         # the recursion is inside transverse, soo presumably this gets a root node in
         final_hidden = self.traverse(root_node)
         final_out = self.projection(final_hidden)
@@ -54,12 +78,14 @@ class SimpleRecursor(nn.Module):
         return final_out
     
     def get_weights(self):
+        """ """
         weights = [self.embedding.weight.data,
                    self.combine.weight.data,
                    self.projection.weight.data]
         return weights
     
     def get_bias(self):
+        """ """
         bias = [self.embedding.bias.data,
                 self.combine.bias.data,
                 self.projection.bias.data]
@@ -67,6 +93,7 @@ class SimpleRecursor(nn.Module):
 
 
 class PseudoStateRecursor(nn.Module):
+    """ """
     def __init__(self, device, num_jet_feaures, latent_dimensions=100, num_classes=1):
         super().__init__()
         self.device = device
@@ -82,8 +109,19 @@ class PseudoStateRecursor(nn.Module):
         #self.node_labels = []
 
     def traverse(self, node):
-        """ The recusive call
-        will go down the net from the given point and calculate correct memories """
+        """
+        The recusive call
+        will go down the net from the given point and calculate correct memories
+
+        Parameters
+        ----------
+        node :
+            
+
+        Returns
+        -------
+
+        """
         leaf = node.leaf_inputs.to(self.device)
         embedded = self.activation(self.embedding(leaf))
         if node.is_leaf:
@@ -107,6 +145,18 @@ class PseudoStateRecursor(nn.Module):
         return hidden_state
 
     def forward(self, root_node):
+        """
+        
+
+        Parameters
+        ----------
+        root_node :
+            
+
+        Returns
+        -------
+
+        """
         # the recursion is inside transverse, soo presumably this gets a root node in
         final_hidden = self.traverse(root_node)
         final_out = self.projection(final_hidden)
@@ -114,12 +164,14 @@ class PseudoStateRecursor(nn.Module):
         return final_out
     
     def get_weights(self):
+        """ """
         weights = [self.embedding.weight.data,
                    self.combine.weight.data,
                    self.projection.weight.data]
         return weights
     
     def get_bias(self):
+        """ """
         bias = [self.embedding.bias.data,
                 self.combine.bias.data,
                 self.projection.bias.data]
@@ -127,6 +179,20 @@ class PseudoStateRecursor(nn.Module):
 
 
 def begin_training(run, viewer=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    viewer :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
     # Device configuration
@@ -140,6 +206,22 @@ def begin_training(run, viewer=None):
     criterion = nn.BCEWithLogitsLoss()
     # create the lossers (which get the loss)
     def train_losser(data, nets, device):
+        """
+        
+
+        Parameters
+        ----------
+        data :
+            
+        nets :
+            
+        device :
+            
+
+        Returns
+        -------
+
+        """
         truth, root_node = data
         truth = torch.DoubleTensor(truth).to(device)
         output = nets[0].forward(root_node)
@@ -148,6 +230,24 @@ def begin_training(run, viewer=None):
 
 
     def batch_losser(events_data, nets, device, losser):
+        """
+        
+
+        Parameters
+        ----------
+        events_data :
+            
+        nets :
+            
+        device :
+            
+        losser :
+            
+
+        Returns
+        -------
+
+        """
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
 
@@ -166,6 +266,18 @@ def begin_training(run, viewer=None):
         net = net.to(device)
         # Experimental!
         def init_weights(m):
+            """
+            
+
+            Parameters
+            ----------
+            m :
+                
+
+            Returns
+            -------
+
+            """
             if type(m) == nn.Linear:
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.5)
                 m.bias.data.fill_(0.01)

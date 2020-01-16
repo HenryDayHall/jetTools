@@ -14,6 +14,21 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2):
     """
     each tag will be assigned to a jet
     both tag particles and jets must offer rap and phi methods
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    tag_idx :
+        
+    max_angle2 :
+        
+
+    Returns
+    -------
+
     """
     root_name = jet_name + "_RootInputIdx"
     inputidx_name = jet_name + "_InputIdx"
@@ -34,8 +49,27 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2):
 
 
 def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True):
-    """ tag jets based on particles emmited by the hard scattering 
-        follows taggable partilces to last tagable decendant"""
+    """
+    tag jets based on particles emmited by the hard scattering
+        follows taggable partilces to last tagable decendant
+
+    Parameters
+    ----------
+    eventWise :
+        
+    hard_interaction_pids :
+         (Default value = [25)
+    35] :
+        
+    tag_pids :
+         (Default value = None)
+    include_antiparticles :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
@@ -74,6 +108,24 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
 
 
 def add_tags(eventWise, jet_name, max_angle, batch_length=100):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    max_angle :
+        
+    batch_length :
+         (Default value = 100)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     name = jet_name+"_Tags"
     namePID = jet_name+"_TagPIDs"
@@ -125,6 +177,7 @@ display=False  # note needs full simulation
 if display:  # have to comment out to run without display
 
     def main():
+        """ """
         from tree_tagger import Components, DrawBarrel
         repeat = True
         eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt.awkd")

@@ -6,6 +6,26 @@ import matplotlib
 from mayavi import mlab
 
 def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, tower_name="Tower"):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    barrel_length :
+        
+    barrel_radius :
+        
+    cuboid_lengths :
+        
+    tower_name :
+         (Default value = "Tower")
+
+    Returns
+    -------
+
+    """
     # angles under this are on the endcap
     barrel_theta = np.arctan(barrel_radius/barrel_length)
     thetas = 2*np.arctan(np.exp(-getattr(eventWise, tower_name+"_Eta")))
@@ -26,6 +46,24 @@ def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, to
     return cuboids, centers, heights
 
 def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
+    """
+    
+
+    Parameters
+    ----------
+    barrel_radius :
+        
+    thetas :
+        
+    phis :
+        
+    cuboid_lengths :
+        
+
+    Returns
+    -------
+
+    """
     half_basesize = barrel_radius * np.pi / 200.
     cos_phis = np.cos(phis)
     sin_phis = np.sin(phis)
@@ -41,6 +79,26 @@ def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
     return cuboids, center_vec, height_vec
 
 def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
+    """
+    
+
+    Parameters
+    ----------
+    barrel_length :
+        
+    barrel_radius :
+        
+    thetas :
+        
+    phis :
+        
+    cuboid_lengths :
+        
+
+    Returns
+    -------
+
+    """
     half_basesize = barrel_radius * np.pi / 200.
     cos_phis = np.cos(phis)
     sin_phis = np.sin(phis)
@@ -59,6 +117,26 @@ def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
     return cuboids, center_vec, height_vec
 
 def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
+    """
+    
+
+    Parameters
+    ----------
+    center_vec :
+        
+    half_basesize :
+        
+    surface_1 :
+        
+    surface_2 :
+        
+    height_vec :
+        
+
+    Returns
+    -------
+
+    """
     point_1 = center_vec + half_basesize * (surface_1 + surface_2)
     point_2 = center_vec + half_basesize * (surface_1 - surface_2)
     point_3 = center_vec + half_basesize * (-surface_1 + surface_2)
@@ -83,6 +161,22 @@ def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
 
 
 def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
+    """
+    
+
+    Parameters
+    ----------
+    highlight_xyz :
+        
+    colours :
+         (Default value = None)
+    colourmap :
+         (Default value = "cool")
+
+    Returns
+    -------
+
+    """
     if colourmap is False: # use a flat colour
         for scale in np.linspace(120, 200, 4):
             highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
@@ -98,6 +192,24 @@ def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
     
 
 def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
+    """
+    
+
+    Parameters
+    ----------
+    all_positions :
+        
+    indices :
+        
+    colours :
+        
+    colourmap :
+         (Default value = "Blues")
+
+    Returns
+    -------
+
+    """
     if isinstance(all_positions, list):
         all_positions = np.array(all_positions)
     if len(colours) != len(indices) and colourmap is not False:
@@ -106,6 +218,38 @@ def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
 
     
 def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour=(0.9, 0.9, 0.9), has_vertex=True, new_figure=True, bg_color=(0., 0., 0.)):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    track_name :
+         (Default value = "Track")
+    tower_name :
+         (Default value = "Tower")
+    colour :
+         (Default value = (0.9)
+    0.9 :
+        
+    0.9) :
+        
+    has_vertex :
+         (Default value = True)
+    new_figure :
+         (Default value = True)
+    bg_color :
+         (Default value = (0.)
+    0. :
+        
+    0.) :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None, "You must select an event to plot"
     names = list()
     
@@ -267,6 +411,24 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
 
 
 def add_single(pos, colour, scale=100, name=None):
+    """
+    
+
+    Parameters
+    ----------
+    pos :
+        
+    colour :
+        
+    scale :
+         (Default value = 100)
+    name :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if len(pos) == 3:
         vertices = mlab.points3d([pos[0]], [pos[1]],
                                  [pos[2]], 
@@ -292,17 +454,52 @@ def add_single(pos, colour, scale=100, name=None):
 
 
 def colour_set(num_colours, colourmap='gist_rainbow'):
+    """
+    
+
+    Parameters
+    ----------
+    num_colours :
+        
+    colourmap :
+         (Default value = 'gist_rainbow')
+
+    Returns
+    -------
+
+    """
     cmap = matplotlib.cm.get_cmap(colourmap)
     colours = [cmap(i)[:3] for i in np.linspace(0., 1., num_colours)]
     return colours
 
 
 def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
+    """
+    
+
+    Parameters
+    ----------
+    length :
+        
+    colour :
+         (Default value = (1.)
+    0.7 :
+        
+    0.2) :
+        
+    interaction :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     mlab.plot3d([0, 0], [0, 0], [-length, length], color=colour, tube_radius=length/1000.)
     if interaction:
         highlight_pos(np.array([[0, 0, 0]]), colours=colour, colourmap=False)
 
 def main():
+    """ """
     from tree_tagger import Components, LinkingFramework, InputTools
     repeat = True
     try:

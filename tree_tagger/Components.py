@@ -12,6 +12,18 @@ import numpy as np
 from tree_tagger import Constants, PDGNames, InputTools
 
 def flatten(nested):
+    """
+    
+
+    Parameters
+    ----------
+    nested :
+        
+
+    Returns
+    -------
+
+    """
     for part in nested:
         if hasattr(part, '__iter__'):
             yield from flatten(part)
@@ -21,6 +33,18 @@ def flatten(nested):
 
 
 def detect_depth(nested):
+    """
+    
+
+    Parameters
+    ----------
+    nested :
+        
+
+    Returns
+    -------
+
+    """
     # assumed arrays are wider than deep
     max_depth = 0
     for x in nested:
@@ -40,6 +64,22 @@ def detect_depth(nested):
 
 
 def apply_array_func(func, *nested, depth=None):
+    """
+    
+
+    Parameters
+    ----------
+    func :
+        
+    *nested :
+        
+    depth :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if depth is None:
         abs_end, depth = detect_depth(nested[0])
         if not abs_end:  # no objects in array
@@ -48,6 +88,22 @@ def apply_array_func(func, *nested, depth=None):
 
 
 def _apply_array_func(func, depth, *nested):
+    """
+    
+
+    Parameters
+    ----------
+    func :
+        
+    depth :
+        
+    *nested :
+        
+
+    Returns
+    -------
+
+    """
     # all nested must have the same shape
     out = []
     if depth == 0:  # flat lists
@@ -63,12 +119,24 @@ def _apply_array_func(func, depth, *nested):
 
 
 def confine_angle(angle):
-    """ confine an angle between -pi and pi"""
+    """
+    confine an angle between -pi and pi
+
+    Parameters
+    ----------
+    angle :
+        
+
+    Returns
+    -------
+
+    """
     return ((angle + np.pi)%(2*np.pi)) - np.pi
 
 
 def safe_convert(cls, string):
-    """ Safe conversion out of strings
+    """
+    Safe conversion out of strings
     designed to deal with None gracefully, and identify sensible bools
 
     Parameters
@@ -80,8 +148,8 @@ def safe_convert(cls, string):
 
     Returns
     -------
-    : object
-        converted object, either None type or type cls
+
+    
     """
     if string == "None": return None
     elif cls == bool: 
@@ -90,7 +158,7 @@ def safe_convert(cls, string):
 
 
 class EventWise:
-    """ The most basic properties of collections that exist in an eventwise sense """
+    """The most basic properties of collections that exist in an eventwise sense"""
     selected_index = None
     EVENT_DEPTH=1 # events, objects in events
     JET_DEPTH=2 # events, jets, objects in jets
@@ -120,6 +188,7 @@ class EventWise:
         self.hyperparameters = {}
     
     def _gen_alias(self):
+        """ """
         alias_dict = {}
         if 'alias' in self._column_contents:
             for row in self._column_contents['alias']:
@@ -130,6 +199,18 @@ class EventWise:
         return alias_dict
 
     def _remove_alias(self, to_remove):
+        """
+        
+
+        Parameters
+        ----------
+        to_remove :
+            
+
+        Returns
+        -------
+
+        """
         alias_list = list(self._column_contents['alias'][:, 0])
         alias_idx = alias_list.index(to_remove)
         # if to_remove is not infact an alias the line above will throw an error
@@ -139,6 +220,20 @@ class EventWise:
         self.columns.remove(to_remove)
 
     def add_alias(self, name, target):
+        """
+        
+
+        Parameters
+        ----------
+        name :
+            
+        target :
+            
+
+        Returns
+        -------
+
+        """
         assert target in self.columns
         assert name not in self.columns
         alias_list = self._column_contents['alias']
@@ -174,8 +269,24 @@ class EventWise:
 
     def match_indices(self, attr_name, match_from, match_to=None, event_n=None):
         """
-        return the elements of each row for which match_for and match_to are equal
-        one of match_from or match_to may be projected to make the required dimentions
+        
+
+        Parameters
+        ----------
+        attr_name :
+            
+        match_from :
+            
+        match_to :
+             (Default value = None)
+        event_n :
+             (Default value = None)
+
+        Returns
+        -------
+        type
+            one of match_from or match_to may be projected to make the required dimentions
+
         """
         if event_n is None:
             assert self.selected_index is not None
@@ -208,7 +319,7 @@ class EventWise:
         return self.save_name == other.save_name and self.dir_name == other.dir_name
 
     def write(self):
-        """ write to disk """
+        """write to disk"""
         path = os.path.join(self.dir_name, self.save_name)
         assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
         non_alias_cols = [c for c in self.columns if c not in self._alias_dict]
@@ -230,6 +341,18 @@ class EventWise:
 
     @classmethod
     def from_file(cls, path):
+        """
+        
+
+        Parameters
+        ----------
+        path :
+            
+
+        Returns
+        -------
+
+        """
         contents = awkward.load(path)
         columns = list(contents['column_order'])
         hyperparameter_columns = list(contents['hyperparameter_column_order'])
@@ -239,6 +362,18 @@ class EventWise:
         return new_eventWise
 
     def append(self, **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        **kwargs :
+            
+
+        Returns
+        -------
+
+        """
         new_content = kwargs
         new_columns = sorted(kwargs.keys())
         # enforce the first letter of each attrbute to be capital
@@ -257,6 +392,18 @@ class EventWise:
         self.write()
 
     def append_hyperparameters(self, **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        **kwargs :
+            
+
+        Returns
+        -------
+
+        """
         new_content = kwargs
         new_columns = sorted(kwargs.keys())
         # enforce the first letter of each attrbute to be capital
@@ -281,6 +428,18 @@ class EventWise:
         self.write()
 
     def remove(self, col_name):
+        """
+        
+
+        Parameters
+        ----------
+        col_name :
+            
+
+        Returns
+        -------
+
+        """
         if col_name in self._alias_dict:
             self._remove_alias(col_name)
         else:
@@ -297,11 +456,37 @@ class EventWise:
                 del self._loaded_contents[col_name]
 
     def remove_prefix(self, col_prefix):
+        """
+        
+
+        Parameters
+        ----------
+        col_prefix :
+            
+
+        Returns
+        -------
+
+        """
         to_remove = [c for c in self.columns if c.startswith(col_prefix)]
         for c in to_remove:
             self.remove(c)
 
     def rename(self, old_name, new_name):
+        """
+        
+
+        Parameters
+        ----------
+        old_name :
+            
+        new_name :
+            
+
+        Returns
+        -------
+
+        """
         if old_name in self._alias_dict:
             target = self._alias_dict[old_name]
             self._remove_alias(old_name)
@@ -316,6 +501,20 @@ class EventWise:
             del self._column_contents[old_name]
 
     def fragment(self, per_event_component, **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        per_event_component :
+            
+        **kwargs :
+            
+
+        Returns
+        -------
+
+        """
         if not isinstance(per_event_component, str):
             n_events = len(getattr(self, per_event_component[0]))
         else:
@@ -332,6 +531,22 @@ class EventWise:
         return self.split(lower_bounds, upper_bounds, per_event_component, part_name="fragment", **kwargs)
 
     def split_unfinished(self, per_event_component, unfinished_component, **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        per_event_component :
+            
+        unfinished_component :
+            
+        **kwargs :
+            
+
+        Returns
+        -------
+
+        """
         self.selected_index = None
         if not isinstance(per_event_component, str):
             n_events = len(getattr(self, per_event_component[0]))
@@ -356,6 +571,26 @@ class EventWise:
         return self.split(lower_bounds, upper_bounds, per_event_component, part_name="progress", **kwargs)
 
     def split(self, lower_bounds, upper_bounds, per_event_component="Energy", part_name="part", **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        lower_bounds :
+            
+        upper_bounds :
+            
+        per_event_component :
+             (Default value = "Energy")
+        part_name :
+             (Default value = "part")
+        **kwargs :
+            
+
+        Returns
+        -------
+
+        """
         # not thread safe....
         self.selected_index = None
         # decide where the fragments will go
@@ -428,6 +663,22 @@ class EventWise:
 
     @classmethod
     def recursive_combine(cls, dir_name, check_for_dups=False, del_framgents=True):
+        """
+        
+
+        Parameters
+        ----------
+        dir_name :
+            
+        check_for_dups :
+             (Default value = False)
+        del_framgents :
+             (Default value = True)
+
+        Returns
+        -------
+
+        """
         if dir_name.endswith('/'):
             dir_name = dir_name[:-1]
         root_dir = '/'.join(*dir_name.split('/')[:-1])
@@ -447,6 +698,26 @@ class EventWise:
 
     @classmethod
     def combine(cls, dir_name, save_base, fragments=None, check_for_dups=False, del_fragments=False):
+        """
+        
+
+        Parameters
+        ----------
+        dir_name :
+            
+        save_base :
+            
+        fragments :
+             (Default value = None)
+        check_for_dups :
+             (Default value = False)
+        del_fragments :
+             (Default value = False)
+
+        Returns
+        -------
+
+        """
         in_dir = os.listdir(dir_name)
         if fragments is None:
             fragments = [name for name in in_dir
@@ -504,6 +775,20 @@ class EventWise:
 
 
 def event_matcher(eventWise1, eventWise2):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise1 :
+        
+    eventWise2 :
+        
+
+    Returns
+    -------
+
+    """
     eventWise1.selected_index = None
     eventWise2.selected_index = None
     common_columns = set(eventWise1.columns).intersection(set(eventWise2.columns))
@@ -560,6 +845,20 @@ def event_matcher(eventWise1, eventWise2):
                 
 
 def recursive_distance(awkward1, awkward2):
+    """
+    
+
+    Parameters
+    ----------
+    awkward1 :
+        
+    awkward2 :
+        
+
+    Returns
+    -------
+
+    """
     distance = 0.
     iter1 = hasattr(awkward1, '__iter__')
     iter2 = hasattr(awkward2, '__iter__')
@@ -575,6 +874,20 @@ def recursive_distance(awkward1, awkward2):
 
 
 def add_rapidity(eventWise, base_name=''):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    base_name :
+         (Default value = '')
+
+    Returns
+    -------
+
+    """
     if base_name != '':
         if not base_name.endswith('_'):
             base_name += '_'
@@ -600,6 +913,20 @@ def add_rapidity(eventWise, base_name=''):
 
 
 def add_thetas(eventWise, basename=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    basename :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     contents = {}
     if basename is None:
         # find all the things with an angular property
@@ -648,6 +975,20 @@ def add_thetas(eventWise, basename=None):
 
 
 def add_pseudorapidity(eventWise, basename=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    basename :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     contents = {}
     if basename is None:
         # find all the things with theta
@@ -668,14 +1009,54 @@ def add_pseudorapidity(eventWise, basename=None):
 
 
 def ptpz_to_theta(pt_list, pz_list):
+    """
+    
+
+    Parameters
+    ----------
+    pt_list :
+        
+    pz_list :
+        
+
+    Returns
+    -------
+
+    """
     return np.arctan2(pt_list, pz_list)
 
 
 def pxpy_to_phipt(px_list, py_list):
+    """
+    
+
+    Parameters
+    ----------
+    px_list :
+        
+    py_list :
+        
+
+    Returns
+    -------
+
+    """
     return np.arctan2(py_list, px_list), np.sqrt(px_list**2 + py_list**2)
 
 
 def theta_to_pseudorapidity(theta_list):
+    """
+    
+
+    Parameters
+    ----------
+    theta_list :
+        
+
+    Returns
+    -------
+
+    """
     with np.errstate(invalid='ignore'):
         restricted_theta = np.minimum(theta_list, np.pi - theta_list)
     tan_restricted = np.tan(np.abs(restricted_theta)/2)
@@ -689,6 +1070,22 @@ def theta_to_pseudorapidity(theta_list):
 
 
 def ptpze_to_rapidity(pt_list, pz_list, e_list):
+    """
+    
+
+    Parameters
+    ----------
+    pt_list :
+        
+    pz_list :
+        
+    e_list :
+        
+
+    Returns
+    -------
+
+    """
     # can apply it to arrays of floats or floats, not ints
     rapidity = np.zeros_like(e_list)
     # deal with the infinite rapidities
@@ -711,6 +1108,20 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
 
 
 def add_PT(eventWise, basename=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    basename :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     contents = {}
     if basename is None:
         # find all the things with px, py
@@ -731,6 +1142,20 @@ def add_PT(eventWise, basename=None):
 
 
 def add_phi(eventWise, basename=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    basename :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     contents = {}
     if basename is None:
         # find all the things with px, py
@@ -751,7 +1176,7 @@ def add_phi(eventWise, basename=None):
 
 
 class RootReadout(EventWise):
-    """ Reads arbitary components from a root file created by Delphes """
+    """Reads arbitary components from a root file created by Delphes"""
     def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None, all_prefixed=False):
         # read the root file
         path = os.path.join(dir_name, save_name)
@@ -761,6 +1186,18 @@ class RootReadout(EventWise):
         else:
             # remove keys starting with lower case letters (they seem to be junk)
             def func(key):
+                """
+                
+
+                Parameters
+                ----------
+                key :
+                    
+
+                Returns
+                -------
+
+                """
                 return (key.decode().split('.', 1)[1][0]).isupper()
             self._key_selection_function = func
         if all_prefixed:
@@ -783,6 +1220,20 @@ class RootReadout(EventWise):
         super().__init__(dir_name, save_name, columns=self.columns, contents=self._column_contents)
 
     def add_component(self, component_name, key_prefix=''):
+        """
+        
+
+        Parameters
+        ----------
+        component_name :
+            
+        key_prefix :
+             (Default value = '')
+
+        Returns
+        -------
+
+        """
         if key_prefix != '':
             key_prefix = key_prefix[0].upper() + key_prefix[1:]
             # check it ends in an underscore
@@ -834,6 +1285,7 @@ class RootReadout(EventWise):
         self.columns += sorted(new_column_contents.keys())
 
     def _unpack_TRefs(self):
+        """ """
         for name in self.columns:
             is_tRef, converted = self._recursive_to_id(self._column_contents[name])
             if is_tRef:
@@ -866,6 +1318,18 @@ class RootReadout(EventWise):
                                                          shape_ref, depth=2)
 
     def _recursive_to_id(self, jagged_array):
+        """
+        
+
+        Parameters
+        ----------
+        jagged_array :
+            
+
+        Returns
+        -------
+
+        """
         results = []
         is_tRef = True  # an empty list is assumed to be a tRef list
         for item in jagged_array:
@@ -885,6 +1349,22 @@ class RootReadout(EventWise):
         return is_tRef, results
     
     def _reflect_references(self, reference_col, target_shape_col, depth=1):
+        """
+        
+
+        Parameters
+        ----------
+        reference_col :
+            
+        target_shape_col :
+            
+        depth :
+             (Default value = 1)
+
+        Returns
+        -------
+
+        """
         references = getattr(self, reference_col)
         target_shape = getattr(self, target_shape_col)
         reflection = []
@@ -906,9 +1386,18 @@ class RootReadout(EventWise):
         return reflection
 
     def _fix_Birr(self):
-        """ for reasons known unto god and some lonely coder 
+        """
+        for reasons known unto god and some lonely coder
             some momentum values are incorrectly set to zero
-            fix them """
+            fix them
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        """
         self.selected_index = None
         pt = self.PT
         birr = self.Birr
@@ -921,13 +1410,26 @@ class RootReadout(EventWise):
         self._column_contents["Birr"] = birr
 
     def _fix_Tower_NTimeHits(self):
+        """ """
         particles = self.Tower_Particles
         times_hit = apply_array_func(len, particles)
         self._column_contents["Tower_NTimeHits"] = times_hit
 
     def _insert_inf_rapidities(self):
-        """ we use np.inf not 999.9 for infinity"""
+        """we use np.inf not 999.9 for infinity"""
         def big_to_inf(arry):
+            """
+            
+
+            Parameters
+            ----------
+            arry :
+                
+
+            Returns
+            -------
+
+            """
             # we expect inf to be 999.9
             arry[np.nan_to_num(np.abs(arry))>999.] *= np.inf
             return arry
@@ -937,19 +1439,49 @@ class RootReadout(EventWise):
                 self._column_contents[name] = new_values
 
     def _remove_Track_Birr(self):
+        """ """
         name = "Track_Birr"
         self.columns.remove(name)
         del self._column_contents[name]
                 
     def write(self):
+        """ """
         raise NotImplementedError("This interface is read only")
 
     @classmethod
     def from_file(cls, path, component_name):
+        """
+        
+
+        Parameters
+        ----------
+        path :
+            
+        component_name :
+            
+
+        Returns
+        -------
+
+        """
         return cls(*os.path.split(path), component_name)
 
 
 def angular_distance(phi1, phi2):
+    """
+    
+
+    Parameters
+    ----------
+    phi1 :
+        
+    phi2 :
+        
+
+    Returns
+    -------
+
+    """
     angular_diffrence = np.abs(phi1 - phi2) % (2*np.pi)
     return np.minimum(angular_diffrence, 2*np.pi - angular_diffrence)
 

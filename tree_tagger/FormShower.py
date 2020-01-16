@@ -7,9 +7,17 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 class Shower:
-    """ Object to hold a shower of particles
+    """
+    Object to hold a shower of particles
     
     only keeps a list of the particle particle_idxs, parents, children and PDGparticle_idxs.
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+
     """
     def __init__(self, particle_idxs, parents, children, labels):
         self.amalgam = False
@@ -24,6 +32,18 @@ class Shower:
         return len(self.particle_idxs)
 
     def amalgamate(self, other_shower):
+        """
+        
+
+        Parameters
+        ----------
+        other_shower :
+            
+
+        Returns
+        -------
+
+        """
         self.amalgam = True
         total_particle_idxs = len(set(self.particle_idxs).union(set(other_shower.particle_idxs)))
         next_free_sIndex = len(self.particle_idxs)
@@ -46,12 +66,21 @@ class Shower:
 
     @property
     def n_particles(self):
-        """ int: the number of particles at all points of the shower """
+        """int: the number of particles at all points of the shower"""
         return len(self.particle_idxs)
 
     def _find_roots(self):
-        """ Demand the shower identify it's root.
-        This is stored as an internal variable. """
+        """
+        Demand the shower identify it's root.
+        This is stored as an internal variable.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        """
         root_idxs = get_roots(self.particle_idxs, self.parents)
         if not self.amalgam:
             assert len(root_idxs) == 1, "There should only be one root to a shower"
@@ -61,18 +90,23 @@ class Shower:
 
     @property
     def roots(self):
+        """ """
         msg = "changed to root_idxs or root_local_idxs for clarity"
         raise AttributeError(msg)
 
 
     def find_ranks(self):
-        """ Demand the shower identify the rang of each particle.
+        """
+        Demand the shower identify the rang of each particle.
         The rank of a particle is the length of the shortest distance to the root.
+
+        Parameters
+        ----------
 
         Returns
         -------
-        ranks : numpy array of ints
-            mimics the structure of the ID list
+
+        
         """
         # put the first rank in
         current_rank = self.root_local_idxs
@@ -102,13 +136,7 @@ class Shower:
         return ranks
 
     def graph(self):
-        """ Turn the shower into a dotgraph
-        
-        Returns
-        -------
-        dotgraph : DotGraph
-            an object that can produce a string that would be in a dot file for this graph
-        """
+        """Turn the shower into a dotgraph"""
         assert len(self.particle_idxs) == len(self.parents)
         assert len(self.particle_idxs) == len(self.children)
         assert len(self.particle_idxs) == len(self.labels)
@@ -116,13 +144,22 @@ class Shower:
 
     @property
     def outside_connections(self):
+        """ """
         raise AttributeError("you want outside_connection_idxs, but check you are useing particle_idx not local shower index")
 
     @property
     def outside_connection_idxs(self):
         """
         Function that anouches which particles have perantage from outside this shower
-        Includes the root """
+        Includes the root
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        """
         outside_idxs = []
         for idx, parents_here in zip(self.particle_idxs, self.parents):
             if not np.all([m in self.particle_idxs for m in parents_here]):
@@ -131,6 +168,7 @@ class Shower:
 
     @property
     def ends(self):
+        """ """
         _ends = []
         for i, children_here in enumerate(self.children):
             if np.all([child is None for child in children_here]):
@@ -139,29 +177,36 @@ class Shower:
 
     @property
     def flavour(self):
+        """ """
         flavours = self.labels[self.root_local_idxs]
         return '+'.join(flavours)
         
 
 def get_showers(eventWise, exclude_pids=[2212, 25, 35]):
-    """ From each root split the decendants into showers
+    """
+    From each root split the decendants into showers
     Each particle can only belong to a single shower.
 
     Parameters
     ----------
     databaseName : string
         Path and file name of database
-
     exclude_MCPparticle_idxs : list like of ints
         Pparticle_idxs that will be cut out before splitting into showers
-         (Default value = [2212, 25, 35])
-
+        (Default value = [2212, 25, 35])
+    eventWise :
+        
+    exclude_pids :
+         (Default value = [2212)
+    25 :
+        
+    35] :
+        
 
     Returns
     -------
-    showers : list of Showers
-        showers found in the database
 
+    
     """
     # remove any stop pids
     mask = [p not in exclude_pids for p in eventWise.PID]
@@ -209,24 +254,23 @@ def get_showers(eventWise, exclude_pids=[2212, 25, 35]):
 
 
 def get_roots(particle_ids, parents):
-    """From a list of particle particle_idxs and a list of parent particle_idxs determin root particles
-
+    """
+    From a list of particle particle_idxs and a list of parent particle_idxs determin root particles
+    
     A root particle is one whos parents are both from outside the particle list.
 
     Parameters
     ----------
     particle_ids : numpy array of ints
         The unique id of each particle
-        
     parents : 2D numpy array of ints
         Each row contains the particle_idxs of two parents of each particle in particle_idxs
         These can be none
 
     Returns
     -------
-    roots : numpy array of ints
-        the particle_idxs of the root particles
 
+    
     """
     roots = []
     for gid, parents_here in zip(particle_ids, parents):
@@ -241,30 +285,24 @@ def make_tree(particle_idxs, parents, children, labels):
     It's possible this is working better than I think it is ...
     Just the data was screwy
     Anyway it has been supassed by dot files.
-    
 
     Parameters
     ----------
     particle_idxs : numpy array of ints
         The unique id of each particle
-        
     parents : 2D numpy array of ints
         Each row contains the particle_idxs of two parents of each particle in particle_idxs
         These can be none
-        
     children : 2D numpy array of ints
         Each row contains the particle_idxs of two children of each particle in particle_idxs
         These can be none
-        
     labels : numpy array of ints
         the MC PDG ID of each particle in particle_idxs
-        
 
     Returns
     -------
-    graph : networkx Graph
-        The tree as a graph
 
+    
     """
     graph =  networkx.Graph()
     graph.add_nodes_from(particle_idxs)
@@ -287,19 +325,17 @@ def recursive_grab(seed_id, particle_idxs, relatives):
     ----------
     seedID : int
         root particle ID
-
     particle_idxs : numpy array of ints
         particle_idxs of all particles considered
-
     relatives : 2D numpy array of ints
         particle_idxs of relatives of all particles in the ID list
-
+    seed_id :
+        
 
     Returns
     -------
-    all_indices : list of ints
-        list of the indices of all particles found to be in the shower of the seedID
 
+    
     """
     try:
         index = np.where(particle_idxs == seed_id)[0][0]

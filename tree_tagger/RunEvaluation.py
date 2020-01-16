@@ -8,6 +8,22 @@ import torch
 
 
 def plot_rocs(runs, loglog=False, ax=None):
+    """
+    
+
+    Parameters
+    ----------
+    runs :
+        
+    loglog :
+         (Default value = False)
+    ax :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     #axis
     if ax is None:
         _, ax = plt.subplots()
@@ -37,6 +53,22 @@ def plot_rocs(runs, loglog=False, ax=None):
 
 
 def plot_hist(run, ax=None, log_y=True):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    ax :
+         (Default value = None)
+    log_y :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     outputs, truth = run.apply_to_test()
     if ax is None:
         _, ax = plt.subplots()
@@ -66,17 +98,33 @@ def plot_hist(run, ax=None, log_y=True):
 
 
 class ResponsePlot:
+    """ """
     def __init__(self, run):
         self.run = run
         data = []
         self.on_launch()
 
     def on_launch(self):
+        """ """
         # set up plots
         self.figure, self.ax = plt.subplots()
         self.test_input = self.run.get_test_input()
 
     def update(self, _, nets):
+        """
+        
+
+        Parameters
+        ----------
+        _ :
+            
+        nets :
+            
+
+        Returns
+        -------
+
+        """
         outputs, MC_truth = self.run.apply_to_test(nets, self.test_input)
         # update the plot
         plot_hist(outputs, MC_truth, self.ax)

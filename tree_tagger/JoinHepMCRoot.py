@@ -6,6 +6,20 @@ import numpy as np
 import awkward
 
 def marry(hepmc, root_particles):
+    """
+    
+
+    Parameters
+    ----------
+    hepmc :
+        
+    root_particles :
+        
+
+    Returns
+    -------
+
+    """
     if isinstance(root_particles, str):
         root_particles = Components.RootReadout(*os.path.split(root_particles),
                                                 ['Particle', 'Track', 'Tower'])

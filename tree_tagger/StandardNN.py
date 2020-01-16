@@ -10,6 +10,7 @@ from tree_tagger import CustomDataloader, CustomScheduler, CustomSampler, Traini
 # from torch.nn.utils import clip_grad_norm  this looks useful!
 
 class SimpleLinear(nn.Sequential):
+    """ """
     def __init__(self, device, num_jet_feaures, latent_dimensions=100, num_classes=1, layers=4):
         super().__init__()
         self.device = device
@@ -32,15 +33,31 @@ class SimpleLinear(nn.Sequential):
         super().__init__(*process)
     
     def get_weights(self):
+        """ """
         weights = [layer.weight.data for layer in self.all_layers]
         return weights
     
     def get_bias(self):
+        """ """
         bias = [layer.bias.data for layer in self.all_layers]
         return bias
 
 
 def begin_training(run, viewer=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    viewer :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
     # Device configuration
@@ -55,6 +72,22 @@ def begin_training(run, viewer=None):
     criterion = nn.BCEWithLogitsLoss()
     # create the lossers (which get the loss)
     def train_losser(data, nets, device):
+        """
+        
+
+        Parameters
+        ----------
+        data :
+            
+        nets :
+            
+        device :
+            
+
+        Returns
+        -------
+
+        """
         truth, root_node = data
         truth = torch.DoubleTensor(truth).to(device)
         output = nets[0].forward(root_node)
@@ -63,6 +96,24 @@ def begin_training(run, viewer=None):
 
 
     def batch_losser(events_data, nets, device, losser):
+        """
+        
+
+        Parameters
+        ----------
+        events_data :
+            
+        nets :
+            
+        device :
+            
+        losser :
+            
+
+        Returns
+        -------
+
+        """
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
     
@@ -78,6 +129,18 @@ def begin_training(run, viewer=None):
         net = net.to(device)
         # Experimental!
         def init_weights(m):
+            """
+            
+
+            Parameters
+            ----------
+            m :
+                
+
+            Returns
+            -------
+
+            """
             if type(m) == nn.Linear:
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.5)
                 m.bias.data.fill_(0.01)
