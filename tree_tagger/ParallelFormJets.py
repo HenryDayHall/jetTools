@@ -1,4 +1,4 @@
-from tree_tagger import FormJets, Components, InputTools
+from tree_tagger import FormJets, Components, InputTools, CompareClusters
 import csv
 import tabulate
 import time
@@ -115,56 +115,6 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     return all_paths
 
 
-def display_grid(*eventWises, jet_name=None):
-    assert eventWises, "Must supply at least one eventWise"
-    names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
-             "SpectralJet": FormJets.Spectral}
-    if jet_name is None:
-        jet_name = InputTools.list_complete("Which jet? ", names.keys()).strip()
-    default_params = names[jet_name].param_list
-    param_list = sorted(default_params.keys())
-    all_params = {}
-    for eventWise in eventWises:
-        matching_names = {name.split('_', 1)[0] for name in eventWise.columns
-                          if name.startswith(jet_name)}
-        for name in matching_names:
-            if name in all_params:
-                print(f"Name {name} appears in multiple eventWise")
-            else:
-                all_params[name] = FormJets.get_jet_params(eventWise, name)
-    print(f"Params = {param_list}")
-    horizontal_param = InputTools.list_complete("Horizontal param? ", param_list).strip()
-    vertical_param = InputTools.list_complete("Vertical param? ", param_list).strip()
-    horizontal_bins = sorted({p[horizontal_param] for p in all_params.values()})
-    if isinstance(horizontal_bins[0], str):
-        def get_h_index(value):
-            return horizontal_bins.index(value)
-    else:
-        horizontal_bins_a = np.array(horizontal_bins)
-        def get_h_index(value):
-            return np.argmin(np.abs(horizontal_bins_a - value))
-    vertical_bins = sorted({p[vertical_param] for p in all_params.values()})
-    if isinstance(vertical_bins[0], str):
-        def get_v_index(value):
-            return vertical_bins.index(value)
-    else:
-        vertical_bins_a = np.array(vertical_bins)
-        def get_v_index(value):
-            return np.argmin(np.abs(vertical_bins_a - value))
-    grid = [[[] for _ in horizontal_bins] for _ in vertical_bins]
-    for name, values in all_params.items():
-        v_index = get_v_index(values[vertical_param])
-        h_index = get_h_index(values[horizontal_param])
-        grid[v_index][h_index].append(name)
-    table = [[value] + [len(entry) for entry in row] for value, row in zip(vertical_bins, grid)]
-    first_row = [["\\".join([vertical_param, horizontal_param])] + horizontal_bins]
-    table = first_row + table
-    str_table = tabulate.tabulate(table, headers="firstrow")
-    print(str_table)
-    if InputTools.yesNo_question("Again? "):
-        display_grid(*eventWises)
-
-
 def generate_pool(eventWise_path, multiapply_function, jet_params, leave_one_free=False):
     batch_size = 500
     # decide on a stop condition
@@ -263,23 +213,23 @@ class Records:
 if __name__ == '__main__':
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     record_path = "records.csv"
-    records = Records(record_path)
+    records = CompareClusters.Records(record_path)
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    #DeltaR = np.linspace(0.2, 1., 5)
-    #exponents = [-1, 0, 1]
-    #for exponent in exponents:
-    #    for dR in DeltaR:
-    #        print(f"Exponent {exponent}")
-    #        print(f"DeltaR {dR}")
-    #        jet_class = "HomeJet"
-    #        jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
-    #        jet_id = records.append(jet_class, jet_params)
-    #        jet_params["jet_name"] = jet_class + str(jet_id)
-    #        generate_pool(eventWise_path, 'Traditional', jet_params, True)
-    #records.write()
-    DeltaR = np.linspace(0.05, 0.4, 8)
+    DeltaR = np.linspace(0.2, 1., 5)
+    exponents = [-1, 0, 1]
+    for exponent in exponents:
+        for dR in DeltaR:
+            print(f"Exponent {exponent}")
+            print(f"DeltaR {dR}")
+            jet_class = "HomeJet"
+            jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
+            jet_id = records.append(jet_class, jet_params)
+            jet_params["jet_name"] = jet_class + str(jet_id)
+            generate_pool(eventWise_path, 'Traditional', jet_params, True)
+    records.write()
+    DeltaR = np.linspace(0.05, 0.4, 5)
     exponents = [-1, 0, 1]
     NumEigenvectors = [4, 8, np.inf]
     for exponent in exponents:
@@ -288,15 +238,19 @@ if __name__ == '__main__':
                 print(f"Exponent {exponent}")
                 print(f"DeltaR {dR}")
                 print(f"NumEigenvectors {n_eig}")
-                #jet_class = "SpectralMeanJet"
-                #jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-                #                  NumEigenvectors=n_eig)
-                #jet_id = records.append(jet_class, jet_params)
-                #jet_params["jet_name"] = jet_class + str(jet_id)
-                #generate_pool(eventWise_path, 'SpectralMean', jet_params, True)
+                jet_class = "SpectralMeanJet"
+                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                  NumEigenvectors=n_eig,
+                                  Laplacien='unnormalised',
+                                  AffinityType='linear')
+                jet_id = records.append(jet_class, jet_params)
+                jet_params["jet_name"] = jet_class + str(jet_id)
+                generate_pool(eventWise_path, 'SpectralMean', jet_params, True)
                 jet_class = "SpectralJet"
                 jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-                                  NumEigenvectors=n_eig)
+                                  NumEigenvectors=n_eig,
+                                  Laplacien='unnormalised',
+                                  AffinityType='linear')
                 jet_id = records.append(jet_class, jet_params)
                 jet_params["jet_name"] = jet_class + str(jet_id)
                 generate_pool(eventWise_path, 'Spectral', jet_params, True)

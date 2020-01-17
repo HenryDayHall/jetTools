@@ -1,10 +1,14 @@
 """ compare two jet clustering techniques """
+import tabulate
+import awkward
+import ast
+import csv
 import os
 import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools
+from tree_tagger import Components, TrueTag, InputTools, FormJets
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -154,18 +158,20 @@ def fit_all_to_tags(eventWise, jet_name, silent=False):
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     tag_coords = []
     jet_coords = []
+    n_jets_formed = []
     for event_n in range(n_events):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         n_jets = len(getattr(eventWise, jet_name + "_Energy"))
+        n_jets_formed.append(n_jets)
         if n_jets > 0:
             tag_c, jet_c = fit_to_tags(eventWise, jet_name, tag_pids=tag_pids)
             tag_coords.append(tag_c)
             jet_coords.append(jet_c)
     tag_coords = np.vstack(tag_coords)
     jet_coords = np.vstack(jet_coords)
-    return tag_coords, jet_coords
+    return tag_coords, jet_coords, n_jets_formed
 
 
 def score_rank(tag_coords, jet_coords):
@@ -177,88 +183,27 @@ def score_rank(tag_coords, jet_coords):
     return scores, uncerts
 
 
-def unpack_name(name):
-    if name.startswith("FastJet"):
-        start = "FastJetDeltaR"
-        name = name[len(start):]
-        num_eig = np.nan
-    elif name.startswith("HomeJet"):
-        start = "HomeJetDeltaR"
-        name = name[len(start):]
-        num_eig = np.nan
-    elif name.startswith("SpectralJet"):
-        start = "SpectralJetNumEig"
-        name = name[len(start):]
-        num_eig, name = name.split("DeltaR")
-        num_eig = int(num_eig)
-    # find out how long the deltaR extends
-    char_num = 0
-    while name[char_num] == 'p' or name[char_num].isdigit():
-        char_num += 1
-    deltaR = float(name[:char_num].replace('p', '.'))
-    exponent = name[char_num:]
-    return num_eig, exponent, deltaR
-
-
-
-def create_axes_data(eventWise, axes_data=None):
-    if axes_data is None:
-        axes_data = {}
-    else:
-        axes_data = {name: axes_data[name].tolist() for name in axes_data}
-    jet_names = [name.split('_', 1)[0] for name in eventWise.columns
-                 if "Jet" in name and "JetInput" not in name]
-    jet_names = sorted(set(jet_names))
-    num_names = len(jet_names)
-    for i, name in enumerate(jet_names):
-        if i % 2 == 0:
-            print(f"{100*i/num_names}%", end='\r', flush=True)
-        if i % 30 == 0:
-            # delete and reread the eventWise, this should free up some ram
-            # because the eventWise is lazy loading
-            path = os.path.join(eventWise.dir_name, eventWise.save_name)
-            del eventWise
-            eventWise = Components.EventWise.from_file(path)
-        num_eig, exponent, deltaR = unpack_name(name)
-        if exponent not in axes_data:
-            axes_data[exponent] = {"num eigenvectors": [], "deltaR":[], "scores":[], "uncert(score)":[],
-                                   "symmetric difference":[], "std(symmetric difference)":[]}
-        else:
-            idx = [i for i, (dr, ne) in 
-                   enumerate(zip(axes_data[exponent]["deltaR"], axes_data[exponent]["num eigenvectors"]))
-                   if dr == deltaR and ne == num_eig]
-            if len(idx) == 1:
-                continue  # already done this
-            elif len(idx) > 1:
-                raise ValueError(f"Multiple occurances of {num_eig}, {deltaR}, {exponent}")
-        num_eig, exponent, deltaR = unpack_name(name)
-        axes_data[exponent]["num eigenvectors"].append(num_eig)
-        axes_data[exponent]["deltaR"].append(deltaR)
-        tag_coords, jet_coords = fit_all_to_tags(eventWise, name, silent=True)
-        scores, uncerts = score_rank(tag_coords, jet_coords)
-        axes_data[exponent]["scores"].append(scores)
-        axes_data[exponent]["uncert(score)"].append(uncerts)
-        syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
-        # but the symetric difernce for phi should be angular
-        syd[:, 2] = np.abs(Components.angular_distance(tag_coords[:, 2], jet_coords[:, 2]))/np.pi
-        axes_data[exponent]["symmetric difference"].append(np.mean(syd, axis=0))
-        axes_data[exponent]["std(symmetric difference)"].append(np.std(syd, axis=0))
-    axes_data = {ax_name:{part: np.array(axes_data[ax_name][part]) for part in axes_data[ax_name]} for ax_name in axes_data}
-    return axes_data 
-
-
-def comparison_grid1(axes_data, rapidity=True, pt=True, phi=True):
-    axis_names = sorted(axes_data.keys())
-    axis_names1 = [n for n in axis_names if len(n) < 4]
-    fig, axes = plt.subplots(len(axis_names1), 2, sharex=True)
+def comparison_grid1(records, rapidity=True, pt=True, phi=True):
+    # find everthing with an exponent multiplier nearly at one of there three
+    epsilon = 0.001
+    # we only want to look at the content that has been scored
+    content = records.typed_array()[records.scored]
+    exp_mul = content[:, content.indices["ExponentMultiplier"]]
+    KTmask = np.abs(exp_mul - 1) < epsilon
+    CAmask = np.abs(exp_mul) < epsilon
+    AKTmask = np.abs(exp_mul + 1) < epsilon
+    axis_dict = {"AKT": AKTmask, "CA": CAmask, "KT": KTmask}
+    
+    fig, axes = plt.subplots(len(axis_dict), 2, sharex=True)
     if len(axes.shape) < 2:
         axes = [axes]
-    for i, (ax_pair, ax_name) in enumerate(zip(axes, axis_names1)):
+    for ax_name, ax_pair in zip(axis_dict, axes):
+        mask = axis_dict[ax_name]
         ax1, ax2 = ax_pair
         ax1.set_xlabel("$\\Delta R$")
         ax1.set_ylabel(f"{ax_name} rank score")
-        xs = axes_data[ax_name]["deltaR"]
-        num_eig = axes_data[ax_name]["num eigenvectors"]
+        xs = content[mask, records.indices["DeltaR"]]
+        num_eig = content[mask, records.indices["NumEigenvectors"]]
         if len(set(num_eig)) > 1:
             max_eig = np.nanmax(num_eig)
             colour_map = matplotlib.cm.get_cmap('viridis')
@@ -271,24 +216,24 @@ def comparison_grid1(axes_data, rapidity=True, pt=True, phi=True):
         pt_marker = '^'
         phi_marker = 'o'
         if pt:
-            ax1.scatter(xs, axes_data[ax_name]["scores"][:, 0],
+            ax1.scatter(xs, content[mask, records.indices["score(PT)"]],
                          marker=pt_marker, c=colours, label="PT")
         if rapidity:
-            ax1.scatter(xs, axes_data[ax_name]["scores"][:, 1], 
+            ax1.scatter(xs, content[mask, records.indices["score(Rapidity)"]],
                          marker=rap_marker, c=colours, label="Rapidity")
         ax2.set_xlabel("$\\Delta R$")
         ax2.set_ylabel("Symmetrised % diff")
         if pt:
-            ax2.scatter(xs, axes_data[ax_name]["symmetric difference"][:, 0]*100,
+            ax2.scatter(xs, content[mask, records.indices["symmetric_diff(PT)"]]*100, 
                         marker=pt_marker, c=colours, label="PT")
         if rapidity:
-            ax2.scatter(xs, axes_data[ax_name]["symmetric difference"][:, 1]*100,
+            ax2.scatter(xs, content[mask, records.indices["symmetric_diff(Rapidity)"]]*100, 
                         marker=rap_marker, c=colours, label="Rapidity")
         if phi:
-            ax2.scatter(xs, axes_data[ax_name]["symmetric difference"][:, 2]*100,
+            ax2.scatter(xs, content[mask, records.indices["symmetric_diff(Phi)"]]*100, 
                         marker=phi_marker, c=colours, label="Phi")
         ax2.legend()
-        ax2.set_ylim(0, max(100, np.max(axes_data[ax_name]["symmetric difference"][:, [pt, rapidity, phi]])))
+        ax2.set_ylim(0, max(100, ax2.get_ylim()[1]))
         if colours is not None:
             norm = matplotlib.colors.Normalize(vmin=0, vmax=max_eig)
             mapable = matplotlib.cm.ScalarMappable(norm=norm, cmap=colour_map)
@@ -299,62 +244,55 @@ def comparison_grid1(axes_data, rapidity=True, pt=True, phi=True):
     return axes_data
 
 
-def comparison_grid2(axes_data, rapidity=True, pt=True, phi=True):
-    axis_names = sorted(axes_data.keys())
-    exp_values = []
-    num_eig = []
-    score = []
-    syd = []
-    for name in axis_names:
-        mask = np.abs(axes_data[name]["deltaR"] - 0.4) < 0.001
-        eig_here = axes_data[name]["num eigenvectors"][mask]
-        n_entries = len(eig_here)
-        num_eig += eig_here.tolist()
-        score.append(axes_data[name]["scores"][mask])
-        syd.append(axes_data[name]["symmetric difference"][mask])
-        sign = 0 if name.endswith("CA") else (-1 if name.startswith("A") else 1)
-        num = ''.join([c for c in name if c.isdigit()])
-        if num == '':
-            num = 1.
-        else:
-            num = 0.1*float(num)
-        exp_values += [2*sign*num]*n_entries
-    score = np.vstack(score)
-    syd = np.vstack(syd)
+def comparison_grid2(records, rapidity=True, pt=True, phi=True):
+    # we only want to look at the content that has been scored
+    content = records.typed_array()[records.scored]
+    mask = np.abs(content[:, records.indices["DeltaR"]] - 0.4) < 0.001
+    num_eig = content[mask, records.indices["NumEigenvectors"]]
+    exp_values = 2*content[mask, records.indices["ExponentMultiplier"]]
+    scorePT = content[mask, records.indices["score(PT)"]]
+    scoreRapidity = content[mask, records.indices["score(Rapidity)"]]
+    sydPT = content[mask, records.indices["symmetric_diff(PT)"]]
+    sydRapidity = content[mask, records.indices["symmetric_diff(Rapidity)"]]
+    sydPhi = content[mask, records.indices["symmetric_diff(Phi)"]]
     fig, (ax1, ax2) = plt.subplots(1, 2, sharex=True)
     ax1.set_xlabel("exponent")
     ax1.set_ylabel(f"rank score")
     xs = exp_values
     if len(set(num_eig)) > 1:
-        max_eig = np.nanmax(num_eig)
+        is_inf = np.inf == num_eig
+        max_eig = np.nanmax(num_eig[~is_inf])
         colour_map = matplotlib.cm.get_cmap('viridis')
-        colours = colour_map(num_eig/max_eig)
+        colours = colour_map(num_eig/max_eig + np.any(is_inf))
         colours = [tuple(c) for c in colours]
         colour_ticks = ["No spectral"] + [str(c+1) for c in range(int(max_eig))]
+        if np.any(is_inf):
+            colour_ticks += ["Max"]
+            num_eig[is_inf] = max_eig + 1
     else:
         colours = None
     rap_marker = 'v'
     pt_marker = '^'
     phi_marker = 'o'
     if pt:
-        ax1.scatter(xs, score[:, 0],
+        ax1.scatter(xs, scorePT,
                      marker=pt_marker, c=colours, label="PT")
     if rapidity:
-        ax1.scatter(xs, score[:, 1], 
+        ax1.scatter(xs, scoreRapidity,
                      marker=rap_marker, c=colours, label="Rapidity")
     ax2.set_xlabel("exponent")
     ax2.set_ylabel("Symmetrised % diff")
     if pt:
-        ax2.scatter(xs, syd[:, 0]*100,
+        ax2.scatter(xs, sydPT*100,
                     marker=pt_marker, c=colours, label="PT")
     if rapidity:
-        ax2.scatter(xs, syd[:, 1]*100,
+        ax2.scatter(xs, sydRapidity*100,
                     marker=rap_marker, c=colours, label="Rapidity")
     if phi:
-        ax2.scatter(xs, syd[:, 2]*100,
+        ax2.scatter(xs, sydPhi*100,
                     marker=phi_marker, c=colours, label="Phi")
     ax2.legend()
-    ax2.set_ylim(0, max(100, np.max(syd[:, [pt, rapidity, phi]])))
+    ax2.set_ylim(0, max(100, np.max(np.concatenate((sydPT, sydRapidity, sydPhi)))))
     if colours is not None:
         norm = matplotlib.colors.Normalize(vmin=0, vmax=max_eig)
         mapable = matplotlib.cm.ScalarMappable(norm=norm, cmap=colour_map)
@@ -365,35 +303,266 @@ def comparison_grid2(axes_data, rapidity=True, pt=True, phi=True):
     return axes_data
 
 
-if __name__ == '__main__':
-    path = InputTools.get_file_name("Where is the eventwise or axes_data? ", '.awkd')
-    if path.endswith(".awkd"):
-        path2 = path[:-5] + ".pkl"
-        if os.path.exists(path2):
-            with open(path2, 'rb') as pickle_file:
-                axes_data = pickle.load(pickle_file)
-        else:
-            axes_data = None
-        axes_data = create_axes_data(Components.EventWise.from_file(path), axes_data)
-        with open(path2, 'wb') as pickle_file:
-            pickle.dump(axes_data, pickle_file)
+def calculated_grid(records, jet_name=None):
+    names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
+             "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean}
+    if jet_name is None:
+        jet_name = InputTools.list_complete("Which jet? ", names.keys()).strip()
+    default_params = names[jet_name].param_list
+    param_list = sorted(default_params.keys())
+    # we only want to look at the content that has been scored
+    content = records.typed_array()[records.scored]
+    catigories = {name: set(content[:, records.indices[name]])
+                  for name in param_list}
+    print("Parameter: num_catigories")
+    for name in catigories:
+        print(f"{name}: {len(catigories[name])}")
+    horizontal_param = InputTools.list_complete("Horizontal param? ", param_list).strip()
+    vertical_param = InputTools.list_complete("Vertical param? ", param_list).strip()
+    horizontal_bins = sorted(catigories[horizontal_param])
+    if isinstance(horizontal_bins[0], str):
+        def get_h_index(value):
+            return horizontal_bins.index(value)
     else:
-        with open(path, 'rb') as pickle_file:
-            axes_data = pickle.load(pickle_file)
-        if InputTools.yesNo_question("Add another? "):
-            path = InputTools.get_file_name("Where is the eventwise or axes_data? ", '.awkd')
-            with open(path, 'rb') as pickle_file:
-                axes_data2 = pickle.load(pickle_file)
-            for name in axes_data2:
-                if (name not in axes_data) or (len(axes_data[name]) < len(axes_data2[name])):
-                    axes_data[name] = axes_data2[name]
-    go = True
-    while go:
-        rap = InputTools.yesNo_question("Rapidity? ")
-        phi = InputTools.yesNo_question("Phi? ")
-        pt = InputTools.yesNo_question("PT? ")
-        comparison_grid1(axes_data=axes_data, pt=pt, rapidity=rap, phi=phi)
-        comparison_grid2(axes_data=axes_data, pt=pt, rapidity=rap, phi=phi)
-        go = InputTools.yesNo_question("Again? ")
+        horizontal_bins_a = np.array(horizontal_bins)
+        def get_h_index(value):
+            return np.argmin(np.abs(horizontal_bins_a - value))
+    vertical_bins = sorted(catigories[vertical_param])
+    if isinstance(vertical_bins[0], str):
+        def get_v_index(value):
+            return vertical_bins.index(value)
+    else:
+        vertical_bins_a = np.array(vertical_bins)
+        def get_v_index(value):
+            return np.argmin(np.abs(vertical_bins_a - value))
+    grid = [[[] for _ in horizontal_bins] for _ in vertical_bins]
+    h_column = records.indices[horizontal_param]
+    v_column = records.indices[vertical_param]
+    for row in content:
+        id_num = row[0]
+        v_index = get_v_index(row[h_column])
+        h_index = get_h_index(row[v_column])
+        grid[v_index][h_index].append(id_num)
+    table = [[value] + [len(entry) for entry in row] for value, row in zip(vertical_bins, grid)]
+    first_row = [["\\".join([vertical_param, horizontal_param])] + horizontal_bins]
+    table = first_row + table
+    str_table = tabulate.tabulate(table, headers="firstrow")
+    print(str_table)
+    if InputTools.yesNo_question("Again? "):
+        calculated_grid(records)
 
+
+class Records:
+    delimiter = '\t'
+    evaluation_columns = ("score(PT)", "score_uncert(PT)", "symmetric_diff(PT)", "symdiff_std(PT)",
+                          "score(Rapidity)", "score_uncert(Rapidity)", "symmetric_diff(Rapidity)", "symdiff_std(Rapidity)",
+                          "score(Phi)", "score_uncert(Phi)", "symmetric_diff(Phi)", "symdiff_std(Phi)",
+                          "mean_njets", "std_njets")
+    def __init__(self, file_path):
+        self.file_path = file_path
+        if os.path.exists(self.file_path):
+            with open(self.file_path, 'r') as existing:
+                reader = csv.reader(existing, delimiter=self.delimiter)
+                header = next(reader)
+                assert header[1] == 'jet_class'
+                self.param_names = header[2:]
+                self.indices = {name: i+2 for i, name in enumerate(self.param_names)}
+                self.content = []
+                for line in reader:
+                    self.content.append(line)
+        else:
+            with open(self.file_path, 'w') as new:
+                writer = csv.writer(new, delimiter=self.delimiter)
+                header = ['id', 'jet_class']
+                writer.writerow(header)
+            self.content = []
+            self.param_name = []
+            self.indices = {}
+        self.next_uid = int(np.max(self.jet_ids, initial=0)) + 1
+        self.uid_length = len(str(self.next_uid))
+
+    def write(self):
+        with open(self.file_path, 'w') as overwrite:
+            writer = csv.writer(overwrite, delimiter=self.delimiter)
+            all_rows = [['', 'jet_class'] + self.param_names] + self.content
+            writer.writerows(all_rows)
+
+    def typed_array(self):
+        """Convert the contents to an array of apropreate type,
+           fill blanks with default"""
+        jet_classes = {"HomeJet": FormJets.Traditional,
+                       "FastJet": FormJets.Traditional,
+                       "SpectralJet": FormJets.Spectral,
+                       "SpectralMeanJet": FormJets.SpectralMean}
+        typed_content = []
+        for row in self.content:
+            id_num = int(row[0])
+            jet_class = row[1]
+            typed_content.append([id_num, jet_class])
+            for param_name, entry in zip(self.param_names, row[2:]):
+                if entry == '':
+                    # set to the default
+                    try:
+                        typed = jet_classes[jet_class].param_list[param_name]
+                    except KeyError:
+                        typed = None
+                elif entry == 'inf':
+                    typed = np.inf
+                else:
+                    try:
+                        typed = ast.literal_eval(entry)
+                    except ValueError:
+                        # it's probably a string
+                        typed = entry
+                typed_content[-1].append(typed)
+        # got to be an awkward array because numpy hates mixed types
+        return awkward.fromiter(typed_content)
+
+    @property
+    def jet_ids(self):
+        ids = [int(row[0]) for row in self.content]
+        return ids
+
+    @property
+    def scored(self):
+        if 'mean_njets' not in self.param_names:
+            return np.full(len(self.content), False)
+        scored = [row[self.indices["mean_njets"]] not in ('', None)
+                  for row in self.content]
+        return np.array(scored)
+
+    def _add_param(self, *new_params):
+        new_params = [n for n in new_params if n not in self.param_names]
+        self.param_names += new_params
+        self.indices = {name: i+2 for i, name in enumerate(self.param_names)}
+        new_blanks = ['' for _ in new_params]
+        self.content = [row + new_blanks for row in self.content]
+
+    def append(self, jet_class, param_dict, existing_idx=None, write_now=True):
+        """ gives the new jet a unique ID and returns that value"""
+        if existing_idx is None:
+            chosen_id = self.next_uid
+        else:
+            assert existing_idx not in self.jet_ids
+            chosen_id = existing_idx
+        new_row = [f"{chosen_id:0{self.uid_length}d}", jet_class]
+        new_params = list(set(param_dict.keys()) - set(self.param_names))
+        self._add_param(*new_params)
+        for name in self.param_names:
+            new_row.append(str(param_dict.get(name, '')))
+        # write to disk
+        if write_now:
+            with open(self.file_path, 'a') as existing:
+                writer = csv.writer(existing, delimiter=self.delimiter)
+                writer.writerow(new_row)
+        # update content in memeory
+        self.content.append(new_row)
+        self.next_uid += 1
+        self.uid_length = len(str(self.next_uid))
+        return chosen_id
+
+    def scan(self, eventWise):
+        eventWise.selected_index = None
+        jet_names = {c.split('_', 1)[0] for c in eventWise.columns
+                     if (not c.startswith('JetInputs')) and 'Jet' in c}
+        existing = {}  # dicts like  "jet_name": int(row_idx)
+        added = {}
+        starting_ids = self.jet_ids
+        num_events = len(eventWise.JetInputs_Energy)
+        content = self.typed_array()
+        for name in jet_names:
+            try:
+                num_start = next(i for i, l in enumerate(name) if l.isdigit())
+            except StopIteration:
+                print(f"{name} does not have an id number, may not be a jet")
+                continue
+            jet_params = FormJets.get_jet_params(eventWise, name)
+            jet_class = name[:num_start]
+            id_num = int(name[num_start:])
+            if id_num in starting_ids:
+                idx = starting_ids.index(id_num)
+                row = content[idx]
+                # verify the hyperparameters
+                match = True  # set match here incase jet has no params
+                for p_name in jet_params:
+                    if p_name not in self.indices:
+                        # this parameter wasn't recorded, add it
+                        self._add_param(p_name)
+                        # the row length will have changed
+                        self.content[idx][self.indices[p_name]] = jet_params[p_name]
+                        content = self.typed_array()
+                        continue  # no sense in checking it
+                    try:
+                        match = np.allclose(jet_params[p_name], row[self.indices[p_name]])
+                    except TypeError:
+                        match = jet_params[p_name] == row[self.indices[p_name]]
+                    if not match:
+                        break
+                if match:
+                    # check if it's actually been clustered
+                    any_col = next(c for c in eventWise.columns if c.startswith(name))
+                    num_found = len(getattr(eventWise, any_col))
+                    if num_found == num_events:  # perfect
+                        existing[name] = idx
+                    elif num_found < num_events:  # incomplete
+                        self._add_param("incomplete")
+                        self.content[idx][self.indices["incomplete"]] = True
+                    elif num_found > num_events:  # wtf
+                        raise ValueError(f"Jet {name} has more calculated events than there are jet input events")
+                else:
+                    self._add_param("match_error")
+                    self.content[idx][self.indices["match_error"]] = True
+            else:  # this ID not found in jets
+                self.append(jet_class, jet_params, existing_idx=id_num, write_now=False)
+                added[name] = len(self.content) - 1
+        self.write()
+        return existing, added
+
+    def score(self, eventWise):
+        self._add_param(*self.evaluation_columns)
+        print("Scanning eventWise")
+        existing, added = self.scan(eventWise)
+        all_jets = {**existing, **added}
+        num_names = len(all_jets)
+        print(f"Found  {num_names}")
+        print("Making a continue file, delete it to halt the evauation")
+        open("continue", 'w').close()
+        scored = self.scored
+        for i, name in enumerate(all_jets):
+            if i % 2 == 0:
+                print(f"{100*i/num_names}%", end='\r', flush=True)
+                if not os.path.exists('continue'):
+                    break
+                if i % 30 == 0:
+                    self.write()
+                    # delete and reread the eventWise, this should free up some ram
+                    # because the eventWise is lazy loading
+                    path = os.path.join(eventWise.dir_name, eventWise.save_name)
+                    del eventWise
+                    eventWise = Components.EventWise.from_file(path)
+            row = self.content[all_jets[name]]
+            if not scored[i]:
+                tag_coords, jet_coords, n_jets_formed = fit_all_to_tags(eventWise, name, silent=True)
+                row[self.indices["mean_njets"]] = np.mean(n_jets_formed)
+                row[self.indices["std_njets"]] = np.std(n_jets_formed)
+                scores, uncerts = score_rank(tag_coords, jet_coords)
+                row[self.indices["score(PT)"]] = scores[0]
+                row[self.indices["score_uncert(PT)"]] = uncerts[0]
+                row[self.indices["score(Rapidity)"]] = scores[1]
+                row[self.indices["score_uncert(Rapidity)"]] = uncerts[1]
+                row[self.indices["score(Phi)"]] = scores[2]
+                row[self.indices["score_uncert(Phi)"]] = uncerts[2]
+                syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
+                # but the symetric difernce for phi should be angular
+                row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[0])
+                row[self.indices["symdiff_std(PT)"]] = np.std(syd[0])
+                row[self.indices["symmetric_diff(Rapidity)"]] = np.mean(syd[1])
+                row[self.indices["symdiff_std(Rapidity)"]] = np.std(syd[1])
+                row[self.indices["symmetric_diff(Phi)"]] = np.mean(syd[2])
+                row[self.indices["symdiff_std(Phi)"]] = np.std(syd[2])
+        self.write()
+
+
+if __name__ == '__main__':
+    pass
 
