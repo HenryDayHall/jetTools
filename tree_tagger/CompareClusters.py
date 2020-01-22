@@ -14,7 +14,9 @@ import sklearn.preprocessing
 from matplotlib import pyplot as plt
 import numpy as np
 import scipy.stats
-import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting
+import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting, bokeh.transform
+import socket
+
 
 def rand_score(eventWise, jet_name1, jet_name2):
     """
@@ -781,24 +783,72 @@ def soft_generic_equality(a, b):
             return False  # diferent lengths
 
 
-def parameter_comparison(records, y_name="score(PT)", c_name="mean_njets"):
-    columns = ['jet_type'] + records.param_names
+def select_improvements(records, min_jets=0.5,
+                        metrics=["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]):
+    metric_cols = [records.indices[metric] for metric in metrics]
+    invert_factor = np.fromiter((1 - 2*("symmetric_diff" in name) for name in metrics),
+                                dtype=float)
+    n_jets_col = records.indices['mean_njets']
+    array = records.typed_array()
+    n_jets = array[:, n_jets_col].astype(float)
+    sufficient_jets = n_jets > min_jets
+    array = array[np.logical_and(records.scored, sufficient_jets)]
+    metric_data = (array[:, metric_cols]*invert_factor).T
+    st()
+    improved_selection = np.full(len(array), False, dtype=bool)
+    relax = 1.
+    delta = 0.1
+    for metric in metrics:
+        best_home = records.best(metric, jet_class="HomeJet", start_mask=sufficient_jets,
+                                 return_cols=metric_cols)
+        best_home *= invert_factor*relax
+        improved = np.logical_and.reduce([col > best for col, best in
+                                          zip(metric_data, best_home)])
+        improved_selection = np.logical_or(improved_selection, improved)
+    return array[improved_selection]
+
+
+def parameter_comparison(records, c_name="mean_njets", cuts=True):
     array = records.typed_array()[records.scored]
-    y_col = array[:, columns.index(y_name) + 1].astype(float)
-    c_col = array[:, columns.index(c_name) + 1].astype(float)
-    mapper = bokeh.models.LinearColorMapper(palette=bokeh.palettes.Plasma10,
-                                            low=min(c_col), high=max(c_col))
+    col_names = ["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
+    y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names}
+    col_names = ["cumulative"] + col_names
+    y_cols["cumulative"] = sum(col*(1-2*("symmetric_diff" in name))
+                               for name, col in y_cols.items())
+    c_col = array[:, records.indices[c_name]].astype(float)
+    sufficient_jets = c_col > 0.5
+    if cuts:
+        array = array[sufficient_jets]
+        c_col = c_col[sufficient_jets]
+        y_cols = {name: y_cols[name][sufficient_jets] for name in y_cols}
+        sufficient_jets = sufficient_jets[sufficient_jets]
+    # make the data dict
     data_dict = {}
-    for i, name in enumerate(columns):
+    data_name = {}
+    max_len = 15
+    for name, i in records.indices.items():
         if 'uncert' in name or 'std' in name:
             continue
-        data_dict[name] = np.array([str(x) for x in array[:, i+1]])
-    hover = bokeh.models.HoverTool(tooltips=[(name, "@" + name) for name in data_dict])
+        data_dict[str(i)] = np.array([str(x)[:max_len] for x in array[:, i]])
+        data_name[str(i)] = name # somr of the names have probem characters in them
+    hover = bokeh.models.HoverTool(tooltips=[(data_name[i], "@" + i) for i in data_dict])
+    data_dict['colour'] = c_col
+    data_dict['alpha'] = [1. if suf else 0.2 for suf in sufficient_jets]
+    # fix the colours
+    mapper = bokeh.models.LinearColorMapper(palette=bokeh.palettes.Plasma10,
+                                            low=min(c_col), high=max(c_col))
+    # fix the markers
+    marker_name = 'jet_class'
+    marker_key = str(records.indices[marker_name])
+    marker_shapes = ['triangle', 'hex', 'circle_x', 'square']
+    marker_matches = sorted(set(data_dict[marker_key]))
+    markers = bokeh.transform.factor_mark(marker_key, marker_shapes[:len(marker_matches)],
+                                          marker_matches)
     plots = []
-    for i, name in enumerate(columns):
-        if name in records.evaluation_columns:
+    ignore_cols = list(records.evaluation_columns) + ["jet_id", "match_error"]
+    for name, col in records.indices.items():
+        if name in ignore_cols:
             continue
-        col = i+1
         col_content = array[:, col]
         catigories = set(array[:, col])
         # None prevents propper sorting
@@ -818,26 +868,54 @@ def parameter_comparison(records, y_name="score(PT)", c_name="mean_njets"):
             scale = np.array(catigories)
             real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
                                dtype=float)
-            ave_gap = np.mean(real[1:] - real[:-1])
+            if len(real) > 1:
+                ave_gap = np.mean(real[1:] - real[:-1])
+            else:
+                ave_gap = 1.
             scale[scale == -np.inf] = np.min(real) - ave_gap
             scale[scale == np.inf] = np.max(real) + ave_gap
             scale[scale == None] = np.min(real) - 2*ave_gap
+            scale = scale.astype(float)
             positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
                                     dtype=float)
+            # now check if the scale is too tight and if so drop a few values
+            if len(scale) > 2:
+                length = np.max(scale) - np.min(scale)
+                min_gap = length/30
+                new_scale = [scale[0]]
+                new_catigories = [catigories[0]]
+                last_point = scale[0]
+                for s, c in zip(scale[1:], catigories[1:]):
+                    if s - new_scale[-1] > min_gap:
+                        new_scale.append(s)
+                        new_catigories.append(c)
+                scale = np.array(new_scale)
+                catigories = new_catigories
             # trim the labels
             label_dict = {tick: str(cat)[:5] for cat, tick in zip(catigories, scale)}
-        points = {'x': positions, 'y': y_col, 'colour': c_col}
-        source = bokeh.models.ColumnDataSource(data={**points, **data_dict})
-        p = bokeh.plotting.figure(plot_width=850, plot_height=550, tools=[hover], title=name)
-        # p.xaxis.axis_label_text_font_size = "30pt" not working
-        p.xaxis.ticker = positions
-        p.xaxis.major_label_overrides = label_dict
-        if name == "DeltaR":
-            st()
-        p.circle('x', 'y', size=10, source=source,
-                 fill_color=bokeh.transform.transform('colour', mapper))
-        plots.append(p)
-    all_p = bokeh.layouts.column(*plots)
+        plots.append([])
+        for col_name, y_col in y_cols.items():
+            # first the intresting jets
+            data_dict['x'] = positions
+            data_dict['y'] = y_col
+            if not np.all(np.isfinite(positions)) or not np.all(np.isfinite(y_col)):
+                st()
+            source = bokeh.models.ColumnDataSource(data=data_dict)
+            p = bokeh.plotting.figure(tools=[hover], title=name)
+            # p.xaxis.axis_label_text_font_size = "30pt" not working
+            # p.xaxis.ticker = positions
+            p.xaxis.ticker = scale
+            p.xaxis.major_label_overrides = label_dict
+            p.xaxis.major_label_orientation = "vertical"
+            p.yaxis.axis_label = col_name
+            if "symmetric_diff" in col_name:
+                p.y_range.flipped = True
+            p.scatter('x', 'y', size=10, source=source,
+                     fill_color=bokeh.transform.transform('colour', mapper),
+                     fill_alpha='alpha', line_alpha='alpha',
+                     marker=markers)
+            plots[-1].append(p)
+    all_p = bokeh.layouts.gridplot(plots, plot_width=400, plot_height=400)
     bokeh.io.show(all_p)
 
 
@@ -857,6 +935,8 @@ class Records:
                 assert header[1] == 'jet_class'
                 self.param_names = header[2:]
                 self.indices = {name: i+2 for i, name in enumerate(self.param_names)}
+                self.indices['jet_id'] = 0
+                self.indices['jet_class'] = 1
                 self.content = []
                 for line in reader:
                     self.content.append(line)
@@ -868,7 +948,13 @@ class Records:
             self.content = []
             self.param_names = []
             self.indices = {}
-        self.next_uid = int(np.max(self.jet_ids, initial=0)) + 1
+        after_50k = 'cluster' in socket.gethostname()
+        if after_50k:
+            relevent_jetids = [j for j in self.jet_ids if j > 50000]
+            self.next_uid = np.max(relevent_jetids, initial=0) + 50000
+        else:
+            relevent_jetids = [j for j in self.jet_ids if j < 50000]
+            self.next_uid = np.max(relevent_jetids, initial=0) + 1
         self.uid_length = len(str(self.next_uid))
 
     def write(self):
@@ -1144,7 +1230,7 @@ class Records:
                     row
         self.write()
 
-    def best(self, metric, jet_class=None, invert=None):
+    def best(self, metric, jet_class=None, invert=None, start_mask=None, return_cols=None):
         """
         
 
@@ -1161,7 +1247,11 @@ class Records:
         -------
 
         """
+        if return_cols is None:
+            return_cols = [0, self.indices[metric]]
         mask = self.scored
+        if start_mask is not None:
+            mask = np.logical_and(mask, start_mask)
         content = self.typed_array()
         if jet_class is not None:
             mask = np.logical_and(mask, content[:, 1] == jet_class)
@@ -1169,7 +1259,7 @@ class Records:
             invert = "symmetric_diff" in metric
         sign = 1 - 2*invert
         best_in_mask = np.argmax(sign*content[mask, self.indices[metric]])
-        return content[mask][best_in_mask, [0, self.indices[metric]]]
+        return content[mask][best_in_mask, return_cols]
 
 
 if __name__ == '__main__':

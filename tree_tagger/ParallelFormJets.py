@@ -150,7 +150,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     return all_paths
 
 
-def generate_pool(eventWise_path, multiapply_function, jet_params, leave_one_free=False):
+def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
     """
     
 
@@ -169,6 +169,11 @@ def generate_pool(eventWise_path, multiapply_function, jet_params, leave_one_fre
     -------
 
     """
+    class_to_function = {"HomeJet": "Traditional",
+                         "SpectralJet": "Spectral",
+                         "SpectralMeanJet": "SpectralMean",
+                         "SpectralAfterJet": "SpectralAfter"}
+    multiapply_function = class_to_function[jet_class]
     batch_size = 500
     # decide on a stop condition
     if os.path.exists('continue'):
@@ -214,8 +219,8 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    DeltaR = np.linspace(0.1, 1.9, 10)
-    exponents = [-0.5, 0, 0.5]
+    DeltaR = np.linspace(0.5, 1., 4)
+    exponents = [-1, 0, 1]
     #for exponent in exponents:
     #    for dR in DeltaR:
     #        print(f"Exponent {exponent}")
@@ -224,33 +229,35 @@ if __name__ == '__main__':
     #        jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
     #        jet_id = records.append(jet_class, jet_params)
     #        jet_params["jet_name"] = jet_class + str(jet_id)
-    #        generate_pool(eventWise_path, 'Traditional', jet_params, True)
+    #        generate_pool(eventWise_path, jet_class, jet_params, True)
     #records.write()
-    exponents = [-1, 0, 1]
-    NumEigenvectors = [8, 20, np.inf]
+    #exponents = [-1, 0, 2]
+    NumEigenvectors = [1, 3, 4, 6]
+    distance = [2., 3., 4.]
     for exponent in exponents:
         for dR in DeltaR:
             for n_eig in NumEigenvectors:
-                print(f"Exponent {exponent}")
-                print(f"DeltaR {dR}")
-                print(f"NumEigenvectors {n_eig}")
-                jet_class = "SpectralMeanJet"
+                for dis in distance:
+                    print(f"Exponent {exponent}")
+                    print(f"DeltaR {dR}")
+                    print(f"NumEigenvectors {n_eig}")
+                    print(f"Distance {dis}")
+                    jet_class = "SpectralJet"
+                    jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                      NumEigenvectors=n_eig,
+                                      Laplacien='unnormalised',
+                                      AffinityType='exponent2',
+                                      AffinityCutoff=('distance', dis))
+                    jet_id = records.append(jet_class, jet_params)
+                    jet_params["jet_name"] = jet_class + str(jet_id)
+                    generate_pool(eventWise_path, jet_class, jet_params, True)
                 jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
                                   NumEigenvectors=n_eig,
-                                  Laplacien='symmetric',
-                                  AffinityType='linear',
-                                  AffinityCutoff=('knn', 7))
+                                  Laplacien='unnormalised',
+                                  AffinityType='exponent2',
+                                  AffinityCutoff=None)
                 jet_id = records.append(jet_class, jet_params)
                 jet_params["jet_name"] = jet_class + str(jet_id)
-                generate_pool(eventWise_path, 'SpectralMean', jet_params, True)
-                jet_class = "SpectralJet"
-                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-                                  NumEigenvectors=n_eig,
-                                  Laplacien='symmetric',
-                                  AffinityType='linear',
-                                  AffinityCutoff=('knn', 7))
-                jet_id = records.append(jet_class, jet_params)
-                jet_params["jet_name"] = jet_class + str(jet_id)
-                generate_pool(eventWise_path, 'Spectral', jet_params, True)
+                generate_pool(eventWise_path, jet_class, jet_params, True)
     records.write()
 

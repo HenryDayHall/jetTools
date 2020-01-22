@@ -21,7 +21,7 @@ def test_closest_approch():
                              [np.nan,     1., np.nan, np.nan, 1.],
                              [0.,         0.,     0.,     0., np.nan]])
     receved_out = FormVertices.closest_approches(start_points, direction_vectors)
-    receved_out2 = FormVertices.closest_approches_np(start_points, direction_vectors)
+    #receved_out2 = FormVertices.closest_approches_np(start_points, direction_vectors)
     # don't check nan parts
     mask = ~np.isnan(expected_out)
     tst.assert_allclose(expected_out[mask], receved_out[mask])
