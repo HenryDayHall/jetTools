@@ -70,6 +70,59 @@ def seek_best(records, number_required=3, dir_name="megaIgnore"):
     return best
 
 
+def parameter_step(records, jet_class, ignore_parameteres=None):
+    """Select a varient of the best jet in class that has not yet been tried"""
+    array = records.typed_array()
+    # get the jets parameter list 
+    names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
+             "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean,
+             "SpectralAfterJet": FormJets.SpectralAfter}
+    jet_parameters = list(names[jet_class].param_list.keys())
+    all_parameters = jet_parameters + ['jet_class']
+    parameter_idxs = [(name, records.indices[name]) for name in all_parameters]
+    all_parameters, parameter_indices = zip(*sorted(parameter_idxs, key=lambda x: x[1]))
+    print(f"All parameters; {all_parameters}")
+    if ignore_parameteres is None:
+        ignore_parameteres = []
+    # sets of parameters to vary
+    parameter_sets = {name: set(array[:, records.indices[name]]) for name in jet_parameters
+                      if name not in ignore_parameteres}
+    # clip the array to the parameters themselves
+    to_compare = [i for i, name in enumerate(all_parameters)
+                  if name not in ignore_parameteres]
+    array = array[:, parameter_indices][:, to_compare]
+    # also only consider scored rows (the rest may not really exist)
+    array = array[records.scored]
+    steps_taken = 1
+    while steps_taken < 20:
+        current_best = records.best(jet_class=jet_class, num_items=steps_taken, return_cols=parameter_indices)[0]
+        print(f"Searching round {current_best}")
+        new_step = np.copy(current_best)
+        # go through all the parameters looking for a substitution that hasn't been tried
+        for name, avalible in parameter_sets.items():
+            idx = all_parameters.index(name)
+            for value in avalible:
+                new_step[idx] = value
+                matching = np.all(new_step[to_compare] == array,
+                                  axis=1)
+                if not np.any(matching):
+                    parameters = {name: new_step[all_parameters.index(name)] for name in jet_parameters}
+                    # check it's not an illegal combination
+                    if parameters_valid(parameters, jet_class):
+                        return parameters
+            # reset this parameter
+            new_step[idx] = current_best[idx]
+        # if we get here, no luck in the first round
+        # try the next best entry
+        steps_taken += 1
+    print("Cannot find free space round the 20 best points")
+
+
+def parameters_valid(parameters, jet_class):
+    if parameters['AffinityType']  == 'linear' and parameters['Laplacien'] == 'symmetric':
+        return False
+    return True
+
 def rand_score(eventWise, jet_name1, jet_name2):
     """
     
@@ -244,7 +297,7 @@ def fit_to_tags(eventWise, jet_name, event_n=None):
     return tag_momentum, assigned_momentum
     
 
-def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_tracks=2):
+def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_tracks=2, max_angle=1.):
     """
     
 
@@ -262,6 +315,11 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_track
 
     """
     eventWise.selected_index = None
+    # if there are existing tag columns, remove them
+    if jet_name + "_Tags" in eventWise.columns:
+        eventWise.remove(jet_name + "_Tags")
+        eventWise.remove(jet_name + "_TagPIDs")
+    TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks)
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
     # name the vaiables to be cut on
     inputidx_name = jet_name + "_InputIdx"
@@ -685,7 +743,8 @@ def calculated_grid(records, jet_name=None):
 
     """
     names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
-             "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean}
+             "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean,
+             "SpectralAfterJet": FormJets.SpectralAfter}
     if jet_name is None:
         jet_name = InputTools.list_complete("Which jet? ", names.keys()).strip()
     default_params = names[jet_name].param_list

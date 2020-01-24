@@ -1064,6 +1064,23 @@ class Spectral(PseudoJet):
                         affinity = -distances**0.5
                         affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
                         return affinity
+                elif self.AffinityType == 'inverse':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = distances**-0.5
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
             elif cutoff_type == 'distance':
@@ -1118,6 +1135,23 @@ class Spectral(PseudoJet):
                         affinity = -distances**0.5
                         affinity[distances > cutoff_param] = 0
                         return affinity
+                elif self.AffinityType == 'inverse':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = distances**-0.5
+                        affinity[distances > cutoff_param] = 0
+                        return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
             else:
@@ -1170,6 +1204,22 @@ class Spectral(PseudoJet):
 
                     """
                     affinity = -distances**0.5
+                    return affinity
+            elif self.AffinityType == 'inverse':
+                def calculate_affinity(distances):
+                    """
+                    
+
+                    Parameters
+                    ----------
+                    distances :
+                        
+
+                    Returns
+                    -------
+
+                    """
+                    affinity = distances**-0.5
                     return affinity
             else:
                 raise ValueError(f"affinity type {self.AffinityType} unknown")
