@@ -17,6 +17,58 @@ import scipy.stats
 import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting, bokeh.transform
 import socket
 
+def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
+    """ Find a list of clusters in the eventWise files in a directory """
+    array = records.typed_array()
+    # get a list of eventWise files
+    file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name)
+            if name.endswith(".awkd")]
+    eventWises = []
+    for name in file_names:
+        try:
+            ew = Components.EventWise.from_file(name)
+            eventWises.append(ew)
+        except KeyError:
+            pass  # it's not actually an eventwise
+    # now looking for all occurances of the numbers
+    matches = []
+    for jid in jet_ids:
+        found = []
+        for ew in eventWises:
+            jet_names = list(set([name.split('_', 1)[0] for name in ew.columns
+                                  if "Jet" in name and name.split('_', 1)[0][-1].isdigit()]))
+            jet_numbers = [int(''.join(filter(str.isdigit, name))) for name in jet_names]
+            if jid not in jet_numbers:
+                continue
+            matching_name = jet_names[jet_numbers.index(jid)]
+            if records.check_eventWise_match(ew, jid, matching_name):
+                found.append((ew, matching_name))
+            else:
+                jet_params = FormJets.get_jet_params(ew, matching_name, True)
+                row = array[array[:, 0] == jid][0]
+                print(f" Missmatch of matching name")
+                print(f"recorded; {row}")
+                print(f"found; {jet_params}")
+        if len(found) == 0:
+            print(f"Cannot find jet with id num {jid}")
+        elif len(found) == 1:
+            matches += found
+        else:
+            #raise RuntimeError(f"Found more than one match for {jid}")
+            print(f"Found more than one match for {jid}")
+            matches.append(found[0])
+    return matches
+
+
+def seek_best(records, number_required=3, dir_name="megaIgnore"):
+    array = records.typed_array()
+    jet_classes = set(array[:, records.indices["jet_class"]])
+    best_ids = []
+    for jclass in jet_classes:
+        best_ids += records.best(jet_class=jclass, num_items=number_required, return_cols=[0]).flatten().tolist()
+    best = seek_clusters(records, best_ids)
+    return best
+
 
 def rand_score(eventWise, jet_name1, jet_name2):
     """
@@ -201,6 +253,7 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.
     for t_idx in np.argsort(s_tag):
         this_4 = tag_4vec[t_idx]
         dist2 = (current_4vec_ofset + this_4)**2
+        # not sure this reeealy makes sense # TODO use a standard distance
         allocate_to = np.argmin(dist2[:, 0] - np.sum(dist2[:, 1:], axis=1))
         matched_jet[t_idx] = allocate_to
         current_4vec_ofset[allocate_to] += this_4
@@ -784,7 +837,7 @@ def soft_generic_equality(a, b):
 
 
 def select_improvements(records, min_jets=0.5,
-                        metrics=["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]):
+        metrics=["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]):
     metric_cols = [records.indices[metric] for metric in metrics]
     invert_factor = np.fromiter((1 - 2*("symmetric_diff" in name) for name in metrics),
                                 dtype=float)
@@ -794,14 +847,11 @@ def select_improvements(records, min_jets=0.5,
     sufficient_jets = n_jets > min_jets
     array = array[np.logical_and(records.scored, sufficient_jets)]
     metric_data = (array[:, metric_cols]*invert_factor).T
-    st()
     improved_selection = np.full(len(array), False, dtype=bool)
-    relax = 1.
-    delta = 0.1
     for metric in metrics:
         best_home = records.best(metric, jet_class="HomeJet", start_mask=sufficient_jets,
                                  return_cols=metric_cols)
-        best_home *= invert_factor*relax
+        best_home *= invert_factor
         improved = np.logical_and.reduce([col > best for col, best in
                                           zip(metric_data, best_home)])
         improved_selection = np.logical_or(improved_selection, improved)
@@ -811,12 +861,19 @@ def select_improvements(records, min_jets=0.5,
 def parameter_comparison(records, c_name="mean_njets", cuts=True):
     array = records.typed_array()[records.scored]
     col_names = ["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
+    # filter anything that scored too close to zero in pt or rapidity
+    # these are soem kind of bug
+    small = 0.001
+    for name in col_names:
+        if "score" in name:
+            array = array[array[:, records.indices[name]]>small]
+    # now we have a scored valid selection
     y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names}
     col_names = ["cumulative"] + col_names
-    y_cols["cumulative"] = sum(col*(1-2*("symmetric_diff" in name))
-                               for name, col in y_cols.items())
+    y_cols["cumulative"] = cumulative_score(records, typed_array=array)
     c_col = array[:, records.indices[c_name]].astype(float)
     sufficient_jets = c_col > 0.5
+    #sufficient_jets = array[:, 1] == 'SpectralAfterJet'
     if cuts:
         array = array[sufficient_jets]
         c_col = c_col[sufficient_jets]
@@ -917,6 +974,18 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True):
             plots[-1].append(p)
     all_p = bokeh.layouts.gridplot(plots, plot_width=400, plot_height=400)
     bokeh.io.show(all_p)
+    return all_p
+
+
+def cumulative_score(records, typed_array=None):
+    if typed_array is None:
+        typed_array = records.typed_array()
+    col_names = ["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
+    cols = {name: typed_array[:, records.indices[name]].astype(float) for name in col_names}
+    cols_widths = {name: np.nanstd(col[col>0.01]) for name, col in cols.items()}
+    cumulative = sum((col*(1-2*("symmetric_diff" in name)))/cols_widths[name]
+                     for name, col in cols.items())
+    return cumulative
 
 
 class Records:
@@ -1080,6 +1149,16 @@ class Records:
         self.uid_length = len(str(self.next_uid))
         return chosen_id
  
+    def check_eventWise_match(self, eventWise, jet_id, jet_name):
+        eventWise.selected_index = None
+        jet_params = FormJets.get_jet_params(eventWise, jet_name, add_defaults=True)
+        content = self.typed_array()
+        row = content[content[:, 0] == jet_id][0]
+        for p_name in jet_params:
+            if not soft_generic_equality(row[self.indices[p_name]], jet_params[p_name]):
+                return False
+        return True
+
     def scan(self, eventWise):
         """
         
@@ -1230,7 +1309,8 @@ class Records:
                     row
         self.write()
 
-    def best(self, metric, jet_class=None, invert=None, start_mask=None, return_cols=None):
+    def best(self, metric='cumulative', jet_class=None, invert=None,
+             start_mask=None, return_cols=None, num_items=1):
         """
         
 
@@ -1247,19 +1327,26 @@ class Records:
         -------
 
         """
-        if return_cols is None:
-            return_cols = [0, self.indices[metric]]
         mask = self.scored
         if start_mask is not None:
             mask = np.logical_and(mask, start_mask)
-        content = self.typed_array()
+        content = self.typed_array()[mask]
+        if metric == 'cumulative':
+            evaluate = cumulative_score(self, content)
+        else:
+            evaluate = content[:, self.indices[metric]]
         if jet_class is not None:
-            mask = np.logical_and(mask, content[:, 1] == jet_class)
+            jet_mask = content[:, 1] == jet_class
+            content = content[jet_mask]
+            evaluate = evaluate[jet_mask]
         if invert is None:
             invert = "symmetric_diff" in metric
         sign = 1 - 2*invert
-        best_in_mask = np.argmax(sign*content[mask, self.indices[metric]])
-        return content[mask][best_in_mask, return_cols]
+        sorted_idx = np.argsort(sign*evaluate)
+        best_in_mask = sorted_idx[-num_items:]
+        if return_cols is None:
+            return np.array([content[best_in_mask, 0], evaluate[best_in_mask]]).T
+        return content[best_in_mask][:, return_cols]
 
 
 if __name__ == '__main__':

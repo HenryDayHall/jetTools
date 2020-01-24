@@ -107,6 +107,30 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     return tag_idx
 
 
+def add_tag_particles(eventWise):
+    eventWise.selected_index = None
+    name = "TagIndex"
+    n_events = len(eventWise.X)
+    tags = list(getattr(eventWise, name, []))
+    start_point = len(tags)
+    if start_point >= n_events:
+        print("Finished")
+        return True
+    end_point = n_events
+    print(f" Will stop at {100*end_point/n_events}%")
+    eventWise.selected_index = None
+    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        eventWise.selected_index = event_n
+        tags.append(tag_particle_indices(eventWise, tag_pids=tag_pids))
+    eventWise.append(**{name: tags})
+
+
 def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     """
     
@@ -130,6 +154,8 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     name = jet_name+"_Tags"
     namePID = jet_name+"_TagPIDs"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
+    if "TagIndex" not in eventWise.columns:
+        add_tag_particles(eventWise)
     jet_tags = list(getattr(eventWise, name, []))
     jet_tagpids = list(getattr(eventWise, namePID, []))
     start_point = len(jet_tags)
@@ -140,7 +166,6 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
     print(f" Will stop at {100*end_point/n_events}%")
     # this is a memory intense operation, so must be done in batches
     eventWise.selected_index = None
-    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     max_angle2 = max_angle**2
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0:
@@ -149,7 +174,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
             print(f"Completed event {event_n-1}")
             break
         eventWise.selected_index = event_n
-        tags = tag_particle_indices(eventWise, tag_pids=tag_pids)
+        tags = eventWise.TagIndex
         jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
         if tags and jets_tags: # there may not be any of the particles we wish to tag in the event
             # or there may not be any jets
@@ -160,14 +185,16 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
         for match, particle in zip(closest_matches, tags):
             if match != -1:
                 jets_tags[match].append(particle)
-        jet_tags.append(awkward.fromiter(tags))
+        jet_tags.append(awkward.fromiter(jets_tags))
         tagpids = [eventWise.MCPID[jet] for jet in tags]
         jet_tagpids.append(awkward.fromiter(tagpids))
     content = {}
     content[name] = awkward.fromiter(jet_tags)
     content[namePID] = awkward.fromiter(jet_tagpids)
+    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
     try:
         eventWise.append(**content)
+        eventWise.append_hyperparameters(**hyperparameter_content)
     except Exception:
         print("Problem")
         return content

@@ -219,7 +219,7 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    DeltaR = np.linspace(0.5, 1., 4)
+    DeltaR = [0.02, 0.08, 0.1, 0.2, 0.5,  1., 1.2]
     exponents = [-1, 0, 1]
     #for exponent in exponents:
     #    for dR in DeltaR:
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     #records.write()
     #exponents = [-1, 0, 2]
     NumEigenvectors = [1, 3, 4, 6]
-    distance = [2., 3., 4.]
+    distance = [3.5, 4.5, 5.5]
     for exponent in exponents:
         for dR in DeltaR:
             for n_eig in NumEigenvectors:
@@ -242,7 +242,7 @@ if __name__ == '__main__':
                     print(f"DeltaR {dR}")
                     print(f"NumEigenvectors {n_eig}")
                     print(f"Distance {dis}")
-                    jet_class = "SpectralJet"
+                    jet_class = "SpectralAfterJet"
                     jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
                                       NumEigenvectors=n_eig,
                                       Laplacien='unnormalised',
