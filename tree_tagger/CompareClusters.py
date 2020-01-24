@@ -188,7 +188,7 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
     return pseudojet_vars1, pseudojet_vars2, num_unconnected
 
 
-def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30., min_tracks=2):
+def fit_to_tags(eventWise, jet_name, event_n=None):
     """
     
 
@@ -200,12 +200,6 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.
         
     event_n :
          (Default value = None)
-    tag_pids :
-         (Default value = None)
-    jet_pt_cut :
-         (Default value = 30.)
-    min_tracks :
-         (Default value = 2)
 
     Returns
     -------
@@ -217,67 +211,40 @@ def fit_to_tags(eventWise, jet_name, event_n=None, tag_pids=None, jet_pt_cut=30.
         eventWise.selected_index = event_n
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
-    jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
-    num_tracks = Components.apply_array_func(len, getattr(eventWise, jet_name+"_PT")).flatten()
-    if jet_pt_cut is None:
-        mask = np.ones_like(jet_pt)
-    else:
-        mask = jet_pt>jet_pt_cut
-    if min_tracks is not None:
-        mask = np.logical_and(mask, num_tracks>(min_tracks-0.1))
-    if not np.any(mask):
-        empty = np.array([]).reshape((-1, 3))
-        return empty, empty, 0
-    n_jets = np.sum(mask)
-    jet_pt = jet_pt[mask]
-    jet_e = eventWise.match_indices(jet_name+"_Energy", inputidx_name, rootinputidx_name).flatten()[mask]
-    jet_px = eventWise.match_indices(jet_name+"_Px", inputidx_name, rootinputidx_name).flatten()[mask]
-    jet_py = eventWise.match_indices(jet_name+"_Py", inputidx_name, rootinputidx_name).flatten()[mask]
-    jet_pz = eventWise.match_indices(jet_name+"_Pz", inputidx_name, rootinputidx_name).flatten()[mask]
-    tag_idx = TrueTag.tag_particle_indices(eventWise, tag_pids=tag_pids)
+    jet_e = eventWise.match_indices(jet_name+"_Energy", inputidx_name, rootinputidx_name).flatten()
+    jet_px = eventWise.match_indices(jet_name+"_Px", inputidx_name, rootinputidx_name).flatten()
+    jet_py = eventWise.match_indices(jet_name+"_Py", inputidx_name, rootinputidx_name).flatten()
+    jet_pz = eventWise.match_indices(jet_name+"_Pz", inputidx_name, rootinputidx_name).flatten()
+    tag_idx = list(eventWise.TagIndex)
     if len(tag_idx) == 0:
         empty = np.array([]).reshape((-1, 3))
-        return empty, empty, n_jets
+        return empty, empty
     tag_e = eventWise.Energy[tag_idx]
     tag_px = eventWise.Px[tag_idx]
     tag_py = eventWise.Py[tag_idx]
     tag_pz = eventWise.Pz[tag_idx]
-    # starting with the highest CoM2 tag working to the lowest
-    # assign tags to jets and recalculate the distance as needed
-    matched_jet = np.zeros_like(tag_e, dtype=int) - 1
-    jet_4vec = np.vstack((jet_e, jet_px, jet_py, jet_pz)).T
-    tag_4vec = np.vstack((tag_e, tag_px, tag_py, tag_pz)).T
-    current_4vec_ofset = -np.copy(jet_4vec)
-    tag_4vec2 = tag_4vec**2
-    s_tag = tag_4vec2[:, 0] - np.sum(tag_4vec2[:, 1:], axis=1)
-    for t_idx in np.argsort(s_tag):
-        this_4 = tag_4vec[t_idx]
-        dist2 = (current_4vec_ofset + this_4)**2
-        # not sure this reeealy makes sense # TODO use a standard distance
-        allocate_to = np.argmin(dist2[:, 0] - np.sum(dist2[:, 1:], axis=1))
-        matched_jet[t_idx] = allocate_to
-        current_4vec_ofset[allocate_to] += this_4
-    # now calculate what fraction of jet momentum the tag actually receves
-    chosen_jets = list(set(matched_jet))
-    p_fragment = np.zeros_like(matched_jet, dtype=float)
-    for jet_idx in chosen_jets:
-        tag_idx_here = np.where(matched_jet == jet_idx)[0]
-        p_fragment[tag_idx_here] = s_tag[tag_idx_here]/np.sum(s_tag[tag_idx_here])
+    # calculate what fraction of jet momentum the tag actually receves
+    tags_in_jets = getattr(eventWise, jet_name + "_Tags")
+    assigned_tmp = np.zeros((len(tag_idx), 4), dtype=float)
+    for jidx, tags in enumerate(tags_in_jets):
+        mask = np.fromiter((tag_idx.index(t) for t in tags), dtype=int)
+        if len(tags_in_jets) == 1:
+            assigned_tmp[mask, 0] = jet_e[jidx] * tag_e[mask] / np.sum(tag_e[mask])
+            assigned_tmp[mask, 1] = jet_px[jidx] * tag_px[mask] / np.sum(tag_px[mask])
+            assigned_tmp[mask, 2] = jet_py[jidx] * tag_py[mask] / np.sum(tag_py[mask])
+            assigned_tmp[mask, 3] = jet_pz[jidx] * tag_pz[mask] / np.sum(tag_pz[mask])
+    # transform this to pt, rapidity, phi
+    assigned_momentum = np.zeros((len(tag_idx), 3), dtype=float)
+    assigned_momentum[:, [2, 0]] = Components.pxpy_to_phipt(assigned_tmp[:, 1], assigned_tmp[:, 2])
+    assigned_momentum[:, 1] = Components.ptpze_to_rapidity(assigned_momentum[:, 0], assigned_tmp[:, 3], assigned_tmp[:, 0])
     # now get the actual coords
-    # tag_idx is wrong var
-    tag_coords = np.vstack((eventWise.PT[tag_idx],
-                            eventWise.Rapidity[tag_idx],
-                            eventWise.Phi[tag_idx])).transpose()
-    jet_phi = eventWise.match_indices(jet_name+"_Phi", inputidx_name, rootinputidx_name).flatten()[mask]
-    jet_phi = jet_phi[matched_jet]
-    jet_4_coords = jet_4vec[matched_jet]*p_fragment.reshape(-1, 1)
-    jet_pt = np.sqrt(jet_4_coords[:, 1]**2 + jet_4_coords[:, 2]**2)
-    jet_rapidity = Components.ptpze_to_rapidity(jet_pt, jet_4_coords[:, 3], jet_4_coords[:, 0])
-    jet_coords = np.vstack((jet_pt, jet_rapidity, jet_phi)).transpose()
-    return tag_coords, jet_coords, n_jets
+    tag_momentum = np.vstack((eventWise.PT[tag_idx],
+                              eventWise.Rapidity[tag_idx],
+                              eventWise.Phi[tag_idx])).transpose()
+    return tag_momentum, assigned_momentum
     
 
-def fit_all_to_tags(eventWise, jet_name, silent=False):
+def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_tracks=2):
     """
     
 
@@ -296,7 +263,9 @@ def fit_all_to_tags(eventWise, jet_name, silent=False):
     """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
-    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    # name the vaiables to be cut on
+    inputidx_name = jet_name + "_InputIdx"
+    rootinputidx_name = jet_name+"_RootInputIdx"
     tag_coords = []
     jet_coords = []
     n_jets_formed = []
@@ -304,12 +273,18 @@ def fit_all_to_tags(eventWise, jet_name, silent=False):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
-        n_jets = len(getattr(eventWise, jet_name + "_Energy"))
-        if n_jets > 0:
-            tag_c, jet_c, n_jets = fit_to_tags(eventWise, jet_name, tag_pids=tag_pids)
+        jet_track_pts = getattr(eventWise, jet_name + "_PT")
+        # get the valiables ot cut on
+        jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
+        # note this actually counts num pesudojets, but for more than 2 that is sufficient
+        num_tracks = Components.apply_array_func(len, jet_track_pts).flatten()
+        n_jets = np.sum(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))
+        n_jets_formed.append(n_jets)
+        n_any_jets = len(jet_track_pts)
+        if n_any_jets > 0:
+            tag_c, jet_c = fit_to_tags(eventWise, jet_name)
             tag_coords.append(tag_c)
             jet_coords.append(jet_c)
-        n_jets_formed.append(n_jets)
     #tag_coords = np.vstack(tag_coords)
     #jet_coords = np.vstack(jet_coords)
     return tag_coords, jet_coords, n_jets_formed

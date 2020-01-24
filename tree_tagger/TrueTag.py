@@ -10,10 +10,9 @@ import awkward
 import os
 import scipy.stats
 
-def allocate(eventWise, jet_name, tag_idx, max_angle2):
+def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     """
     each tag will be assigned to a jet
-    both tag particles and jets must offer rap and phi methods
 
     Parameters
     ----------
@@ -33,16 +32,31 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2):
     root_name = jet_name + "_RootInputIdx"
     inputidx_name = jet_name + "_InputIdx"
     attr_name = jet_name + "_Phi"
+    jet_phis = eventWise.match_indices(attr_name, root_name, inputidx_name)
+    attr_name = jet_name + "_Rapidity"
+    jet_raps = eventWise.match_indices(attr_name, root_name, inputidx_name)
+    if valid_jets is not None:
+        # check that a list of indices not a bool mask has been passed
+        if len(valid_jets) == len(jet_raps):
+            # should they be the same length every index must appear
+            # just check for the last one
+            assert len(jet_raps) - 1 in valid_jets
+        # select only valid jets for comparison
+        jet_phis = jet_phis[valid_jets]
+        jet_raps = jet_raps[valid_jets]
     phi_distance = np.vstack([[eventWise.Phi[tag_i] - jet_phi for jet_phi
-                               in eventWise.match_indices(attr_name, root_name, inputidx_name)]
+                               in jet_phis]
                               for tag_i in tag_idx])
     phi_distance[phi_distance > np.pi] = 2*np.pi - phi_distance[phi_distance > np.pi]
-    attr_name = jet_name + "_Rapidity"
     rap_distance = np.vstack([[eventWise.Rapidity[tag_i] - jet_rap for jet_rap
-                               in eventWise.match_indices(attr_name, root_name, inputidx_name)]
+                               in jet_raps]
                               for tag_i in tag_idx])
     dist2 = np.square(phi_distance) + np.square(rap_distance)
     closest = np.argmin(dist2, axis=1)
+    if valid_jets is not None:
+        # revert to true indices
+        closest = valid_jets[closest]
+    # remove anything with too large an angle
     dist2_closest = np.min(dist2, axis=1)
     closest[dist2_closest > max_angle2] = -1
     return closest
@@ -131,7 +145,7 @@ def add_tag_particles(eventWise):
     eventWise.append(**{name: tags})
 
 
-def add_tags(eventWise, jet_name, max_angle, batch_length=100):
+def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=30., min_tracks=2):
     """
     
 
@@ -164,8 +178,10 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
         return True
     end_point = min(n_events, start_point+batch_length)
     print(f" Will stop at {100*end_point/n_events}%")
-    # this is a memory intense operation, so must be done in batches
-    eventWise.selected_index = None
+    # name the vaiables to be cut on
+    inputidx_name = jet_name + "_InputIdx"
+    rootinputidx_name = jet_name+"_RootInputIdx"
+    # will actually compare the square of the angle for speed
     max_angle2 = max_angle**2
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0:
@@ -174,11 +190,17 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100):
             print(f"Completed event {event_n-1}")
             break
         eventWise.selected_index = event_n
+        # get the tags
         tags = eventWise.TagIndex
-        jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
+        # get the valiables ot cut on
+        jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
+        # note this actually counts num pesudojets, but for more than 2 that is sufficient
+        num_tracks = Components.apply_array_func(len, getattr(eventWise, jet_name+"_PT")).flatten()
+        valid_jets = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks-0.1))[0]
+        jets_tags = [[] for _ in valid_jets]
         if tags and jets_tags: # there may not be any of the particles we wish to tag in the event
             # or there may not be any jets
-            closest_matches = allocate(eventWise, jet_name, tags, max_angle2)
+            closest_matches = allocate(eventWise, jet_name, tags, max_angle2, valid_jets)
         else:
             closest_matches = []
         # keep only the indices for space reasons
