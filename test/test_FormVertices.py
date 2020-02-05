@@ -2,6 +2,7 @@
 from tree_tagger import FormVertices
 import numpy as np
 from numpy import testing as tst
+from ipdb import set_trace as st
 
 def test_closest_approch():
     a1 = [0, 0, 0]
@@ -20,6 +21,7 @@ def test_closest_approch():
                              [np.nan,     1., np.nan, np.nan, 1.],
                              [0.,         0.,     0.,     0., np.nan]])
     receved_out = FormVertices.closest_approches(start_points, direction_vectors)
+    #receved_out2 = FormVertices.closest_approches_np(start_points, direction_vectors)
     # don't check nan parts
     mask = ~np.isnan(expected_out)
     tst.assert_allclose(expected_out[mask], receved_out[mask])

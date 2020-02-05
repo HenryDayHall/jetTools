@@ -6,9 +6,35 @@ import numpy as np
 import pickle
 
 def make_finite(ary):
+    """
+    
+
+    Parameters
+    ----------
+    ary :
+        
+
+    Returns
+    -------
+
+    """
     return np.nan_to_num(ary.astype('float32'))
 
 def begin_training(run, viewer=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    viewer :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     assert 'bdt' in run.settings['net_type'].lower();
     # create the dataset
     dataset = run.dataset
@@ -26,6 +52,18 @@ def begin_training(run, viewer=None):
 
 
 def make_hist(run):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+
+    Returns
+    -------
+
+    """
     output, test_truth = run.apply_to_test()
     plot_range = (output.min(), output.max())
     plt.hist(output[test_truth>0.5],
@@ -44,6 +82,22 @@ def make_hist(run):
 
 
 def plot_rocs(runs, loglog=False, ax=None):
+    """
+    
+
+    Parameters
+    ----------
+    runs :
+        
+    loglog :
+         (Default value = False)
+    ax :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     #axis
     if ax is None:
         _, ax = plt.subplots()
@@ -77,6 +131,18 @@ def plot_rocs(runs, loglog=False, ax=None):
     ax.set_ylabel("True Positive Rate")
 
 def feature_importance(run):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+
+    Returns
+    -------
+
+    """
     bdt = run.best_nets[0]
     importances = bdt.feature_importances_
     std = np.std([tree.feature_importances_ for tree in bdt.estimators_], axis=0)

@@ -7,23 +7,7 @@ from tree_tagger.PDGNames import IDConverter
 
 
 class DotGraph:
-    """ A class that allows a dot graph to be built and can represent it as a string.
-
-    Parameters
-    ----------
-    shower : Shower
-        an object that holds all infomration about the structure of a particle shower
-        optional
-    graph : string
-        is it a graph or a digraph (directed graph)
-        default is digraph
-    strict : bool
-        does the graph forbid identical connections?
-        default is True
-    name : string
-        name the graph
-        optional
-    """
+    """A class that allows a dot graph to be built and can represent it as a string."""
     def __init__(self, shower=None, **kwargs):
         # start by checking the kwargs
         graph = kwargs.get('graph', 'digraph')
@@ -51,14 +35,26 @@ class DotGraph:
             self.fromShower(shower, eventWise, jet_name, jet_num, use_TracksTowers)
 
     def fromShower(self, shower, eventWise=None, jet_name=None, jet_num=None, use_TracksTowers=False):
-        """ Construct the graph from a shower object
-        
+        """
+        Construct the graph from a shower object
 
         Parameters
         ----------
-        shower : Shower
-            an object that holds all infomration about the structure of a particle shower
+        shower :
             
+        eventWise :
+             (Default value = None)
+        jet_name :
+             (Default value = None)
+        jet_num :
+             (Default value = None)
+        use_TracksTowers :
+             (Default value = False)
+
+        Returns
+        -------
+
+        
         """
         # add the edges
         for this_id, this_parents in zip(shower.particle_idxs, shower.parents):
@@ -190,32 +186,42 @@ class DotGraph:
                 self.addRank(rank_ids)
 
     def addEdge(self, ID1, ID2):
-        """ Add an edge to this graph
-        
+        """
+        Add an edge to this graph
 
         Parameters
         ----------
-        ID1 : int
-            start node ID
+        ID1 :
             
-        ID2 : int
-            end node ID
+        ID2 :
+            
 
+        Returns
+        -------
+
+        
         """
         self.__edges += f"\t{ID1} -> {ID2}\n"
 
     def addNode(self, ID, label, colour=None, shape=None):
-        """ Add a label to this graph
-        
+        """
+        Add a label to this graph
 
         Parameters
         ----------
-        ID : int
-            node ID to get this label
+        ID :
             
-        label : string
-            label for node
+        label :
+            
+        colour :
+             (Default value = None)
+        shape :
+             (Default value = None)
 
+        Returns
+        -------
+
+        
         """
         self.__nodes += f'\t{ID} [label="{label}"'
         if colour is not None:
@@ -225,30 +231,42 @@ class DotGraph:
         self.__nodes += ']\n'
 
     def addRank(self, IDs):
-        """ Specify set of IDs that sit on the same rank
-            
+        """
+        Specify set of IDs that sit on the same rank
 
         Parameters
         ----------
-        IDs : list like of ints
-            IDs on a rank
+        IDs :
+            
 
+        Returns
+        -------
+
+        
         """
         ID_strings = [str(ID) for ID in IDs]
         id_string = ' '.join(ID_strings)
         self.__ranks += f'\t{{rank = same; {id_string}}}\n'
 
     def addLegendNode(self, ID, label, colour=None, shape=None):
-        """ Add a label to this graph
+        """
+        Add a label to this graph
 
         Parameters
         ----------
-        ID : int
-            node ID to get this label
+        ID :
             
-        label : string
-            label for node
+        label :
+            
+        colour :
+             (Default value = None)
+        shape :
+             (Default value = None)
 
+        Returns
+        -------
+
+        
         """
         self.__legend += f'\t{ID} [label="{label}"'
         if colour is not None:
@@ -263,11 +281,12 @@ class DotGraph:
 
     @property
     def legend(self):
+        """ """
         return self.__start + self.__legend + self.__end
 
     
 def main():
-    """ Launch file, makes and saves a dot graph """
+    """Launch file, makes and saves a dot graph"""
     repeat = True
     eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
     while repeat:

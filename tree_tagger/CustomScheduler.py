@@ -12,43 +12,58 @@ from ipdb import set_trace as st
 
 
 class ReduceBatchSizeOnPlateau(object):
-    """Reduce batch size when a metric has stopped improving.
+    """
+    Reduce batch size when a metric has stopped improving.
     Experimental variation of ReduceLROnPlateau.
 
-    Args:
-        optimizer (Optimizer): Wrapped optimizer.
-        mode (str): One of `min`, `max`. In `min` mode, bs will
-            be reduced when the quantity monitored has stopped
-            decreasing; in `max` mode it will be reduced when the
-            quantity monitored has stopped increasing. Default: 'min'.
-        factor (float): Factor by which the batch size will be
-            reduced. new_bs = int(bs * factor). Default: 0.1.
-        patience (int): Number of epochs with no improvement after
-            which batch size will be reduced. For example, if
-            `patience = 2`, then we will ignore the first 2 epochs
-            with no improvement, and will only decrease the LR after the
-            3rd epoch if the loss still hasn't improved then.
-            Default: 10.
-        verbose (bool): If ``True``, prints a message to stdout for
-            each update. Default: ``False``.
-        threshold (float): Threshold for measuring the new optimum,
-            to only focus on significant changes. Default: 1e-4.
-        threshold_mode (str): One of `rel`, `abs`. In `rel` mode,
-            dynamic_threshold = best * ( 1 + threshold ) in 'max'
-            mode or best * ( 1 - threshold ) in `min` mode.
-            In `abs` mode, dynamic_threshold = best + threshold in
-            `max` mode or best - threshold in `min` mode. Default: 'rel'.
-        cooldown (int): Number of epochs to wait before resuming
-            normal operation after bs has been reduced. Default: 0.
-        min_bs (float or list): A scalar. A
-            lower bound on the batch size.
-            Default: 1.
-        eps (float): Minimal decay applied to bs. If the difference
-            between new and old bs is smaller than eps, the update is
-            ignored. Default: 1e-8.
+    Parameters
+    ----------
+    optimizer : Optimizer
+        Wrapped optimizer.
+    mode : str
+        One of `min`, `max`. In `min` mode, bs will
+        be reduced when the quantity monitored has stopped
+        decreasing; in `max` mode it will be reduced when the
+        quantity monitored has stopped increasing. Default: 'min'.
+    factor : float
+        Factor by which the batch size will be
+        reduced. new_bs = int(bs * factor). Default: 0.1.
+    patience : int
+        Number of epochs with no improvement after
+        which batch size will be reduced. For example, if
+        `patience = 2`, then we will ignore the first 2 epochs
+        with no improvement, and will only decrease the LR after the
+        3rd epoch if the loss still hasn't improved then.
+        Default: 10.
+    verbose : bool
+        If ``True``, prints a message to stdout for
+        each update. Default: ``False``.
+    threshold : float
+        Threshold for measuring the new optimum,
+        to only focus on significant changes. Default: 1e-4.
+    threshold_mode : str
+        One of `rel`, `abs`. In `rel` mode,
+        dynamic_threshold = best * ( 1 + threshold ) in 'max'
+        mode or best * ( 1 - threshold ) in `min` mode.
+        In `abs` mode, dynamic_threshold = best + threshold in
+        `max` mode or best - threshold in `min` mode. Default: 'rel'.
+    cooldown : int
+        Number of epochs to wait before resuming
+        normal operation after bs has been reduced. Default: 0.
+    min_bs : float or list
+        A scalar. A
+        lower bound on the batch size.
+        Default: 1.
+    eps : float
+        Minimal decay applied to bs. If the difference
+        between new and old bs is smaller than eps, the update is
+        ignored. Default: 1e-8.
+        Example:
 
-    Example:
-        >>> batch_sampler = BatchSampler(sampler, batch_size=5, drop_last=False)
+    Returns
+    -------
+
+    >>> batch_sampler = BatchSampler(sampler, batch_size=5, drop_last=False)
         >>> scheduler = ReduceBatchSizeOnPlateau(batch_sampler, 'min')
         >>> for epoch in range(10):
         >>>     train(...)
@@ -95,6 +110,20 @@ class ReduceBatchSizeOnPlateau(object):
         self.num_bad_epochs = 0
 
     def step(self, metrics, epoch=None):
+        """
+        
+
+        Parameters
+        ----------
+        metrics :
+            
+        epoch :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         current = metrics
         if epoch is None:
             epoch = self.last_epoch = self.last_epoch + 1
@@ -116,6 +145,18 @@ class ReduceBatchSizeOnPlateau(object):
             self.num_bad_epochs = 0
 
     def _reduce_bs(self, epoch):
+        """
+        
+
+        Parameters
+        ----------
+        epoch :
+            
+
+        Returns
+        -------
+
+        """
         old_bs = self.sampler.batch_size
         new_bs = int(max(old_bs * self.factor, self.min_bs))
         if old_bs - new_bs > self.eps:
@@ -126,9 +167,30 @@ class ReduceBatchSizeOnPlateau(object):
 
     @property
     def in_cooldown(self):
+        """ """
         return self.cooldown_counter > 0
 
     def _cmp(self, mode, threshold_mode, threshold, a, best):
+        """
+        
+
+        Parameters
+        ----------
+        mode :
+            
+        threshold_mode :
+            
+        threshold :
+            
+        a :
+            
+        best :
+            
+
+        Returns
+        -------
+
+        """
         if mode == 'min' and threshold_mode == 'rel':
             rel_epsilon = 1. - threshold
             return a < best * rel_epsilon
@@ -144,6 +206,22 @@ class ReduceBatchSizeOnPlateau(object):
             return a > best + threshold
 
     def _init_is_better(self, mode, threshold, threshold_mode):
+        """
+        
+
+        Parameters
+        ----------
+        mode :
+            
+        threshold :
+            
+        threshold_mode :
+            
+
+        Returns
+        -------
+
+        """
         if mode not in {'min', 'max'}:
             raise ValueError('mode ' + mode + ' is unknown!')
         if threshold_mode not in {'rel', 'abs'}:
@@ -157,15 +235,29 @@ class ReduceBatchSizeOnPlateau(object):
         self.is_better = partial(self._cmp, mode, threshold_mode, threshold)
 
     def state_dict(self):
+        """ """
         return {key: value for key, value in self.__dict__.items() if key not in {'sampler', 'is_better'}}
 
     def load_state_dict(self, state_dict):
+        """
+        
+
+        Parameters
+        ----------
+        state_dict :
+            
+
+        Returns
+        -------
+
+        """
         self.__dict__.update(state_dict)
         self._init_is_better(mode=self.mode, threshold=self.threshold, threshold_mode=self.threshold_mode)
 
 
 class CammieWeightDecay(object):
-    """Complexity Abitrated Moderation Method Improving Extrapolation
+    """
+    Complexity Abitrated Moderation Method Improving Extrapolation
     for weight decay.
     
     This method consideres 3 states;
@@ -181,50 +273,66 @@ class CammieWeightDecay(object):
     to pull it back to a more general model.
     State 2 has steady moderation and relax_mod level.
     The last known state 5 moderation is known as stern_mod.
-    State 4 has occilating moderation levels between relax_mod and stern_mod to try and break the false plateau. 
-
+    State 4 has occilating moderation levels between relax_mod and stern_mod to try and break the false plateau.
+    
     The metric is in plateau if either the standard devation of the point is in the tollarance
     if the spearmans rank is under rank_min
 
-    Args:
-        optimizer (Optimizer): Wrapped optimizer.
-        mode (str): One of `min`, `max`. In `min` mode, bs will
-            be reduced when the quantity monitored has stopped
-            decreasing; in `max` mode it will be reduced when the
-            quantity monitored has stopped increasing. Default: 'min'.
-        breaking_reduction (float): Percentage by which the 
-            weight decay should be reduced when breaking ground.
-            Default: 0.05
-        bedrock_reduction (float): Percentage by which the 
-            weight decay should be reduced when at a bedrock plateau.
-            Default: 0.1
-        retreating_enchancement (float): Percentage by which
-            the weight_decay should be enhanced when retreating.
-            Default: 0.1
-        verbose (bool): If ``True``, prints a message to stdout for
-            each update. Default: ``False``.
-        threshold (float): Threshold for measuring the new optimum,
-            to only focus on significant changes. Default: 1e-4.
-        threshold_mode (str): One of `rel`, `abs`. In `rel` mode,
-            dynamic_threshold = best * ( 1 + threshold ) in 'max'
-            mode or best * ( 1 - threshold ) in `min` mode.
-            In `abs` mode, dynamic_threshold = best + threshold in
-            `max` mode or best - threshold in `min` mode. Default: 'rel'.
-        cooldown (int): Number of epochs to wait before resuming
-            normal operation after weight_decay has been reduced.
-            Must be at least 2. Default: 3.
-        min_wd (float or list): A scalar. A
-            lower bound on the weight decay.
-            Default: 0.
-        max_wd (float or list): A scalar. A
-            upper bound on the weight decay.
-            Default: 1.
-        eps (float): Minimal decay applied to bs. If the difference
-            between new and old bs is smaller than eps, the update is
-            ignored. Default: 1e-8.
+    Parameters
+    ----------
+    optimizer : Optimizer
+        Wrapped optimizer.
+    mode : str
+        One of `min`, `max`. In `min` mode, bs will
+        be reduced when the quantity monitored has stopped
+        decreasing; in `max` mode it will be reduced when the
+        quantity monitored has stopped increasing. Default: 'min'.
+    breaking_reduction : float
+        Percentage by which the
+        weight decay should be reduced when breaking ground.
+        Default: 0.05
+    bedrock_reduction : float
+        Percentage by which the
+        weight decay should be reduced when at a bedrock plateau.
+        Default: 0.1
+    retreating_enchancement : float
+        Percentage by which
+        the weight_decay should be enhanced when retreating.
+        Default: 0.1
+    verbose : bool
+        If ``True``, prints a message to stdout for
+        each update. Default: ``False``.
+    threshold : float
+        Threshold for measuring the new optimum,
+        to only focus on significant changes. Default: 1e-4.
+    threshold_mode : str
+        One of `rel`, `abs`. In `rel` mode,
+        dynamic_threshold = best * ( 1 + threshold ) in 'max'
+        mode or best * ( 1 - threshold ) in `min` mode.
+        In `abs` mode, dynamic_threshold = best + threshold in
+        `max` mode or best - threshold in `min` mode. Default: 'rel'.
+    cooldown : int
+        Number of epochs to wait before resuming
+        normal operation after weight_decay has been reduced.
+        Must be at least 2. Default: 3.
+    min_wd : float or list
+        A scalar. A
+        lower bound on the weight decay.
+        Default: 0.
+    max_wd : float or list
+        A scalar. A
+        upper bound on the weight decay.
+        Default: 1.
+    eps : float
+        Minimal decay applied to bs. If the difference
+        between new and old bs is smaller than eps, the update is
+        ignored. Default: 1e-8.
+        Example:
 
-    Example:
-        >>> batch_sampler = BatchSampler(sampler, batch_size=5, drop_last=False)
+    Returns
+    -------
+
+    >>> batch_sampler = BatchSampler(sampler, batch_size=5, drop_last=False)
         >>> scheduler = ReduceBatchSizeOnPlateau(batch_sampler, 'min')
         >>> for epoch in range(10):
         >>>     train(...)
@@ -267,6 +375,7 @@ class CammieWeightDecay(object):
         self._init_set_best(mode, threshold, threshold_mode)
 
     def get_state(self):
+        """ """
         if self.at_best:
             if self.motion == 1:
                 state = 1  # breaking ground
@@ -287,6 +396,7 @@ class CammieWeightDecay(object):
 
     @property
     def motion(self):
+        """ """
         if len(self.recent) < self.cooldown:
             # don't know yet
             raise RuntimeError("mption requested before cooldown period finished.")
@@ -314,6 +424,24 @@ class CammieWeightDecay(object):
         self.cooldown_counter = self.cooldown
 
     def _chose_best(self, mode, threshold_mode, threshold, contender):
+        """
+        
+
+        Parameters
+        ----------
+        mode :
+            
+        threshold_mode :
+            
+        threshold :
+            
+        contender :
+            
+
+        Returns
+        -------
+
+        """
         if mode == 'min' and threshold_mode == 'rel':
             rel_epsilon = 1. - threshold
             improved = self.best > contender * rel_epsilon
@@ -339,6 +467,22 @@ class CammieWeightDecay(object):
             self.at_best = False
 
     def _init_set_best(self, mode, threshold, threshold_mode):
+        """
+        
+
+        Parameters
+        ----------
+        mode :
+            
+        threshold :
+            
+        threshold_mode :
+            
+
+        Returns
+        -------
+
+        """
         if mode not in {'min', 'max'}:
             raise ValueError('mode ' + mode + ' is unknown!')
         if threshold_mode not in {'rel', 'abs'}:
@@ -353,6 +497,20 @@ class CammieWeightDecay(object):
         self.set_best = partial(self._chose_best, mode, threshold_mode, threshold)
 
     def step(self, metric, epoch=None):
+        """
+        
+
+        Parameters
+        ----------
+        metric :
+            
+        epoch :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if epoch is None:
             epoch = self.last_epoch = self.last_epoch + 1
         self.last_epoch = epoch
@@ -372,6 +530,7 @@ class CammieWeightDecay(object):
             self._increment()
 
     def _set_path(self):
+        """ """
         self.state = self.get_state()
         if self.verbose:
             print(f"Entering state {self.state}")
@@ -394,6 +553,7 @@ class CammieWeightDecay(object):
                      for p in self.path]
 
     def _increment(self):
+        """ """
         next_mod = self.path.pop(0)
         self.optimizer.param_groups[0]['weight_decay'] = next_mod
         self.current_wd = next_mod
@@ -401,10 +561,24 @@ class CammieWeightDecay(object):
             
     @property
     def in_cooldown(self):
+        """ """
         return self.cooldown_counter > 0
 
     def state_dict(self):
+        """ """
         return {key: value for key, value in self.__dict__.items() if key not in {'optimizer', 'is_better'}}
 
     def load_state_dict(self, state_dict):
+        """
+        
+
+        Parameters
+        ----------
+        state_dict :
+            
+
+        Returns
+        -------
+
+        """
         self.__dict__.update(state_dict)

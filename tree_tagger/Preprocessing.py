@@ -9,6 +9,18 @@ from tree_tagger import Components
 from tree_tagger.Components import flatten, apply_array_func
 
 def phi_rotation(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     content = {}
     # pick out the columns to transform
@@ -26,6 +38,20 @@ def phi_rotation(eventWise):
     pxs = eventWise.Px
     pys = eventWise.Py
     def leaf_sum(values, no_dez):
+        """
+        
+
+        Parameters
+        ----------
+        values :
+            
+        no_dez :
+            
+
+        Returns
+        -------
+
+        """
         return np.sum(values[no_dez])
     px_sums = apply_array_func(leaf_sum, pxs, no_decendants)
     py_sums = apply_array_func(leaf_sum, pys, no_decendants)
@@ -36,10 +62,50 @@ def phi_rotation(eventWise):
         cos = np.cos(angle)
         sin = np.sin(angle)
         def rotate_x(xs, ys):
+            """
+            
+
+            Parameters
+            ----------
+            xs :
+                
+            ys :
+                
+
+            Returns
+            -------
+
+            """
             return xs*cos - ys*sin
         def rotate_y(xs, ys):
+            """
+            
+
+            Parameters
+            ----------
+            xs :
+                
+            ys :
+                
+
+            Returns
+            -------
+
+            """
             return xs*sin + ys*cos
         def rotate_phi(phis): 
+            """
+            
+
+            Parameters
+            ----------
+            phis :
+                
+
+            Returns
+            -------
+
+            """
             return Components.confine_angle(phis - angle) 
         for px_name, py_name in pxy_cols:
             try:
@@ -65,6 +131,22 @@ def phi_rotation(eventWise):
 
 
 def normalize_jets(eventWise, jet_name, new_name):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    new_name :
+        
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     jet_cols = [(c, c.replace(jet_name, new_name))
                 for c in eventWise.columns if jet_name in c]
@@ -80,6 +162,18 @@ def normalize_jets(eventWise, jet_name, new_name):
             flat_values = np.array(flat_values).reshape((-1, 1))
             transformer = preprocessing.RobustScaler().fit(flat_values)
             def rescale(vals):
+                """
+                
+
+                Parameters
+                ----------
+                vals :
+                    
+
+                Returns
+                -------
+
+                """
                 if len(vals) == 0:
                     return vals
                 return transformer.transform(np.array(vals).reshape((-1, 1)))
@@ -89,6 +183,24 @@ def normalize_jets(eventWise, jet_name, new_name):
 
 
 def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    new_name :
+        
+    min_tracks :
+         (Default value = 3)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     jet_cols = [(c, c.replace(jet_name, new_name))
                 for c in eventWise.columns if c.startswith(jet_name)]
@@ -108,15 +220,52 @@ def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
 
 
 def make_targets(eventWise, jet_name):
-    """ anything with at least one tag is considered signal """
+    """
+    anything with at least one tag is considered signal
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+
+    Returns
+    -------
+
+    """
     truth_tags = getattr(eventWise, jet_name+"_Tags")
     def target_func(array):
+        """
+        
+
+        Parameters
+        ----------
+        array :
+            
+
+        Returns
+        -------
+
+        """
         return len(array) > 0
     contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags, depth=eventWise.EVENT_DEPTH)}
     eventWise.append(**contents)
 
 
 def event_wide_observables(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     contents = {}
     cumulative_columns = ["Energy", "Rapidity", "PT",
                           "Px", "Py", "Pz"]
@@ -133,6 +282,20 @@ def event_wide_observables(eventWise):
 
 
 def jet_wide_observables(eventWise, jet_name):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+
+    Returns
+    -------
+
+    """
     # calculate averages and num hits
     eventWise.selected_index = None
     cumulative_components = ["PT", "Rapidity", "PseudoRapidity",
@@ -158,4 +321,5 @@ def jet_wide_observables(eventWise, jet_name):
     eventWise.selected_index = None
     contents[jet_name+"_size"] = apply_array_func(len, values, depth=eventWise.JET_DEPTH)
     eventWise.append(**contents)
+
 

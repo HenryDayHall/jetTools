@@ -1,6 +1,7 @@
 import numpy as np
 
 class Identities:
+    """ """
     # see http://home.thep.lu.se/~torbjorn/pythia81html/ParticleDataScheme.html
     particle_attributes = {"id": int,
                            "name": str,      # - a character string with the name of the particle.
@@ -52,6 +53,7 @@ class Identities:
 
     @property
     def charges(self):
+        """ """
         charge_types = self.chargeTypes
         part_charges = {i: charge_type/3 for i, charge_type in charge_types.items()}
         anti_charges = {-i: -charge_type/3 for i, charge_type in charge_types.items()}
@@ -59,7 +61,7 @@ class Identities:
 
     @property
     def antiNames(self):
-        """ It antiparticle should be accesable from the negative pid too """
+        """It antiparticle should be accesable from the negative pid too"""
         _antiNames = self.__getattr__('antiNames')
         neg_antiNames = {-key: name for key, name in _antiNames.items()}
         return {**_antiNames, **neg_antiNames}
@@ -86,6 +88,7 @@ class Identities:
 
 
 class IDConverter(Identities):
+    """ """
     def __getitem__(self, key):
         # override from Identities
         # if we don't find it in the dict return the key
@@ -96,6 +99,22 @@ class IDConverter(Identities):
 
 
 def match(pid_list, desired, partial=True):
+    """
+    
+
+    Parameters
+    ----------
+    pid_list :
+        
+    desired :
+        
+    partial :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     desired = str(desired)
     converter = IDConverter()
     name_list = [str(converter[pid]) for pid in pid_list]

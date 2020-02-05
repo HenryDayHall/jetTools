@@ -2,40 +2,88 @@
 display = False
 from ipdb import set_trace as st
 if display:
-    from tree_tagger import FormJets, Components, DrawBarrel, InputTools
-else:
-    from tree_tagger import Components, InputTools
+    from tree_tagger import FormJets, DrawBarrel
+from tree_tagger import Components, InputTools, Constants
 import numpy as np
 import awkward
 import os
 import scipy.stats
 
-def allocate(eventWise, jet_name, tag_idx, max_angle2):
+
+def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     """
     each tag will be assigned to a jet
-    both tag particles and jets must offer rap and phi methods
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    tag_idx :
+        
+    max_angle2 :
+        
+
+    Returns
+    -------
+
     """
     root_name = jet_name + "_RootInputIdx"
     inputidx_name = jet_name + "_InputIdx"
     attr_name = jet_name + "_Phi"
-    phi_distance = np.vstack([[eventWise.Phi[tag_i] - jet_phi for jet_phi
-                               in eventWise.match_indices(attr_name, root_name, inputidx_name)]
+    jet_phis = eventWise.match_indices(attr_name, root_name, inputidx_name).flatten()
+    attr_name = jet_name + "_Rapidity"
+    jet_raps = eventWise.match_indices(attr_name, root_name, inputidx_name).flatten()
+    if valid_jets is not None:
+        # check that a list of indices not a bool mask has been passed
+        if len(valid_jets) == len(jet_raps):
+            # should they be the same length every index must appear
+            # just check for the last one
+            assert len(jet_raps) - 1 in valid_jets
+        # select only valid jets for comparison
+        jet_phis = jet_phis[valid_jets]
+        jet_raps = jet_raps[valid_jets]
+    phi_distance = np.array([[eventWise.Phi[tag_i] - jet_phi for jet_phi
+                               in jet_phis]
                               for tag_i in tag_idx])
     phi_distance[phi_distance > np.pi] = 2*np.pi - phi_distance[phi_distance > np.pi]
-    attr_name = jet_name + "_Rapidity"
-    rap_distance = np.vstack([[eventWise.Rapidity[tag_i] - jet_rap for jet_rap
-                               in eventWise.match_indices(attr_name, root_name, inputidx_name)]
+    rap_distance = np.array([[eventWise.Rapidity[tag_i] - jet_rap for jet_rap
+                               in jet_raps]
                               for tag_i in tag_idx])
     dist2 = np.square(phi_distance) + np.square(rap_distance)
     closest = np.argmin(dist2, axis=1)
+    if valid_jets is not None:
+        # revert to true indices
+        closest = valid_jets[closest]
+    # remove anything with too large an angle
     dist2_closest = np.min(dist2, axis=1)
     closest[dist2_closest > max_angle2] = -1
     return closest
 
 
 def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True):
-    """ tag jets based on particles emmited by the hard scattering 
-        follows taggable partilces to last tagable decendant"""
+    """
+    tag jets based on particles emmited by the hard scattering
+        follows taggable partilces to last tagable decendant
+
+    Parameters
+    ----------
+    eventWise :
+        
+    hard_interaction_pids :
+         (Default value = [25)
+    35] :
+        
+    tag_pids :
+         (Default value = None)
+    include_antiparticles :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
@@ -73,58 +121,132 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     return tag_idx
 
 
-def add_tags(eventWise, jet_name, max_angle, batch_length=100):
+def add_tag_particles(eventWise, silent=False):
     eventWise.selected_index = None
-    name = jet_name+"_Tags"
-    namePID = jet_name+"_TagPIDs"
-    n_events = len(getattr(eventWise, jet_name+"_Energy", []))
-    jet_tags = list(getattr(eventWise, name, []))
-    jet_tagpids = list(getattr(eventWise, namePID, []))
-    start_point = len(jet_tags)
+    name = "TagIndex"
+    n_events = len(eventWise.X)
+    tags = list(getattr(eventWise, name, []))
+    start_point = len(tags)
     if start_point >= n_events:
         print("Finished")
         return True
-    end_point = min(n_events, start_point+batch_length)
-    print(f" Will stop at {100*end_point/n_events}%")
-    # this is a memory intense operation, so must be done in batches
+    end_point = n_events
+    if not silent:
+        print(f" Will stop at {100*end_point/n_events}%")
     eventWise.selected_index = None
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
-    max_angle2 = max_angle**2
     for event_n in range(start_point, end_point):
-        if event_n % 10 == 0:
+        if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break
         eventWise.selected_index = event_n
-        tags = tag_particle_indices(eventWise, tag_pids=tag_pids)
-        jets_tags = [[] for _ in getattr(eventWise, jet_name+"_Energy")]
-        if tags and jets_tags: # there may not be any of the particles we wish to tag in the event
+        tags.append(tag_particle_indices(eventWise, tag_pids=tag_pids))
+    content = {name: tags}
+    # only one of these needed per file, so always append
+    eventWise.append(**content)
+
+
+def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    max_angle :
+        
+    batch_length :
+         (Default value = 100)
+
+    Returns
+    -------
+
+    """
+    if jet_pt_cut is None:
+        jet_pt_cut = Constants.min_jetpt
+    if min_tracks is None:
+        min_tracks = Constants.min_ntracks
+    if max_angle is None:
+        max_angle = Constants.max_tagangle
+    eventWise.selected_index = None
+    name = jet_name+"_Tags"
+    namePID = jet_name+"_TagPIDs"
+    n_events = len(getattr(eventWise, jet_name+"_Energy", []))
+    if "TagIndex" not in eventWise.columns:
+        add_tag_particles(eventWise, silent=silent)
+    jet_tags = list(getattr(eventWise, name, []))
+    jet_tagpids = list(getattr(eventWise, namePID, []))
+    start_point = len(jet_tags)
+    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
+    if start_point >= n_events:
+        print("Finished")
+        content = {}
+        content[name] = awkward.fromiter(jet_tags)
+        content[namePID] = awkward.fromiter(jet_tagpids)
+        if append:
+            return
+        else:
+            return hyperparameter_content, content
+    end_point = min(n_events, start_point+batch_length)
+    if not silent:
+        print(f" Will stop at {100*end_point/n_events}%")
+    # name the vaiables to be cut on
+    inputidx_name = jet_name + "_InputIdx"
+    rootinputidx_name = jet_name+"_RootInputIdx"
+    # will actually compare the square of the angle for speed
+    max_angle2 = max_angle**2
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0 and not silent:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        eventWise.selected_index = event_n
+        # get the tags
+        tags = eventWise.TagIndex
+        # get the valiables to cut on
+        jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
+        if len(jet_pt) == 0:
+            num_tracks = []
+            valid_jets = []
+        else:
+            # note this actually counts num pesudojets, but for more than 2 that is sufficient
+            num_tracks = Components.apply_array_func(len, getattr(eventWise, jet_name+"_PT")).flatten()
+            valid_jets = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks-0.1))[0]
+        jets_tags = [[] for _ in jet_pt]
+        if tags and len(valid_jets) > 0:
+            # there may not be any of the particles we wish to tag in the event
             # or there may not be any jets
-            closest_matches = allocate(eventWise, jet_name, tags, max_angle2)
+            closest_matches = allocate(eventWise, jet_name, tags, max_angle2, valid_jets)
         else:
             closest_matches = []
         # keep only the indices for space reasons
         for match, particle in zip(closest_matches, tags):
             if match != -1:
                 jets_tags[match].append(particle)
-        jet_tags.append(awkward.fromiter(tags))
+        jet_tags.append(awkward.fromiter(jets_tags))
         tagpids = [eventWise.MCPID[jet] for jet in tags]
         jet_tagpids.append(awkward.fromiter(tagpids))
     content = {}
     content[name] = awkward.fromiter(jet_tags)
     content[namePID] = awkward.fromiter(jet_tagpids)
-    try:
+    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
+    if append:
         eventWise.append(**content)
-    except Exception:
-        print("Problem")
-        return content
+        eventWise.append_hyperparameters(**hyperparameter_content)
+    else:
+        return hyperparameter_content, content
 
 
 display=False  # note needs full simulation
 if display:  # have to comment out to run without display
-
     def main():
+        """ """
         from tree_tagger import Components, DrawBarrel
         repeat = True
         eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt.awkd")

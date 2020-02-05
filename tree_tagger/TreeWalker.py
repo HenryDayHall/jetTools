@@ -19,6 +19,7 @@ import torch
 from tree_tagger import Components
 
 class TreeWalker:
+    """ """
     def __init__(self, eventWise, jet_name, selected_index, jet_number, pseudojet_idx):
         self.eventWise = eventWise
         # set that here befor pulling values
@@ -64,38 +65,47 @@ class TreeWalker:
     # these things need to be properties to avoid loading too much in to memory
     @property
     def label(self):
+        """ """
         return getattr(self.eventWise, self.jet_name + "_JoinDistance")[self.jet_number][self.pseudojet_idx]
 
     @property
     def pt(self):
+        """ """
         return getattr(self.eventWise, self.jet_name + "_PT")[self.jet_number][self.pseudojet_idx]
     @property
     def rap(self):
+        """ """
         return getattr(self.eventWise, self.jet_name + "_Rapidity")[self.jet_number][self.pseudojet_idx]
     
     @property
     def phi(self):
+        """ """
         return getattr(self.eventWise, self.jet_name + "_Phi")[self.jet_number][self.pseudojet_idx]
     
     @property
     def theta(self):
+        """ """
         return getattr(self.eventWise, self.jet_name + "_Theta")[self.jet_number][self.pseudojet_idx]
     
     @property
     def e(self):
+        """ """
         return getattr(self.eventWise, self.jet_name + "_Energy")[self.jet_number][self.pseudojet_idx]
     
     @property
     def p(self):
+        """ """
         return np.sqrt(getattr(self.eventWise, self.jet_name + "_Px")[self.jet_number][self.pseudojet_idx]**2 +
                        getattr(self.eventWise, self.jet_name + "_Py")[self.jet_number][self.pseudojet_idx]**2 +
                        getattr(self.eventWise, self.jet_name + "_Pz")[self.jet_number][self.pseudojet_idx]**2)
     @property
     def leaf(self):
+        """ """
         return [self.pt, self.rap, self.phi, self.e]
     
     @property
     def leaf_inputs(self):
+        """ """
         # this si the variabel offered to the nn
         # momentum rapidity theta phi energy transverse-momentum
         leaf_inputs = [self.p, self.rap, self.theta, self.phi, self.e, self.pt]
@@ -103,12 +113,14 @@ class TreeWalker:
 
     @property
     def size(self):
+        """ """
         # for visulisation
         return self.e
 
 
     @property
     def decendants(self):
+        """ """
         if self._decendants is None:
             if self.is_leaf:
                 self._decendants = set([self.particle_idx])
@@ -121,6 +133,18 @@ class TreeWalker:
 
 # how abut a graph of average join properties
 def join_behaviors(root):
+    """
+    
+
+    Parameters
+    ----------
+    root :
+        
+
+    Returns
+    -------
+
+    """
     if root.is_leaf:
         return [], []
     else:
@@ -141,6 +165,22 @@ def join_behaviors(root):
 # its impossible to to this properly retrospectivly... 
 # the clustering has time order to it
 def tree_motion(start, root, steps_between):
+    """
+    
+
+    Parameters
+    ----------
+    start :
+        
+    root :
+        
+    steps_between :
+        
+
+    Returns
+    -------
+
+    """
     if root.is_leaf:
         location = [[[start[0]], [start[1]]]]*(steps_between+1)
         size = [[root.size]]*(steps_between+1)
@@ -214,6 +254,26 @@ def tree_motion(start, root, steps_between):
 
 
 def plot_motions(motions, sizes, colours, dir_name, step_interval):
+    """
+    
+
+    Parameters
+    ----------
+    motions :
+        
+    sizes :
+        
+    colours :
+        
+    dir_name :
+        
+    step_interval :
+        
+
+    Returns
+    -------
+
+    """
     os.mkdir(dir_name)
     # get the right x limits
     for motion in motions:
@@ -251,6 +311,7 @@ def plot_motions(motions, sizes, colours, dir_name, step_interval):
 
         
 def quick_vid():
+    """ """
     import FormJets
     save_name = "homepic" 
     assert not os.path.exists(save_name)
@@ -271,6 +332,18 @@ def quick_vid():
 
 
 def whole_event(nodisplay=False):
+    """
+    
+
+    Parameters
+    ----------
+    nodisplay :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     import FormJets
     import Components
     obs_dir = "test"
@@ -343,6 +416,18 @@ def whole_event(nodisplay=False):
 
 
 def whole_event_behavior(nodisplay=False):
+    """
+    
+
+    Parameters
+    ----------
+    nodisplay :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     import FormJets
     import Components
     obs_dir = "test"
@@ -386,6 +471,28 @@ def whole_event_behavior(nodisplay=False):
         plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR)
 
 def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump, exponent_multiplyer, deltaR):
+    """
+    
+
+    Parameters
+    ----------
+    fast_behavior :
+        
+    fast_jump :
+        
+    home_behavior :
+        
+    home_jump :
+        
+    exponent_multiplyer :
+        
+    deltaR :
+        
+
+    Returns
+    -------
+
+    """
     if np.any(fast_jump):
         plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], alpha=.5, cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')
     if np.any(home_jump):

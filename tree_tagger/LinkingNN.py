@@ -34,18 +34,38 @@ class Latent_projector(nn.Sequential):
         self.layers = [l for l in layers if hasattr(l, 'weight')]
     
     def get_weights(self):
+        """ """
         weights = []
         for layer in self.layers:
             weights.append(layer.weight.data)
         return weights
     
     def get_bias(self):
+        """ """
         bias = []
         for layer in self.layers:
             bias.append(layer.bias.data)
         return bias
 
 def soft_truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    """
+    
+
+    Parameters
+    ----------
+    towers_projection :
+        
+    tracks_projection :
+        
+    proximities :
+        
+    MC_truth :
+        
+
+    Returns
+    -------
+
+    """
     loss = 0
     # get the closeast tower fro each track
     np_tracks_proj = np.array([t.cpu().detach().numpy() for t in tracks_projection])
@@ -68,6 +88,24 @@ def soft_truth_criterion(towers_projection, tracks_projection, proximities, MC_t
 
 # this should allow for some of the tracks never making towers?
 def old_prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    """
+    
+
+    Parameters
+    ----------
+    towers_projection :
+        
+    tracks_projection :
+        
+    proximities :
+        
+    MC_truth :
+        
+
+    Returns
+    -------
+
+    """
     loss = 0
     mask = np.ones(len(towers_projection), dtype=int)
     for track_n, tower_indices in enumerate(proximities):
@@ -93,6 +131,24 @@ def old_prox_criterion(towers_projection, tracks_projection, proximities, MC_tru
     return loss
 
 def a_truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    """
+    
+
+    Parameters
+    ----------
+    towers_projection :
+        
+    tracks_projection :
+        
+    proximities :
+        
+    MC_truth :
+        
+
+    Returns
+    -------
+
+    """
     loss = 0
     # get the closeast tower fro each track
     #loss = torch.sum(towers_projection**2) + torch.sum(tracks_projection**2)
@@ -100,6 +156,24 @@ def a_truth_criterion(towers_projection, tracks_projection, proximities, MC_trut
     return loss
 
 def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    """
+    
+
+    Parameters
+    ----------
+    towers_projection :
+        
+    tracks_projection :
+        
+    proximities :
+        
+    MC_truth :
+        
+
+    Returns
+    -------
+
+    """
     loss = 0
     # get the closeast tower fro each track
     np_tracks_proj = np.array([t.cpu().detach().numpy() for t in tracks_projection])
@@ -120,6 +194,24 @@ def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth)
 
 # this should allow for some of the tracks never making towers?
 def a_prox_criterion(towers_projection, tracks_projection, proximities, MC_truth):
+    """
+    
+
+    Parameters
+    ----------
+    towers_projection :
+        
+    tracks_projection :
+        
+    proximities :
+        
+    MC_truth :
+        
+
+    Returns
+    -------
+
+    """
     loss = 0
     track_distance = 0
     tower_mask = np.ones(len(towers_projection), dtype=int)
@@ -160,6 +252,20 @@ def a_prox_criterion(towers_projection, tracks_projection, proximities, MC_truth
 
 
 def begin_training(run, viewer=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    viewer :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
     # Device configuration
@@ -172,6 +278,22 @@ def begin_training(run, viewer=None):
     #dataset = Datasets.TracksTowersDataset(folder_name=run.settings['data_folder'])
     dataset = run.dataset
     def test_losser(event_data, nets, device):
+        """
+        
+
+        Parameters
+        ----------
+        event_data :
+            
+        nets :
+            
+        device :
+            
+
+        Returns
+        -------
+
+        """
         towers_data, tracks_data, proximities, MC_truth = event_data
         tower_net, track_net = nets
         towers_data = towers_data.to(device)
@@ -182,6 +304,22 @@ def begin_training(run, viewer=None):
         return loss
 
     def train_losser(event_data, nets, device):
+        """
+        
+
+        Parameters
+        ----------
+        event_data :
+            
+        nets :
+            
+        device :
+            
+
+        Returns
+        -------
+
+        """
         towers_data, tracks_data, proximities, MC_truth = event_data
         tower_net, track_net = nets
         towers_data = towers_data.to(device)
@@ -192,6 +330,24 @@ def begin_training(run, viewer=None):
         return loss
 
     def batch_losser(events_data, nets, device, losser):
+        """
+        
+
+        Parameters
+        ----------
+        events_data :
+            
+        nets :
+            
+        device :
+            
+        losser :
+            
+
+        Returns
+        -------
+
+        """
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
 
@@ -206,6 +362,18 @@ def begin_training(run, viewer=None):
         net = net.to(device)
         # Experimental!
         def init_weights(m):
+            """
+            
+
+            Parameters
+            ----------
+            m :
+                
+
+            Returns
+            -------
+
+            """
             if type(m) == nn.Linear:
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.5)
                 m.bias.data.fill_(0.01)

@@ -5,6 +5,22 @@ from matplotlib import pyplot as plt
 from tree_tagger import LinkingFramework, LinkingNN, Constants
 
 def apply_linking_net(run, use_test=True, nets=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    use_test :
+         (Default value = True)
+    nets :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if nets is None:
         tower_net, track_net = run.best_nets
     else:
@@ -28,6 +44,18 @@ def apply_linking_net(run, use_test=True, nets=None):
 
 
 def get_distance_to_neighbor(output_events):
+    """
+    
+
+    Parameters
+    ----------
+    output_events :
+        
+
+    Returns
+    -------
+
+    """
     match_status = []  # was it correctly matched?
     match_distance = []  # how far to the closest match?
     true_distance = []  # how far to what it should have matched to?
@@ -56,6 +84,20 @@ def get_distance_to_neighbor(output_events):
 
 
 def plot_distances(output_events, ax=None):
+    """
+    
+
+    Parameters
+    ----------
+    output_events :
+        
+    ax :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if ax is None:
         _, ax = plt.subplots()
     else:
@@ -96,21 +138,53 @@ def plot_distances(output_events, ax=None):
     ax.set_ylabel(f"Frequency from {total} tracks")
     
 def view_progress(run, nets, ax=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    nets :
+        
+    ax :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     output = apply_linking_net(run, nets=nets)
     plot_distances(output, ax=None)
     plt.show()
 
 class ResponsePlot:
+    """ """
     def __init__(self, run):
         self.run = run
         data = []
         self.on_launch()
 
     def on_launch(self):
+        """ """
         # set up plots
         self.figure, self.ax = plt.subplots()
 
     def update(self, _, nets):
+        """
+        
+
+        Parameters
+        ----------
+        _ :
+            
+        nets :
+            
+
+        Returns
+        -------
+
+        """
         output = apply_linking_net(self.run, nets=nets)
         # update the plot
         plot_distances(output, self.ax)

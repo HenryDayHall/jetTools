@@ -8,6 +8,40 @@ import torch
 import torch.nn.functional
 
 def single_pass(nets, run, dataloader, dataset, validation_weights, validation_events, test_events, device, train_losser, validation_losser, test_losser, weight_decay):
+    """
+    
+
+    Parameters
+    ----------
+    nets :
+        
+    run :
+        
+    dataloader :
+        
+    dataset :
+        
+    validation_weights :
+        
+    validation_events :
+        
+    test_events :
+        
+    device :
+        
+    train_losser :
+        
+    validation_losser :
+        
+    test_losser :
+        
+    weight_decay :
+        
+
+    Returns
+    -------
+
+    """
     # make initial measures
     for net in nets:
         net.eval()
@@ -59,6 +93,44 @@ def single_pass(nets, run, dataloader, dataset, validation_weights, validation_e
 
 
 def train(nets, run, dataloader, dataset, validation_sampler, device, train_losser, batch_losser, test_losser, optimiser, end_time, dataset_inv_size, val_schedulers, viewer=None):
+    """
+    
+
+    Parameters
+    ----------
+    nets :
+        
+    run :
+        
+    dataloader :
+        
+    dataset :
+        
+    validation_sampler :
+        
+    device :
+        
+    train_losser :
+        
+    batch_losser :
+        
+    test_losser :
+        
+    optimiser :
+        
+    end_time :
+        
+    dataset_inv_size :
+        
+    val_schedulers :
+        
+    viewer :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     weight_decay = run.settings['weight_decay']
     sampler = dataloader.batch_sampler
     val_i = validation_sampler.validation_indices

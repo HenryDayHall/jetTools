@@ -18,6 +18,18 @@ import sklearn
 
 
 def remove_file_extention(path):
+    """
+    
+
+    Parameters
+    ----------
+    path :
+        
+
+    Returns
+    -------
+
+    """
     suffix = Path(path).suffix
     if len(suffix) == 0:
         return path
@@ -25,6 +37,22 @@ def remove_file_extention(path):
 
 
 def str_is_type(s_type, s, accept_none=False):
+    """
+    
+
+    Parameters
+    ----------
+    s_type :
+        
+    s :
+        
+    accept_none :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     if s is None and accept_none:
         return True
     if isinstance(s, s_type) or s is None: # the conversion already happened
@@ -37,7 +65,7 @@ def str_is_type(s_type, s, accept_none=False):
 
 
 class Run:
-    """ lazy loading, be aware that loading the nets will usually mean loading the datasets"""
+    """lazy loading, be aware that loading the nets will usually mean loading the datasets"""
     chatty = False
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
@@ -89,6 +117,18 @@ class Run:
         # because this method is called frequently, pull the if logic outside
         if self.writing: # a writing run is inefficient, but will continuously generate output
             def append(line):
+                """
+                
+
+                Parameters
+                ----------
+                line :
+                    
+
+                Returns
+                -------
+
+                """
                 # the line to append must have a value for every column
                 assert len(line) == len(self.column_headings), "tried to append values not equal to number of columns"
                 self.table = np.vstack((self.table, line))
@@ -100,6 +140,18 @@ class Run:
                     self.write(with_nets=False)
         else:  # this is the fast version, even skip the assert
             def append(line):
+                """
+                
+
+                Parameters
+                ----------
+                line :
+                    
+
+                Returns
+                -------
+
+                """
                 self.table = np.vstack((self.table, line))
         self.append = append
         # locate the write file
@@ -172,6 +224,7 @@ class Run:
         self._load_state_dicts()
 
     def _load_state_dicts(self):
+        """ """
         try:
             self._last_net_state_dicts = [torch.load(name, map_location='cpu')
                                            for name in self.last_net_files]
@@ -188,10 +241,12 @@ class Run:
     
     @property
     def dataset(self):
+        """ """
         raise NotImplementedError
 
     @property
     def last_nets(self):
+        """ """
         if self._last_nets is None:
             if self._last_net_state_dicts is None:
                 raise FileNotFoundError("No last nets found for this run")
@@ -200,6 +255,7 @@ class Run:
 
     @property
     def best_nets(self):
+        """ """
         if self._best_nets is None:
             if self._best_net_state_dicts is None:
                 raise FileNotFoundError("No best nets found for this run")
@@ -207,6 +263,20 @@ class Run:
         return self._best_nets
 
     def _nets_from_state_dict(self, *args, **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        *args :
+            
+        **kwargs :
+            
+
+        Returns
+        -------
+
+        """
         raise NotImplementedError
 
     def __process_idx(self, idx):
@@ -298,10 +368,23 @@ class Run:
 
     @property
     def column_headings(self):
+        """ """
         return self.__column_headings
 
     @column_headings.setter
     def column_headings(self, column_headings):
+        """
+        
+
+        Parameters
+        ----------
+        column_headings :
+            
+
+        Returns
+        -------
+
+        """
         # we can only set column headdings if there arnt ay already
         assert not hasattr(self, 'column_headings'), "Column headdings already set!"
         # there should definetly be column headdings before data in the table
@@ -311,6 +394,18 @@ class Run:
 
 
     def process_info_line(self, info_line):
+        """
+        
+
+        Parameters
+        ----------
+        info_line :
+            
+
+        Returns
+        -------
+
+        """
         # kill empty strings
         info_line = list(filter(None, info_line))
         # if the info line looks like a dict
@@ -327,6 +422,7 @@ class Run:
         return args
 
     def fill_defaults(self):
+        """ """
         # find out if anything didn't get added
         for arg_name in self.setting_names:
             if arg_name not in self.settings.keys():
@@ -336,6 +432,7 @@ class Run:
                 self.settings[arg_name] = self.arg_defaults[arg_name]
 
     def get_time(self):
+        """ """
         # pick the first timestamp
         t_0 = self['time_stamps', 0]
         time_0 = time.gmtime(t_0)
@@ -343,6 +440,18 @@ class Run:
         return self.time
 
     def write(self, with_nets=True):
+        """
+        
+
+        Parameters
+        ----------
+        with_nets :
+             (Default value = True)
+
+        Returns
+        -------
+
+        """
         # just clear the file and start from scratch
         with open(self.progress_file_name, 'w') as pf:
             writer = csv.writer(pf, delimiter=' ')
@@ -362,15 +471,55 @@ class Run:
         self.written = True
 
     def save_net(self, net, file_name):
+        """
+        
+
+        Parameters
+        ----------
+        net :
+            
+        file_name :
+            
+
+        Returns
+        -------
+
+        """
         torch.save(net, file_name)
 
     @best_nets.setter
     def best_nets(self, param_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        param_dicts :
+            
+
+        Returns
+        -------
+
+        """
         # don't allow direct setting of the best net
         # must use set method to ensure we also get the lowest loss
         raise AttributeError("do not set this directly, use set_best_state_dicts")
 
     def set_best_state_dicts(self, param_dicts, lowest_loss):
+        """
+        
+
+        Parameters
+        ----------
+        param_dicts :
+            
+        lowest_loss :
+            
+
+        Returns
+        -------
+
+        """
         # could make an assertion about this loss being lower thant previous ones,
         # but as i expect this code to be called many times i will omit it
         self.settings['lowest_loss'] = float(lowest_loss)
@@ -378,15 +527,42 @@ class Run:
 
     @last_nets.setter
     def last_nets(self, param_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        param_dicts :
+            
+
+        Returns
+        -------
+
+        """
         # if we were given a net make it a state dict
         if not isinstance(param_dicts[0], dict):
             param_dicts = [p.state_dict() for p in param_dicts]
         self._last_net_state_dicts = deepcopy(param_dicts)
 
     def apply_to_test(self, net=None, test_input=None):
+        """
+        
+
+        Parameters
+        ----------
+        net :
+             (Default value = None)
+        test_input :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         raise NotImplementedError
 
     def add_auc(self):
+        """ """
         output, truth = self.apply_to_test()
         auc = sklearn.metrics.roc_auc_score(truth, output)
         self.settings["auc"] = auc
@@ -394,6 +570,7 @@ class Run:
 
 
 class LinkingRun(Run):
+    """ """
     # the list arguments in the info line
     # given inorder of precidence when performing comparison
     setting_names = Run.setting_names + ["database_name", "hepmc_name"]
@@ -429,6 +606,7 @@ class LinkingRun(Run):
     
     @property
     def dataset(self):
+        """ """
         if self._dataset is None:
             # TODO make use of save load in datasets
             self._dataset = Datasets.TracksTowersDataset(
@@ -438,13 +616,27 @@ class LinkingRun(Run):
 
     @property
     def last_nets(self):
+        """ """
         raise NotImplementedError
 
     @property
     def best_nets(self):
+        """ """
         raise NotImplementedError
 
     def _nets_from_state_dict(self, state_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        state_dicts :
+            
+
+        Returns
+        -------
+
+        """
         towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
                                                       self.settings['latent_dimension'])
         towers_projector.load_state_dict(state_dicts[0])
@@ -455,6 +647,7 @@ class LinkingRun(Run):
 
 
 class JetWiseRun(Run):
+    """ """
     arg_tests = {**Run.arg_tests,
                  "n_train_jets"    : lambda s: str_is_type(int, s),
                  "jet_name"  : lambda s: True}
@@ -480,6 +673,18 @@ class JetWiseRun(Run):
     
     @property
     def dataset(self, shuffle=False):
+        """
+        
+
+        Parameters
+        ----------
+        shuffle :
+             (Default value = False)
+
+        Returns
+        -------
+
+        """
         if self._dataset is None:
             self._dataset = Datasets.JetWiseDataset(database_name=self.settings["database_name"],
                                                     jet_name=self.settings["jet_name"],
@@ -488,16 +693,41 @@ class JetWiseRun(Run):
         
 
     def _nets_from_state_dict(self, state_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        state_dicts :
+            
+
+        Returns
+        -------
+
+        """
         raise NotImplementedError
 
 
 class FlatJetRun(JetWiseRun):
+    """ """
     def __init__(self, *args, **kwargs):
         self.arg_defaults['net_type'] = 'standard'
         super().__init__(*args, **kwargs)
 
     @property
     def dataset(self, shuffle=False):
+        """
+        
+
+        Parameters
+        ----------
+        shuffle :
+             (Default value = False)
+
+        Returns
+        -------
+
+        """
         if self._dataset is None:
             try:
                 self._dataset = Datasets.FlatJetDataset.from_file(self.settings["database_name"],
@@ -509,6 +739,18 @@ class FlatJetRun(JetWiseRun):
         return self._dataset
 
     def _nets_from_state_dict(self, state_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        state_dicts :
+            
+
+        Returns
+        -------
+
+        """
         # Device configuration
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -521,6 +763,7 @@ class FlatJetRun(JetWiseRun):
 
 
     def apply_to_test(self):
+        """ """
         # Device configuration
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -535,6 +778,7 @@ class FlatJetRun(JetWiseRun):
 
 
 class SklearnJetRun(FlatJetRun):
+    """ """
     net_extention = ".sklrn"
     chatty=False
     arg_tests = {**JetWiseRun.arg_tests,
@@ -557,6 +801,7 @@ class SklearnJetRun(FlatJetRun):
         super().__init__(*args, **kwargs)
 
     def _load_state_dicts(self):
+        """ """
         try:
             self._last_net_state_dicts = []
             for name in self.last_net_files:
@@ -576,6 +821,20 @@ class SklearnJetRun(FlatJetRun):
                 print("Warning; not an empty run, but no best net found!")
 
     def save_net(self, net, file_name):
+        """
+        
+
+        Parameters
+        ----------
+        net :
+            
+        file_name :
+            
+
+        Returns
+        -------
+
+        """
         with open(file_name, 'wb') as pickle_file:
             if type(net) == bytes:
                 #already pickled
@@ -584,22 +843,75 @@ class SklearnJetRun(FlatJetRun):
                 pickle.dump(net, pickle_file)
 
     def set_best_state_dicts(self, net, lowest_loss=0):
+        """
+        
+
+        Parameters
+        ----------
+        net :
+            
+        lowest_loss :
+             (Default value = 0)
+
+        Returns
+        -------
+
+        """
         # could make an assertion about this loss being lower thant previous ones,
         # but as i expect this code to be called many times i will omit it
         super().set_best_state_dicts(net, lowest_loss)
 
     @Run.last_nets.setter
     def last_nets(self, param_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        param_dicts :
+            
+
+        Returns
+        -------
+
+        """
         self._last_net_state_dicts = [pickle.dumps(d) for d in param_dicts]
 
     def _nets_from_state_dict(self, state_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        state_dicts :
+            
+
+        Returns
+        -------
+
+        """
         nets = [pickle.loads(s) for s in state_dicts]
         return nets
 
     def get_test_input(self):
+        """ """
         return np.nan_to_num(self.dataset.test_jets.astype('float32'))
 
     def apply_to_test(self, net=None, test_inputs=None):
+        """
+        
+
+        Parameters
+        ----------
+        net :
+             (Default value = None)
+        test_inputs :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if net is None:
             bdt = self.best_nets[0]
             dataset = self.dataset
@@ -611,6 +923,7 @@ class SklearnJetRun(FlatJetRun):
 
 
 class RecursiveRun(JetWiseRun):
+    """ """
     arg_defaults = {**JetWiseRun.arg_defaults,
                     "net_type"    : "simple_recursive"}
                           
@@ -619,6 +932,18 @@ class RecursiveRun(JetWiseRun):
         net_types = ["recursive", "simple_recursive", "pseudostate_recursive"]
         self.arg_tests['net_type'] = lambda s: s in net_types
         def convert_net_type(net_type):
+            """
+            
+
+            Parameters
+            ----------
+            net_type :
+                
+
+            Returns
+            -------
+
+            """
             if net_type == "recursive":
                 # legacy for simple_recursive
                 net_type = "simple_recursive"
@@ -629,6 +954,18 @@ class RecursiveRun(JetWiseRun):
     
     @property
     def dataset(self, shuffle=False):
+        """
+        
+
+        Parameters
+        ----------
+        shuffle :
+             (Default value = False)
+
+        Returns
+        -------
+
+        """
         if self._dataset is None:
             self._dataset = Datasets.JetTreesDataset(database_name=self.settings["database_name"],
                                                      jet_name=self.settings["jet_name"],
@@ -637,6 +974,18 @@ class RecursiveRun(JetWiseRun):
         
 
     def _nets_from_state_dict(self, state_dicts):
+        """
+        
+
+        Parameters
+        ----------
+        state_dicts :
+            
+
+        Returns
+        -------
+
+        """
         # Device configuration
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -648,9 +997,24 @@ class RecursiveRun(JetWiseRun):
         return [net]
 
     def get_test_input(self):
+        """ """
         return self.dataset.test_events()
 
     def apply_to_test(self, net=None, test_input=None):
+        """
+        
+
+        Parameters
+        ----------
+        net :
+             (Default value = None)
+        test_input :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if net is None:
             events = self.get_test_input()
             net = self.best_nets[0]
@@ -674,9 +1038,43 @@ class RecursiveRun(JetWiseRun):
 
 
 def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):
+    """
+    
+
+    Parameters
+    ----------
+    run :
+        
+    focus :
+         (Default value = 0)
+    target_flavour :
+         (Default value = 'b')
+    ddict_name :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     raise NotImplementedError
 
 def get_LinkingProjections(nets, dataset, event_num):
+    """
+    
+
+    Parameters
+    ----------
+    nets :
+        
+    dataset :
+        
+    event_num :
+        
+
+    Returns
+    -------
+
+    """
     data_event = dataset[event_num]
     towers_data, tracks_data, proximities, MC_truth = event_data
     tower_net, track_net = nets
@@ -687,6 +1085,22 @@ def get_LinkingProjections(nets, dataset, event_num):
 plt.ion()
 
 def distances(track_num, tracks_projections, towers_projects):
+    """
+    
+
+    Parameters
+    ----------
+    track_num :
+        
+    tracks_projections :
+        
+    towers_projects :
+        
+
+    Returns
+    -------
+
+    """
     this_track = tracks_projections[track_num]
     track_dist = np.sqrt(np.sum(np.square(tracks_projections - this_track),
                                 axis=1))
@@ -696,6 +1110,7 @@ def distances(track_num, tracks_projections, towers_projects):
 
 
 class Liveplot:
+    """ """
     def __init__(self, run):
         self.run = run
         data = []
@@ -710,6 +1125,7 @@ class Liveplot:
                 self._update(data)
 
     def on_launch(self):
+        """ """
         # wait for the run to be assigned column headdings
         while not self.run.written:
             time.sleep(0.5)
@@ -735,6 +1151,18 @@ class Liveplot:
         self.inp_file.readline()
 
     def _update(self, data):
+        """
+        
+
+        Parameters
+        ----------
+        data :
+            
+
+        Returns
+        -------
+
+        """
         # update the plot
         time_stamps = [d[self.time_stamps_idx] for d in data]
         for line, idx in zip(self.lines, self.plot_idx):
@@ -750,6 +1178,7 @@ class Liveplot:
         self.figure.canvas.flush_events()
 
     def _try_line(self):
+        """ """
         line = self.inp_file.readline()
         if line:
             data = [float(x) for x in line.split(' ')]

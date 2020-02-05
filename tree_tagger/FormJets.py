@@ -8,10 +8,10 @@ import csv
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
 from skhep import math as hepmath
-from tree_tagger import Components
-
+from tree_tagger import Components, TrueTag, InputTools
 
 class PseudoJet:
+    """ """
     int_columns = ["Pseudojet_InputIdx",
                    "Pseudojet_Parent", "Pseudojet_Child1", "Pseudojet_Child2",
                    "Pseudojet_Rank"]
@@ -88,6 +88,22 @@ class PseudoJet:
             self.assign_parents()
 
     def _set_hyperparams(self, param_list, dict_jet_params, kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        param_list :
+            
+        dict_jet_params :
+            
+        kwargs :
+            
+
+        Returns
+        -------
+
+        """
         if dict_jet_params is None:
             dict_jet_params = {}
         stripped_params = {name.split("_")[-1]:name for name in dict_jet_params}
@@ -105,6 +121,7 @@ class PseudoJet:
         kwargs['dict_jet_params'] = dict_jet_params
 
     def _set_column_numbers(self):
+        """ """
         prefix_len = len(self.jet_name) + 1
         # int columns
         self._int_contents = {}
@@ -126,6 +143,7 @@ class PseudoJet:
         return sorted(new_attrs)
 
     def _calculate_currently_avalible(self):
+        """ """
         # keep track of how many clusters don't yet have a parent
         self.currently_avalible = sum([p[self._Parent_col]==-1 for p in self._ints])
 
@@ -162,12 +180,14 @@ class PseudoJet:
 
     @property
     def P(self):
+        """ """
         if len(self) == 0:
             return np.nan
         return np.linalg.norm([self.Px, self.Py, self.Pz])
 
     @property
     def Theta(self):
+        """ """
         if len(self) == 0:
             return np.nan
         theta = Components.ptpz_to_theta(self.PT, self.Pz)
@@ -175,7 +195,26 @@ class PseudoJet:
 
     @classmethod
     def create_updated_dict(cls, pseudojets, jet_name, event_index, eventWise=None, arrays=None):
-        """Make the dictionary to be appended to an eventWise for writing"""
+        """
+        Make the dictionary to be appended to an eventWise for writing
+
+        Parameters
+        ----------
+        pseudojets :
+            
+        jet_name :
+            
+        event_index :
+            
+        eventWise :
+             (Default value = None)
+        arrays :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if arrays is None:
             save_columns = [jet_name + "_RootInputIdx"]
             int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
@@ -201,6 +240,7 @@ class PseudoJet:
         return arrays
 
     def create_param_dict(self):
+        """ """
         jet_name = self.jet_name
         # add any default values
         defaults = {name:value for name, value in self.param_list.items()
@@ -210,7 +250,24 @@ class PseudoJet:
 
     @classmethod
     def write_event(cls, pseudojets, jet_name="Pseudojet", event_index=None, eventWise=None):
-        """Save a handful of jets together """
+        """
+        Save a handful of jets together
+
+        Parameters
+        ----------
+        pseudojets :
+            
+        jet_name :
+             (Default value = "Pseudojet")
+        event_index :
+             (Default value = None)
+        eventWise :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
         if event_index is None:
@@ -220,10 +277,22 @@ class PseudoJet:
         eventWise.append(**arrays)
 
     def check_params(self, eventWise):
-        """ if the  eventWise contains params, verify they are the same, else write them"""
+        """
+        if the  eventWise contains params, verify they are the same, else write them
+
+        Parameters
+        ----------
+        eventWise :
+            
+
+        Returns
+        -------
+
+        """
         my_params = self.create_param_dict()
         written_params = get_jet_params(eventWise, self.jet_name)
         if written_params:  # if written params exist check they match the jets params
+            st()
             # returning false imediatly if not
             if set(written_params.keys()) != set(my_params.keys()):
                 return False
@@ -243,7 +312,26 @@ class PseudoJet:
 
     @classmethod
     def multi_from_file(cls, file_name, event_idx, jet_name="Pseudojet", batch_start=None, batch_end=None):
-        """ read a handful of jets from file """
+        """
+        read a handful of jets from file
+
+        Parameters
+        ----------
+        file_name :
+            
+        event_idx :
+            
+        jet_name :
+             (Default value = "Pseudojet")
+        batch_start :
+             (Default value = None)
+        batch_end :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
         float_columns = [c.replace('Pseudojet', jet_name) for c in cls.float_columns]
         # could write a version that just read one jet if needed
@@ -286,9 +374,10 @@ class PseudoJet:
                           dict_jet_params=param_dict)
             new_jet.currently_avalible = 0  # assumed since we are reading from file
             jets.append(new_jet)
-            return jets
+        return jets
 
     def _calculate_roots(self):
+        """ """
         self.root_jetInputIdxs = []
         # should only bee needed for reading from file self.currently_avalible == 0, "Assign parents before you calculate roots"
         pseudojet_ids = self.InputIdx
@@ -300,6 +389,7 @@ class PseudoJet:
                 self.root_jetInputIdxs.append(pid)
 
     def split(self):
+        """ """
         assert self.currently_avalible == 0, "Need to assign_parents before splitting"
         if len(self) == 0:
             return []
@@ -322,13 +412,44 @@ class PseudoJet:
         return self.JetList
     
     def _calculate_distances(self):
+        """ """
         # this is caluculating all the distances
         raise NotImplementedError
 
     def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
         raise NotImplementedError
 
     def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance):
+        """
+        
+
+        Parameters
+        ----------
+        pseudojet_index1 :
+            
+        pseudojet_index2 :
+            
+        distance :
+            
+
+        Returns
+        -------
+
+        """
         replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
         new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance)
         # move the first pseudojet to the back without replacement
@@ -349,6 +470,18 @@ class PseudoJet:
         self._recalculate_one(remove_index, replace_index)
 
     def _remove_pseudojet(self, pseudojet_index):
+        """
+        
+
+        Parameters
+        ----------
+        pseudojet_index :
+            
+
+        Returns
+        -------
+
+        """
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
         pseudojet_floats = self._floats.pop(pseudojet_index)
@@ -363,6 +496,7 @@ class PseudoJet:
         
 
     def assign_parents(self):
+        """ """
         while self.currently_avalible > 0:
             # now find the smallest distance
             row, column = np.unravel_index(np.argmin(self._distances), self._distances.shape)
@@ -372,6 +506,7 @@ class PseudoJet:
                 self._merge_pseudojets(row, column, self._distances[row, column])
 
     def plt_assign_parents(self):
+        """ """
         # dendogram < this should be
         plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
         inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
@@ -414,6 +549,18 @@ class PseudoJet:
         plt.show()
 
     def idx_from_inpIdx(self, jetInputIdx):
+        """
+        
+
+        Parameters
+        ----------
+        jetInputIdx :
+            
+
+        Returns
+        -------
+
+        """
         ids = [p[self._InputIdx_col] for p in self._ints]
         pseudojet_idx = next((idx for idx, inp_idx in enumerate(ids)
                               if inp_idx == jetInputIdx),
@@ -423,6 +570,22 @@ class PseudoJet:
         raise ValueError(f"No pseudojet with ID {jetInputIdx}")
 
     def get_decendants(self, lastOnly=True, jetInputIdx=None, pseudojet_idx=None):
+        """
+        
+
+        Parameters
+        ----------
+        lastOnly :
+             (Default value = True)
+        jetInputIdx :
+             (Default value = None)
+        pseudojet_idx :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if jetInputIdx is None and pseudojet_idx is None:
             raise TypeError("Need to specify a pseudojet")
         elif pseudojet_idx is None:
@@ -464,12 +627,29 @@ class PseudoJet:
         return decendents
 
     def local_obs_idx(self):
+        """ """
         idx_are_obs = [i for i in range(len(self)) if
                        (self._ints[i][self._Child1_col] < 0 and
                        self._ints[i][self._Child2_col] < 0)]
         return idx_are_obs
 
     def _combine(self, pseudojet_index1, pseudojet_index2, distance):
+        """
+        
+
+        Parameters
+        ----------
+        pseudojet_index1 :
+            
+        pseudojet_index2 :
+            
+        distance :
+            
+
+        Returns
+        -------
+
+        """
         new_id = max([ints[self._InputIdx_col] for ints in self._ints]) + 1
         self._ints[pseudojet_index1][self._Parent_col] = new_id
         self._ints[pseudojet_index2][self._Parent_col] = new_id
@@ -516,6 +696,7 @@ class PseudoJet:
 
 
 class Traditional(PseudoJet):
+    """ """
     param_list = {'DeltaR': None, 'ExponentMultiplier': None}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
@@ -523,6 +704,7 @@ class Traditional(PseudoJet):
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
+        """ """
         # this is caluculating all the distances
         self._distances = np.full((self.currently_avalible, self.currently_avalible), np.inf)
         # for speed, make local variables
@@ -547,6 +729,20 @@ class Traditional(PseudoJet):
                 self._distances[row, column] = distance
 
     def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
@@ -570,6 +766,24 @@ class Traditional(PseudoJet):
 
     @classmethod
     def read_fastjet(cls, arg, eventWise, jet_name="FastJet", do_checks=False):
+        """
+        
+
+        Parameters
+        ----------
+        arg :
+            
+        eventWise :
+            
+        jet_name :
+             (Default value = "FastJet")
+        do_checks :
+             (Default value = False)
+
+        Returns
+        -------
+
+        """
         #  fastjet format
         assert eventWise.selected_index is not None
         if isinstance(arg, str):
@@ -709,6 +923,7 @@ class Traditional(PseudoJet):
 
 
 class Spectral(PseudoJet):
+    """ """
     # list the params with default values
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf, 
             'ExponentMultiplier': None, 'AffinityType': 'exponent',
@@ -717,9 +932,11 @@ class Spectral(PseudoJet):
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
+        self._define_calculate_affinity()
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
+        """ """
         if self.currently_avalible < 2:
             self._distances = np.zeros((1, 1))
             try:
@@ -756,51 +973,7 @@ class Spectral(PseudoJet):
         np.fill_diagonal(physical_distances, 0)
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation
-        if self.AffinityCutoff is not None:
-            cutoff_type = self.AffinityCutoff[0]
-            cutoff_param = self.AffinityCutoff[1]
-            if cutoff_type == 'knn':
-                if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances):
-                        affinity = np.exp(-(distances**0.5))
-                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
-                        return affinity
-                elif self.AffinityType == 'linear':
-                    def calculate_affinity(distances):
-                        affinity = -distances**0.5
-                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
-                        return affinity
-                else:
-                    raise ValueError(f"affinity type {self.AffinityType} unknown")
-            elif cutoff_type == 'distance':
-                if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances):
-                        affinity = np.exp(-(distances**0.5))
-                        affinity[distances > cutoff_param] = 0
-                        return affinity
-                elif self.AffinityType == 'linear':
-                    def calculate_affinity(distances):
-                        affinity = -distances**0.5
-                        affinity[distances > cutoff_param] = 0
-                        return affinity
-                else:
-                    raise ValueError(f"affinity type {self.AffinityType} unknown")
-            else:
-                raise ValueError(f"cut off {cutoff_type} unknown")
-        else:
-            if self.AffinityType == 'exponent':
-                def calculate_affinity(distances):
-                    affinity = np.exp(-(distances**0.5))
-                    return affinity
-            elif self.AffinityType == 'linear':
-                def calculate_affinity(distances):
-                    affinity = -distances**0.5
-                    return affinity
-            else:
-                raise ValueError(f"affinity type {self.AffinityType} unknown")
-        affinity = calculate_affinity(physical_distances)
-        # this is make into a class fuction becuase it will b needed elsewhere
-        self.calculate_affinity = calculate_affinity
+        affinity = self.calculate_affinity(physical_distances)
         # a graph laplacien can be calculated
         np.fill_diagonal(affinity, 0)
         diagonal = np.diag(np.sum(affinity, axis=1))
@@ -834,7 +1007,237 @@ class Spectral(PseudoJet):
         # if the clustering is not going to stop at 1 we must put something in the diagonal
         np.fill_diagonal(self._distances, self.DeltaR)
 
+    def _define_calculate_affinity(self):
+        if self.AffinityCutoff is not None:
+            cutoff_type = self.AffinityCutoff[0]
+            cutoff_param = self.AffinityCutoff[1]
+            if cutoff_type == 'knn':
+                if self.AffinityType == 'exponent':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = np.exp(-(distances**0.5))
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        return affinity
+                elif self.AffinityType == 'exponent2':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = np.exp(-(distances))
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        return affinity
+                elif self.AffinityType == 'linear':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = -distances**0.5
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        return affinity
+                elif self.AffinityType == 'inverse':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = distances**-0.5
+                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        return affinity
+                else:
+                    raise ValueError(f"affinity type {self.AffinityType} unknown")
+            elif cutoff_type == 'distance':
+                if self.AffinityType == 'exponent':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = np.exp(-(distances**0.5))
+                        affinity[distances > cutoff_param] = 0
+                        return affinity
+                elif self.AffinityType == 'exponent2':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = np.exp(-(distances))
+                        affinity[distances > cutoff_param] = 0
+                        return affinity
+                elif self.AffinityType == 'linear':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = -distances**0.5
+                        affinity[distances > cutoff_param] = 0
+                        return affinity
+                elif self.AffinityType == 'inverse':
+                    def calculate_affinity(distances):
+                        """
+                        
+
+                        Parameters
+                        ----------
+                        distances :
+                            
+
+                        Returns
+                        -------
+
+                        """
+                        affinity = distances**-0.5
+                        affinity[distances > cutoff_param] = 0
+                        return affinity
+                else:
+                    raise ValueError(f"affinity type {self.AffinityType} unknown")
+            else:
+                raise ValueError(f"cut off {cutoff_type} unknown")
+        else:
+            if self.AffinityType == 'exponent':
+                def calculate_affinity(distances):
+                    """
+                    
+
+                    Parameters
+                    ----------
+                    distances :
+                        
+
+                    Returns
+                    -------
+
+                    """
+                    affinity = np.exp(-(distances**0.5))
+                    return affinity
+            elif self.AffinityType == 'exponent2':
+                def calculate_affinity(distances):
+                    """
+                    
+
+                    Parameters
+                    ----------
+                    distances :
+                        
+
+                    Returns
+                    -------
+
+                    """
+                    affinity = np.exp(-(distances))
+                    return affinity
+            elif self.AffinityType == 'linear':
+                def calculate_affinity(distances):
+                    """
+                    
+
+                    Parameters
+                    ----------
+                    distances :
+                        
+
+                    Returns
+                    -------
+
+                    """
+                    affinity = -distances**0.5
+                    return affinity
+            elif self.AffinityType == 'inverse':
+                def calculate_affinity(distances):
+                    """
+                    
+
+                    Parameters
+                    ----------
+                    distances :
+                        
+
+                    Returns
+                    -------
+
+                    """
+                    affinity = distances**-0.5
+                    return affinity
+            else:
+                raise ValueError(f"affinity type {self.AffinityType} unknown")
+        # this is make into a class fuction becuase it will b needed elsewhere
+        self.calculate_affinity = calculate_affinity
+
     def _remove_pseudojet(self, pseudojet_index):
+        """
+        
+
+        Parameters
+        ----------
+        pseudojet_index :
+            
+
+        Returns
+        -------
+
+        """
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
         pseudojet_floats = self._floats.pop(pseudojet_index)
@@ -852,6 +1255,20 @@ class Spectral(PseudoJet):
         self.currently_avalible -= 1
         
     def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
@@ -886,7 +1303,22 @@ class Spectral(PseudoJet):
 
 
 class SpectralMean(Spectral):
+    """ """
     def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
@@ -908,15 +1340,332 @@ class SpectralMean(Spectral):
         self._distances[replace_index] = new_distances
 
 
-def get_jet_params(eventWise, jet_name):
+class SpectralAfter(Spectral):
+    """ """
+    def _calculate_distances(self):
+        """ """
+        if self.currently_avalible < 2:
+            self._distances = np.zeros((1, 1))
+            try:
+                self._eigenspace = np.zeros((1, self.NumEigenvectors))
+            except (ValueError, TypeError):
+                self._eigenspace = np.zeros((1, 1))
+            return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
+        # to start with create a 'normal' distance measure
+        # this can be based on any of the three algorithms
+        physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
+        # for speed, make local variables
+        pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        # future calculatins will depend on the starting positions
+        self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
+                                            for row in self._floats])
+        exponent = self.exponent
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = physical_distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    angular_distance = Components.angular_distance(self._floats[row][phi_col], self._floats[column][phi_col])
+                    distance = ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
+                               (angular_distance)**2)
+                physical_distances[row, column] = distance
+        np.fill_diagonal(physical_distances, 0)
+        # now we are in posessio of a standard distance matrix for all points,
+        # we can make an affinity calculation
+        affinity = self.calculate_affinity(physical_distances)
+        # a graph laplacien can be calculated
+        np.fill_diagonal(affinity, 0)
+        diagonal = np.diag(np.sum(affinity, axis=1))
+        if self.Laplacien == 'unnormalised':
+            laplacien = diagonal - affinity
+        elif self.Laplacien == 'symmetric':
+            laplacien = diagonal - affinity
+            self.alt_diag = np.diag(diagonal)**(-0.5)
+            diag_alt_diag = np.diag(self.alt_diag)
+            laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        if self.WithLaplacienScaling:
+            # the scaling required to bring the off idagona elements to the length of the diagnoal elements
+            self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
+            self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
+        # get the eigenvectors (we know the smallest will be identity)
+        try:
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
+        except (ValueError, TypeError):
+            # sometimes there are fewer eigenvalues avalible
+            # just take waht can be found
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+        self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
+        # at the start the eigenspace positions are the eigenvectors
+        self._eigenspace = np.copy(self.eigenvectors)
+        # these tests often fall short of tollarance, and they arn't really needed
+        #np.testing.assert_allclose(0, eigenvalues[0], atol=0.001)
+        #np.testing.assert_allclose(np.ones(self.currently_avalible), eigenvectors[:, 0]/eigenvectors[0, 0])
+        # now treating the columns of this matrix as the new points get euclidien distances
+        self._distances = np.zeros_like(physical_distances)
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = self._distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    # at this point apply the pt factors
+                    distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
+                               np.sum(self._eigenspace[row] - self._eigenspace[column])**2
+                self._distances[row, column] = distance
+        # if the clustering is not going to stop at 1 we must put something in the diagonal
+        np.fill_diagonal(self._distances, self.DeltaR)
+
+    def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
+        # delete the larger index keep the smaller index
+        assert remove_index > replace_index
+        # delete the first row and column of the merge
+        self._distances = np.delete(self._distances, (remove_index), axis=0)
+        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        # and make its position in eigenspace
+        new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
+        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
+        # move the replaced to the back, it will be repalced later
+        # move the removed object to the back without replacement
+        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
+                                      self._eigenspace[remove_index+1:],
+                                      self._eigenspace[[remove_index]],
+                                      self._eigenspace[[replace_index]]))
+        self._eigenspace[replace_index] = new_position
+        # get the new disntance in eigenspace
+        pt_here = self._floats[replace_index][self._PT_col]**self.exponent
+        pt_factor = np.fromiter((min(row[self._PT_col]**self.exponent, pt_here)
+                                 for row in self._floats[:self.currently_avalible]),
+                                dtype=float) 
+        new_distances = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+        new_distances[replace_index] = self.DeltaR
+        self._distances[replace_index] = new_distances
+
+
+class SpectralMAfter(SpectralMean):
+    """ """
+    def _calculate_distances(self):
+        """ """
+        if self.currently_avalible < 2:
+            self._distances = np.zeros((1, 1))
+            try:
+                self._eigenspace = np.zeros((1, self.NumEigenvectors))
+            except (ValueError, TypeError):
+                self._eigenspace = np.zeros((1, 1))
+            return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
+        # to start with create a 'normal' distance measure
+        # this can be based on any of the three algorithms
+        physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
+        # for speed, make local variables
+        pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        # future calculatins will depend on the starting positions
+        self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
+                                            for row in self._floats])
+        exponent = self.exponent
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = physical_distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    angular_distance = Components.angular_distance(self._floats[row][phi_col], self._floats[column][phi_col])
+                    distance = ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
+                               (angular_distance)**2)
+                physical_distances[row, column] = distance
+        np.fill_diagonal(physical_distances, 0)
+        # now we are in posessio of a standard distance matrix for all points,
+        # we can make an affinity calculation
+        affinity = self.calculate_affinity(physical_distances)
+        # a graph laplacien can be calculated
+        np.fill_diagonal(affinity, 0)
+        diagonal = np.diag(np.sum(affinity, axis=1))
+        if self.Laplacien == 'unnormalised':
+            laplacien = diagonal - affinity
+        elif self.Laplacien == 'symmetric':
+            laplacien = diagonal - affinity
+            self.alt_diag = np.diag(diagonal)**(-0.5)
+            diag_alt_diag = np.diag(self.alt_diag)
+            laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        if self.WithLaplacienScaling:
+            # the scaling required to bring the off idagona elements to the length of the diagnoal elements
+            self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
+            self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
+        # get the eigenvectors (we know the smallest will be identity)
+        try:
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
+        except (ValueError, TypeError):
+            # sometimes there are fewer eigenvalues avalible
+            # just take waht can be found
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+        self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
+        # at the start the eigenspace positions are the eigenvectors
+        self._eigenspace = np.copy(self.eigenvectors)
+        # these tests often fall short of tollarance, and they arn't really needed
+        #np.testing.assert_allclose(0, eigenvalues[0], atol=0.001)
+        #np.testing.assert_allclose(np.ones(self.currently_avalible), eigenvectors[:, 0]/eigenvectors[0, 0])
+        # now treating the columns of this matrix as the new points get euclidien distances
+        self._distances = np.zeros_like(physical_distances)
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = self._distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    # at this point apply the pt factors
+                    distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
+                               np.sum(self._eigenspace[row] - self._eigenspace[column])**2
+                self._distances[row, column] = distance
+        # if the clustering is not going to stop at 1 we must put something in the diagonal
+        np.fill_diagonal(self._distances, self.DeltaR)
+
+    def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
+        # delete the larger index keep the smaller index
+        assert remove_index > replace_index
+        # delete the first row and column of the merge
+        self._distances = np.delete(self._distances, (remove_index), axis=0)
+        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        # and make its position in eigenspace
+        new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
+        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
+        # move the replaced to the back, it will be repalced later
+        # move the removed object to the back without replacement
+        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
+                                      self._eigenspace[remove_index+1:],
+                                      self._eigenspace[[remove_index]],
+                                      self._eigenspace[[replace_index]]))
+        self._eigenspace[replace_index] = new_position
+        # get the new disntance in eigenspace
+        pt_here = self._floats[replace_index][self._PT_col]**self.exponent
+        pt_factor = np.fromiter((min(row[self._PT_col]**self.exponent, pt_here)
+                                 for row in self._floats[:self.currently_avalible]),
+                                dtype=float) 
+        new_distances = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+        new_distances[replace_index] = self.DeltaR
+        self._distances[replace_index] = new_distances
+
+
+class SpectralFull(Spectral):
+    """ """
+    def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
+        self._calculate_distances()
+
+
+cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional,
+                   "SpectralJet": Spectral, "SpectralMeanJet": SpectralMean,
+                   "SpectralMAfterJet": SpectralMAfter, "SpectralFullJet": SpectralFull,
+                   "SpectralAfterJet": SpectralAfter}
+
+def get_jet_params(eventWise, jet_name, add_defaults=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    add_defaults :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     prefix = jet_name + "_"
     trim = len(prefix)
     columns = {name[trim:]: getattr(eventWise, name) for name in eventWise.hyperparameter_columns
                if name.startswith(prefix)}
+    if add_defaults:
+        if jet_name.startswith("SpectralMean"):
+            defaults = SpectralMean.param_list
+        elif jet_name.startswith("Spectral"):
+            defaults = Spectral.param_list
+        else:
+            defaults = Traditional.param_list
+        not_found = {name: defaults[name] for name in defaults
+                     if name not in columns}
+        columns = {**columns, **not_found}
     return columns
 
 
 def filter_obs(eventWise, existing_idx_selection):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    existing_idx_selection :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     has_track = eventWise.Particle_Track[existing_idx_selection.tolist()] >= 0
     has_tower = eventWise.Particle_Tower[existing_idx_selection.tolist()] >= 0
@@ -926,6 +1675,20 @@ def filter_obs(eventWise, existing_idx_selection):
 
 
 def filter_ends(eventWise, existing_idx_selection):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    existing_idx_selection :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     is_end = [len(c) == 0 for c in 
               eventWise.Children[existing_idx_selection.tolist()]]
@@ -934,6 +1697,24 @@ def filter_ends(eventWise, existing_idx_selection):
 
 
 def filter_pt_eta(eventWise, existing_idx_selection, min_pt=.5, max_eta=2.5):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    existing_idx_selection :
+        
+    min_pt :
+         (Default value = .5)
+    max_eta :
+         (Default value = 2.5)
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     # filter PT
     sufficient_pt = eventWise.PT[existing_idx_selection.tolist()] > min_pt
@@ -949,6 +1730,24 @@ def filter_pt_eta(eventWise, existing_idx_selection, min_pt=.5, max_eta=2.5):
 
 
 def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], batch_length=1000):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    filter_functions :
+         (Default value = [filter_obs)
+    filter_pt_eta] :
+        
+    batch_length :
+         (Default value = 1000)
+
+    Returns
+    -------
+
+    """
     # decide on run range
     eventWise.selected_index = None
     n_events = len(eventWise.Energy)
@@ -995,6 +1794,20 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
 
 
 def produce_summary(eventWise, to_file=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    to_file :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     n_inputs = len(eventWise.JetInputs_SourceIdx)
     summary = np.vstack((np.arange(n_inputs),
@@ -1016,6 +1829,26 @@ def produce_summary(eventWise, to_file=True):
 
 
 def run_FastJet(eventWise, DeltaR, ExponentMultiplier, jet_name="FastJet", use_pipe=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    DeltaR :
+        
+    ExponentMultiplier :
+        
+    jet_name :
+         (Default value = "FastJet")
+    use_pipe :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     if ExponentMultiplier == -1:
         # antikt algorithm
@@ -1040,21 +1873,27 @@ def run_FastJet(eventWise, DeltaR, ExponentMultiplier, jet_name="FastJet", use_p
 
 
 def run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_tagger/applyFastJet", tries=0):
-    '''
+    """
     Run applyfastjet, sending the provided input lines to stdin
-    
 
     Parameters
     ----------
-    input_lines: list of byte array
-         contents of the input as byte arrays
+    input_lines : list of byte array
+        contents of the input as byte arrays
+    DeltaR :
+        
+    algorithm_num :
+        
+    program_path :
+         (Default value = "./tree_tagger/applyFastJet")
+    tries :
+         (Default value = 0)
 
     Returns
     -------
-    output_lines: list of byte array
-         the data that applyfastjet prints to stdout
 
-    '''
+    
+    """
     # input liens should eb one long byte string
     assert isinstance(input_lines, bytes)
     process = subprocess.Popen([program_path, DeltaR, algorithm_num],
@@ -1084,6 +1923,28 @@ def run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_ta
 
 
 def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_name=None, batch_length=100, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    cluster_algorithm :
+        
+    cluster_parameters :
+         (Default value = {})
+    jet_name :
+         (Default value = None)
+    batch_length :
+         (Default value = 100)
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     if jet_name is None and 'jet_name' in cluster_parameters:
         jet_name = cluster_parameters['jet_name']
     elif jet_name is None:
@@ -1133,6 +1994,26 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
 
 
 def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
+    """
+    
+
+    Parameters
+    ----------
+    ew :
+        
+    jet_name :
+        
+    event_num :
+        
+    colour :
+         (Default value = None)
+    ax :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if ax is None:
         ax = plt.gca()
     if colour is None:
@@ -1169,6 +2050,28 @@ def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
 
 
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
+    """
+    
+
+    Parameters
+    ----------
+    ax :
+        
+    colour :
+        
+    body :
+        
+    body_size :
+        
+    leg_ends :
+        
+    leg_size :
+        
+
+    Returns
+    -------
+
+    """
     alpha=0.4
     leg_size = np.sqrt(leg_size)
     for end, size in zip(leg_ends, leg_size):
@@ -1190,22 +2093,28 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
                      c=colour, linewidth=size, alpha=alpha)
     plt.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size-1)
     plt.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size+1)
-    
 
-def main():
+
+def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spectral_class=SpectralFull):
+    """ """
     ax = plt.gca()
+    alpha=0.5
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
-    eventWise = Components.EventWise.from_file("megaIgnore/basis_2k.awkd")
     # create inputs if needed
     if "JetInputs_Energy" not in eventWise.columns:
         filter_funcs = [filter_ends, filter_pt_eta]
         if "JetInputs_Energy" not in eventWise.columns:
             create_jetInputs(eventWise, filter_funcs)
-    eventWise.selected_index = 0
-    DeltaR = 0.4
-    alpha = 0.4
-    pseudojet_traditional = Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., jet_name="HomeJet")
+    # add tags if needed
+    if "TagIndex" not in eventWise.columns:
+        TrueTag.add_tag_particles(eventWise)
+    # plot the location of the tag particles
+    eventWise.selected_index = event_n
+    tag_phis = eventWise.Phi[eventWise.TagIndex]
+    tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
+    plt.scatter(tag_rapidity, tag_phis, marker='d', c='g', label="Tags")
+    pseudojet_traditional = Traditional(eventWise, **home_jet_params)
     pseudojet_traditional.assign_parents()
     pjets_traditional = pseudojet_traditional.split()
     # plot the pseudojets
@@ -1217,12 +2126,12 @@ def main():
         input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
         leg_ends = np.vstack((input_rap, input_phi)).T
         input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
+        plt.text(pjet.Rapidity, pjet.Phi-.1, str(pjet.PT)[:7], c=c)
         plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
-    DeltaR = 0.1
-    pseudojet_spectral = Spectral(eventWise, DeltaR=DeltaR, ExponentMultiplier=0., NumEigenvectors=5, Laplacien='symmetric', jet_name="SpectralJet")
+    pseudojet_spectral = SpectralMean(eventWise, **spectral_jet_params)
     pseudojet_spectral.assign_parents()
     pjets_spectral = pseudojet_spectral.split()
     # plot the pseudojets
@@ -1235,6 +2144,7 @@ def main():
         leg_ends = np.vstack((input_rap, input_phi)).T
         input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
         plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
+        plt.text(pjet.Rapidity, pjet.Phi+.1, str(pjet.PT)[:7], c=c)
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="SpectralJet")
@@ -1249,4 +2159,14 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    home_jet_params = dict(DeltaR=1., ExponentMultiplier=-1, jet_name="HomeJetTest")
+    spectral_jet_params = dict(DeltaR=0.15, ExponentMultiplier=0,
+                               NumEigenvectors=4,
+                               Laplacien='unnormalised',
+                               AffinityType='exponent',
+                               AffinityCutoff=('distance', 3),
+                               jet_name="SpectralMeanTest")
+
+    flat_display(eventWise, 0, home_jet_params, spectral_jet_params)

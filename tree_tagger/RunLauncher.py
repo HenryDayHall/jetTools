@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 
 
 def main():
+    """ """
     plotting = InputTools.yesNo_question("Do you want progress plots? ")
     tst_dir = InputTools.get_dir_name("Where are the runs written? ")
     in_tst = os.listdir(tst_dir)
