@@ -8,7 +8,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -30,6 +30,8 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
             eventWises.append(ew)
         except KeyError:
             pass  # it's not actually an eventwise
+        except Exception:
+            st()
     # now looking for all occurances of the numbers
     matches = []
     for jid in jet_ids:
@@ -41,14 +43,18 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
             if jid not in jet_numbers:
                 continue
             matching_name = jet_names[jet_numbers.index(jid)]
-            if records.check_eventWise_match(ew, jid, matching_name):
-                found.append((ew, matching_name))
-            else:
-                jet_params = FormJets.get_jet_params(ew, matching_name, True)
-                row = array[array[:, 0] == jid][0]
-                print(f" Missmatch of matching name")
-                print(f"recorded; {row}")
-                print(f"found; {jet_params}")
+            try:
+                if records.check_eventWise_match(ew, jid, matching_name):
+                    found.append((ew, matching_name))
+                else:
+                    jet_params = FormJets.get_jet_params(ew, matching_name, True)
+                    row = array[array[:, 0] == jid][0]
+                    print(f" Missmatch of matching name")
+                    print(f"recorded; {row}")
+                    print(f"found; {jet_params}")
+            except KeyError:
+                st()
+                ew.save_name
         if len(found) == 0:
             print(f"Cannot find jet with id num {jid}")
         elif len(found) == 1:
@@ -70,13 +76,42 @@ def seek_best(records, number_required=3, dir_name="megaIgnore"):
     return best
 
 
+def seek_shapeable(dir_name="megaIgnore", file_names=None):
+    """ Find a list of clusters in the eventWise files in a directory """
+    array = records.typed_array()
+    if file_names is None:
+        # get a list of eventWise files
+        file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name)
+                if name.endswith(".awkd")]
+    eventWises = []
+    for name in file_names:
+        try:
+            ew = Components.EventWise.from_file(name)
+            eventWises.append(ew)
+        except KeyError:
+            pass  # it's not actually an eventwise
+        except Exception:
+            st()
+    # now looking for all occurances of the numbers
+    matches = []
+    for ew in eventWises:
+        print(ew.save_name)
+        tag_names = [name for name in ew.columns if name.endswith("_Tags")]
+        for name in tag_names:
+            tags = getattr(ew, name, None)
+            if tags is None:
+                continue
+            num_tagged = np.fromiter((sum([len(j) > 0 for j in evnt]) for evnt in tags), dtype=int)
+            if np.any(num_tagged>1):
+                matches.append((ew, name.split('_', 1)[0]))
+    return matches
+
+
 def parameter_step(records, jet_class, ignore_parameteres=None):
     """Select a varient of the best jet in class that has not yet been tried"""
     array = records.typed_array()
     # get the jets parameter list 
-    names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
-             "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean,
-             "SpectralAfterJet": FormJets.SpectralAfter}
+    names = FormJets.cluster_classes
     jet_parameters = list(names[jet_class].param_list.keys())
     all_parameters = jet_parameters + ['jet_class']
     parameter_idxs = [(name, records.indices[name]) for name in all_parameters]
@@ -87,6 +122,13 @@ def parameter_step(records, jet_class, ignore_parameteres=None):
     # sets of parameters to vary
     parameter_sets = {name: set(array[:, records.indices[name]]) for name in jet_parameters
                       if name not in ignore_parameteres}
+    # for some parameter sets, fix the values
+    parameter_sets['DeltaR'] = np.linspace(0.1, 1.5, 15)
+    parameter_sets['ExponentMultiplier'] = np.linspace(-1., 1., 21)
+    if 'AffinityCutoff' in parameter_sets:
+        knn = [('knn', c) for c in np.arange(1, 6)]
+        distance = [('distance', c) for c in np.linspace(0., 10., 11)]
+        parameter_sets['AffinityCutoff'] = knn + distance + [None]
     # clip the array to the parameters themselves
     to_compare = [i for i, name in enumerate(all_parameters)
                   if name not in ignore_parameteres]
@@ -99,7 +141,11 @@ def parameter_step(records, jet_class, ignore_parameteres=None):
         print(f"Searching round {current_best}")
         new_step = np.copy(current_best)
         # go through all the parameters looking for a substitution that hasn't been tried
-        for name, avalible in parameter_sets.items():
+        names = list(parameter_sets.keys())
+        np.random.shuffle(names)
+        for name in names:
+            avalible = list(parameter_sets[name])
+            np.random.shuffle(avalible)
             idx = all_parameters.index(name)
             for value in avalible:
                 new_step[idx] = value
@@ -122,6 +168,7 @@ def parameters_valid(parameters, jet_class):
     if parameters['AffinityType']  == 'linear' and parameters['Laplacien'] == 'symmetric':
         return False
     return True
+
 
 def rand_score(eventWise, jet_name1, jet_name2):
     """
@@ -241,7 +288,7 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
     return pseudojet_vars1, pseudojet_vars2, num_unconnected
 
 
-def fit_to_tags(eventWise, jet_name, event_n=None):
+def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     """
     
 
@@ -262,42 +309,44 @@ def fit_to_tags(eventWise, jet_name, event_n=None):
         assert eventWise.selected_index is not None
     else:
         eventWise.selected_index = event_n
+    tag_idx = list(eventWise.TagIndex)
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
     jet_e = eventWise.match_indices(jet_name+"_Energy", inputidx_name, rootinputidx_name).flatten()
+    if len(tag_idx) == 0 or len(jet_e) == 0:
+        empty = np.array([]).reshape((-1, 3))
+        return empty, empty
     jet_px = eventWise.match_indices(jet_name+"_Px", inputidx_name, rootinputidx_name).flatten()
     jet_py = eventWise.match_indices(jet_name+"_Py", inputidx_name, rootinputidx_name).flatten()
     jet_pz = eventWise.match_indices(jet_name+"_Pz", inputidx_name, rootinputidx_name).flatten()
-    tag_idx = list(eventWise.TagIndex)
-    if len(tag_idx) == 0:
-        empty = np.array([]).reshape((-1, 3))
-        return empty, empty
     tag_e = eventWise.Energy[tag_idx]
     tag_px = eventWise.Px[tag_idx]
     tag_py = eventWise.Py[tag_idx]
     tag_pz = eventWise.Pz[tag_idx]
     # calculate what fraction of jet momentum the tag actually receves
-    tags_in_jets = getattr(eventWise, jet_name + "_Tags")
     assigned_tmp = np.zeros((len(tag_idx), 4), dtype=float)
     for jidx, tags in enumerate(tags_in_jets):
+        if len(tags) == 0:
+            continue
         mask = np.fromiter((tag_idx.index(t) for t in tags), dtype=int)
-        if len(tags_in_jets) == 1:
-            assigned_tmp[mask, 0] = jet_e[jidx] * tag_e[mask] / np.sum(tag_e[mask])
-            assigned_tmp[mask, 1] = jet_px[jidx] * tag_px[mask] / np.sum(tag_px[mask])
-            assigned_tmp[mask, 2] = jet_py[jidx] * tag_py[mask] / np.sum(tag_py[mask])
-            assigned_tmp[mask, 3] = jet_pz[jidx] * tag_pz[mask] / np.sum(tag_pz[mask])
+        assigned_tmp[mask, 0] = jet_e[jidx] * tag_e[mask] / np.sum(tag_e[mask])
+        assigned_tmp[mask, 1] = jet_px[jidx] * tag_px[mask] / np.sum(tag_px[mask])
+        assigned_tmp[mask, 2] = jet_py[jidx] * tag_py[mask] / np.sum(tag_py[mask])
+        assigned_tmp[mask, 3] = jet_pz[jidx] * tag_pz[mask] / np.sum(tag_pz[mask])
     # transform this to pt, rapidity, phi
     assigned_momentum = np.zeros((len(tag_idx), 3), dtype=float)
-    assigned_momentum[:, [2, 0]] = Components.pxpy_to_phipt(assigned_tmp[:, 1], assigned_tmp[:, 2])
+    assigned_momentum[:, 2], assigned_momentum[:, 0] = Components.pxpy_to_phipt(assigned_tmp[:, 1], assigned_tmp[:, 2])
     assigned_momentum[:, 1] = Components.ptpze_to_rapidity(assigned_momentum[:, 0], assigned_tmp[:, 3], assigned_tmp[:, 0])
+    # nans are the result of putting 0 pt into the rapidity calculation
+    assigned_momentum[np.isnan(assigned_momentum)] = 0.
     # now get the actual coords
     tag_momentum = np.vstack((eventWise.PT[tag_idx],
                               eventWise.Rapidity[tag_idx],
                               eventWise.Phi[tag_idx])).transpose()
     return tag_momentum, assigned_momentum
-    
 
-def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_tracks=2, max_angle=1.):
+
+def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_tracks=None, max_angle=None, reset=True):
     """
     
 
@@ -314,12 +363,20 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_track
     -------
 
     """
+    if jet_pt_cut is None:
+        jet_pt_cut = Constants.min_jetpt
+    if min_tracks is None:
+        min_tracks = Constants.min_ntracks
+    if max_angle is None:
+        max_angle = Constants.max_tagangle
     eventWise.selected_index = None
     # if there are existing tag columns, remove them
-    if jet_name + "_Tags" in eventWise.columns:
+    if jet_name + "_Tags" in eventWise.columns and reset:
         eventWise.remove(jet_name + "_Tags")
         eventWise.remove(jet_name + "_TagPIDs")
-    TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks)
+    h_content, content = TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks, silent=True, append=False)
+    tags_in_jets = content[jet_name + "_Tags"]
+    eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
     # name the vaiables to be cut on
     inputidx_name = jet_name + "_InputIdx"
@@ -335,17 +392,82 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=30., min_track
         # get the valiables ot cut on
         jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
         # note this actually counts num pesudojets, but for more than 2 that is sufficient
-        num_tracks = Components.apply_array_func(len, jet_track_pts).flatten()
+        num_tracks = Components.apply_array_func(len, jet_track_pts, depth=Components.EventWise.EVENT_DEPTH).flatten()
         n_jets = np.sum(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))
+        tag_c, jet_c = fit_to_tags(eventWise, jet_name, tags_in_jets[event_n])
+        tag_coords.append(tag_c)
+        jet_coords.append(jet_c)
         n_jets_formed.append(n_jets)
-        n_any_jets = len(jet_track_pts)
-        if n_any_jets > 0:
-            tag_c, jet_c = fit_to_tags(eventWise, jet_name)
-            tag_coords.append(tag_c)
-            jet_coords.append(jet_c)
     #tag_coords = np.vstack(tag_coords)
     #jet_coords = np.vstack(jet_coords)
-    return tag_coords, jet_coords, n_jets_formed
+    return tag_coords, jet_coords, n_jets_formed, h_content, content
+
+
+def quick_njets(eventWise, jet_name, jet_pt_cut=None, min_tracks=None, max_angle=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
+    if jet_pt_cut is None:
+        jet_pt_cut = Constants.min_jetpt
+    if min_tracks is None:
+        min_tracks = Constants.min_ntracks
+    if max_angle is None:
+        max_angle = Constants.max_tagangle
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_name + "_Energy"))
+    # name the vaiables to be cut on
+    inputidx_name = jet_name + "_InputIdx"
+    rootinputidx_name = jet_name+"_RootInputIdx"
+    n_jets_formed = []
+    for event_n in range(n_events):
+        eventWise.selected_index = event_n
+        jet_track_pts = getattr(eventWise, jet_name + "_PT")
+        # get the valiables ot cut on
+        jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
+        # note this actually counts num pesudojets, but for more than 2 that is sufficient
+        num_tracks = Components.apply_array_func(len, jet_track_pts, depth=Components.EventWise.EVENT_DEPTH).flatten()
+        n_jets = np.sum(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))
+        n_jets_formed.append(n_jets)
+    #tag_coords = np.vstack(tag_coords)
+    #jet_coords = np.vstack(jet_coords)
+    return n_jets_formed
+
+
+def add_n_jets(records):
+    path = "megaIgnore"
+    all_ew_names = [os.path.join(path, name) for name in os.listdir(path)
+                    if name.endswith(".awkd")]
+    arry = records.typed_array()
+    for ew_name in all_ew_names:
+        try:
+            ew = Components.EventWise.from_file(ew_name)
+        except Exception:
+            print(f"Couldn't read {ew_name}")
+            continue
+        print(ew_name)
+        jet_names = sorted(set([name.split('_', 1)[0] for name in ew.columns
+                           if "Jet" in name.split('_', 1)[0] and not name.startswith("Jet")]))
+        for name in jet_names:
+            jet_id = int(name.split("Jet", 1)[1])
+            row = np.where(arry[:, 0] == jet_id)[0][0]
+            if arry[row, records.indices['mean_njets']] is None:
+                n_jets = quick_njets(ew, name)
+                records.content[row][records.indices['mean_njets']] = np.nan_to_num(np.nanmean(n_jets))
+                records.content[row][records.indices['std_njets']] = np.nan_to_num(np.nanstd(n_jets))
+        records.write()
 
 
 def score_rank(tag_coords, jet_coords):
@@ -742,9 +864,7 @@ def calculated_grid(records, jet_name=None):
     -------
 
     """
-    names = {"FastJet": FormJets.Traditional, "HomeJet": FormJets.Traditional,
-             "SpectralJet": FormJets.Spectral, "SpectralMeanJet": FormJets.SpectralMean,
-             "SpectralAfterJet": FormJets.SpectralAfter}
+    names = FormJets.cluster_classes
     if jet_name is None:
         jet_name = InputTools.list_complete("Which jet? ", names.keys()).strip()
     default_params = names[jet_name].param_list
@@ -892,7 +1012,7 @@ def select_improvements(records, min_jets=0.5,
     return array[improved_selection]
 
 
-def parameter_comparison(records, c_name="mean_njets", cuts=True):
+def parameter_comparison(records, c_name="mean_njets", cuts=True, jet_classes=None):
     array = records.typed_array()[records.scored]
     col_names = ["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
     # filter anything that scored too close to zero in pt or rapidity
@@ -900,19 +1020,26 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True):
     small = 0.001
     for name in col_names:
         if "score" in name:
-            array = array[array[:, records.indices[name]]>small]
+            array = array[array[:, records.indices[name]] > small]
     # now we have a scored valid selection
-    y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names}
+    y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names
+              if name !='TagAngle'}
     col_names = ["cumulative"] + col_names
     y_cols["cumulative"] = cumulative_score(records, typed_array=array)
     c_col = array[:, records.indices[c_name]].astype(float)
     sufficient_jets = c_col > 0.5
     #sufficient_jets = array[:, 1] == 'SpectralAfterJet'
     if cuts:
-        array = array[sufficient_jets]
-        c_col = c_col[sufficient_jets]
-        y_cols = {name: y_cols[name][sufficient_jets] for name in y_cols}
-        sufficient_jets = sufficient_jets[sufficient_jets]
+        good_angle = y_cols["symmetric_diff(Phi)"] < 1.
+        mask = np.logical_and(good_angle, sufficient_jets)
+        if jet_classes is not None:
+            class_col = array[:, records.indices['jet_class']]
+            class_mask = [name in jet_classes for name in class_col]
+            mask = np.logical_and(mask, class_mask)
+        array = array[mask]
+        c_col = c_col[mask]
+        y_cols = {name: y_cols[name][mask] for name in y_cols}
+        sufficient_jets = sufficient_jets[mask]
     # make the data dict
     data_dict = {}
     data_name = {}
@@ -924,7 +1051,7 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True):
         data_name[str(i)] = name # somr of the names have probem characters in them
     hover = bokeh.models.HoverTool(tooltips=[(data_name[i], "@" + i) for i in data_dict])
     data_dict['colour'] = c_col
-    data_dict['alpha'] = [1. if suf else 0.2 for suf in sufficient_jets]
+    data_dict['alpha'] = [0.6 if suf else 0.2 for suf in sufficient_jets]
     # fix the colours
     mapper = bokeh.models.LinearColorMapper(palette=bokeh.palettes.Plasma10,
                                             low=min(c_col), high=max(c_col))
@@ -954,7 +1081,14 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True):
             scale = list(range(len(catigories)))
             positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
                                     dtype=float)
-            label_dict = {tick: str(cat) for cat, tick in zip(catigories, scale)}
+            str_catigories = []
+            for cat in catigories:
+                if isinstance(cat, tuple):
+                    s = ', '.join((cat[0], str(cat[1])[:4]))
+                    str_catigories.append(s)
+                else:
+                    str_catigories.append(str(cat))
+            label_dict = dict(zip(scale, str_catigories))
         else:
             scale = np.array(catigories)
             real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
@@ -1004,8 +1138,14 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True):
             p.scatter('x', 'y', size=10, source=source,
                      fill_color=bokeh.transform.transform('colour', mapper),
                      fill_alpha='alpha', line_alpha='alpha',
-                     marker=markers)
+                     marker=markers, legend_group=marker_key)
+            p.legend.click_policy="hide"
+            p.legend.location="bottom_left"
             plots[-1].append(p)
+        # add a colour bar to the last plot only
+        colour_bar = bokeh.models.ColorBar(color_mapper=mapper, location=(0,0),
+                                           title=c_name)
+        p.add_layout(colour_bar, 'right')
     all_p = bokeh.layouts.gridplot(plots, plot_width=400, plot_height=400)
     bokeh.io.show(all_p)
     return all_p
@@ -1038,8 +1178,6 @@ class Records:
                 assert header[1] == 'jet_class'
                 self.param_names = header[2:]
                 self.indices = {name: i+2 for i, name in enumerate(self.param_names)}
-                self.indices['jet_id'] = 0
-                self.indices['jet_class'] = 1
                 self.content = []
                 for line in reader:
                     self.content.append(line)
@@ -1058,6 +1196,8 @@ class Records:
         else:
             relevent_jetids = [j for j in self.jet_ids if j < 50000]
             self.next_uid = np.max(relevent_jetids, initial=0) + 1
+        self.indices['jet_id'] = 0
+        self.indices['jet_class'] = 1
         self.uid_length = len(str(self.next_uid))
 
     def write(self):
@@ -1079,10 +1219,7 @@ class Records:
         -------
 
         """
-        jet_classes = {"HomeJet": FormJets.Traditional,
-                       "FastJet": FormJets.Traditional,
-                       "SpectralJet": FormJets.Spectral,
-                       "SpectralMeanJet": FormJets.SpectralMean}
+        jet_classes = FormJets.cluster_classes
         typed_content = []
         for row in self.content:
             id_num = int(row[0])
@@ -1120,7 +1257,7 @@ class Records:
         """ """
         if 'mean_njets' not in self.param_names:
             return np.full(len(self.content), False)
-        scored = [row[self.indices["mean_njets"]] not in ('', None)
+        scored = [row[self.indices["score(PT)"]] not in ('', None, 'nan')
                   for row in self.content]
         return np.array(scored)
 
@@ -1140,6 +1277,8 @@ class Records:
         new_params = [n for n in new_params if n not in self.param_names]
         self.param_names += new_params
         self.indices = {name: i+2 for i, name in enumerate(self.param_names)}
+        self.indices['jet_id'] = 0
+        self.indices['jet_class'] = 1
         new_blanks = ['' for _ in new_params]
         self.content = [row + new_blanks for row in self.content]
 
@@ -1167,6 +1306,7 @@ class Records:
         else:
             assert existing_idx not in self.jet_ids
             chosen_id = existing_idx
+        chosen_id = int(chosen_id)
         new_row = [f"{chosen_id:0{self.uid_length}d}", jet_class]
         new_params = list(set(param_dict.keys()) - set(self.param_names))
         self._add_param(*new_params)
@@ -1275,7 +1415,7 @@ class Records:
         self.write()
         return existing, added
 
-    def score(self, eventWise):
+    def score(self, eventWise, reset_tags=True):
         """
         
 
@@ -1298,6 +1438,10 @@ class Records:
         jet_ids = self.jet_ids
         scored = {jid: s for jid, s in zip(jet_ids, self.scored)}
         self._add_param(*self.evaluation_columns)
+        # as we go we will create tags which can be saved
+        # but appending everything at once speeds the process
+        content = {}
+        h_content = {}
         for i, name in enumerate(all_jets):
             if i % 2 == 0:
                 print(f"{100*i/num_names}%", end='\r', flush=True)
@@ -1312,7 +1456,9 @@ class Records:
                     eventWise = Components.EventWise.from_file(path)
             row = self.content[all_jets[name]]
             if not scored[int(row[0])]:
-                tag_coords, jet_coords, n_jets_formed = fit_all_to_tags(eventWise, name, silent=True)
+                tag_coords, jet_coords, n_jets_formed, h_content_here, content_here = fit_all_to_tags(eventWise, name, silent=True, reset=reset_tags)
+                content = {**content, **content_here}
+                h_content = {**h_content, **h_content_here}
                 tag_coords = np.vstack(tag_coords)
                 jet_coords = np.vstack(jet_coords)
                 if len(jet_coords) > 0:
@@ -1341,6 +1487,8 @@ class Records:
                 if np.nan in row:
                     st()
                     row
+        eventWise.append(**content)
+        eventWise.append_hyperparameters(**h_content)
         self.write()
 
     def best(self, metric='cumulative', jet_class=None, invert=None,
@@ -1384,6 +1532,8 @@ class Records:
 
 
 if __name__ == '__main__':
-    records = Records("records.csv")
-    comparison1(records)
+    records_name = InputTools.get_file_name("Records file? (new or existing) ")
+    records = Records(records_name)
+    ew_names = [name for name in os.listdir("megaIgnore") if name.endswith('.awkd')]
+    #comparison1(records)
 

@@ -12,4 +12,7 @@ CORRECT_MATCH = 1
 INCORRECT_MATCH = 2
 NO_TOWER = 3
 
-
+# define some parameters for jet clustering
+min_jetpt = 30.
+min_ntracks = 2
+max_tagangle = 1.

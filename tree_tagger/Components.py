@@ -324,19 +324,22 @@ class EventWise:
         assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
         non_alias_cols = [c for c in self.columns if c not in self._alias_dict]
         column_order = awkward.fromiter(non_alias_cols)
-        try:
-            del self._column_contents['column_order']
-        except KeyError:
-            pass
+        #try:
+        #    del self._column_contents['column_order']
+        #except KeyError:
+        #    pass
         non_alias_hcols = [c for c in self.hyperparameter_columns if c not in self._alias_dict]
         hyperparameter_column_order = awkward.fromiter(non_alias_hcols)
-        try:
-            del self._column_contents['hyperparameter_column_order']
-        except KeyError:
-            pass
-        all_content = {'column_order': column_order,
-                       'hyperparameter_column_order': hyperparameter_column_order,
-                       **self._column_contents}
+        #try:
+        #    del self._column_contents['hyperparameter_column_order']
+        #except KeyError:
+        #    pass
+        #all_content = {'column_order': column_order,
+        #               'hyperparameter_column_order': hyperparameter_column_order,
+        #               **self._column_contents}
+        all_content = {k:i for k, i in self._column_contents.items()}
+        all_content['column_order'] = column_order
+        all_content['hyperparameter_column_order'] = hyperparameter_column_order
         awkward.save(path, all_content, mode='w')
 
     @classmethod

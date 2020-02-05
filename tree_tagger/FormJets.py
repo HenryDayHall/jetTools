@@ -8,8 +8,7 @@ import csv
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
 from skhep import math as hepmath
-from tree_tagger import Components
-
+from tree_tagger import Components, TrueTag, InputTools
 
 class PseudoJet:
     """ """
@@ -375,7 +374,7 @@ class PseudoJet:
                           dict_jet_params=param_dict)
             new_jet.currently_avalible = 0  # assumed since we are reading from file
             jets.append(new_jet)
-            return jets
+        return jets
 
     def _calculate_roots(self):
         """ """
@@ -1467,6 +1466,157 @@ class SpectralAfter(Spectral):
         self._distances[replace_index] = new_distances
 
 
+class SpectralMAfter(SpectralMean):
+    """ """
+    def _calculate_distances(self):
+        """ """
+        if self.currently_avalible < 2:
+            self._distances = np.zeros((1, 1))
+            try:
+                self._eigenspace = np.zeros((1, self.NumEigenvectors))
+            except (ValueError, TypeError):
+                self._eigenspace = np.zeros((1, 1))
+            return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
+        # to start with create a 'normal' distance measure
+        # this can be based on any of the three algorithms
+        physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
+        # for speed, make local variables
+        pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        # future calculatins will depend on the starting positions
+        self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
+                                            for row in self._floats])
+        exponent = self.exponent
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = physical_distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    angular_distance = Components.angular_distance(self._floats[row][phi_col], self._floats[column][phi_col])
+                    distance = ((self._floats[row][rap_col] - self._floats[column][rap_col])**2 +
+                               (angular_distance)**2)
+                physical_distances[row, column] = distance
+        np.fill_diagonal(physical_distances, 0)
+        # now we are in posessio of a standard distance matrix for all points,
+        # we can make an affinity calculation
+        affinity = self.calculate_affinity(physical_distances)
+        # a graph laplacien can be calculated
+        np.fill_diagonal(affinity, 0)
+        diagonal = np.diag(np.sum(affinity, axis=1))
+        if self.Laplacien == 'unnormalised':
+            laplacien = diagonal - affinity
+        elif self.Laplacien == 'symmetric':
+            laplacien = diagonal - affinity
+            self.alt_diag = np.diag(diagonal)**(-0.5)
+            diag_alt_diag = np.diag(self.alt_diag)
+            laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        if self.WithLaplacienScaling:
+            # the scaling required to bring the off idagona elements to the length of the diagnoal elements
+            self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
+            self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
+        # get the eigenvectors (we know the smallest will be identity)
+        try:
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
+        except (ValueError, TypeError):
+            # sometimes there are fewer eigenvalues avalible
+            # just take waht can be found
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+        self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
+        # at the start the eigenspace positions are the eigenvectors
+        self._eigenspace = np.copy(self.eigenvectors)
+        # these tests often fall short of tollarance, and they arn't really needed
+        #np.testing.assert_allclose(0, eigenvalues[0], atol=0.001)
+        #np.testing.assert_allclose(np.ones(self.currently_avalible), eigenvectors[:, 0]/eigenvectors[0, 0])
+        # now treating the columns of this matrix as the new points get euclidien distances
+        self._distances = np.zeros_like(physical_distances)
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance = self._distances[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    # at this point apply the pt factors
+                    distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
+                               np.sum(self._eigenspace[row] - self._eigenspace[column])**2
+                self._distances[row, column] = distance
+        # if the clustering is not going to stop at 1 we must put something in the diagonal
+        np.fill_diagonal(self._distances, self.DeltaR)
+
+    def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
+        # delete the larger index keep the smaller index
+        assert remove_index > replace_index
+        # delete the first row and column of the merge
+        self._distances = np.delete(self._distances, (remove_index), axis=0)
+        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        # and make its position in eigenspace
+        new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
+        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
+        # move the replaced to the back, it will be repalced later
+        # move the removed object to the back without replacement
+        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
+                                      self._eigenspace[remove_index+1:],
+                                      self._eigenspace[[remove_index]],
+                                      self._eigenspace[[replace_index]]))
+        self._eigenspace[replace_index] = new_position
+        # get the new disntance in eigenspace
+        pt_here = self._floats[replace_index][self._PT_col]**self.exponent
+        pt_factor = np.fromiter((min(row[self._PT_col]**self.exponent, pt_here)
+                                 for row in self._floats[:self.currently_avalible]),
+                                dtype=float) 
+        new_distances = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+        new_distances[replace_index] = self.DeltaR
+        self._distances[replace_index] = new_distances
+
+
+class SpectralFull(Spectral):
+    """ """
+    def _recalculate_one(self, remove_index, replace_index):
+        """
+        
+
+        Parameters
+        ----------
+        remove_index :
+            
+        replace_index :
+            
+
+        Returns
+        -------
+
+        """
+        self._calculate_distances()
+
+
+cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional,
+                   "SpectralJet": Spectral, "SpectralMeanJet": SpectralMean,
+                   "SpectralMAfterJet": SpectralMAfter, "SpectralFullJet": SpectralFull,
+                   "SpectralAfterJet": SpectralAfter}
+
 def get_jet_params(eventWise, jet_name, add_defaults=False):
     """
     
@@ -1943,23 +2093,28 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
                      c=colour, linewidth=size, alpha=alpha)
     plt.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size-1)
     plt.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size+1)
-    
 
-def main():
+
+def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spectral_class=SpectralFull):
     """ """
     ax = plt.gca()
     alpha=0.5
     # colourmap
     colours = plt.get_cmap('gist_rainbow')
-    eventWise = Components.EventWise.from_file("megaIgnore/basis_2k.awkd")
     # create inputs if needed
     if "JetInputs_Energy" not in eventWise.columns:
         filter_funcs = [filter_ends, filter_pt_eta]
         if "JetInputs_Energy" not in eventWise.columns:
             create_jetInputs(eventWise, filter_funcs)
-    eventWise.selected_index = 0
-    jet_params = dict(DeltaR=1., ExponentMultiplier=-1, jet_name="HomeJetTest")
-    pseudojet_traditional = Traditional(eventWise, **jet_params)
+    # add tags if needed
+    if "TagIndex" not in eventWise.columns:
+        TrueTag.add_tag_particles(eventWise)
+    # plot the location of the tag particles
+    eventWise.selected_index = event_n
+    tag_phis = eventWise.Phi[eventWise.TagIndex]
+    tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
+    plt.scatter(tag_rapidity, tag_phis, marker='d', c='g', label="Tags")
+    pseudojet_traditional = Traditional(eventWise, **home_jet_params)
     pseudojet_traditional.assign_parents()
     pjets_traditional = pseudojet_traditional.split()
     # plot the pseudojets
@@ -1971,17 +2126,12 @@ def main():
         input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
         leg_ends = np.vstack((input_rap, input_phi)).T
         input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
+        plt.text(pjet.Rapidity, pjet.Phi-.1, str(pjet.PT)[:7], c=c)
         plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
-    jet_params = dict(DeltaR=0.5, ExponentMultiplier=0,
-                      NumEigenvectors=1,
-                      Laplacien='unnormalised',
-                      AffinityType='linear',
-                      AffinityCutoff=None,
-                      jet_name="SpectralTest")
-    pseudojet_spectral = SpectralAfter(eventWise, **jet_params)
+    pseudojet_spectral = SpectralMean(eventWise, **spectral_jet_params)
     pseudojet_spectral.assign_parents()
     pjets_spectral = pseudojet_spectral.split()
     # plot the pseudojets
@@ -1994,6 +2144,7 @@ def main():
         leg_ends = np.vstack((input_rap, input_phi)).T
         input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
         plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
+        plt.text(pjet.Rapidity, pjet.Phi+.1, str(pjet.PT)[:7], c=c)
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="SpectralJet")
@@ -2007,4 +2158,14 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    home_jet_params = dict(DeltaR=1., ExponentMultiplier=-1, jet_name="HomeJetTest")
+    spectral_jet_params = dict(DeltaR=0.15, ExponentMultiplier=0,
+                               NumEigenvectors=4,
+                               Laplacien='unnormalised',
+                               AffinityType='exponent',
+                               AffinityCutoff=('distance', 3),
+                               jet_name="SpectralMeanTest")
+
+    flat_display(eventWise, 0, home_jet_params, spectral_jet_params)
