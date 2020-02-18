@@ -174,15 +174,16 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     if max_angle is None:
         max_angle = Constants.max_tagangle
     eventWise.selected_index = None
-    name = jet_name+"_Tags"
-    namePID = jet_name+"_TagPIDs"
+    name = jet_name+f"_{int(jet_pt_cut)}Tags"
+    namePID = jet_name+f"_{int(jet_pt_cut)}TagPIDs"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
     if "TagIndex" not in eventWise.columns:
         add_tag_particles(eventWise, silent=silent)
     jet_tags = list(getattr(eventWise, name, []))
     jet_tagpids = list(getattr(eventWise, namePID, []))
     start_point = len(jet_tags)
-    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
+    name_tagangle = jet_name + f"_TagAngle"
+    hyperparameter_content = {name_tagangle: max_angle}
     if start_point >= n_events:
         print("Finished")
         content = {}
@@ -235,7 +236,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     content = {}
     content[name] = awkward.fromiter(jet_tags)
     content[namePID] = awkward.fromiter(jet_tagpids)
-    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
+    hyperparameter_content = {name_tagangle: max_angle}
     if append:
         eventWise.append(**content)
         eventWise.append_hyperparameters(**hyperparameter_content)

@@ -211,12 +211,13 @@ class EventWise:
         -------
 
         """
-        alias_list = list(self._column_contents['alias'][:, 0])
-        alias_idx = alias_list.index(to_remove)
+        alias_keys = list(self._column_contents['alias'][:, 0])
+        alias_list = list(self._column_contents['alias'])
+        alias_idx = alias_keys.index(to_remove)
         # if to_remove is not infact an alias the line above will throw an error
         del self._alias_dict[to_remove]
         del alias_list[alias_idx]
-        self._column_contents['alias'] = awkward.fromiter(alias_list)
+        self._column_contents = {**self._column_contents, 'alias': awkward.fromiter(alias_list)}
         self.columns.remove(to_remove)
 
     def add_alias(self, name, target):
@@ -236,9 +237,9 @@ class EventWise:
         """
         assert target in self.columns
         assert name not in self.columns
-        alias_list = self._column_contents['alias']
-        alias_list += [name, target]
-        self._column_contents['alias'] = awkward.fromiter(alias_list)
+        alias_list = self._column_contents['alias'].tolist()
+        alias_list.append([name, target])
+        self._column_contents = {**self._column_contents, 'alias': awkward.fromiter(alias_list)}
         self._alias_dict[name] = target
         self.columns.append(name)
 
@@ -495,13 +496,22 @@ class EventWise:
             self._remove_alias(old_name)
             self.add_alias(new_name, target)
         else:
-            if old_name not in self.columns:
+            if old_name in self.columns:
+                self.columns[self.columns.index(old_name)] = new_name
+            elif old_name in self.hyperparameter_columns:
+                self.hyperparameter_columns[self.hyperparameter_columns.index(old_name)] = new_name
+            else:
                 raise KeyError(f"Don't have a column called {old_name}")
-            self.columns[self.columns.index(old_name)] = new_name
             if type(self._column_contents) != dict:
                 self._column_contents = {k:v for k, v in self._column_contents.items()}
             self._column_contents[new_name] = self._column_contents[old_name]
             del self._column_contents[old_name]
+
+    def rename_prefix(self, old_prefix, new_prefix):
+        for name in self.columns+self.hyperparameter_columns:
+            if name.startswith(old_prefix):
+                new_name = name.replace(old_prefix, new_prefix, 1)
+                self.rename(name, new_name)
 
     def fragment(self, per_event_component, **kwargs):
         """

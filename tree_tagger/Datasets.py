@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from torch import nn
 from ipdb import set_trace as st
 import numpy as np
-from tree_tagger import Components, LinkingFramework, FormJets, TreeWalker, InputTools
+from tree_tagger import Components, LinkingFramework, FormJets, TreeWalker, InputTools, Constants
 from sklearn import preprocessing
 import torch
 
@@ -709,7 +709,8 @@ class FlatJetDataset(JetWiseDataset):
         eventWise.selected_index = 0
         event_vars = [getattr(eventWise, c) for c in per_event_columns]
         jet_vars = [getattr(eventWise, c) for c in per_jet_columns]
-        tags = getattr(eventWise, self.jet_name + "_Tags")
+        jet_pt_cut = Constants.min_jetpt
+        tags = getattr(eventWise, self.jet_name + f"_{int(jet_pt_cut)}Tags")
         update=False
         for jet_num, idx in enumerate(sorted(self.all_indices)):
             if jet_num %100 == 0:
@@ -722,7 +723,7 @@ class FlatJetDataset(JetWiseDataset):
                 eventWise.selected_index = event_num
                 event_vars = [getattr(eventWise, c) for c in per_event_columns]
                 jet_vars = [getattr(eventWise, c) for c in per_jet_columns]
-                tags = getattr(eventWise, self.jet_name + "_Tags")
+                tags = getattr(eventWise, self.jet_name + f"_{int(jet_pt_cut)}Tags")
                 update=False
             jet_in_event = idx - event_start
             jets[jet_num] = event_vars + [jv[jet_in_event] for jv in jet_vars]
@@ -761,14 +762,15 @@ class JetTreesDataset(JetWiseDataset):
         eventWise = self.eventWise
         eventWise.selected_index = 0
         parents = getattr(eventWise, self.jet_name + "_Parent")
-        tags = getattr(eventWise, self.jet_name + "_Tags")
+        jet_pt_cut = Constants.min_jetpt
+        tags = getattr(eventWise, self.jet_name + f"_{int(jet_pt_cut)}Tags")
         for jet_num, idx in enumerate(sorted(self.all_indices)):
             while idx >= self._cumulative_jets[event_num]:
                 event_start = self._cumulative_jets[event_num]
                 event_num += 1
                 eventWise.selected_index = event_num
                 parents = getattr(eventWise, self.jet_name + "_Parent")
-                tags = getattr(eventWise, self.jet_name + "_Tags")
+                tags = getattr(eventWise, self.jet_name + "_{int(jet_pt_cut)}Tags")
             jet_in_event = idx - event_start
             root = np.where(parents[jet_in_event] == -1)[0][0]
             jets[jet_num] = [event_num, jet_in_event, root]

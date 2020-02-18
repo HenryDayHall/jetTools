@@ -67,6 +67,7 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
     secondary_vertices = awkward.fromiter(secondary_vertices)
     eventWise.append(**{tag_vertex_name: secondary_vertices})
 
+
 def closest_approches(start_points, direction_vectors):
     """
     For a set of lines find the closest approch of each line

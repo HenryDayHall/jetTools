@@ -189,16 +189,6 @@ def test_EventWise():
         save_name = "blank.awkd"
         blank_ew = Components.EventWise(dir_name, save_name)
         assert blank_ew.columns == []
-        # add to index
-        #contents = []
-        #blank_ew.add_to_index(contents)
-        #expected =  {"name": "blank", "save_name": save_name,
-        #             "mutable": True}
-        #assert generic_equality_comp(contents[-1], expected)
-        #blank_ew.add_to_index(contents, name="a", mutable=False)
-        #expected =  {"name": "a", "save_name": save_name,
-        #             "mutable": False}
-        #assert generic_equality_comp(contents[-1], expected)
         # getting attributes
         with pytest.raises(AttributeError):
             getattr(blank_ew, "PT")
@@ -236,7 +226,40 @@ def test_EventWise():
         blank_ew.append(**{"A": AwkdArrays.empty, "Bc": AwkdArrays.one_one, "Bd": AwkdArrays.minus_plus})
         blank_ew.remove_prefix("B")
         assert list(blank_ew.columns) == ["A"]
-
+        # instancate with content
+        content = {"A1": AwkdArrays.minus_plus, "Long_name": AwkdArrays.minus_plus, "Hyper": AwkdArrays.one_one}
+        columns = ["A1", "Long_name"]
+        hyperparameter_columns = ["Hyper"]
+        filled_name = "filled.awkd"
+        alt_ew = Components.EventWise(dir_name, filled_name, columns=columns,
+                                      contents=content, hyperparameter_columns=hyperparameter_columns)
+        assert list(alt_ew.columns) == columns
+        assert list(alt_ew.hyperparameter_columns) == hyperparameter_columns
+        assert generic_equality_comp(alt_ew.Hyper, AwkdArrays.one_one)
+        # make an alias
+        alt_ew.add_alias("A2", "A1")
+        assert generic_equality_comp(alt_ew.A2, AwkdArrays.minus_plus)
+        # read and write with the alias
+        alt_ew.write()
+        alt_ew_clone = Components.EventWise.from_file(os.path.join(dir_name, filled_name))
+        assert list(alt_ew_clone.columns) == columns
+        assert list(alt_ew_clone.hyperparameter_columns) == hyperparameter_columns
+        assert generic_equality_comp(alt_ew_clone.Hyper, AwkdArrays.one_one)
+        assert generic_equality_comp(alt_ew_clone.A2, AwkdArrays.minus_plus)
+        # check the dir contains both parameters and hyperparameters
+        dir_cont = alt_ew_clone.__dir__()
+        assert "A2" in dir_cont
+        for key in columns + hyperparameter_columns + ["A2"]:
+            assert key in dir_cont
+        # remove an alias
+        alt_ew_clone.remove("A2")
+        assert "A2" not in alt_ew_clone.__dir__()
+        assert "A2" not in alt_ew_clone.columns
+        assert generic_equality_comp(alt_ew_clone.A1, AwkdArrays.minus_plus)
+        # overwrite a hyperparameter
+        alt_ew_clone.append_hyperparameters(Hyper=AwkdArrays.one_one*2)
+        assert generic_equality_comp(alt_ew_clone.Hyper, 2*alt_ew.Hyper)
+       
 
 def test_split():
     with TempTestDir("tst") as dir_name:
@@ -289,6 +312,7 @@ def test_split():
         tst.assert_allclose(ew3.c3.flatten(), content_3[7:].flatten())
         tst.assert_allclose(ew3.c4.flatten().flatten(), content_4[7:].flatten().flatten())
         assert np.all(["dog" in name for name in paths if name is not None])
+
 
 def test_fragment():
     with TempTestDir("tst") as dir_name:
@@ -353,6 +377,9 @@ def test_split_unfinished():
         tst.assert_allclose(ew1.c1, content_1[idxs])
         tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
         tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+
+
+
 
 def test_combine():
     with TempTestDir("tst") as dir_name:

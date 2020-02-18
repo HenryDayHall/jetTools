@@ -25,6 +25,7 @@ class PseudoJet:
                      "Pseudojet_JoinDistance"]
     def __init__(self, eventWise, selected_index=None, jet_name='PseudoJet', from_PseudoRapidity=False,
                  ints_floats=None, **kwargs):
+        #print('init_psu', end='\r', flush=True)
         # jets can have a varient name
         # this allows multiple saves in the same file
         self.jet_name = jet_name
@@ -104,6 +105,7 @@ class PseudoJet:
         -------
 
         """
+        #print('hpar_psu', end='\r', flush=True)
         if dict_jet_params is None:
             dict_jet_params = {}
         stripped_params = {name.split("_")[-1]:name for name in dict_jet_params}
@@ -122,6 +124,7 @@ class PseudoJet:
 
     def _set_column_numbers(self):
         """ """
+        #print('coln_psu', end='\r', flush=True)
         prefix_len = len(self.jet_name) + 1
         # int columns
         self._int_contents = {}
@@ -144,6 +147,7 @@ class PseudoJet:
 
     def _calculate_currently_avalible(self):
         """ """
+        #print('cavl_psu', end='\r', flush=True)
         # keep track of how many clusters don't yet have a parent
         self.currently_avalible = sum([p[self._Parent_col]==-1 for p in self._ints])
 
@@ -215,6 +219,7 @@ class PseudoJet:
         -------
 
         """
+        #print('udic_psu', end='\r', flush=True)
         if arrays is None:
             save_columns = [jet_name + "_RootInputIdx"]
             int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
@@ -241,6 +246,7 @@ class PseudoJet:
 
     def create_param_dict(self):
         """ """
+        #print('pdic_psu', end='\r', flush=True)
         jet_name = self.jet_name
         # add any default values
         defaults = {name:value for name, value in self.param_list.items()
@@ -268,6 +274,7 @@ class PseudoJet:
         -------
 
         """
+        #print('wevt_psu', end='\r', flush=True)
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
         if event_index is None:
@@ -289,10 +296,10 @@ class PseudoJet:
         -------
 
         """
+        #print('ckpr_psu', end='\r', flush=True)
         my_params = self.create_param_dict()
         written_params = get_jet_params(eventWise, self.jet_name)
         if written_params:  # if written params exist check they match the jets params
-            st()
             # returning false imediatly if not
             if set(written_params.keys()) != set(my_params.keys()):
                 return False
@@ -378,6 +385,7 @@ class PseudoJet:
 
     def _calculate_roots(self):
         """ """
+        #print('crot_psu', end='\r', flush=True)
         self.root_jetInputIdxs = []
         # should only bee needed for reading from file self.currently_avalible == 0, "Assign parents before you calculate roots"
         pseudojet_ids = self.InputIdx
@@ -450,6 +458,7 @@ class PseudoJet:
         -------
 
         """
+        #print('merg_psu', end='\r', flush=True)
         replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
         new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance)
         # move the first pseudojet to the back without replacement
@@ -482,6 +491,7 @@ class PseudoJet:
         -------
 
         """
+        #print('remo_psu', end='\r', flush=True)
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
         pseudojet_floats = self._floats.pop(pseudojet_index)
@@ -497,6 +507,7 @@ class PseudoJet:
 
     def assign_parents(self):
         """ """
+        #print('asign_psu', end='\r', flush=True)
         while self.currently_avalible > 0:
             # now find the smallest distance
             row, column = np.unravel_index(np.argmin(self._distances), self._distances.shape)
@@ -586,6 +597,7 @@ class PseudoJet:
         -------
 
         """
+        #print('gdec_psu', end='\r', flush=True)
         if jetInputIdx is None and pseudojet_idx is None:
             raise TypeError("Need to specify a pseudojet")
         elif pseudojet_idx is None:
@@ -650,6 +662,7 @@ class PseudoJet:
         -------
 
         """
+        #print('comb_psu', end='\r', flush=True)
         new_id = max([ints[self._InputIdx_col] for ints in self._ints]) + 1
         self._ints[pseudojet_index1][self._Parent_col] = new_id
         self._ints[pseudojet_index2][self._Parent_col] = new_id
@@ -930,6 +943,7 @@ class Spectral(PseudoJet):
             'AffinityCutoff': None, 'Laplacien': 'unnormalised',
             'WithLaplacienScaling': False}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        #print('init_spc', end='\r', flush=True)
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
         self._define_calculate_affinity()
@@ -937,6 +951,7 @@ class Spectral(PseudoJet):
 
     def _calculate_distances(self):
         """ """
+        #print('cdis_spc', end='\r', flush=True)
         if self.currently_avalible < 2:
             self._distances = np.zeros((1, 1))
             try:
@@ -954,6 +969,7 @@ class Spectral(PseudoJet):
         # future calculatins will depend on the starting positions
         self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
                                             for row in self._floats])
+        #print('cdis1spc', end='\r', flush=True)
         exponent = self.exponent
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
@@ -977,6 +993,7 @@ class Spectral(PseudoJet):
         # a graph laplacien can be calculated
         np.fill_diagonal(affinity, 0)
         diagonal = np.diag(np.sum(affinity, axis=1))
+        #print('cdis2spc', end='\r', flush=True)
         if self.Laplacien == 'unnormalised':
             laplacien = diagonal - affinity
         elif self.Laplacien == 'symmetric':
@@ -984,17 +1001,24 @@ class Spectral(PseudoJet):
             self.alt_diag = np.diag(diagonal)**(-0.5)
             diag_alt_diag = np.diag(self.alt_diag)
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        else:
+            raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
         if self.WithLaplacienScaling:
             # the scaling required to bring the off idagona elements to the length of the diagnoal elements
             self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
             self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
+        #print('cdis3spc', end='\r', flush=True)  # TODO this is where it gets stuck
+        #np.savetxt("tmp.txt", laplacien)  # there is nothing wrong with this though....
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
         except (ValueError, TypeError):
+            #print('cdisBspc', flush=True)
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+            #print('cdisCspc', flush=True)
+        #print('cdis4spc', end='\r', flush=True)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
@@ -1005,9 +1029,12 @@ class Spectral(PseudoJet):
         self._distances = scipy.spatial.distance.squareform(
                 scipy.spatial.distance.pdist(eigenvectors[:, 1:]))
         # if the clustering is not going to stop at 1 we must put something in the diagonal
+        #print('cdis5spc', end='\r', flush=True)
         np.fill_diagonal(self._distances, self.DeltaR)
+        #print('cdis-spc', end='\r', flush=True)
 
     def _define_calculate_affinity(self):
+        #print('dafi_spc', end='\r', flush=True)
         if self.AffinityCutoff is not None:
             cutoff_type = self.AffinityCutoff[0]
             cutoff_param = self.AffinityCutoff[1]
@@ -1238,6 +1265,7 @@ class Spectral(PseudoJet):
         -------
 
         """
+        #print('rmps_spc', end='\r', flush=True)
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
         pseudojet_floats = self._floats.pop(pseudojet_index)
@@ -1269,6 +1297,7 @@ class Spectral(PseudoJet):
         -------
 
         """
+        #print('reon_spc', end='\r', flush=True)
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
@@ -1609,6 +1638,7 @@ class SpectralFull(Spectral):
         -------
 
         """
+        #print('reon_ful', end='\r', flush=True)
         self._calculate_distances()
 
 
@@ -1977,7 +2007,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     updated_dict = None
     checked = False
     for event_n in range(start_point, end_point):
-        if event_n % 10 == 0 and not silent:
+        if event_n % 100 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:

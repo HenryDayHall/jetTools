@@ -43,18 +43,16 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
             if jid not in jet_numbers:
                 continue
             matching_name = jet_names[jet_numbers.index(jid)]
-            try:
-                if records.check_eventWise_match(ew, jid, matching_name):
-                    found.append((ew, matching_name))
-                else:
-                    jet_params = FormJets.get_jet_params(ew, matching_name, True)
-                    row = array[array[:, 0] == jid][0]
-                    print(f" Missmatch of matching name")
-                    print(f"recorded; {row}")
-                    print(f"found; {jet_params}")
-            except KeyError:
+            if records.check_eventWise_match(ew, jid, matching_name):
+                found.append((ew, matching_name))
+            else:
                 st()
-                ew.save_name
+                check =  records.check_eventWise_match(ew, jid, matching_name)
+                jet_params = FormJets.get_jet_params(ew, matching_name, True)
+                row = array[array[:, 0] == jid][0]
+                print(f" Missmatch of matching name")
+                print(f"recorded; {row}")
+                print(f"found; {jet_params}")
         if len(found) == 0:
             print(f"Cannot find jet with id num {jid}")
         elif len(found) == 1:
@@ -96,7 +94,8 @@ def seek_shapeable(dir_name="megaIgnore", file_names=None):
     matches = []
     for ew in eventWises:
         print(ew.save_name)
-        tag_names = [name for name in ew.columns if name.endswith("_Tags")]
+        jet_pt_cut = Constants.min_jetpt
+        tag_names = [name for name in ew.columns if name.endswith(f"_{int(jet_pt_cut)}Tags")]
         for name in tag_names:
             tags = getattr(ew, name, None)
             if tags is None:
@@ -105,6 +104,60 @@ def seek_shapeable(dir_name="megaIgnore", file_names=None):
             if np.any(num_tagged>1):
                 matches.append((ew, name.split('_', 1)[0]))
     return matches
+
+
+# problems
+def reindex_jets(dir_name="megaIgnore"):
+    """ go through the specified directory and renumber any jets that have the same ID """
+    taken_ids = []
+    duplicates = dict()
+    # get a list of eventWise files
+    file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name)
+                  if name.endswith(".awkd")]
+    for ew_name in file_names:
+        try:
+            ew = Components.EventWise.from_file(ew_name)
+        except KeyError:
+            continue  # it's not actually an eventwise
+        jet_names = get_jet_names(ew)
+        duplicates[ew_name] = []
+        for j_name in jet_names:
+            jet_id = int(j_name.split("Jet", 1)[1])
+            if jet_id in taken_ids:
+                duplicates[ew_name].append(j_name)
+            else:
+                taken_ids.append(jet_id)
+        if not duplicates[ew_name]:
+            del duplicates[ew_name]
+    st()
+    gen_id = id_generator(taken_ids)
+    # now work through the duplcates, adding them to the taken_ids
+    for ew_name, dup_list in duplicates.items():
+        print(f"Fixing {ew_name}")
+        ew = Components.EventWise.from_file(ew_name)
+        for j_name in dup_list:
+            jet_id = int(j_name.split("Jet", 1)[1])
+            new_id = next(gen_id)
+            new_name = j_name.split("Jet", 1)[0] + "Jet" + str(new_id)
+            ew.rename_prefix(j_name, new_name)
+        ew.write()
+            
+
+def id_generator(used_ids):
+    current_id = 1
+    while True:
+        current_id += 1
+        if current_id not in used_ids:
+            yield current_id
+            used_ids.append(current_id)
+
+
+def get_jet_names(eventWise):
+    jet_names = {name.split('_', 1)[0]
+                 for name in eventWise.columns
+                 if "Jet" in name
+                 and not name.startswith("JetInputs")}
+    return sorted(jet_names)
 
 
 def parameter_step(records, jet_class, ignore_parameteres=None):
@@ -346,7 +399,7 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     return tag_momentum, assigned_momentum
 
 
-def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_tracks=None, max_angle=None, reset=True):
+def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_tracks=None, max_angle=None):
     """
     
 
@@ -370,12 +423,8 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_trac
     if max_angle is None:
         max_angle = Constants.max_tagangle
     eventWise.selected_index = None
-    # if there are existing tag columns, remove them
-    if jet_name + "_Tags" in eventWise.columns and reset:
-        eventWise.remove(jet_name + "_Tags")
-        eventWise.remove(jet_name + "_TagPIDs")
     h_content, content = TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks, silent=True, append=False)
-    tags_in_jets = content[jet_name + "_Tags"]
+    tags_in_jets = content[jet_name + f"_{int(jet_pt_cut)}Tags"]
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
     # name the vaiables to be cut on
@@ -1162,6 +1211,183 @@ def cumulative_score(records, typed_array=None):
     return cumulative
 
 
+def group_discreet(records, only_scored=True):
+    """group the records by their discreet parameters """
+    array = records.typed_array()
+    if only_scored:
+        array = array[records.scored]
+    pure_numeric = ['DeltaR', 'ExponentMultiplier']
+    numeric_tuples = ['AffinityCutoff']
+    numeric_tuples = [(name, records.indices[name]) for name in numeric_tuples]
+    not_discreet = pure_numeric + numeric_tuples + list(records.evaluation_columns) + ['jet_id']
+    discreet_attributes = [(name, records.indices[name]) for name in 
+                           sorted(set(records.indices.keys()) - set(not_discreet))]
+    groups = {}
+    for row in array:
+        tuple_start = [f"{name}_{row[idx][0]}" for name, idx in numeric_tuples.items()]
+        discreet = [f"{name}_{row[idx]}" for name, idx in discreet_attributes.items()]
+        key = ','.join(discreet + tuple_start)
+        groups.setdefault(key, []).append(row.tolist())
+    return groups
+
+
+def thin_clusters(records, min_mean_jets=0.5, proximity=0.10):
+    """ Identify some clusters to remove in order to save space """
+    removed_name = "removed_records.csv"
+    removed_records = Records(removed_name)
+    # first remove anything that fails a hard cut
+    array = records.typed_array()
+    mask = array[records.scored, records.indices['mean_njets']] < min_mean_jets
+    to_remove = array[records.scored][mask, 0]
+    print(f"Removing {len(to_remove)} based on mean jets")
+    remove_clusters(records, to_remove)
+    print("clusteres removed from awkd files")
+    removed_records.transfer(records, to_remove)
+    print("cluster records moved to removed_records.csv")
+    # now sift through the records looking for things that
+    # share all discreet attributes and 
+    # are closer than proximity
+    pure_numeric_indices = [records.indices[name] for name in ('DeltaR', 'ExponentMultiplier')]
+    numeric_tuples_indices = [records.indices['AffinityCutoff']]
+    groups = group_discreet(records)
+    to_remove = []
+    # within each group
+    for key in groups:
+        group = np.array(groups[key])
+        if len(group) < 3:
+            continue
+        # be sure to preseve the one with the best score
+        cumulative = cumulative_score(records, group)
+        best_idx = np.argmax(cumulative)
+        # now filter on numeric values
+        for col in pure_numeric_indices:
+            min_step = proximity * (np.max(group[:, col]) - np.min(group[:, col]))
+            order = np.argsort(group[:, col])
+            best_idx = np.where(order == best_idx)[0][0]
+            group = group[order]
+            # start by working up from best_idx
+            i = best_idx + 1
+            while i < len(group):
+                if group[i, col] - group[i-1, col] < min_step:
+                    to_remove.append(group[i, 0])
+                    group = np.delete(group, i, 0)
+                i += 1
+            # now go down, adjusting the position of the best idx everytime something is deleted
+            i = best_idx - 1
+            while i >= 0:
+                if group[i+1, col] - group[i, col] < min_step:
+                    to_remove.append(group[i, 0])
+                    group = np.delete(group, i, 0)
+                    best_idx -= 1
+                i -= 1
+        # now filter on numeric tuples
+        for col in numeric_tuples_indices:
+            values = np.fromiter((np.nan if item is None else item[1] for item in group[:, col]), dtype=float)
+            found_none = False
+            min_step = proximity * (np.max(values) - np.min(values))
+            order = np.argsort(values)
+            best_idx = np.where(order == best_idx)[0][0]
+            group = group[order]
+            values = values[order].tolist()
+            # start by working up from best_idx
+            i = best_idx + 1
+            while i < len(group):
+                if np.nan in [values[i], values[i-1]]:
+                    if found_none:
+                        to_remove.append(group[i, 0])
+                        group = np.delete(group, i, 0)
+                        del values[i]
+                    else:
+                        found_none = True
+                        continue
+                if values[i] - values[i-1] < min_step:
+                    to_remove.append(group[i, 0])
+                    group = np.delete(group, i, 0)
+                    del values[i]
+                i += 1
+            # now go down, adjusting the position of the best idx everytime something is deleted
+            i = best_idx - 1
+            while i >= 0:
+                if np.nan in [values[i], values[i-1]]:
+                    if found_none:
+                        to_remove.append(group[i, 0])
+                        group = np.delete(group, i, 0)
+                        del values[i]
+                    else:
+                        found_none = True
+                        continue
+                if values[i+1] - values[i] < min_step:
+                    to_remove.append(group[i, 0])
+                    group = np.delete(group, i, 0)
+                    del values[i]
+                    best_idx -= 1
+                i -= 1
+    print(f"Removing {len(to_remove)} based on proximity")
+    remove_clusters(records, to_remove)
+    print("clusteres removed from awkd files")
+    removed_records.transfer(records, to_remove)
+    print("cluster records moved to removed_records.csv")
+
+
+def remove_clusters(records, jet_ids):
+    # probably need to deal with one eventwise at a time
+    # and not seek too many jets int he first place
+    batch_size = 50
+    by_eventWise = {}
+    for i in range(0, len(jet_ids), batch_size):
+        batch_ids = jet_ids[i: i + batch_size]
+        for eventWise, jet_name in seek_clusters(records, batch_ids):
+            path = os.path.join(eventWise.dir_name, eventWise.save_name)
+            by_eventWise.setdefault(path, []).append(jet_name)
+    for path in by_eventWise:
+        print(f"Removing {len(by_eventWise[path])} jets from {path}")
+        eventWise = Components.EventWise.from_file(path)
+        for jet_name in by_eventWise[path]:
+            eventWise.remove_prefix(jet_name)
+        eventWise.write()
+
+
+def consolidate_clusters(dir_name="megaIgnore", max_size=300):
+    """ Sort clusters by hyperparameter groups and 
+    put them into new eventWise awkd files """
+    # start by learning what's in the directory
+    records_name = "tmp{}_records.csv"
+    i=0
+    while os.path.exists(records_name.format(i)):
+        i += 1
+    records_name = records_name.format(i)
+    records = Records(records_name)
+    pottential_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name)
+                        if name.endswith(".awkd")]
+    ew_names = []
+    for ew_name in pottential_names:
+        try:
+            ew = Components.EventWise.from_file(ew_name)
+            ew_names.append(ew_name)
+        except Exception:
+            print(f"Couldn't read {ew_name}")
+            continue
+        print(ew_name)
+        records.scan(ew)
+        del ew
+    # now all jets in the sample should be located
+    groups = group_discreet(records, only_scored=False)
+    finalised = {}
+    priorties = [(name, records.indices[name]) for name in 
+                 ["jet_class", "Laplacien", "WithLaplacienScaling", "AffinityType"]]
+    for name, col in priorties:
+        gathered = {}
+        for key, group in groups.items():
+            assignment = str(group[0][col])
+            if len(gathered[key]) + len(group) > max_size:
+                # move what is in gathered to finalised
+                pass  # TODO
+            
+
+    
+    
+
+
 class Records:
     """ """
     delimiter = '\t'
@@ -1198,7 +1424,6 @@ class Records:
             self.next_uid = np.max(relevent_jetids, initial=0) + 1
         self.indices['jet_id'] = 0
         self.indices['jet_class'] = 1
-        self.uid_length = len(str(self.next_uid))
 
     def write(self):
         """ """
@@ -1222,10 +1447,13 @@ class Records:
         jet_classes = FormJets.cluster_classes
         typed_content = []
         for row in self.content:
-            id_num = int(row[0])
-            jet_class = row[1]
-            typed_content.append([id_num, jet_class])
-            for param_name, entry in zip(self.param_names, row[2:]):
+            typed_row = [None for _ in self.indices]
+            jet_class = row[self.indices['jet_class']]
+            for param_name, i in self.indices.items():
+                try:
+                    entry = row[i]
+                except IndexError:
+                    entry = ''
                 if entry == '':
                     # set to the default
                     try:
@@ -1242,7 +1470,8 @@ class Records:
                     except ValueError:
                         # it's probably a string
                         typed = entry
-                typed_content[-1].append(typed)
+                typed_row[i] = typed
+            typed_content.append(typed_row)
         # got to be an awkward array because numpy hates mixed types
         return np.array(typed_content)
 
@@ -1307,7 +1536,7 @@ class Records:
             assert existing_idx not in self.jet_ids
             chosen_id = existing_idx
         chosen_id = int(chosen_id)
-        new_row = [f"{chosen_id:0{self.uid_length}d}", jet_class]
+        new_row = [str(chosen_id), jet_class]
         new_params = list(set(param_dict.keys()) - set(self.param_names))
         self._add_param(*new_params)
         for name in self.param_names:
@@ -1322,6 +1551,22 @@ class Records:
         self.next_uid += 1
         self.uid_length = len(str(self.next_uid))
         return chosen_id
+
+    def remove(self, jet_id):
+        idx = self.jet_ids.index(jet_id)
+        removed = self.content.pop(idx)
+        removed = {name: removed[idx] for name, idx in self.indices.items()}
+        return removed
+
+    def transfer(self, donor_records, jet_ids):
+        self._add_param(*donor_records.indices.keys())
+        column_order = sorted(self.indices, key=self.indices.__getitem__)
+        for jid in jet_ids:
+            donated = donor_records.remove(jid)
+            new_line = [donated[name] for name in column_order]
+            self.content.append(new_line)
+        self.write()
+        donor_records.write()
  
     def check_eventWise_match(self, eventWise, jet_id, jet_name):
         eventWise.selected_index = None
@@ -1347,8 +1592,7 @@ class Records:
 
         """
         eventWise.selected_index = None
-        jet_names = {c.split('_', 1)[0] for c in eventWise.columns
-                     if (not c.startswith('JetInputs')) and 'Jet' in c}
+        jet_names = get_jet_names(eventWise)
         existing = {}  # dicts like  "jet_name": int(row_idx)
         added = {}
         starting_ids = self.jet_ids
@@ -1415,7 +1659,27 @@ class Records:
         self.write()
         return existing, added
 
-    def score(self, eventWise, reset_tags=True):
+    def score(self, target):
+        if isinstance(target, str):
+            if target.endswith('.awkd'):
+                target = Components.EventWise.from_file(target)
+                self._score_eventWise(target)
+            elif os.path.isdir(target):
+                for name in os.listdir(target):
+                    if not name.endswith('.awkd'):
+                        continue
+                    path = os.path.join(target, name)
+                    try:
+                        eventWise = Components.EventWise.from_file(path)
+                    except Exception:
+                        continue  # this one is not an eventwise
+                    self._score_eventWise(eventWise)
+            else:
+                raise NotImplementedError
+        else:  # assume its eventwise
+            self._score_eventWise(target)
+
+    def _score_eventWise(self, eventWise):
         """
         
 
@@ -1456,7 +1720,7 @@ class Records:
                     eventWise = Components.EventWise.from_file(path)
             row = self.content[all_jets[name]]
             if not scored[int(row[0])]:
-                tag_coords, jet_coords, n_jets_formed, h_content_here, content_here = fit_all_to_tags(eventWise, name, silent=True, reset=reset_tags)
+                tag_coords, jet_coords, n_jets_formed, h_content_here, content_here = fit_all_to_tags(eventWise, name, silent=True)
                 content = {**content, **content_here}
                 h_content = {**h_content, **h_content_here}
                 tag_coords = np.vstack(tag_coords)
