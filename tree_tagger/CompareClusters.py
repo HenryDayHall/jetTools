@@ -74,8 +74,14 @@ def seek_best(records, number_required=3, dir_name="megaIgnore"):
     return best
 
 
-def seek_shapeable(dir_name="megaIgnore", file_names=None):
+def seek_shapeable(dir_name="megaIgnore", file_names=None, jet_pt_cut='default', tag_before_pt_cut=True):
     """ Find a list of clusters in the eventWise files in a directory """
+    if jet_pt_cut == 'default':
+        jet_pt_cut = Constants.min_jetpt
+    if jet_pt_cut is None or tag_before_pt_cut:
+        tag_name = '_Tags'
+    else:
+        tag_name = f'_{int(jet_pt_cut)}Tags'
     array = records.typed_array()
     if file_names is None:
         # get a list of eventWise files
@@ -94,14 +100,13 @@ def seek_shapeable(dir_name="megaIgnore", file_names=None):
     matches = []
     for ew in eventWises:
         print(ew.save_name)
-        jet_pt_cut = Constants.min_jetpt
-        tag_names = [name for name in ew.columns if name.endswith(f"_{int(jet_pt_cut)}Tags")]
+        tag_names = [name for name in ew.columns if name.endswith(tag_name)]
         for name in tag_names:
             tags = getattr(ew, name, None)
             if tags is None:
                 continue
             num_tagged = np.fromiter((sum([len(j) > 0 for j in evnt]) for evnt in tags), dtype=int)
-            if np.any(num_tagged>1):
+            if np.any(num_tagged > 1):
                 matches.append((ew, name.split('_', 1)[0]))
     return matches
 
@@ -399,7 +404,7 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     return tag_momentum, assigned_momentum
 
 
-def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_tracks=None, max_angle=None):
+def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min_tracks=None, max_angle=None, tag_before_pt_cut=True):
     """
     
 
@@ -416,15 +421,20 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_trac
     -------
 
     """
-    if jet_pt_cut is None:
+    if jet_pt_cut == 'default':
         jet_pt_cut = Constants.min_jetpt
     if min_tracks is None:
         min_tracks = Constants.min_ntracks
     if max_angle is None:
         max_angle = Constants.max_tagangle
     eventWise.selected_index = None
-    h_content, content = TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks, silent=True, append=False)
-    tags_in_jets = content[jet_name + f"_{int(jet_pt_cut)}Tags"]
+    if tag_before_pt_cut:
+        tag_name = jet_name + '_Tags'
+        h_content, content = TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=None, min_tracks=min_tracks, silent=True, append=False)
+    else:
+        tag_name = f'{jet_name}_{int(jet_pt_cut)}Tags'
+        h_content, content = TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks, silent=True, append=False)
+    tags_in_jets = content[tag_name]
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
     # name the vaiables to be cut on
@@ -450,73 +460,6 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut=None, min_trac
     #tag_coords = np.vstack(tag_coords)
     #jet_coords = np.vstack(jet_coords)
     return tag_coords, jet_coords, n_jets_formed, h_content, content
-
-
-def quick_njets(eventWise, jet_name, jet_pt_cut=None, min_tracks=None, max_angle=None):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        
-    jet_name :
-        
-    silent :
-         (Default value = False)
-
-    Returns
-    -------
-
-    """
-    if jet_pt_cut is None:
-        jet_pt_cut = Constants.min_jetpt
-    if min_tracks is None:
-        min_tracks = Constants.min_ntracks
-    if max_angle is None:
-        max_angle = Constants.max_tagangle
-    eventWise.selected_index = None
-    n_events = len(getattr(eventWise, jet_name + "_Energy"))
-    # name the vaiables to be cut on
-    inputidx_name = jet_name + "_InputIdx"
-    rootinputidx_name = jet_name+"_RootInputIdx"
-    n_jets_formed = []
-    for event_n in range(n_events):
-        eventWise.selected_index = event_n
-        jet_track_pts = getattr(eventWise, jet_name + "_PT")
-        # get the valiables ot cut on
-        jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
-        # note this actually counts num pesudojets, but for more than 2 that is sufficient
-        num_tracks = Components.apply_array_func(len, jet_track_pts, depth=Components.EventWise.EVENT_DEPTH).flatten()
-        n_jets = np.sum(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))
-        n_jets_formed.append(n_jets)
-    #tag_coords = np.vstack(tag_coords)
-    #jet_coords = np.vstack(jet_coords)
-    return n_jets_formed
-
-
-def add_n_jets(records):
-    path = "megaIgnore"
-    all_ew_names = [os.path.join(path, name) for name in os.listdir(path)
-                    if name.endswith(".awkd")]
-    arry = records.typed_array()
-    for ew_name in all_ew_names:
-        try:
-            ew = Components.EventWise.from_file(ew_name)
-        except Exception:
-            print(f"Couldn't read {ew_name}")
-            continue
-        print(ew_name)
-        jet_names = sorted(set([name.split('_', 1)[0] for name in ew.columns
-                           if "Jet" in name.split('_', 1)[0] and not name.startswith("Jet")]))
-        for name in jet_names:
-            jet_id = int(name.split("Jet", 1)[1])
-            row = np.where(arry[:, 0] == jet_id)[0][0]
-            if arry[row, records.indices['mean_njets']] is None:
-                n_jets = quick_njets(ew, name)
-                records.content[row][records.indices['mean_njets']] = np.nan_to_num(np.nanmean(n_jets))
-                records.content[row][records.indices['std_njets']] = np.nan_to_num(np.nanstd(n_jets))
-        records.write()
 
 
 def score_rank(tag_coords, jet_coords):
