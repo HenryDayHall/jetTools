@@ -8,7 +8,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -111,7 +111,6 @@ def seek_shapeable(dir_name="megaIgnore", file_names=None, jet_pt_cut='default',
     return matches
 
 
-# problems
 def reindex_jets(dir_name="megaIgnore"):
     """ go through the specified directory and renumber any jets that have the same ID """
     taken_ids = []
@@ -134,7 +133,6 @@ def reindex_jets(dir_name="megaIgnore"):
                 taken_ids.append(jet_id)
         if not duplicates[ew_name]:
             del duplicates[ew_name]
-    st()
     gen_id = id_generator(taken_ids)
     # now work through the duplcates, adding them to the taken_ids
     for ew_name, dup_list in duplicates.items():
@@ -371,9 +369,12 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
     jet_e = eventWise.match_indices(jet_name+"_Energy", inputidx_name, rootinputidx_name).flatten()
+    coords = {name: i for i, name in enumerate(Constants.coordinate_order)}
+    n_columns = len(coords)
     if len(tag_idx) == 0 or len(jet_e) == 0:
-        empty = np.array([]).reshape((-1, 3))
-        return empty, empty
+        empty = np.array([]).reshape((-1, n_columns))
+        no_tags = np.full(len(tag_idx), False)
+        return no_tags, empty, empty
     jet_px = eventWise.match_indices(jet_name+"_Px", inputidx_name, rootinputidx_name).flatten()
     jet_py = eventWise.match_indices(jet_name+"_Py", inputidx_name, rootinputidx_name).flatten()
     jet_pz = eventWise.match_indices(jet_name+"_Pz", inputidx_name, rootinputidx_name).flatten()
@@ -382,26 +383,25 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     tag_py = eventWise.Py[tag_idx]
     tag_pz = eventWise.Pz[tag_idx]
     # calculate what fraction of jet momentum the tag actually receves
-    assigned_tmp = np.zeros((len(tag_idx), 4), dtype=float)
+    assigned_momentum = np.zeros((len(tag_idx), n_columns), dtype=float)
+    found_tags = np.full(len(tag_idx), False)
     for jidx, tags in enumerate(tags_in_jets):
         if len(tags) == 0:
             continue
         mask = np.fromiter((tag_idx.index(t) for t in tags), dtype=int)
-        assigned_tmp[mask, 0] = jet_e[jidx] * tag_e[mask] / np.sum(tag_e[mask])
-        assigned_tmp[mask, 1] = jet_px[jidx] * tag_px[mask] / np.sum(tag_px[mask])
-        assigned_tmp[mask, 2] = jet_py[jidx] * tag_py[mask] / np.sum(tag_py[mask])
-        assigned_tmp[mask, 3] = jet_pz[jidx] * tag_pz[mask] / np.sum(tag_pz[mask])
+        found_tags[mask] = True
+        assigned_momentum[mask, coords["Energy"]] = jet_e[jidx] * tag_e[mask] / np.sum(tag_e[mask])
+        assigned_momentum[mask, coords["Px"]] = jet_px[jidx] * tag_px[mask] / np.sum(tag_px[mask])
+        assigned_momentum[mask, coords["Py"]] = jet_py[jidx] * tag_py[mask] / np.sum(tag_py[mask])
+        assigned_momentum[mask, coords["Pz"]] = jet_pz[jidx] * tag_pz[mask] / np.sum(tag_pz[mask])
     # transform this to pt, rapidity, phi
-    assigned_momentum = np.zeros((len(tag_idx), 3), dtype=float)
-    assigned_momentum[:, 2], assigned_momentum[:, 0] = Components.pxpy_to_phipt(assigned_tmp[:, 1], assigned_tmp[:, 2])
-    assigned_momentum[:, 1] = Components.ptpze_to_rapidity(assigned_momentum[:, 0], assigned_tmp[:, 3], assigned_tmp[:, 0])
+    assigned_momentum[:, coords["Phi"]], assigned_momentum[:, coords["PT"]] = Components.pxpy_to_phipt(assigned_momentum[:, coords["Px"]], assigned_momentum[:, coords["Py"]])
+    assigned_momentum[:, coords["Rapidity"]] = Components.ptpze_to_rapidity(assigned_momentum[:, coords["PT"]], assigned_momentum[:, coords["Pz"]], assigned_momentum[:, coords["Energy"]])
     # nans are the result of putting 0 pt into the rapidity calculation
     assigned_momentum[np.isnan(assigned_momentum)] = 0.
     # now get the actual coords
-    tag_momentum = np.vstack((eventWise.PT[tag_idx],
-                              eventWise.Rapidity[tag_idx],
-                              eventWise.Phi[tag_idx])).transpose()
-    return tag_momentum, assigned_momentum
+    tag_momentum = np.vstack((getattr(eventWise, name)[tag_idx] for name in Constants.coordinate_order)).transpose()
+    return found_tags, tag_momentum, assigned_momentum
 
 
 def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min_tracks=None, max_angle=None, tag_before_pt_cut=True):
@@ -443,6 +443,7 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
     tag_coords = []
     jet_coords = []
     n_jets_formed = []
+    percent_tags_found = []
     for event_n in range(n_events):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
@@ -453,16 +454,27 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
         # note this actually counts num pesudojets, but for more than 2 that is sufficient
         num_tracks = Components.apply_array_func(len, jet_track_pts, depth=Components.EventWise.EVENT_DEPTH).flatten()
         n_jets = np.sum(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))
-        tag_c, jet_c = fit_to_tags(eventWise, jet_name, tags_in_jets[event_n])
+        tags_found, tag_c, jet_c = fit_to_tags(eventWise, jet_name, tags_in_jets[event_n])
+        percent_tags_found.append(sum(tags_found)/len(tags_found))
+        if not np.any(tags_found):
+            continue
+        # cut any tags that arn't found
+        tag_c = tag_c[tags_found]
+        jet_c = jet_c[tags_found]
+        # if the jet pt cut hapens afterwards do it now
+        if jet_pt_cut is not None and not tag_before_pt_cut:
+            pt_index = Constants.coordinate_order.index("PT")
+            tag_c, jet_c = zip(*[[j, t] for j, t in zip(jet_c, tag_c)
+                                 if j[pt_index] > jet_pt_cut and t[pt_index] > jet_pt_cut])
         tag_coords.append(tag_c)
         jet_coords.append(jet_c)
         n_jets_formed.append(n_jets)
     #tag_coords = np.vstack(tag_coords)
     #jet_coords = np.vstack(jet_coords)
-    return tag_coords, jet_coords, n_jets_formed, h_content, content
+    return tag_coords, jet_coords, n_jets_formed, percent_tags_found, h_content, content
 
 
-def score_rank(tag_coords, jet_coords):
+def score_component_rank(tag_coords, jet_coords):
     """
     
 
@@ -477,12 +489,25 @@ def score_rank(tag_coords, jet_coords):
     -------
 
     """
-    dims = 3
+    indices = [Constants.coordinate_order.index(name) for name in ["PT", "Rapidity", "Phi"]]
+    dims = len(indices)
     scores = np.zeros(dims)
     uncerts = np.zeros(dims)
-    for i in range(dims):
-        scores[i], uncerts[i] = scipy.stats.spearmanr(tag_coords[:, i], jet_coords[:, i])
+    for i, j in enumerate(indices):
+        scores[i], uncerts[i] = scipy.stats.spearmanr(tag_coords[:, j], jet_coords[:, j])
     return scores, uncerts
+
+
+def invarientMass2_distance(tag_coords, jet_coords, rescale_poly=None):
+    epxpypz_idx = [Constants.coordinate_order.index(name) for name in ["Energy", "Px", "Py", "Pz"]]
+    if rescale_poly is not None:
+        rescale_factors = RescaleJets.polyval2d(jet_coords[:, Constants.coordinate_order.index("PT")],
+                                                jet_coords[:, Constants.coordinate_order.index("Rapidity")],
+                                                rescale_poly)
+        jet_coords[:, epxpypz_idx] *= np.tile(rescale_factors, (len(epxpypz_idx), 1)).transpose()
+    vec_distance2 = (tag_coords[:, epxpypz_idx] - jet_coords[:, epxpypz_idx])**2
+    s = vec_distance2[:, 0] - np.sum(vec_distance2[:, 1:], axis=1)
+    return np.abs(s)
 
 
 def get_catigories(records, content):
@@ -544,413 +569,6 @@ def print_remaining(content, records, columns):
     print(f"Num remaining {len(here)}")
 
 
-def comparison_grid1(records):
-    """
-    
-
-    Parameters
-    ----------
-    records :
-        
-
-    Returns
-    -------
-
-    """
-    # we only want to look at the content that has been scored
-    content = records.typed_array()[records.scored]
-    # for homejet and fastjet we will just give best values
-    mask = [c not in ("HomeJet", "FastJet", "SpectralMeanJet") for c in content[:, 1]]
-    content = content[mask]
-    # now filter for a rasonable number of jets
-    min_jets = float(input("Give min mean jets; "))
-    max_jets = float(input("Give max mean jets; "))
-    mask = [False if c is None else (c > min_jets) and (c < max_jets) for c in content[:, records.indices["mean_njets"]]]
-    content = content[mask]
-
-    catigories = get_catigories(records, content)
-
-    # select a colour axis and an x axis
-    print(f"Avalible catigories are; {catigories.keys()}")
-    x_name = InputTools.list_complete("Select an x axis; ", catigories.keys()).strip()
-    x_values = catigories[x_name]
-    c_name = InputTools.list_complete("Select a colour axis; ", catigories.keys()).strip()
-    c_values = {v: i for i, v in enumerate(catigories[c_name])}
-    s_name = InputTools.list_complete("Select a shape axis; ", catigories.keys()).strip()
-    s_values = {v: i for i, v in enumerate(catigories[s_name])}
-    columns = list(catigories.keys())
-    print_remaining(content, records, columns)
-    selections = f"jet class = Spectral\n{min_jets} < mean num jets < {max_jets}\n"
-    # need to filter the rest down 
-    for name in catigories.keys():
-        if name in (x_name, c_name, s_name):
-            continue
-        columns.remove(name)
-        i = records.indices[name]
-        if name not in catigories:
-            selections += f"{name} == {content[0, i]}\n"
-            continue
-        values = catigories[name]
-        if isinstance(values[0], str):
-            print(f"filtering {name}, values are; {values}")
-            choice = InputTools.list_complete("Which one to keep? ", values).strip()
-        else:
-            print(f"filtering {name}, values are; {list(enumerate(values))}")
-            choice = input("Which index to keep? ")
-            if choice != '':
-                choice = values[int(choice)]
-        if choice == '':
-            selections += f"{name} = any\n"
-            continue
-        selections += f"{name} = {choice}\n"
-        content = content[np.array(content[:, i].tolist()) == choice]
-        # update becuase some sections may be ruled out
-        catigories = get_catigories(records, content)
-        print_remaining(content, records, columns)
-    
-    fig, axes = plt.subplots(3, 3, sharex=True)
-    dimensions = ["PT", "Rapidity", "Phi"]
-    xs = np.array(content[:, records.indices[x_name]].tolist())
-    n_colours = len(c_values)
-    colour_map = matplotlib.cm.get_cmap('viridis')
-    colour_positons = [colour_map(c) for c in np.linspace(0., 1., n_colours)]
-    colour_coords = np.array([colour_positons[c_values[v]] for v in content[:, records.indices[c_name]]])
-    colour_ticks = [str(n) for n in c_values]
-    shape = np.array([s_values[s] for s in content[:, records.indices[s_name]]])
-    markers = ['v', '^', '1', 's', '*', '+', 'd', 'P', '8', 'X']
-    for dim, ax_trip in zip(dimensions, axes):
-        ax0, ax1, ax2 = ax_trip
-        ax0.set_axis_off()
-        if dim == dimensions[0]:
-            ax0.text(0, 0, selections)
-        ax1.set_xlabel(x_name)
-        ax1.set_ylabel(f"rank score {dim}")
-        ax1.invert_yaxis()
-        metric = f"score({dim})"
-        ys = np.array(content[:, records.indices[metric]].tolist())
-        for s_name in s_values:
-            mask = shape == s_values[s_name]
-            ax1.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], c=colour_coords[mask], label=str(s_name))
-        best_id, best = records.best(metric, "HomeJet")
-        ax1.axhline(best, *ax1.get_xlim() , label="best HomeJet", c='b')
-        ax1.text(0.5, best, "best traditional algorithm", c='b')
-        ax2.set_xlabel(x_name)
-        ax2.set_ylabel("Symmetrised % diff")
-        ys = np.array(content[:, records.indices[f"symmetric_diff({dim})"]].tolist())
-        for s_name in s_values:
-            mask = shape == s_values[s_name]
-            ax2.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], c=colour_coords[mask], label=str(s_name))
-        ax2.legend()
-        mapable = plt.cm.ScalarMappable(cmap=colour_map)
-        mapable.set_array([])
-        cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, 1., len(colour_ticks)))
-        cbar.set_label(c_name)
-        cbar.ax.set_yticklabels(colour_ticks)
-    plt.savefig("Test.png")
-    plt.show()
-
-
-def comparison1(records):
-    """
-    
-
-    Parameters
-    ----------
-    records :
-        
-
-    Returns
-    -------
-
-    """
-    plt.rcParams.update({'font.size': 22})
-    # we only want to look at the content that has been scored
-    content = records.typed_array()[records.scored]
-    # for homejet and fastjet we will just give best values
-    mask = [c not in ("HomeJet", "FastJet", "SpectralMeanJet") for c in content[:, 1]]
-    content = content[mask]
-    # now filter for a rasonable number of jets
-    min_jets = float(input("Give min mean jets; "))
-    max_jets = float(input("Give max mean jets; "))
-    mask = [False if c is None else (c > min_jets) and (c < max_jets) for c in content[:, records.indices["mean_njets"]]]
-    content = content[mask]
-
-    catigories = get_catigories(records, content)
-
-    # select a colour axis and an x axis
-    print(f"Avalible catigories are; {catigories.keys()}")
-    x_name = InputTools.list_complete("Select an x axis; ", catigories.keys()).strip()
-    x_values = catigories[x_name]
-    c_name = InputTools.list_complete("Select a colour axis; ", catigories.keys()).strip()
-    c_values = {v: i for i, v in enumerate(catigories[c_name])}
-    s_name = InputTools.list_complete("Select a shape axis; ", catigories.keys()).strip()
-    s_values = {v: i for i, v in enumerate(catigories[s_name])}
-    columns = list(catigories.keys())
-    print_remaining(content, records, columns)
-    selections = f"jet class = Spectral\n{min_jets} < mean num jets < {max_jets}\n"
-    # need to filter the rest down 
-    for name in catigories.keys():
-        if name in (x_name, c_name, s_name):
-            continue
-        columns.remove(name)
-        i = records.indices[name]
-        if name not in catigories:
-            selections += f"{name} == {content[0, i]}\n"
-            continue
-        values = catigories[name]
-        if isinstance(values[0], str):
-            print(f"filtering {name}, values are; {values}")
-            choice = InputTools.list_complete("Which one to keep? ", values).strip()
-        else:
-            print(f"filtering {name}, values are; {list(enumerate(values))}")
-            choice = input("Which index to keep? ")
-            if choice != '':
-                choice = values[int(choice)]
-        if choice == '':
-            selections += f"{name} = any\n"
-            continue
-        selections += f"{name} = {choice}\n"
-        content = content[np.array(content[:, i].tolist()) == choice]
-        # update becuase some sections may be ruled out
-        catigories = get_catigories(records, content)
-        print_remaining(content, records, columns)
-    
-    dimensions = ["PT", "Rapidity", "Phi"]
-    xs = np.array(content[:, records.indices[x_name]].tolist())
-    n_colours = len(c_values)
-    colour_map = matplotlib.cm.get_cmap('viridis')
-    colour_positons = [colour_map(c) for c in np.linspace(0., 1., n_colours)]
-    colour_coords = np.array([colour_positons[c_values[v]] for v in content[:, records.indices[c_name]]])
-    colour_ticks = [str(n) for n in c_values]
-    shape = np.array([s_values[s] for s in content[:, records.indices[s_name]]])
-    markers = ['v', '^', '1', 's', '*', '+', 'd', 'P', '8', 'X']
-    for dim in dimensions:
-        if dim == dimensions[0]:
-            fig, ax0 = plt.subplots()
-            ax0.set_axis_off()
-            ax0.text(0, 0, selections)
-            plt.show()
-        fig, ax1 = plt.subplots()
-        ax1.set_xlabel(x_name)
-        ax1.set_ylabel(f"rank score {dim}")
-        ax1.invert_yaxis()
-        metric = f"score({dim})"
-        ys = np.array(content[:, records.indices[metric]].tolist())
-        for s_name in s_values:
-            mask = shape == s_values[s_name]
-            ax1.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], s=100, c=colour_coords[mask], label=str(s_name))
-        best_id, best = records.best(metric, "HomeJet")
-        ax1.axhline(best, *ax1.get_xlim() , label="best HomeJet", c='b')
-        ax1.text(0.5, best, "best traditional algorithm", c='b')
-        ax1.legend()
-        mapable = plt.cm.ScalarMappable(cmap=colour_map)
-        mapable.set_array([])
-        cbar = fig.colorbar(mapable, ax=ax1, ticks=np.linspace(0, 1., len(colour_ticks)))
-        cbar.ax.set_yticklabels(colour_ticks)
-        cbar.set_label(c_name)
-        plt.show()
-        fig, ax2 = plt.subplots()
-        ax2.set_xlabel(x_name)
-        ax2.set_ylabel("Symmetrised % diff")
-        ys = np.array(content[:, records.indices[f"symmetric_diff({dim})"]].tolist())
-        for s_name in s_values:
-            mask = shape == s_values[s_name]
-            ax2.scatter(xs[mask], ys[mask], marker=markers[s_values[s_name]], s=100, c=colour_coords[mask], label=str(s_name))
-        ax2.legend()
-        mapable = plt.cm.ScalarMappable(cmap=colour_map)
-        mapable.set_array([])
-        cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, 1., len(colour_ticks)))
-        cbar.ax.set_yticklabels(colour_ticks)
-        cbar.set_label(c_name)
-        plt.show()
-
-
-def comparison_grid2(records, rapidity=True, pt=True, phi=True):
-    """
-    
-
-    Parameters
-    ----------
-    records :
-        
-    rapidity :
-         (Default value = True)
-    pt :
-         (Default value = True)
-    phi :
-         (Default value = True)
-
-    Returns
-    -------
-
-    """
-    # we only want to look at the content that has been scored
-    content = records.typed_array()[records.scored]
-    mask = np.abs(content[:, records.indices["DeltaR"]] - 0.4) < 0.001
-    num_eig = content[mask, records.indices["NumEigenvectors"]]
-    exp_values = 2*content[mask, records.indices["ExponentMultiplier"]]
-    scorePT = content[mask, records.indices["score(PT)"]]
-    scoreRapidity = content[mask, records.indices["score(Rapidity)"]]
-    sydPT = content[mask, records.indices["symmetric_diff(PT)"]]
-    sydRapidity = content[mask, records.indices["symmetric_diff(Rapidity)"]]
-    sydPhi = content[mask, records.indices["symmetric_diff(Phi)"]]
-    fig, (ax1, ax2) = plt.subplots(1, 2, sharex=True)
-    ax1.set_xlabel("exponent")
-    ax1.set_ylabel(f"rank score")
-    xs = exp_values
-    if len(set(num_eig)) > 1:
-        is_inf = np.inf == num_eig
-        max_eig = np.nanmax(num_eig[~is_inf])
-        colour_map = matplotlib.cm.get_cmap('viridis')
-        colours = colour_map(num_eig/max_eig + np.any(is_inf))
-        colours = [tuple(c) for c in colours]
-        colour_ticks = ["No spectral"] + [str(c+1) for c in range(int(max_eig))]
-        if np.any(is_inf):
-            colour_ticks += ["Max"]
-            num_eig[is_inf] = max_eig + 1
-    else:
-        colours = None
-    rap_marker = 'v'
-    pt_marker = '^'
-    phi_marker = 'o'
-    if pt:
-        ax1.scatter(xs, scorePT,
-                     marker=pt_marker, c=colours, label="PT")
-    if rapidity:
-        ax1.scatter(xs, scoreRapidity,
-                     marker=rap_marker, c=colours, label="Rapidity")
-    ax2.set_xlabel("exponent")
-    ax2.set_ylabel("Symmetrised % diff")
-    if pt:
-        ax2.scatter(xs, sydPT*100,
-                    marker=pt_marker, c=colours, label="PT")
-    if rapidity:
-        ax2.scatter(xs, sydRapidity*100,
-                    marker=rap_marker, c=colours, label="Rapidity")
-    if phi:
-        ax2.scatter(xs, sydPhi*100,
-                    marker=phi_marker, c=colours, label="Phi")
-    ax2.legend()
-    ax2.set_ylim(0, max(100, np.max(np.concatenate((sydPT, sydRapidity, sydPhi)))))
-    if colours is not None:
-        norm = matplotlib.colors.Normalize(vmin=0, vmax=max_eig)
-        mapable = matplotlib.cm.ScalarMappable(norm=norm, cmap=colour_map)
-        mapable.set_array([])
-        cbar = fig.colorbar(mapable, ax=ax2, ticks=np.linspace(0, max_eig, len(colour_ticks)))
-        cbar.ax.set_yticklabels(colour_ticks)
-    plt.show()
-
-
-def calculated_grid(records, jet_name=None):
-    """
-    
-
-    Parameters
-    ----------
-    records :
-        
-    jet_name :
-         (Default value = None)
-
-    Returns
-    -------
-
-    """
-    names = FormJets.cluster_classes
-    if jet_name is None:
-        jet_name = InputTools.list_complete("Which jet? ", names.keys()).strip()
-    default_params = names[jet_name].param_list
-    param_list = sorted(default_params.keys())
-    # we only want to look at the content that has been scored
-    content = records.typed_array()[records.scored]
-    catigories = {name: set(content[:, records.indices[name]])
-                  for name in param_list}
-    print("Parameter: num_catigories")
-    for name in catigories:
-        print(f"{name}: {len(catigories[name])}")
-    horizontal_param = InputTools.list_complete("Horizontal param? ", param_list).strip()
-    vertical_param = InputTools.list_complete("Vertical param? ", param_list).strip()
-    horizontal_bins = sorted(catigories[horizontal_param])
-    if isinstance(horizontal_bins[0], str):
-        def get_h_index(value):
-            """
-            
-
-            Parameters
-            ----------
-            value :
-                
-
-            Returns
-            -------
-
-            """
-            return horizontal_bins.index(value)
-    else:
-        horizontal_bins_a = np.array(horizontal_bins)
-        def get_h_index(value):
-            """
-            
-
-            Parameters
-            ----------
-            value :
-                
-
-            Returns
-            -------
-
-            """
-            return np.argmin(np.abs(horizontal_bins_a - value))
-    vertical_bins = sorted(catigories[vertical_param])
-    if isinstance(vertical_bins[0], str):
-        def get_v_index(value):
-            """
-            
-
-            Parameters
-            ----------
-            value :
-                
-
-            Returns
-            -------
-
-            """
-            return vertical_bins.index(value)
-    else:
-        vertical_bins_a = np.array(vertical_bins)
-        def get_v_index(value):
-            """
-            
-
-            Parameters
-            ----------
-            value :
-                
-
-            Returns
-            -------
-
-            """
-            return np.argmin(np.abs(vertical_bins_a - value))
-    grid = [[[] for _ in horizontal_bins] for _ in vertical_bins]
-    h_column = records.indices[horizontal_param]
-    v_column = records.indices[vertical_param]
-    for row in content:
-        id_num = row[0]
-        v_index = get_v_index(row[v_column])
-        h_index = get_h_index(row[h_column])
-        grid[v_index][h_index].append(id_num)
-    table = [[value] + [len(entry) for entry in row] for value, row in zip(vertical_bins, grid)]
-    first_row = [["\\".join([vertical_param, horizontal_param])] + horizontal_bins]
-    table = first_row + table
-    str_table = tabulate.tabulate(table, headers="firstrow")
-    print(str_table)
-    if InputTools.yesNo_question("Again? "):
-        calculated_grid(records)
-
-
 def soft_generic_equality(a, b):
     """
     
@@ -1004,9 +622,9 @@ def select_improvements(records, min_jets=0.5,
     return array[improved_selection]
 
 
-def parameter_comparison(records, c_name="mean_njets", cuts=True, jet_classes=None):
+def parameter_comparison(records, c_name="mean_percentfound", cuts=True, jet_classes=None):
     array = records.typed_array()[records.scored]
-    col_names = ["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
+    col_names = ["s_distance", "score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
     # filter anything that scored too close to zero in pt or rapidity
     # these are soem kind of bug
     small = 0.001
@@ -1016,14 +634,16 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True, jet_classes=No
     # now we have a scored valid selection
     y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names
               if name !='TagAngle'}
-    col_names = ["cumulative"] + col_names
-    y_cols["cumulative"] = cumulative_score(records, typed_array=array)
+    #col_names = ["cumulative"] + col_names
+    #y_cols["cumulative"] = cumulative_score(records, typed_array=array)
     c_col = array[:, records.indices[c_name]].astype(float)
-    sufficient_jets = c_col > 0.5
+    sufficient_jets = array[:, records.indices["mean_njets"]].astype(float) > 0.5
     #sufficient_jets = array[:, 1] == 'SpectralAfterJet'
     if cuts:
         good_angle = y_cols["symmetric_diff(Phi)"] < 1.
+        good_distance = y_cols["s_distance"] < 100
         mask = np.logical_and(good_angle, sufficient_jets)
+        mask = np.logical_and(good_distance, mask)
         if jet_classes is not None:
             class_col = array[:, records.indices['jet_class']]
             class_mask = [name in jet_classes for name in class_col]
@@ -1125,8 +745,10 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True, jet_classes=No
             p.xaxis.major_label_overrides = label_dict
             p.xaxis.major_label_orientation = "vertical"
             p.yaxis.axis_label = col_name
-            if "symmetric_diff" in col_name:
+            if "symmetric_diff" in col_name or "distance" in col_name:
                 p.y_range.flipped = True
+            y_lims = chose_ylims(y_col, invert=p.y_range.flipped)
+            p.y_range = bokeh.models.Range1d(*y_lims)
             p.scatter('x', 'y', size=10, source=source,
                      fill_color=bokeh.transform.transform('colour', mapper),
                      fill_alpha='alpha', line_alpha='alpha',
@@ -1141,6 +763,17 @@ def parameter_comparison(records, c_name="mean_njets", cuts=True, jet_classes=No
     all_p = bokeh.layouts.gridplot(plots, plot_width=400, plot_height=400)
     bokeh.io.show(all_p)
     return all_p
+
+
+def chose_ylims(y_data, invert=False):
+    std = np.std(y_data)
+    if invert:
+        top = np.min(y_data) - 0.3*std
+        bottom = np.min((np.max(y_data), np.mean(y_data) + 1.*std))
+    else:
+        top = np.max(y_data) + 0.3*std
+        bottom = np.max((np.min(y_data), np.mean(y_data) - 1.*std))
+    return bottom, top
 
 
 def cumulative_score(records, typed_array=None):
@@ -1167,8 +800,9 @@ def group_discreet(records, only_scored=True):
                            sorted(set(records.indices.keys()) - set(not_discreet))]
     groups = {}
     for row in array:
-        tuple_start = [f"{name}_{row[idx][0]}" for name, idx in numeric_tuples.items()]
-        discreet = [f"{name}_{row[idx]}" for name, idx in discreet_attributes.items()]
+        tuple_start = [f"{name}_None" if row[idx] is None else f"{name}_{row[idx][0]}"
+                       for name, idx in numeric_tuples]
+        discreet = [f"{name}_{row[idx]}" for name, idx in discreet_attributes]
         key = ','.join(discreet + tuple_start)
         groups.setdefault(key, []).append(row.tolist())
     return groups
@@ -1290,7 +924,7 @@ def remove_clusters(records, jet_ids):
         eventWise.write()
 
 
-def consolidate_clusters(dir_name="megaIgnore", max_size=300):
+def consolidate_clusters(length=2000, dir_name="megaIgnore", max_size=300):
     """ Sort clusters by hyperparameter groups and 
     put them into new eventWise awkd files """
     # start by learning what's in the directory
@@ -1311,25 +945,99 @@ def consolidate_clusters(dir_name="megaIgnore", max_size=300):
             print(f"Couldn't read {ew_name}")
             continue
         print(ew_name)
-        records.scan(ew)
+        ew.selected_index = None
+        if len(ew.JetInputs_Energy) == length:
+            records.scan(ew)
         del ew
     # now all jets in the sample should be located
     groups = group_discreet(records, only_scored=False)
-    finalised = {}
+    finalised = []
     priorties = [(name, records.indices[name]) for name in 
                  ["jet_class", "Laplacien", "WithLaplacienScaling", "AffinityType"]]
     for name, col in priorties:
-        gathered = {}
+        if not groups:
+            break  # everything is finalised
+        gathered = {}  # new gathering baskets
         for key, group in groups.items():
-            assignment = str(group[0][col])
-            if len(gathered[key]) + len(group) > max_size:
-                # move what is in gathered to finalised
-                pass  # TODO
+            try:
+                assignment = str(group[0][col])
+            except IndexError:
+                group
+                col
+            if assignment in gathered and len(gathered[assignment]) + len(group) > max_size:
+                finalised.append(gathered.pop(assignment))
+                gathered[assignment] = group
+            elif assignment in gathered:
+                gathered[assignment] += group
+            else:
+                gathered[assignment] = group
+        # now if there are still things left in gathered assign them back to groups
+        if gathered:
+            groups = gathered
+        else:
+            break
+    # if we end the loop with things in groups move them to finalised
+    finalised += list(groups.values())
+    print(f"Found {len(finalised)} groups")
+    # make a directory for the new eventwise objects
+    new_dir = os.path.join(dir_name, "consolidated")
+    os.mkdir(new_dir)
+    consolodated_names = set()
+    new_names = []
+    # walk over the groups saving them
+    for group in finalised:
+        group = np.array(group)
+        consistant_components = [str(group[0, int(idx)]).capitalize() for name, idx in priorties
+                                 if len(set(group[:, int(idx)])) == 1]
+        save_name_form = f"Group{{}}{''.join(consistant_components)}_{int(length/1000)}k.awkd"
+        save_name = save_name_form.format('')
+        i=1
+        while save_name in new_names:
+            save_name = save_name_form.format(i)
+            i += 1
+        new_names.append(save_name)
+        print(f"Writing group {save_name}, length {len(group)}")
+        jet_ids = group[:, records.indices['jet_id']]
+        cluster = seek_clusters(records, [jet_ids[0]])
+        print(f"Adding non-jet colummns")
+        first_eventWise = cluster[0][0]
+        non_jet_colunms = [name for name in first_eventWise.columns
+                           if "Jet" not in name or name.startswith("JetInputs")]
+        non_jet_hcolunms = [name for name in first_eventWise.hyperparameter_columns
+                            if "Jet" not in name or name.startswith("JetInputs")]
+        non_jet_content = {name: getattr(first_eventWise, name) for name in non_jet_colunms + non_jet_hcolunms}
+        new_eventWise = Components.EventWise(new_dir, save_name, contents=non_jet_content,
+                                             columns=non_jet_colunms, hyperparameter_columns=non_jet_hcolunms)
+        del cluster  # get rid of the ew to save memory
+        print("Adding jet content")
+        # probably need to deal with one eventwise at a time
+        # and not seek too many jets int he first place
+        batch_size = 10
+        by_eventWise = {}
+        for i in range(0, len(jet_ids), batch_size):
+            batch_ids = jet_ids[i: i + batch_size]
+            for eventWise, jet_name in seek_clusters(records, batch_ids):
+                path = os.path.join(eventWise.dir_name, eventWise.save_name)
+                by_eventWise.setdefault(path, []).append(jet_name)
+        print("Located jet content")
+        for path in by_eventWise:
+            print(f"Copying {len(by_eventWise[path])} jets from {path}", end='')
+            eventWise = Components.EventWise.from_file(path)
+            # if there are a lot of jets here break this into chunks
+            for i in range(0, len(by_eventWise[path]), batch_size):
+                for jet_name in by_eventWise[path][i:i+batch_size]:
+                    consolodated_names.add(eventWise.save_name)
+                    jet_content = {name: getattr(eventWise, name) for name in eventWise.columns if name.startswith(jet_name)}
+                    new_eventWise.append(**jet_content)
+                    jet_hcontent = {name: getattr(eventWise, name) for name in eventWise.hyperparameter_columns if name.startswith(jet_name)}
+                    new_eventWise.append_hyperparameters(**jet_hcontent)
+        print("Added all content, saving...")
+        new_eventWise.write()
+        print("Saved. removing from ram")
+        del new_eventWise
+    with open(os.path.join(new_dir, "included.txt"), 'w') as included:
+        included.write(', '.join(consolodated_names))
             
-
-    
-    
-
 
 class Records:
     """ """
@@ -1337,7 +1045,9 @@ class Records:
     evaluation_columns = ("score(PT)", "score_uncert(PT)", "symmetric_diff(PT)", "symdiff_std(PT)",
                           "score(Rapidity)", "score_uncert(Rapidity)", "symmetric_diff(Rapidity)", "symdiff_std(Rapidity)",
                           "score(Phi)", "score_uncert(Phi)", "symmetric_diff(Phi)", "symdiff_std(Phi)",
-                          "mean_njets", "std_njets")
+                          "s_distance", "s_distance_uncert",
+                          "mean_njets", "std_njets", "mean_percentfound", "std_percentfound")
+    ignore_h_parameters = ['RescaleEnergy']
     def __init__(self, file_path):
         self.file_path = file_path
         if os.path.exists(self.file_path):
@@ -1416,7 +1126,7 @@ class Records:
                 typed_row[i] = typed
             typed_content.append(typed_row)
         # got to be an awkward array because numpy hates mixed types
-        return np.array(typed_content)
+        return np.array(typed_content, dtype=object)
 
     @property
     def jet_ids(self):
@@ -1512,8 +1222,11 @@ class Records:
         donor_records.write()
  
     def check_eventWise_match(self, eventWise, jet_id, jet_name):
+        ignore_params = ['TagAngle']  # this one seems to have issues
         eventWise.selected_index = None
         jet_params = FormJets.get_jet_params(eventWise, jet_name, add_defaults=True)
+        for p_name in ignore_params:
+            del jet_params[p_name]
         content = self.typed_array()
         row = content[content[:, 0] == jet_id][0]
         for p_name in jet_params:
@@ -1550,6 +1263,8 @@ class Records:
                 print(f"{name} does not have an id number, may not be a jet")
                 continue
             jet_params = FormJets.get_jet_params(eventWise, name, add_defaults=True)
+            for param_name in self.ignore_h_parameters:
+                jet_params.pop(param_name, None)
             jet_class = name[:num_start]
             id_num = int(name[num_start:])
             if id_num in starting_ids:
@@ -1602,27 +1317,38 @@ class Records:
         self.write()
         return existing, added
 
-    def score(self, target):
+    def score(self, target, rescale_for_s_distance=True):
         if isinstance(target, str):
             if target.endswith('.awkd'):
                 target = Components.EventWise.from_file(target)
-                self._score_eventWise(target)
+                self._score_eventWise(target, rescale_for_s_distance)
             elif os.path.isdir(target):
+                all_scored = []
+                not_scored = []
                 for name in os.listdir(target):
                     if not name.endswith('.awkd'):
                         continue
                     path = os.path.join(target, name)
                     try:
+                        print(f"Scoring {name}")
                         eventWise = Components.EventWise.from_file(path)
                     except Exception:
+                        print(f"Don't recognise {name} as an eventWise")
+                        not_scored.append(name)
                         continue  # this one is not an eventwise
-                    self._score_eventWise(eventWise)
+                    if hasattr(eventWise, "JetInputs_Energy"):
+                        all_scored.append(name)
+                        self._score_eventWise(eventWise, rescale_for_s_distance)
+                    else:
+                        print(f"{name} does not have required components")
+                        not_scored.append(name)
+                print(f"Scored the files {all_scored}. Did not score {not_scored}")
             else:
                 raise NotImplementedError
         else:  # assume its eventwise
-            self._score_eventWise(target)
+            self._score_eventWise(target, rescale_for_s_distance)
 
-    def _score_eventWise(self, eventWise):
+    def _score_eventWise(self, eventWise, rescale_for_s_distance=True):
         """
         
 
@@ -1663,34 +1389,63 @@ class Records:
                     eventWise = Components.EventWise.from_file(path)
             row = self.content[all_jets[name]]
             if not scored[int(row[0])]:
-                tag_coords, jet_coords, n_jets_formed, h_content_here, content_here = fit_all_to_tags(eventWise, name, silent=True)
+                coords = {name: i for i, name in enumerate(Constants.coordinate_order)}
+                tag_coords, jet_coords, n_jets_formed, percent_tags_found, h_content_here, content_here = fit_all_to_tags(eventWise, name, silent=True)
+                # construct the rescaling factors if required
+                RescaleJets.energy_poly(eventWise, name)
                 content = {**content, **content_here}
                 h_content = {**h_content, **h_content_here}
-                tag_coords = np.vstack(tag_coords)
-                jet_coords = np.vstack(jet_coords)
-                if len(jet_coords) > 0:
-                    scores, uncerts = score_rank(tag_coords, jet_coords)
-                    syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
-                else:
-                    scores = [0., 0., 0.]
-                    uncerts = [0., 0., 0.]
-                    syd = [[1.], [1.], [1.]]
-                    n_jets_formed = [0]
+                # these require no futher processing
                 row[self.indices["mean_njets"]] = np.mean(n_jets_formed)
                 row[self.indices["std_njets"]] = np.std(n_jets_formed)
+                row[self.indices["mean_percentfound"]] = np.mean(percent_tags_found)
+                row[self.indices["std_percentfound"]] = np.std(percent_tags_found)
+                # check there are actually matched b jets to process
+                if len(tag_coords) == 0:
+                    # if not drop a zero in
+                    assert np.sum(percent_tags_found) == 0
+                    for col_name in self.evaluation_columns:
+                        if 'uncert' in name or 'score' in name or 'std' in name:
+                            row[self.indices[col_name]] = 0.
+                        elif name == 's_distance' or 'diff' in name:
+                            row[self.indices[col_name]] = None
+                    continue
+                # if we reached this point there are jets 
+                tag_coords = np.vstack(tag_coords)
+                jet_coords = np.vstack(jet_coords)
+                if len(jet_coords) > 1:
+                    scores, uncerts = score_component_rank(tag_coords, jet_coords)
+                    syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
+                    if rescale_for_s_distance:
+                        rescale_poly = getattr(eventWise, name + "_RescaleEnergy")
+                    else:
+                        rescale_poly = None
+                    s = invarientMass2_distance(tag_coords, jet_coords, rescale_poly)
+                else:
+                    large_num = 100000
+                    scores = np.zeros(len(coords))
+                    uncerts = np.zeros(len(coords))
+                    syd = np.ones((1, len(coords)))*large_num
+                    s = [large_num]
+                    n_jets_formed = [0]
                 row[self.indices["score(PT)"]] = scores[0]
                 row[self.indices["score_uncert(PT)"]] = uncerts[0]
                 row[self.indices["score(Rapidity)"]] = scores[1]
                 row[self.indices["score_uncert(Rapidity)"]] = uncerts[1]
                 row[self.indices["score(Phi)"]] = scores[2]
                 row[self.indices["score_uncert(Phi)"]] = uncerts[2]
+                row[self.indices["s_distance"]] = np.mean(s)
+                row[self.indices["s_distance_uncert"]] = np.std(s)
                 # but the symetric difernce for phi should be angular
-                row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[0])
-                row[self.indices["symdiff_std(PT)"]] = np.std(syd[0])
-                row[self.indices["symmetric_diff(Rapidity)"]] = np.mean(syd[1])
-                row[self.indices["symdiff_std(Rapidity)"]] = np.std(syd[1])
-                row[self.indices["symmetric_diff(Phi)"]] = np.mean(syd[2])
-                row[self.indices["symdiff_std(Phi)"]] = np.std(syd[2])
+                try:
+                    row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[:, coords["PT"]])
+                    row[self.indices["symdiff_std(PT)"]] = np.std(syd[:, coords["PT"]])
+                    row[self.indices["symmetric_diff(Rapidity)"]] = np.mean(syd[:, coords["Rapidity"]])
+                    row[self.indices["symdiff_std(Rapidity)"]] = np.std(syd[:, coords["Rapidity"]])
+                    row[self.indices["symmetric_diff(Phi)"]] = np.mean(syd[:, coords["Phi"]])
+                    row[self.indices["symdiff_std(Phi)"]] = np.std(syd[:, coords["Phi"]])
+                except Exception:
+                    st()
                 if np.nan in row:
                     st()
                     row

@@ -9,10 +9,12 @@ def shape(energies, pxs, pys, pzs, my_dir='./'):
     # these need to be stacked into a momentum vector that 
     # has energy last
     momentums = np.vstack((pxs, pys, pzs, energies)).T
-    try:
-        s = np.sum(np.sum(momentums, axis=0)**2)
-    except ValueError:
-        st()
+    # check for tachyons, probably edit this out at some point
+    s = energies**2 - np.sum(momentums[:, :3]**2, axis=1)
+    if np.any(s <= 0):
+        raise ValueError(f"Tachyons in {momentums}, s={s}")
+    s = np.sum(s)
+    #s = np.sum(energies**2) - np.sum(pxs**2 + pys**2 + pzs**2)
     call = [my_dir + "shape", str(s)] + np.hstack(momentums).astype(str).tolist()
     process = subprocess.Popen(call, stdout=subprocess.PIPE)
     results = {}
@@ -21,5 +23,5 @@ def shape(energies, pxs, pys, pzs, my_dir='./'):
         name, value = line.decode().strip().rsplit(' ', 1)
         name = name.strip()
         results[name] = float(value)
-    return results
+    return call, results
 

@@ -179,6 +179,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
 
     """
     class_to_function = {"HomeJet": "Traditional",
+                         "HomeInvarientJet": "TraditionalInvarient",
                          "SpectralJet": "Spectral",
                          "SpectralMeanJet": "SpectralMean",
                          "SpectralMAfterJet": "SpectralMAfter",
@@ -273,25 +274,13 @@ def loops(eventWise_path):
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    DeltaR = np.linspace(0.1, 1.2, 30)
-    #for dR in DeltaR:
-    #    print(f"DeltaR {dR}")
-    #    jet_class = "SpectralMeanJet"
-    #    jet_params = dict(DeltaR=dR, ExponentMultiplier=0,
-    #                      NumEigenvectors=3,
-    #                      Laplacien='unnormalised',
-    #                      AffinityType='inverse',
-    #                      AffinityCutoff=None)
-    #    jet_id = records.append(jet_class, jet_params)
-    #    jet_params["jet_name"] = jet_class + str(jet_id)
-    #    generate_pool(eventWise_path, jet_class, jet_params, True)
-    #records.write()
-    exponents = [0]
+    DeltaR = np.linspace(2., 4., 15)
+    exponents = [-1, 0, 1]
     for exponent in exponents:
         for dR in DeltaR:
             print(f"Exponent {exponent}")
             print(f"DeltaR {dR}")
-            jet_class = "HomeJet"
+            jet_class = "HomeInvarientJet"
             jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
             jet_id = records.append(jet_class, jet_params)
             jet_params["jet_name"] = jet_class + str(jet_id)
@@ -355,7 +344,7 @@ def iterate(eventWise_path, jet_class):
 
 def random_parameters(jet_class=None):
     if jet_class is None:
-        jet_classes = ['SpectralMeanJet', 'SpectralFullJet']
+        jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'SpectralMAfterJet', 'HomeInvarientJet']
         jet_class = np.random.choice(jet_classes)
     if jet_class in ['SpectralMeanJet', 'SpectralMAfterJet', 'SpectralFullJet']:
         params = {}
@@ -378,7 +367,7 @@ def random_parameters(jet_class=None):
             params['AffinityCutoff'] = (cutofftype, np.random.randint(1, 6))
         elif cutofftype == 'distance':
             params['AffinityCutoff'] = (cutofftype, np.random.uniform(0., 10.))
-    elif jet_class == 'HomeJet':
+    elif jet_class in ['HomeJet', 'HomeInvarientJet']:
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
         params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
