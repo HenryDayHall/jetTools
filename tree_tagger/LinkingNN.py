@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 import numpy as np
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework, CustomDataloader, InputTools, TrainingTools
 
 
@@ -54,10 +54,10 @@ def soft_truth_criterion(towers_projection, tracks_projection, proximities, MC_t
     Parameters
     ----------
     towers_projection :
-        
-    tracks_projection :
-        
+        param tracks_projection:
     proximities :
+        param MC_truth:
+    tracks_projection :
         
     MC_truth :
         
@@ -94,10 +94,10 @@ def old_prox_criterion(towers_projection, tracks_projection, proximities, MC_tru
     Parameters
     ----------
     towers_projection :
-        
-    tracks_projection :
-        
+        param tracks_projection:
     proximities :
+        param MC_truth:
+    tracks_projection :
         
     MC_truth :
         
@@ -137,10 +137,10 @@ def a_truth_criterion(towers_projection, tracks_projection, proximities, MC_trut
     Parameters
     ----------
     towers_projection :
-        
-    tracks_projection :
-        
+        param tracks_projection:
     proximities :
+        param MC_truth:
+    tracks_projection :
         
     MC_truth :
         
@@ -162,10 +162,10 @@ def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth)
     Parameters
     ----------
     towers_projection :
-        
-    tracks_projection :
-        
+        param tracks_projection:
     proximities :
+        param MC_truth:
+    tracks_projection :
         
     MC_truth :
         
@@ -200,10 +200,10 @@ def a_prox_criterion(towers_projection, tracks_projection, proximities, MC_truth
     Parameters
     ----------
     towers_projection :
-        
-    tracks_projection :
-        
+        param tracks_projection:
     proximities :
+        param MC_truth:
+    tracks_projection :
         
     MC_truth :
         
@@ -258,7 +258,7 @@ def begin_training(run, viewer=None):
     Parameters
     ----------
     run :
-        
+        param viewer: (Default value = None)
     viewer :
          (Default value = None)
 
@@ -284,10 +284,10 @@ def begin_training(run, viewer=None):
         Parameters
         ----------
         event_data :
+            param nets:
+        device :
             
         nets :
-            
-        device :
             
 
         Returns
@@ -310,10 +310,10 @@ def begin_training(run, viewer=None):
         Parameters
         ----------
         event_data :
+            param nets:
+        device :
             
         nets :
-            
-        device :
             
 
         Returns
@@ -336,10 +336,10 @@ def begin_training(run, viewer=None):
         Parameters
         ----------
         events_data :
-            
-        nets :
-            
+            param nets:
         device :
+            param losser:
+        nets :
             
         losser :
             

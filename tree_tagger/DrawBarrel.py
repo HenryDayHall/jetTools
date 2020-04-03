@@ -1,5 +1,5 @@
 import numpy as np
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import matplotlib
 #from tvtk.api import tvtk
 #from mayavi.scripts import mayavi2
@@ -12,15 +12,15 @@ def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, to
     Parameters
     ----------
     eventWise :
-        
-    barrel_length :
-        
+        param barrel_length:
     barrel_radius :
+        param cuboid_lengths:
+    tower_name :
+        Default value = "Tower")
+    barrel_length :
         
     cuboid_lengths :
         
-    tower_name :
-         (Default value = "Tower")
 
     Returns
     -------
@@ -52,10 +52,10 @@ def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
     Parameters
     ----------
     barrel_radius :
-        
-    thetas :
-        
+        param thetas:
     phis :
+        param cuboid_lengths:
+    thetas :
         
     cuboid_lengths :
         
@@ -85,14 +85,14 @@ def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
     Parameters
     ----------
     barrel_length :
+        param barrel_radius:
+    thetas :
+        param phis:
+    cuboid_lengths :
         
     barrel_radius :
         
-    thetas :
-        
     phis :
-        
-    cuboid_lengths :
         
 
     Returns
@@ -123,14 +123,14 @@ def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
     Parameters
     ----------
     center_vec :
+        param half_basesize:
+    surface_1 :
+        param surface_2:
+    height_vec :
         
     half_basesize :
         
-    surface_1 :
-        
     surface_2 :
-        
-    height_vec :
         
 
     Returns
@@ -167,11 +167,11 @@ def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
     Parameters
     ----------
     highlight_xyz :
-        
+        param colours: (Default value = None)
+    colourmap :
+        Default value = "cool")
     colours :
          (Default value = None)
-    colourmap :
-         (Default value = "cool")
 
     Returns
     -------
@@ -198,10 +198,10 @@ def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
     Parameters
     ----------
     all_positions :
-        
-    indices :
-        
+        param indices:
     colours :
+        param colourmap: (Default value = "Blues")
+    indices :
         
     colourmap :
          (Default value = "Blues")
@@ -224,23 +224,29 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
     Parameters
     ----------
     eventWise :
-        
+        param track_name: (Default value = "Track")
+    tower_name :
+        Default value = "Tower")
+    colour :
+        Default value = (0.9)
+    0 :
+        9:
+    0 :
+        9):
+    has_vertex :
+        Default value = True)
+    new_figure :
+        Default value = True)
+    bg_color :
+        Default value = (0.)
+    0 :
+        param 0.):
     track_name :
          (Default value = "Track")
-    tower_name :
-         (Default value = "Tower")
-    colour :
-         (Default value = (0.9)
     0.9 :
         
     0.9) :
         
-    has_vertex :
-         (Default value = True)
-    new_figure :
-         (Default value = True)
-    bg_color :
-         (Default value = (0.)
     0. :
         
     0.) :
@@ -417,13 +423,13 @@ def add_single(pos, colour, scale=100, name=None):
     Parameters
     ----------
     pos :
-        
+        param colour:
+    scale :
+        Default value = 100)
+    name :
+        Default value = None)
     colour :
         
-    scale :
-         (Default value = 100)
-    name :
-         (Default value = None)
 
     Returns
     -------
@@ -460,7 +466,7 @@ def colour_set(num_colours, colourmap='gist_rainbow'):
     Parameters
     ----------
     num_colours :
-        
+        param colourmap: (Default value = 'gist_rainbow')
     colourmap :
          (Default value = 'gist_rainbow')
 
@@ -480,15 +486,19 @@ def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
     Parameters
     ----------
     length :
-        
+        param colour: (Default value = (1.)
+    0 :
+        7:
+    0 :
+        2):
+    interaction :
+        Default value = True)
     colour :
          (Default value = (1.)
     0.7 :
         
     0.2) :
         
-    interaction :
-         (Default value = True)
 
     Returns
     -------

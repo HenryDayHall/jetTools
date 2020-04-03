@@ -1,6 +1,6 @@
 from sklearn import tree, ensemble
 import sklearn
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from matplotlib import pyplot as plt
 import numpy as np
 import pickle
@@ -27,7 +27,7 @@ def begin_training(run, viewer=None):
     Parameters
     ----------
     run :
-        
+        param viewer: (Default value = None)
     viewer :
          (Default value = None)
 
@@ -88,11 +88,11 @@ def plot_rocs(runs, loglog=False, ax=None):
     Parameters
     ----------
     runs :
-        
+        param loglog: (Default value = False)
+    ax :
+        Default value = None)
     loglog :
          (Default value = False)
-    ax :
-         (Default value = None)
 
     Returns
     -------

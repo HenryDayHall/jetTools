@@ -1,5 +1,5 @@
 """ module to contain the framework for linking towers and tracks """
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import itertools
 import operator
 import numpy as np
@@ -12,14 +12,14 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
     Parameters
     ----------
     etas_1 :
-        
+        param phis_1:
+    etas_2 :
+        param phis_2:
+    eta_seperation :
+        param phi_seperation:
     phis_1 :
         
-    etas_2 :
-        
     phis_2 :
-        
-    eta_seperation :
         
     phi_seperation :
         
@@ -159,7 +159,7 @@ def high_dim_proximity(list_1, list_2):
     Parameters
     ----------
     list_1 :
-        
+        param list_2:
     list_2 :
         
 

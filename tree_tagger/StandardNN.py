@@ -1,4 +1,4 @@
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import pickle
 import time
 import torch
@@ -50,7 +50,7 @@ def begin_training(run, viewer=None):
     Parameters
     ----------
     run :
-        
+        param viewer: (Default value = None)
     viewer :
          (Default value = None)
 
@@ -78,10 +78,10 @@ def begin_training(run, viewer=None):
         Parameters
         ----------
         data :
+            param nets:
+        device :
             
         nets :
-            
-        device :
             
 
         Returns
@@ -102,10 +102,10 @@ def begin_training(run, viewer=None):
         Parameters
         ----------
         events_data :
-            
-        nets :
-            
+            param nets:
         device :
+            param losser:
+        nets :
             
         losser :
             

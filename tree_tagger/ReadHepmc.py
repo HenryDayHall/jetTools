@@ -2,9 +2,9 @@ import numpy as np
 import awkward
 import os
 from collections import Counter
-from tree_tagger import Components
+from tree_tagger import Components, InputTools
 import csv
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 
 
 class Hepmc(Components.EventWise):
@@ -47,9 +47,12 @@ class Hepmc(Components.EventWise):
             # there are more but unfortunatly I cannot be bothered to add them right now
             # parse the event
             filepath = os.path.join(dir_name, save_name)
+            print("Parsing events")
             self._parse_events(filepath, start, stop)
             # figure out which particles created which other particles
+            print("Assigning heritage")
             self._assign_heritage()
+            print("Fixing column contents")
             self._fix_column_contents()
             # self.check_colour_flow()  # never worked... colour flow doesn't seem to be conserved
             # change the savename to indicate the processing
@@ -79,10 +82,13 @@ class Hepmc(Components.EventWise):
         self.prepared_contents["Start_vertex_barcode"] = awkward.fromiter(self.prepared_contents["Start_vertex_barcode"])
         self.prepared_contents["End_vertex_barcode"] = awkward.fromiter(self.prepared_contents["End_vertex_barcode"])
         self.prepared_contents["Vertex_barcode"] = awkward.fromiter(self.prepared_contents["Vertex_barcode"])
+        n_events = len(self.prepared_contents["Vertex_barcode"])
         # each event will have completely seperate heritage
         for event_n, (barcodes, start_barcodes, end_barcodes) in enumerate(zip(self.prepared_contents["Vertex_barcode"],
                                                                                self.prepared_contents["Start_vertex_barcode"],
                                                                                self.prepared_contents["End_vertex_barcode"])):
+            if event_n % 100 == 0:
+                print(f"{100*event_n/n_events}%", end='\r', flush=True)
             children = []
             parents = []
             for particle_n, (start_b, end_b) in enumerate(zip(start_barcodes, end_barcodes)):
@@ -149,11 +155,11 @@ class Hepmc(Components.EventWise):
         Parameters
         ----------
         filepath :
-            
+            param start: (Default value = 0)
+        stop :
+            Default value = np.inf)
         start :
              (Default value = 0)
-        stop :
-             (Default value = np.inf)
 
         Returns
         -------
@@ -176,6 +182,8 @@ class Hepmc(Components.EventWise):
             assert event_line is not None, "Didn't find any events!"
             # continue till the stop event
             while event_line is not None:
+                if event_reached % 100 == 0:
+                    print(f"reached event {event_reached}", end='\r', flush=True)
                 # the event parser will hand us the next event line
                 event_line = self._parse_event(event_reached, event_line, csv_reader)
                 event_reached += 1
@@ -189,10 +197,10 @@ class Hepmc(Components.EventWise):
         Parameters
         ----------
         event_n :
+            param event_line:
+        csv_reader :
             
         event_line :
-            
-        csv_reader :
             
 
         Returns
@@ -270,7 +278,7 @@ class Hepmc(Components.EventWise):
         Parameters
         ----------
         event_n :
-            
+            param event_line:
         event_line :
             
 
@@ -317,7 +325,7 @@ class Hepmc(Components.EventWise):
         Parameters
         ----------
         event_n :
-            
+            param header_line:
         header_line :
             
 
@@ -346,6 +354,15 @@ def main():
     """ """
     dir_name = "./megaIgnore"
     save_name = "billy_tag_3_pythia8_events.hepmc"
-    event = Hepmc(dir_name, save_name, 0, np.inf)
-    event.write()
+    #dir_name = "/home/henry/Documents/PhD/jetTagger/tree_tagger/megaIgnore"
+    #save_name = "billy_tag_3_pythia8_events.hepmc"
+    print(f"Reading {save_name}")
+    eventWise = Hepmc(dir_name, save_name, 0, np.inf)
+    print(f"Writing {eventWise.save_name}")
+    eventWise.write()
+
+if __name__ == '__main__':
+    if InputTools.yesNo_question("Do you want to read that hepmc file and write it? "):
+        if InputTools.yesNo_question("Really? Did you close everything else? "):
+            main()
 

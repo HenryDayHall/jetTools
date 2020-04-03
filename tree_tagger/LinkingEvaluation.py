@@ -1,5 +1,5 @@
 """ evaluate the decisions of the linking NN """
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import numpy as np
 from matplotlib import pyplot as plt
 from tree_tagger import LinkingFramework, LinkingNN, Constants
@@ -11,11 +11,11 @@ def apply_linking_net(run, use_test=True, nets=None):
     Parameters
     ----------
     run :
-        
+        param use_test: (Default value = True)
+    nets :
+        Default value = None)
     use_test :
          (Default value = True)
-    nets :
-         (Default value = None)
 
     Returns
     -------
@@ -90,7 +90,7 @@ def plot_distances(output_events, ax=None):
     Parameters
     ----------
     output_events :
-        
+        param ax: (Default value = None)
     ax :
          (Default value = None)
 
@@ -144,11 +144,11 @@ def view_progress(run, nets, ax=None):
     Parameters
     ----------
     run :
-        
+        param nets:
+    ax :
+        Default value = None)
     nets :
         
-    ax :
-         (Default value = None)
 
     Returns
     -------
@@ -177,7 +177,7 @@ class ResponsePlot:
         Parameters
         ----------
         _ :
-            
+            param nets:
         nets :
             
 

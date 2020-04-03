@@ -1,5 +1,5 @@
 """ evaluate the decisions of the various NN """
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import numpy as np
 from matplotlib import pyplot as plt
 from tree_tagger import RecursiveNN, Constants
@@ -14,11 +14,11 @@ def plot_rocs(runs, loglog=False, ax=None):
     Parameters
     ----------
     runs :
-        
+        param loglog: (Default value = False)
+    ax :
+        Default value = None)
     loglog :
          (Default value = False)
-    ax :
-         (Default value = None)
 
     Returns
     -------
@@ -59,11 +59,11 @@ def plot_hist(run, ax=None, log_y=True):
     Parameters
     ----------
     run :
-        
+        param ax: (Default value = None)
+    log_y :
+        Default value = True)
     ax :
          (Default value = None)
-    log_y :
-         (Default value = True)
 
     Returns
     -------
@@ -117,7 +117,7 @@ class ResponsePlot:
         Parameters
         ----------
         _ :
-            
+            param nets:
         nets :
             
 

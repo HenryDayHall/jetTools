@@ -105,11 +105,11 @@ def match(pid_list, desired, partial=True):
     Parameters
     ----------
     pid_list :
-        
+        param desired:
+    partial :
+        Default value = True)
     desired :
         
-    partial :
-         (Default value = True)
 
     Returns
     -------

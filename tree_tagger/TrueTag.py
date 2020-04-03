@@ -1,6 +1,6 @@
 """ a collection of scripts to assocate each jet to it's MC truth """
 display = False
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 if display:
     from tree_tagger import FormJets, DrawBarrel
 from tree_tagger import Components, InputTools, Constants
@@ -17,10 +17,12 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     Parameters
     ----------
     eventWise :
-        
-    jet_name :
-        
+        param jet_name:
     tag_idx :
+        param max_angle2:
+    valid_jets :
+        Default value = None)
+    jet_name :
         
     max_angle2 :
         
@@ -70,15 +72,17 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     Parameters
     ----------
     eventWise :
-        
+        param hard_interaction_pids: (Default value = [25)
+    35 :
+        param tag_pids: (Default value = None)
+    include_antiparticles :
+        Default value = True)
     hard_interaction_pids :
          (Default value = [25)
     35] :
         
     tag_pids :
          (Default value = None)
-    include_antiparticles :
-         (Default value = True)
 
     Returns
     -------
@@ -122,6 +126,20 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
 
 
 def add_tag_particles(eventWise, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        param silent:  (Default value = False)
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     name = "TagIndex"
     n_events = len(eventWise.X)
@@ -155,10 +173,20 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     Parameters
     ----------
     eventWise :
-        
-    jet_name :
-        
+        param jet_name:
     max_angle :
+        param batch_length: (Default value = 100)
+    jet_pt_cut :
+        Default value = None)
+    min_tracks :
+        Default value = None)
+    silent :
+        Default value = False)
+    append :
+        Default value = True)
+    overwrite :
+        Default value = True)
+    jet_name :
         
     batch_length :
          (Default value = 100)

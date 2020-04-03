@@ -3,7 +3,7 @@ import csv
 import random
 from torch.utils.data import Dataset
 from torch import nn
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import numpy as np
 from tree_tagger import Components, LinkingFramework, FormJets, TreeWalker, InputTools, Constants
 from sklearn import preprocessing
@@ -62,7 +62,7 @@ class EventWiseDataset(Dataset):
         Parameters
         ----------
         folder_name :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -187,7 +187,7 @@ class TracksTowersDataset(EventWiseDataset):
         Parameters
         ----------
         folder_name :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -240,14 +240,14 @@ class TracksTowersDataset(EventWiseDataset):
         Parameters
         ----------
         cumulative_tower_entries :
-            
+            param cumulative_track_entries:
+        all_towers :
+            param all_tracks:
+        all_prox :
+            param all_truth:
         cumulative_track_entries :
             
-        all_towers :
-            
         all_tracks :
-            
-        all_prox :
             
         all_truth :
             
@@ -367,7 +367,7 @@ def gen_track_data(eventWise, event_info):
     Parameters
     ----------
     eventWise :
-        
+        param event_info:
     event_info :
         
 
@@ -396,7 +396,7 @@ def gen_tower_data(eventWise, event_info):
     Parameters
     ----------
     eventWise :
-        
+        param event_info:
     event_info :
         
 
@@ -425,7 +425,7 @@ def simplifier(dataset, num_pairs=1):
     Parameters
     ----------
     dataset :
-        
+        param num_pairs: (Default value = 1)
     num_pairs :
          (Default value = 1)
 
@@ -606,7 +606,7 @@ class JetWiseDataset(Dataset):
         Parameters
         ----------
         database_name :
-            
+            param folder_name: (Default value = None)
         folder_name :
              (Default value = None)
 
@@ -631,7 +631,7 @@ class JetWiseDataset(Dataset):
         Parameters
         ----------
         folder_name :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -654,7 +654,7 @@ class JetWiseDataset(Dataset):
         Parameters
         ----------
         dataset_name :
-            
+            param folder_name: (Default value = None)
         folder_name :
              (Default value = None)
 
@@ -673,7 +673,7 @@ class JetWiseDataset(Dataset):
         Parameters
         ----------
         dataset_name :
-            
+            param folder_name:
         folder_name :
             
 

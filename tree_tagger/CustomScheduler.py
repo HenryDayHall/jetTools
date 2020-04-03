@@ -8,7 +8,7 @@ from torch.utils.data import BatchSampler
 from torch.optim.optimizer import Optimizer
 from scipy.stats import spearmanr
 import numpy as np
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 
 
 class ReduceBatchSizeOnPlateau(object):
@@ -116,7 +116,7 @@ class ReduceBatchSizeOnPlateau(object):
         Parameters
         ----------
         metrics :
-            
+            param epoch: (Default value = None)
         epoch :
              (Default value = None)
 
@@ -177,14 +177,14 @@ class ReduceBatchSizeOnPlateau(object):
         Parameters
         ----------
         mode :
+            param threshold_mode:
+        threshold :
+            param a:
+        best :
             
         threshold_mode :
             
-        threshold :
-            
         a :
-            
-        best :
             
 
         Returns
@@ -212,10 +212,10 @@ class ReduceBatchSizeOnPlateau(object):
         Parameters
         ----------
         mode :
+            param threshold:
+        threshold_mode :
             
         threshold :
-            
-        threshold_mode :
             
 
         Returns
@@ -430,10 +430,10 @@ class CammieWeightDecay(object):
         Parameters
         ----------
         mode :
-            
-        threshold_mode :
-            
+            param threshold_mode:
         threshold :
+            param contender:
+        threshold_mode :
             
         contender :
             
@@ -473,10 +473,10 @@ class CammieWeightDecay(object):
         Parameters
         ----------
         mode :
+            param threshold:
+        threshold_mode :
             
         threshold :
-            
-        threshold_mode :
             
 
         Returns
@@ -503,7 +503,7 @@ class CammieWeightDecay(object):
         Parameters
         ----------
         metric :
-            
+            param epoch: (Default value = None)
         epoch :
              (Default value = None)
 

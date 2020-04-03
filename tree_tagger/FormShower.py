@@ -1,10 +1,27 @@
 """ Tools to turn clusters of particles into showers """
+import os
 from ipdb import set_trace as st
+#import debug
 import networkx
-from tree_tagger import PDGNames, ReadSQL, ReadHepmc, DrawTrees
+from tree_tagger import PDGNames, DrawTrees, Components
 import itertools
 from matplotlib import pyplot as plt
 import numpy as np
+import awkward
+
+
+def decendant_idxs(eventWise, start_idx):
+    assert eventWise.selected_index is not None
+    final_idxs = set()
+    stack = [start_idx]
+    while stack:
+        idx = stack.pop()
+        children = eventWise.Children[idx].tolist()
+        stack += children
+        if not children:
+            final_idxs.add(idx)
+    return final_idxs
+
 
 class Shower:
     """
@@ -19,12 +36,12 @@ class Shower:
     -------
 
     """
-    def __init__(self, particle_idxs, parents, children, labels):
-        self.amalgam = False
-        self.particle_idxs = particle_idxs
-        self.parents = parents
-        self.children = children
-        self.labels = labels
+    def __init__(self, particle_idxs, parents, children, labels, amalgam=False):
+        self.amalgam = amalgam
+        self.particle_idxs = awkward.fromiter(particle_idxs)
+        self.parents = awkward.fromiter(parents)
+        self.children = awkward.fromiter(children)
+        self.labels = awkward.fromiter(labels)
         self.ranks = None  # exspensive, create as needed with find_ranks()
         self._find_roots()
 
@@ -94,7 +111,6 @@ class Shower:
         msg = "changed to root_idxs or root_local_idxs for clarity"
         raise AttributeError(msg)
 
-
     def find_ranks(self):
         """
         Demand the shower identify the rang of each particle.
@@ -106,10 +122,10 @@ class Shower:
         Returns
         -------
 
-        
         """
+        #TODO not working.
         # put the first rank in
-        current_rank = self.root_local_idxs
+        current_rank = self.root_local_idxs  
         rank_n = 0
         ranks = np.full_like(self.particle_idxs, -1, dtype=int)
         ranks[current_rank] = rank_n
@@ -117,11 +133,11 @@ class Shower:
         has_decendants = True
         while has_decendants:
             rank_n += 1
-            decendant_particle_idxs = [child for index in current_rank
-                                       for child in self.children[index]
-                                       if child in self.particle_idxs]
+            decendant_particles = [child for index in current_rank
+                                   for child in self.children[index]
+                                   if child in self.particle_idxs]
             current_rank = []
-            for child in decendant_particle_idxs:
+            for child in decendant_particles:
                 index = list_particle_idxs.index(child)
                 # don't overwite a rank, so in a loop the lowers rank stands
                 # also needed to prevent perpetual loops
@@ -180,40 +196,57 @@ class Shower:
         """ """
         flavours = self.labels[self.root_local_idxs]
         return '+'.join(flavours)
-        
 
-def get_showers(eventWise, exclude_pids=[2212, 25, 35]):
+
+def upper_layers(eventWise, n_layers=5, capture_pids=[]):
+    """ Make a shower of just the topmost layers of the event """
+    assert eventWise.selected_index is not None
+    n_particles = len(eventWise.Parents)
+    # start from the roots
+    particle_idxs = set(get_roots(list(range(n_particles)), eventWise.Parents))
+    current_layer = [*particle_idxs]  # copy it into a new layer
+    locations_to_capture = {i for i, pid in enumerate(eventWise.MCPID) if pid in capture_pids}
+    layer_reached = 0
+    while locations_to_capture or layer_reached < n_layers:
+        children = set(eventWise.Children[current_layer].flatten())
+        locations_to_capture.difference_update(children)
+        particle_idxs.update(children)
+        current_layer = list(children)
+        layer_reached += 1
+    particle_idxs = list(particle_idxs)
+    labeler = PDGNames.IDConverter()
+    labels = [labeler[pid] for pid in eventWise.MCPID[particle_idxs]]
+    shower = Shower(particle_idxs, eventWise.Parents[particle_idxs],
+                    eventWise.Children[particle_idxs], labels, amalgam=True)
+    return shower
+
+
+def get_showers(eventWise, exclude_pids=True):
     """
     From each root split the decendants into showers
     Each particle can only belong to a single shower.
 
     Parameters
     ----------
-    databaseName : string
-        Path and file name of database
-    exclude_MCPparticle_idxs : list like of ints
-        Pparticle_idxs that will be cut out before splitting into showers
-        (Default value = [2212, 25, 35])
     eventWise :
-        
+        param exclude_pids: (Default value = [2212, 25, 35])
     exclude_pids :
-         (Default value = [2212)
-    25 :
-        
-    35] :
-        
+         (Default value = True)
 
     Returns
     -------
 
-    
     """
+    if exclude_pids is True:
+        exclude_pids = [2212, 25, 35]
+    elif exclude_pids is None:
+        exclude_pids = []
     # remove any stop pids
-    mask = [p not in exclude_pids for p in eventWise.PID]
+    mask = [p not in exclude_pids for p in eventWise.MCPID]
     particle_idxs = np.where(mask)[0]
     parent_ids = eventWise.Parents[mask]
     child_ids = eventWise.Children[mask]
-    pids = eventWise.PID[mask]
+    pids = eventWise.MCPID[mask]
     # check that worked
     remaining_pids = set(pids)
     for exclude in exclude_pids:
@@ -226,7 +259,7 @@ def get_showers(eventWise, exclude_pids=[2212, 25, 35]):
     # at start all particles are allocated to a diferent shower
     showers = []
     root_gids = get_roots(particle_idxs, parent_ids)
-    print(f"Found {len(root_gids)} root_gids")
+    #print(f"Found {len(root_gids)} root_gids")
     list_particle_idxs = list(particle_idxs)
     for i, root_gid in enumerate(root_gids):
         root_idx = list_particle_idxs.index(root_gid)
@@ -270,7 +303,6 @@ def get_roots(particle_ids, parents):
     Returns
     -------
 
-    
     """
     roots = []
     for gid, parents_here in zip(particle_ids, parents):
@@ -302,7 +334,6 @@ def make_tree(particle_idxs, parents, children, labels):
     Returns
     -------
 
-    
     """
     graph =  networkx.Graph()
     graph.add_nodes_from(particle_idxs)
@@ -335,7 +366,6 @@ def recursive_grab(seed_id, particle_idxs, relatives):
     Returns
     -------
 
-    
     """
     try:
         index = np.where(particle_idxs == seed_id)[0][0]
@@ -348,3 +378,184 @@ def recursive_grab(seed_id, particle_idxs, relatives):
         all_indices += recursive_grab(relative, particle_idxs, relatives)
     return all_indices
 
+
+def x_event_shared_ends(eventWise, all_roots, shared_counts):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        param all_roots:
+    shared_counts :
+        
+    all_roots :
+        
+
+    Returns
+    -------
+
+    """
+    n_roots = len(all_roots)
+    showers = get_showers(eventWise)
+    roots = [int(eventWise.MCPID[shower.root_idxs[0]]) for shower in showers]
+    new_roots = [root for root in roots if root not in all_roots]
+    for root in set(new_roots):
+        print(f"New root {root}")
+        all_roots.append(root)
+        for i in range(n_roots):
+            shared_counts[i].append(0)
+        n_roots += 1
+        shared_counts.append([0 for _ in range(n_roots)])
+    ends = [shower.particle_idxs[shower.ends].tolist() for shower in showers]
+    for i, shower in enumerate(ends):
+        root1_idx = all_roots.index(roots[i])
+        for end in shower:
+            # only look in the forward driection to avoid double counting
+            for j, other_shower in enumerate(ends[i+1:]):
+                root2_idx = all_roots.index(roots[j])
+                if end in other_shower:
+                    shared_counts[root1_idx][root2_idx] += 1
+                    shared_counts[root2_idx][root1_idx] += 1
+    return all_roots, shared_counts
+
+
+def event_shared_ends(eventWise, all_roots, shared_counts, exclude_pids=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        param all_roots:
+    shared_counts :
+        param exclude_pids:  (Default value = True)
+    all_roots :
+        
+    exclude_pids :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
+    if exclude_pids is True:
+        exclude_pids = [2212, 25, 35]
+    elif exclude_pids is None:
+        exclude_pids = []
+    n_roots = len(all_roots)
+    leaf_idxs = np.where(eventWise.Is_leaf)[0]
+    # chase the leaves tii a root is found
+    for leaf in leaf_idxs:
+        to_check = [leaf]
+        found = []
+        while to_check:
+            idx = to_check.pop()
+            parents = eventWise.Parents[idx]
+            if len(parents) == 0:
+                found.append(idx)
+            else:
+                for pidx in parents:
+                    if eventWise.MCPID[pidx] in exclude_pids:
+                        found.append(idx)
+                    else:
+                        to_check.append(pidx)
+        if len(found) > 1:
+            roots = [int(eventWise.MCPID[idx]) for idx in found]
+            new_roots = [root for root in set(roots) if root not in all_roots]
+            for root in new_roots:
+                print(f"New root {root}")
+                all_roots.append(root)
+                for i in range(n_roots):
+                    shared_counts[i].append(0)
+                n_roots += 1
+                shared_counts.append([0 for _ in range(n_roots)])
+            for i, root1 in enumerate(roots):
+                root1_idx = all_roots.index(root1)
+                for root2 in roots[i+1:]:
+                    root2_idx = all_roots.index(root2)
+                    shared_counts[root1_idx][root2_idx] += 1
+                    shared_counts[root2_idx][root1_idx] += 1
+    return all_roots, shared_counts
+
+
+def shared_ends(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
+    eventWise.selected_index = None
+    n_events = len(eventWise.MCPID)
+    all_roots = []
+    shared_counts = []
+    for event_n in range(n_events):
+        if event_n % 10 == 0:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        eventWise.selected_index = event_n
+        all_roots, shared_counts = event_shared_ends(eventWise, all_roots, shared_counts)
+    return all_roots, shared_counts
+
+
+def plot_shared_ends(eventWise=None, all_roots=None, shared_counts=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        Default value = None)
+    all_roots :
+        Default value = None)
+    shared_counts :
+        Default value = None)
+
+    Returns
+    -------
+
+    """
+    if all_roots is None:
+        if isinstance(eventWise, str):
+            eventWise = Components.EventWise.from_file(eventWise)
+        all_roots, shared_counts = shared_ends(eventWise)
+    n_roots = len(all_roots)
+
+    fig, ax = plt.subplots()
+    shared_counts = np.array(shared_counts)
+    im = ax.imshow(shared_counts)
+
+    # We want to show all ticks...
+    ax.set_xticks(np.arange(n_roots))
+    ax.set_yticks(np.arange(n_roots))
+    # ... and label them with the respective list entries
+    ax.set_xticklabels(all_roots)
+    ax.set_yticklabels(all_roots)
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    for i in range(n_roots):
+        for j in range(n_roots):
+            text = ax.text(j, i, f"{shared_counts[i, j]:g}",
+                           ha="center", va="center", color="w")
+    ax.set_title("Counts of end state particles shared between showers by sharing shower root.")
+    fig.tight_layout()
+    plt.show()
+    return all_roots, shared_counts
+
+
+if __name__ == '__main__':
+    #plot_shared_ends("megaIgnore/basis_2k.awkd")
+    pass

@@ -1,6 +1,6 @@
 from tree_tagger import Components, InputTools
 import numpy as np
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from networkx.drawing.nx_agraph import write_dot
 from itertools import compress
 from tree_tagger.PDGNames import IDConverter
@@ -28,7 +28,8 @@ class DotGraph:
         # if a shower is given make edges from that
         if shower is not None:
             eventWise = kwargs.get('eventWise', None)
-            assert isinstance(eventWise.selected_index, int), "Must specify one event in the eventWise object"
+            if eventWise is not None:
+                assert isinstance(eventWise.selected_index, int), "Must specify one event in the eventWise object"
             use_TracksTowers = kwargs.get('use_TracksTowers', False)
             jet_name = kwargs.get('jet_name', None)
             jet_num = kwargs.get('jet_num', None)
@@ -41,20 +42,19 @@ class DotGraph:
         Parameters
         ----------
         shower :
-            
+            param eventWise: (Default value = None)
+        jet_name :
+            Default value = None)
+        jet_num :
+            Default value = None)
+        use_TracksTowers :
+            Default value = False)
         eventWise :
              (Default value = None)
-        jet_name :
-             (Default value = None)
-        jet_num :
-             (Default value = None)
-        use_TracksTowers :
-             (Default value = False)
 
         Returns
         -------
 
-        
         """
         # add the edges
         for this_id, this_parents in zip(shower.particle_idxs, shower.parents):
@@ -192,14 +192,13 @@ class DotGraph:
         Parameters
         ----------
         ID1 :
-            
+            param ID2:
         ID2 :
             
 
         Returns
         -------
 
-        
         """
         self.__edges += f"\t{ID1} -> {ID2}\n"
 
@@ -210,18 +209,17 @@ class DotGraph:
         Parameters
         ----------
         ID :
-            
+            param label:
+        colour :
+            Default value = None)
+        shape :
+            Default value = None)
         label :
             
-        colour :
-             (Default value = None)
-        shape :
-             (Default value = None)
 
         Returns
         -------
 
-        
         """
         self.__nodes += f'\t{ID} [label="{label}"'
         if colour is not None:
@@ -242,7 +240,6 @@ class DotGraph:
         Returns
         -------
 
-        
         """
         ID_strings = [str(ID) for ID in IDs]
         id_string = ' '.join(ID_strings)
@@ -255,18 +252,17 @@ class DotGraph:
         Parameters
         ----------
         ID :
-            
+            param label:
+        colour :
+            Default value = None)
+        shape :
+            Default value = None)
         label :
             
-        colour :
-             (Default value = None)
-        shape :
-             (Default value = None)
 
         Returns
         -------
 
-        
         """
         self.__legend += f'\t{ID} [label="{label}"'
         if colour is not None:
@@ -288,7 +284,8 @@ class DotGraph:
 def main():
     """Launch file, makes and saves a dot graph"""
     repeat = True
-    eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
+    eventWise_path = InputTools.get_file_name("Name the eventWise; ", '.awkd')
+    eventWise = Components.EventWise.from_file(eventWise_path)
     while repeat:
         from tree_tagger import FormShower
         eventWise.selected_index = int(input("Event number: "))

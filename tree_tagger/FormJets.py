@@ -93,29 +93,84 @@ class PseudoJet:
             self.assign_parents()
 
     def _define_physical_distance(self):
+        """ """
         pt_col  = self._PT_col 
         exponent = self.exponent
-        if self.Invarient:
+        if self.Invarient == "Luclus":
+            rap_col = self._Rapidity_col
+            phi_col = self._Phi_col
+            def physical_distance(row, column):
+                """
+                
+
+                Parameters
+                ----------
+                row :
+                    param column:
+                column :
+                    
+
+                Returns
+                -------
+
+                """
+                angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
+                distance = (row[pt_col]**exponent)* (column[pt_col]**exponent) *\
+                           (row[pt_col] + column[pt_col])**-exponent *\
+                           ((row[rap_col] - column[rap_col])**2 +
+                           (angular_distance)**2)
+                return distance
+        elif self.Invarient == 'invarient':
             px_col  = self._Px_col 
             py_col  = self._Py_col 
             pz_col  = self._Pz_col 
             e_col = self._Energy_col
             def physical_distance(row, column):
+                """
+                
+
+                Parameters
+                ----------
+                row :
+                    param column:
+                column :
+                    
+
+                Returns
+                -------
+
+                """
                 distance = (row[e_col]*column[e_col]
                             - row[px_col]*column[px_col]
                             - row[py_col]*column[py_col]
                             - row[pz_col]*column[pz_col])
                 distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
                 return distance
-        else:
+        elif self.Invarient == 'angular':
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
             def physical_distance(row, column):
+                """
+                
+
+                Parameters
+                ----------
+                row :
+                    param column:
+                column :
+                    
+
+                Returns
+                -------
+
+                """
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
                 distance = min(row[pt_col]**exponent, column[pt_col]**exponent) *\
                            ((row[rap_col] - column[rap_col])**2 +
                            (angular_distance)**2)
                 return distance
+        else:
+            raise ValueError(f"Don't recognise {self.Invarient} as an Invarient")
         self.physical_distance = physical_distance
 
     def _set_hyperparams(self, param_list, dict_jet_params, kwargs):
@@ -125,10 +180,10 @@ class PseudoJet:
         Parameters
         ----------
         param_list :
+            param dict_jet_params:
+        kwargs :
             
         dict_jet_params :
-            
-        kwargs :
             
 
         Returns
@@ -235,14 +290,14 @@ class PseudoJet:
         Parameters
         ----------
         pseudojets :
-            
+            param jet_name:
+        event_index :
+            param eventWise: (Default value = None)
+        arrays :
+            Default value = None)
         jet_name :
             
-        event_index :
-            
         eventWise :
-             (Default value = None)
-        arrays :
              (Default value = None)
 
         Returns
@@ -292,13 +347,13 @@ class PseudoJet:
         Parameters
         ----------
         pseudojets :
-            
+            param jet_name: (Default value = "Pseudojet")
+        event_index :
+            Default value = None)
+        eventWise :
+            Default value = None)
         jet_name :
              (Default value = "Pseudojet")
-        event_index :
-             (Default value = None)
-        eventWise :
-             (Default value = None)
 
         Returns
         -------
@@ -307,6 +362,8 @@ class PseudoJet:
         #print('wevt_psu', end='\r', flush=True)
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
+        # only need to check the parameters of one jet (adds the hyperparameters)
+        pseudojets[0].check_params(eventWise)
         if event_index is None:
             event_index = eventWise.selected_index
         arrays = cls.create_updated_dict(pseudojets, jet_name, event_index, eventWise)
@@ -355,15 +412,15 @@ class PseudoJet:
         Parameters
         ----------
         file_name :
-            
+            param event_idx:
+        jet_name :
+            Default value = "Pseudojet")
+        batch_start :
+            Default value = None)
+        batch_end :
+            Default value = None)
         event_idx :
             
-        jet_name :
-             (Default value = "Pseudojet")
-        batch_start :
-             (Default value = None)
-        batch_end :
-             (Default value = None)
 
         Returns
         -------
@@ -461,7 +518,7 @@ class PseudoJet:
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -478,10 +535,10 @@ class PseudoJet:
         Parameters
         ----------
         pseudojet_index1 :
+            param pseudojet_index2:
+        distance :
             
         pseudojet_index2 :
-            
-        distance :
             
 
         Returns
@@ -617,11 +674,11 @@ class PseudoJet:
         Parameters
         ----------
         lastOnly :
-             (Default value = True)
+            Default value = True)
         jetInputIdx :
-             (Default value = None)
+            Default value = None)
         pseudojet_idx :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -682,10 +739,10 @@ class PseudoJet:
         Parameters
         ----------
         pseudojet_index1 :
+            param pseudojet_index2:
+        distance :
             
         pseudojet_index2 :
-            
-        distance :
             
 
         Returns
@@ -740,7 +797,7 @@ class PseudoJet:
 
 class Traditional(PseudoJet):
     """ """
-    param_list = {'DeltaR': None, 'ExponentMultiplier': None, 'Invarient': False}
+    param_list = {'DeltaR': None, 'ExponentMultiplier': None, 'Invarient': 'angular'}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
@@ -773,7 +830,7 @@ class Traditional(PseudoJet):
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -810,13 +867,13 @@ class Traditional(PseudoJet):
         Parameters
         ----------
         arg :
-            
+            param eventWise:
+        jet_name :
+            Default value = "FastJet")
+        do_checks :
+            Default value = False)
         eventWise :
             
-        jet_name :
-             (Default value = "FastJet")
-        do_checks :
-             (Default value = False)
 
         Returns
         -------
@@ -960,86 +1017,13 @@ class Traditional(PseudoJet):
         return new_pseudojet
 
 
-class TraditionalInvarient(PseudoJet):
-    """ """
-    param_list = {'DeltaR': None, 'ExponentMultiplier': None}
-    def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
-        self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
-        self.exponent = 2 * self.ExponentMultiplier
-        super().__init__(eventWise, **kwargs)
-
-    def _calculate_distances(self):
-        """ """
-        # this is caluculating all the distances
-        self._distances = np.full((self.currently_avalible, self.currently_avalible), np.inf)
-        # for speed, make local variables
-        pt_col  = self._PT_col 
-        px_col  = self._Px_col 
-        py_col  = self._Py_col 
-        pz_col  = self._Pz_col 
-        e_col = self._Energy_col
-        exponent = self.exponent
-        DeltaR2 = self.DeltaR**2
-        for row in range(self.currently_avalible):
-            for column in range(self.currently_avalible):
-                if column > row:
-                    continue  # we only need a triangular matrix due to symmetry
-                elif self._floats[row][pt_col] == 0:
-                    distance = 0  # soft radation might as well be at 0 distance
-                elif column == row:
-                    distance = self._floats[row][pt_col]**exponent * DeltaR2
-                else:
-                    distance = (self._floats[row][e_col]*self._floats[column][e_col]
-                                - self._floats[row][px_col]*self._floats[column][px_col]
-                                - self._floats[row][py_col]*self._floats[column][py_col]
-                                - self._floats[row][pz_col]*self._floats[column][pz_col])
-                    distance *= min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent)
-                self._distances[row, column] = distance
-
-    def _recalculate_one(self, remove_index, replace_index):
-        """
-        
-
-        Parameters
-        ----------
-        remove_index :
-            
-        replace_index :
-            
-
-        Returns
-        -------
-
-        """
-        # delete the larger index keep the smaller index
-        assert remove_index > replace_index
-        # delete the first row and column of the merge
-        self._distances = np.delete(self._distances, (remove_index), axis=0)
-        self._distances = np.delete(self._distances, (remove_index), axis=1)
-
-        # calculate new values into the second column
-        for row in range(self.currently_avalible):
-            column = replace_index
-            if column > row:
-                row, column = column, row  # keep the upper triangular form
-            if column == row:
-                distance = self._floats[row][self._PT_col]**self.exponent * self.DeltaR**2
-            else:
-                distance = (self._floats[row][self._Energy_col]*self._floats[column][self._Energy_col]
-                            - self._floats[row][self._Px_col]*self._floats[column][self._Px_col]
-                            - self._floats[row][self._Py_col]*self._floats[column][self._Py_col]
-                            - self._floats[row][self._Pz_col]*self._floats[column][self._Pz_col])
-                distance *= min(self._floats[row][self._PT_col]**self.exponent, self._floats[column][self._PT_col]**self.exponent)
-            self._distances[row, column] = distance
-
-
 class Spectral(PseudoJet):
     """ """
     # list the params with default values
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf, 
             'ExponentMultiplier': None, 'AffinityType': 'exponent',
             'AffinityCutoff': None, 'Laplacien': 'unnormalised',
-            'WithLaplacienScaling': False, 'Invarient': False}
+            'WithLaplacienScaling': False, 'Invarient': 'angular'}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         #print('init_spc', end='\r', flush=True)
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
@@ -1062,6 +1046,8 @@ class Spectral(PseudoJet):
         physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
         # for speed, make local variables
         pt_col  = self._PT_col 
+        rap_col  = self._Rapidity_col 
+        phi_col  = self._Phi_col 
         # future calculatins will depend on the starting positions
         self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
                                             for row in self._floats])
@@ -1127,6 +1113,7 @@ class Spectral(PseudoJet):
         #print('cdis-spc', end='\r', flush=True)
 
     def _define_calculate_affinity(self):
+        """ """
         #print('dafi_spc', end='\r', flush=True)
         if self.AffinityCutoff is not None:
             cutoff_type = self.AffinityCutoff[0]
@@ -1382,7 +1369,7 @@ class Spectral(PseudoJet):
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -1433,7 +1420,7 @@ class SpectralMean(Spectral):
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -1477,7 +1464,9 @@ class SpectralAfter(Spectral):
         # this can be based on any of the three algorithms
         physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
         # for speed, make local variables
-        pt_col  = self._PT_col 
+        pt_col  = self._PT_col
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
         # future calculatins will depend on the starting positions
         self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
                                             for row in self._floats])
@@ -1551,7 +1540,7 @@ class SpectralAfter(Spectral):
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -1600,6 +1589,8 @@ class SpectralMAfter(SpectralMean):
         physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
         # for speed, make local variables
         pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
         # future calculatins will depend on the starting positions
         self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
                                             for row in self._floats])
@@ -1673,7 +1664,7 @@ class SpectralMAfter(SpectralMean):
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -1715,7 +1706,7 @@ class SpectralFull(Spectral):
         Parameters
         ----------
         remove_index :
-            
+            param replace_index:
         replace_index :
             
 
@@ -1727,7 +1718,7 @@ class SpectralFull(Spectral):
         self._calculate_distances()
 
 
-cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional, "HomeInvarientJet": TraditionalInvarient,
+cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional,
                    "SpectralJet": Spectral, "SpectralMeanJet": SpectralMean,
                    "SpectralMAfterJet": SpectralMAfter, "SpectralFullJet": SpectralFull,
                    "SpectralAfterJet": SpectralAfter}
@@ -1740,11 +1731,11 @@ def get_jet_params(eventWise, jet_name, add_defaults=False):
     Parameters
     ----------
     eventWise :
-        
+        param jet_name:
+    add_defaults :
+        Default value = False)
     jet_name :
         
-    add_defaults :
-         (Default value = False)
 
     Returns
     -------
@@ -1774,7 +1765,7 @@ def filter_obs(eventWise, existing_idx_selection):
     Parameters
     ----------
     eventWise :
-        
+        param existing_idx_selection:
     existing_idx_selection :
         
 
@@ -1797,7 +1788,7 @@ def filter_ends(eventWise, existing_idx_selection):
     Parameters
     ----------
     eventWise :
-        
+        param existing_idx_selection:
     existing_idx_selection :
         
 
@@ -1819,13 +1810,13 @@ def filter_pt_eta(eventWise, existing_idx_selection, min_pt=.5, max_eta=2.5):
     Parameters
     ----------
     eventWise :
-        
+        param existing_idx_selection:
+    min_pt :
+        Default value = .5)
+    max_eta :
+        Default value = 2.5)
     existing_idx_selection :
         
-    min_pt :
-         (Default value = .5)
-    max_eta :
-         (Default value = 2.5)
 
     Returns
     -------
@@ -1852,7 +1843,9 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
     Parameters
     ----------
     eventWise :
-        
+        param filter_functions: (Default value = [filter_obs)
+    filter_pt_eta :
+        param batch_length: (Default value = 1000)
     filter_functions :
          (Default value = [filter_obs)
     filter_pt_eta] :
@@ -1889,7 +1882,7 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
     mask = []
     for event_n in range(start_point, end_point):
         if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         idx_selection = np.arange(len(eventWise.PT))
         for filter_func in filter_functions:
@@ -1916,7 +1909,7 @@ def produce_summary(eventWise, to_file=True):
     Parameters
     ----------
     eventWise :
-        
+        param to_file: (Default value = True)
     to_file :
          (Default value = True)
 
@@ -1951,15 +1944,15 @@ def run_FastJet(eventWise, DeltaR, ExponentMultiplier, jet_name="FastJet", use_p
     Parameters
     ----------
     eventWise :
-        
-    DeltaR :
-        
+        param DeltaR:
     ExponentMultiplier :
+        param jet_name: (Default value = "FastJet")
+    use_pipe :
+        Default value = True)
+    DeltaR :
         
     jet_name :
          (Default value = "FastJet")
-    use_pipe :
-         (Default value = True)
 
     Returns
     -------
@@ -1997,18 +1990,17 @@ def run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_ta
     input_lines : list of byte array
         contents of the input as byte arrays
     DeltaR :
-        
+        param algorithm_num:
+    program_path :
+        Default value = "./tree_tagger/applyFastJet")
+    tries :
+        Default value = 0)
     algorithm_num :
         
-    program_path :
-         (Default value = "./tree_tagger/applyFastJet")
-    tries :
-         (Default value = 0)
 
     Returns
     -------
 
-    
     """
     # input liens should eb one long byte string
     assert isinstance(input_lines, bytes)
@@ -2045,17 +2037,17 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     Parameters
     ----------
     eventWise :
-        
+        param cluster_algorithm:
+    cluster_parameters :
+        Default value = {})
+    jet_name :
+        Default value = None)
+    batch_length :
+        Default value = 100)
+    silent :
+        Default value = False)
     cluster_algorithm :
         
-    cluster_parameters :
-         (Default value = {})
-    jet_name :
-         (Default value = None)
-    batch_length :
-         (Default value = 100)
-    silent :
-         (Default value = False)
 
     Returns
     -------
@@ -2064,9 +2056,10 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     if jet_name is None and 'jet_name' in cluster_parameters:
         jet_name = cluster_parameters['jet_name']
     elif jet_name is None:
-        jet_name = {Traditional: "HomeJet",
-                    run_FastJet: "FastJet",
-                    Spectral: "SpectralJet"}.get(cluster_algorithm)
+        for name, algorithm in cluster_classes.items():
+            if algorithm == cluster_algorithm:
+                jet_name = name
+                break
     cluster_parameters["jet_name"] = jet_name  # enforce consistancy
     if cluster_algorithm == run_FastJet:
         # make sure fast jet uses the pipe
@@ -2116,14 +2109,14 @@ def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
     Parameters
     ----------
     ew :
-        
+        param jet_name:
+    event_num :
+        param colour: (Default value = None)
+    ax :
+        Default value = None)
     jet_name :
         
-    event_num :
-        
     colour :
-         (Default value = None)
-    ax :
          (Default value = None)
 
     Returns
@@ -2172,14 +2165,14 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     Parameters
     ----------
     ax :
-        
+        param colour:
+    body :
+        param body_size:
+    leg_ends :
+        param leg_size:
     colour :
         
-    body :
-        
     body_size :
-        
-    leg_ends :
         
     leg_size :
         
@@ -2212,7 +2205,26 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
 
 
 def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spectral_class=SpectralFull):
-    """ """
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        param event_n:
+    home_jet_params :
+        param spectral_jet_params:
+    spectral_class :
+        Default value = SpectralFull)
+    event_n :
+        
+    spectral_jet_params :
+        
+
+    Returns
+    -------
+
+    """
     ax = plt.gca()
     alpha=0.5
     # colourmap

@@ -8,7 +8,7 @@ import csv
 from ast import literal_eval
 from pathlib import Path
 from copy import deepcopy
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import torch
 import numpy as np
 from tree_tagger import Constants, Datasets, LinkingNN, RecursiveNN, StandardNN
@@ -43,11 +43,11 @@ def str_is_type(s_type, s, accept_none=False):
     Parameters
     ----------
     s_type :
-        
+        param s:
+    accept_none :
+        Default value = False)
     s :
         
-    accept_none :
-         (Default value = False)
 
     Returns
     -------
@@ -446,7 +446,7 @@ class Run:
         Parameters
         ----------
         with_nets :
-             (Default value = True)
+            Default value = True)
 
         Returns
         -------
@@ -477,7 +477,7 @@ class Run:
         Parameters
         ----------
         net :
-            
+            param file_name:
         file_name :
             
 
@@ -512,7 +512,7 @@ class Run:
         Parameters
         ----------
         param_dicts :
-            
+            param lowest_loss:
         lowest_loss :
             
 
@@ -551,9 +551,9 @@ class Run:
         Parameters
         ----------
         net :
-             (Default value = None)
+            Default value = None)
         test_input :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -679,7 +679,7 @@ class JetWiseRun(Run):
         Parameters
         ----------
         shuffle :
-             (Default value = False)
+            Default value = False)
 
         Returns
         -------
@@ -722,7 +722,7 @@ class FlatJetRun(JetWiseRun):
         Parameters
         ----------
         shuffle :
-             (Default value = False)
+            Default value = False)
 
         Returns
         -------
@@ -827,7 +827,7 @@ class SklearnJetRun(FlatJetRun):
         Parameters
         ----------
         net :
-            
+            param file_name:
         file_name :
             
 
@@ -849,7 +849,7 @@ class SklearnJetRun(FlatJetRun):
         Parameters
         ----------
         net :
-            
+            param lowest_loss: (Default value = 0)
         lowest_loss :
              (Default value = 0)
 
@@ -904,9 +904,9 @@ class SklearnJetRun(FlatJetRun):
         Parameters
         ----------
         net :
-             (Default value = None)
+            Default value = None)
         test_inputs :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -960,7 +960,7 @@ class RecursiveRun(JetWiseRun):
         Parameters
         ----------
         shuffle :
-             (Default value = False)
+            Default value = False)
 
         Returns
         -------
@@ -1007,9 +1007,9 @@ class RecursiveRun(JetWiseRun):
         Parameters
         ----------
         net :
-             (Default value = None)
+            Default value = None)
         test_input :
-             (Default value = None)
+            Default value = None)
 
         Returns
         -------
@@ -1044,13 +1044,13 @@ def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):
     Parameters
     ----------
     run :
-        
+        param focus: (Default value = 0)
+    target_flavour :
+        Default value = 'b')
+    ddict_name :
+        Default value = None)
     focus :
          (Default value = 0)
-    target_flavour :
-         (Default value = 'b')
-    ddict_name :
-         (Default value = None)
 
     Returns
     -------
@@ -1065,10 +1065,10 @@ def get_LinkingProjections(nets, dataset, event_num):
     Parameters
     ----------
     nets :
+        param dataset:
+    event_num :
         
     dataset :
-        
-    event_num :
         
 
     Returns
@@ -1091,10 +1091,10 @@ def distances(track_num, tracks_projections, towers_projects):
     Parameters
     ----------
     track_num :
+        param tracks_projections:
+    towers_projects :
         
     tracks_projections :
-        
-    towers_projects :
         
 
     Returns
