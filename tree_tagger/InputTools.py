@@ -6,6 +6,7 @@ import numpy as np
 import os
 import readline
 import glob
+import ast
 
 try: input = raw_input
 except NameError: pass
@@ -13,21 +14,43 @@ except NameError: pass
 up = '\x1b[A'
 down = '\x1b[B'
 
+# a dictionary of a preselected reponse per quesiton
+
+class PreSelections:
+    def __init__(self, file_name=None):
+        self.current = {}
+        if file_name is not None:
+            with open(file_name, 'r') as in_file:
+                str_dict = in_file.read()
+                self.current = ast.literal_eval(str_dict)
+
+    def set(self, selection_dict=None):
+        if selection_dict is None:
+            selection_dict = {}
+        self.current = selection_dict
+
+    def __getitem__(self, message):
+        if message in self.current:
+            response = self.current[message].pop(0)
+            if not self.current[message]:
+                del self.current[message]
+        else:
+            response = None
+        return response
+
+    def append(self, message, response):
+        if message not in self.current:
+            self.current[message] = []
+        self.current[message].append(response)
+
+    def write(self, file_name):
+        with open(file_name, 'w') as out:
+            out.write(str(self.current))
+
+pre_selections = PreSelections()
+last_selections = PreSelections()
+
 def get_previous(function_name, message):
-    """
-    
-
-    Parameters
-    ----------
-    function_name :
-        
-    message :
-        
-
-    Returns
-    -------
-
-    """
     delimiter = ','
     message = message.replace(delimiter, '_')
     memory_file = './autofill_memory.csv'
@@ -46,22 +69,6 @@ def get_previous(function_name, message):
     
 
 def set_previous(function_name, message, previous):
-    """
-    
-
-    Parameters
-    ----------
-    function_name :
-        
-    message :
-        
-    previous :
-        
-
-    Returns
-    -------
-
-    """
     if previous in ['', up, down]:
         return
     delimiter = ','
@@ -84,119 +91,90 @@ def set_previous(function_name, message, previous):
 
 
 def get_file_name(message, file_ending=''):
-    """
-    Get a file name from the user, with tab completion.
+    """ Get a file name from the user, with tab completion.    
 
     Parameters
     ----------
     message : str
         To be printed at the prompt.
+        
     file_ending : str
         (Default value = '')
         To limit the sugestions to a particular file ending.
 
     Returns
     -------
-
+    file_name : str
+        The input from the user (not forced to be a file name)
     
     """
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
     previous_choice = get_previous("get_file_name", message)
     # file tab completion
     def path_completer(start, state):
-        """
-        
-
-        Parameters
-        ----------
-        start :
-            
-        state :
-            
-
-        Returns
-        -------
-
-        """
         line = readline.get_line_buffer().split()
         matching = [x for x in glob.glob(start+'*'+file_ending)]
         matching += [x for x in glob.glob(start+'*/')]
         return matching[state]
     filename = tab_complete(path_completer, message, previous_choice)
     set_previous("get_file_name", message, filename)
+    last_selections.append(message, filename)
     return filename
 
 
 def get_dir_name(message):
-    """
-    Get a dir name from the user, with tab completion.
+    """ Get a dir name from the user, with tab completion.    
 
     Parameters
     ----------
     message : str
         To be printed at the prompt.
-
+        
     Returns
     -------
-
+    dir_name : str
+        The input from the user (not forced to be a file name)
     
     """
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
     previous_choice = get_previous("get_dir_name", message)
     # dir tab completion
     def path_completer(start, state):
-        """
-        
-
-        Parameters
-        ----------
-        start :
-            
-        state :
-            
-
-        Returns
-        -------
-
-        """
         line = readline.get_line_buffer().split()
         matching = [x for x in glob.glob(start+'*/')]
         return matching[state]
     dir_name = tab_complete(path_completer, message, previous_choice)
     set_previous("get_dir_name", message, dir_name)
+    last_selections.append(message, dir_name)
     return dir_name
 
 
 def list_complete(message, possibilities):
-    """
-    Get a string from the user, with tab completion from list.
+    """ Get a string from the user, with tab completion from list.    
 
     Parameters
     ----------
     message : str
         To be printed at the prompt.
+        
     possibilities : list of str
         Entries that should tab complete
 
     Returns
     -------
-
+    selection : str
+        The input from the user (not forced to be in the list)
     
     """
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
     previous_choice = get_previous("list_complete", message)
     def list_completer(text, state):
-        """
-        
-
-        Parameters
-        ----------
-        text :
-            
-        state :
-            
-
-        Returns
-        -------
-
-        """
         line = readline.get_line_buffer()
         if not line:
             return [c + " " for c in possibilities][state]
@@ -204,12 +182,12 @@ def list_complete(message, possibilities):
             return [c + " " for c in possibilities if c.startswith(line)][state]
     selection = tab_complete(list_completer, message, previous_choice)
     set_previous("list_complete", message, selection)
+    last_selections.append(message, selection)
     return selection
 
 
 def tab_complete(possibilities_function, message, previous=None):
-    """
-    Create a tab completion based on a function
+    """ Create a tab completion based on a function
 
     Parameters
     ----------
@@ -217,14 +195,16 @@ def tab_complete(possibilities_function, message, previous=None):
         function that takes two parameters,
         the starting string entered by the user
         and the option number to return
+        
     message : str
         message to display to the user at the prompt
-    previous :
-         (Default value = None)
+        
 
     Returns
     -------
-
+    user_input : str
+        the input from the user, 
+        this may not be a tab completion
     
     """
     # file tab completion
@@ -238,44 +218,53 @@ def tab_complete(possibilities_function, message, previous=None):
     return user_input
 
 
-def yesNo_question(question):
-    """
-    Get yes or no from the user.
+def yesNo_question(message):
+    """ Get yes or no from the user.
 
     Parameters
     ----------
-    question : str
-        question to display at the prompt
+    message : str
+        message to display at the prompt
 
     Returns
     -------
-
+    answer : bool
+        the users response
     
     """
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
     lowerCase_answers = {'': False, 'n': False, 'false': False,
                          'no': False, '0': False,
                          'y': True, 'true': True, 'yes': True,
                          '1': True}
-    user = input(question).strip().lower()
+    user = input(message).strip().lower()
     while user not in lowerCase_answers:
         print("Not a valid answer, please give 'y' or 'n'.")
-        return yesNo_question(question)
-    return lowerCase_answers[user]
+        return yesNo_message(message)
+    selection = lowerCase_answers[user]
+    last_selections.append(message, selection)
+    return selection
+
+
+def get_literal(message, converter=None):
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
+    try:
+        user = input(message)
+        response = ast.literal_eval(user)
+        if converter is not None:
+            response = converter(response)
+    except ValueError:
+        print(f"'{user}' is not a valid input. Try again.")
+        response = get_literal(message, converter)
+    last_selections.append(message, response)
+    return response
 
 
 def print_strlist(my_list):
-    """
-    
-
-    Parameters
-    ----------
-    my_list :
-        
-
-    Returns
-    -------
-
-    """
     rows, _ = os.popen('stty size', 'r').read().split()
     rows = int(rows)
     entry_width = max([len(key)+1 for key in my_list])
@@ -287,49 +276,38 @@ def print_strlist(my_list):
     print()
 
 
-def get_time(question):
-    """
+def get_time(message):
+    '''
     Ask the user to give a time in hours minutes and seconds.
 
     Parameters
     ----------
-    question : str
-        Message to be displayed
+    message : str
+       Message to be displayed
+        
 
     Returns
     -------
+    time : int
+       time in seconds as specifed by the user
 
-    
-    """
-    print(question)
+    '''
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
+    print(message)
     hours =   input("enter hours then minutes then seconds|   hours= ")
     minutes = input("                                     |+minutes= ")
     seconds = input("                                     |+seconds= ")
     hours = 0. if hours=='' else float(hours)
     minutes = 0. if minutes=='' else float(minutes)
     seconds = 0. if seconds=='' else float(seconds)
-    return 60*60*hours + 60*minutes + seconds
+    response =  60*60*hours + 60*minutes + seconds
+    last_selections.append(message, response)
+    return response
 
 
 def select_values(pretty_name, column_names, defaults, value_class=np.float):
-    """
-    
-
-    Parameters
-    ----------
-    pretty_name :
-        
-    column_names :
-        
-    defaults :
-        
-    value_class :
-         (Default value = np.float)
-
-    Returns
-    -------
-
-    """
     print("Select {}".format(pretty_name))
     if column_names is not None:
         print("Format is {}".format(', '.join(column_names)))
@@ -349,22 +327,6 @@ def select_values(pretty_name, column_names, defaults, value_class=np.float):
 
 
 def select_value(pretty_name, default, value_class=np.float):
-    """
-    
-
-    Parameters
-    ----------
-    pretty_name :
-        
-    default :
-        
-    value_class :
-         (Default value = np.float)
-
-    Returns
-    -------
-
-    """
     print("Select {}".format(pretty_name))
     print("Typical {} is {}".format(pretty_name, str(default)))
     inp = input('{} (enter for typical)= '.format(pretty_name))

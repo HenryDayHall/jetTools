@@ -179,6 +179,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
 
     """
     class_to_function = {"HomeJet": "Traditional",
+                         "HomeInvarientJet": "TraditionalInvarient",
                          "SpectralJet": "Spectral",
                          "SpectralMeanJet": "SpectralMean",
                          "SpectralMAfterJet": "SpectralMAfter",
@@ -207,6 +208,8 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
     n_threads = min(multiprocessing.cpu_count()-leave_one_free, 20)
     if n_threads < 1:
         n_threads = 1
+    wait_time = 3*60  # in seconds
+    # note that the longest wait will be n_cores time this time
     print("Running on {} threads".format(n_threads))
     jet_name = jet_params['jet_name']
     all_paths = make_n_working_fragments(eventWise_path, n_threads, jet_name)
@@ -219,8 +222,33 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
         job.start()
         job_list.append(job)
     for job in job_list:
-        job.join()
+        job.join(wait_time)
+    # check they all stopped
+    stalled = [job.is_alive() for job in job_list]
+    if np.any(stalled):
+        # stop everything
+        for job in job_list:
+            job.terminate()
+            job.join()
+        remove_partial(all_paths, jet_params['jet_name'])
+        print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
+        with open("problem_jet_params.log", 'a') as log_file:
+            log_file.write(str(jet_params) + '\n')
+        return False
     print("All processes ended")
+    return True
+
+
+def remove_partial(all_paths, jet_name):
+    for ew_name in all_paths:
+        ew = Components.EventWise.from_file(ew_name)
+        rewrite = False
+        for name in ew.columns:
+            if name.startswith(jet_name):
+                rewrite = True
+                ew.remove(name)
+        if rewrite:
+            ew.write()
 
 
 def recombine_eventWise(eventWise_path):
@@ -246,13 +274,13 @@ def loops(eventWise_path):
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
     del eventWise
-    DeltaR = [0.02, 0.08, 0.1, 0.3]
+    DeltaR = np.linspace(2., 4., 15)
     exponents = [-1, 0, 1]
     for exponent in exponents:
         for dR in DeltaR:
             print(f"Exponent {exponent}")
             print(f"DeltaR {dR}")
-            jet_class = "HomeJet"
+            jet_class = "HomeInvarientJet"
             jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
             jet_id = records.append(jet_class, jet_params)
             jet_params["jet_name"] = jet_class + str(jet_id)
@@ -316,14 +344,15 @@ def iterate(eventWise_path, jet_class):
 
 def random_parameters(jet_class=None):
     if jet_class is None:
-        jet_classes = ['SpectralMeanJet', 'SpectralMAfterJet', 'SpectralFullJet']
+        jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'SpectralMAfterJet', 'HomeInvarientJet']
         jet_class = np.random.choice(jet_classes)
     if jet_class in ['SpectralMeanJet', 'SpectralMAfterJet', 'SpectralFullJet']:
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
         params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
         params['NumEigenvectors'] = np.random.randint(1, 10)
-        affinites = ['exponent', 'exponent2', 'linear', 'inverse']
+        #affinites = ['exponent', 'exponent2', 'linear', 'inverse']
+        affinites = ['exponent', 'exponent2', 'inverse']
         params['AffinityType'] = np.random.choice(affinites)
         laplaciens = ['unnormalised']
         if params['AffinityType'] in ['linear']:
@@ -338,7 +367,7 @@ def random_parameters(jet_class=None):
             params['AffinityCutoff'] = (cutofftype, np.random.randint(1, 6))
         elif cutofftype == 'distance':
             params['AffinityCutoff'] = (cutofftype, np.random.uniform(0., 10.))
-    elif jet_class == 'HomeJet':
+    elif jet_class in ['HomeJet', 'HomeInvarientJet']:
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
         params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
@@ -370,6 +399,7 @@ def monte_carlo(eventWise_path, jet_class=None):
 if __name__ == '__main__':
     names = FormJets.cluster_classes
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
+    #loops(eventWise_path)
     #jet_class = InputTools.list_complete("Jet class? ", list(names.keys())).strip()
     #iterate(eventWise_path, jet_class)
     monte_carlo(eventWise_path)

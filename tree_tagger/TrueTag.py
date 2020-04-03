@@ -148,7 +148,7 @@ def add_tag_particles(eventWise, silent=False):
     eventWise.append(**content)
 
 
-def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True):
+def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True, overwrite=True):
     """
     
 
@@ -167,22 +167,29 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     -------
 
     """
-    if jet_pt_cut is None:
-        jet_pt_cut = Constants.min_jetpt
     if min_tracks is None:
         min_tracks = Constants.min_ntracks
     if max_angle is None:
         max_angle = Constants.max_tagangle
     eventWise.selected_index = None
-    name = jet_name+"_Tags"
-    namePID = jet_name+"_TagPIDs"
+    if jet_pt_cut is not None:
+        name = jet_name+f"_{int(jet_pt_cut)}Tags"
+        namePID = jet_name+f"_{int(jet_pt_cut)}TagPIDs"
+    else:
+        name = jet_name + "_Tags"
+        namePID = jet_name+f"_TagPIDs"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
     if "TagIndex" not in eventWise.columns:
         add_tag_particles(eventWise, silent=silent)
-    jet_tags = list(getattr(eventWise, name, []))
-    jet_tagpids = list(getattr(eventWise, namePID, []))
+    if overwrite:
+        jet_tags = []
+        jet_tagpids = []
+    else:
+        jet_tags = list(getattr(eventWise, name, []))
+        jet_tagpids = list(getattr(eventWise, namePID, []))
     start_point = len(jet_tags)
-    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
+    name_tagangle = jet_name + f"_TagAngle"
+    hyperparameter_content = {name_tagangle: max_angle}
     if start_point >= n_events:
         print("Finished")
         content = {}
@@ -217,7 +224,10 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
         else:
             # note this actually counts num pesudojets, but for more than 2 that is sufficient
             num_tracks = Components.apply_array_func(len, getattr(eventWise, jet_name+"_PT")).flatten()
-            valid_jets = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks-0.1))[0]
+            if jet_pt_cut is None:
+                valid_jets = np.where(num_tracks > min_tracks-0.1)[0]
+            else:
+                valid_jets = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks-0.1))[0]
         jets_tags = [[] for _ in jet_pt]
         if tags and len(valid_jets) > 0:
             # there may not be any of the particles we wish to tag in the event
@@ -235,7 +245,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     content = {}
     content[name] = awkward.fromiter(jet_tags)
     content[namePID] = awkward.fromiter(jet_tagpids)
-    hyperparameter_content = {jet_name + "_TagAngle": max_angle}
+    hyperparameter_content = {name_tagangle: max_angle}
     if append:
         eventWise.append(**content)
         eventWise.append_hyperparameters(**hyperparameter_content)
