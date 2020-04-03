@@ -1,7 +1,7 @@
 # TODO need to rotat the jets
 """ Preprocessig module takes prepared datafiles and performed generic processing tasks requird beofre data can be run as a net """
 import numpy as np
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from sklearn import preprocessing
 import os
 import awkward
@@ -44,7 +44,7 @@ def phi_rotation(eventWise):
         Parameters
         ----------
         values :
-            
+            param no_dez:
         no_dez :
             
 
@@ -68,7 +68,7 @@ def phi_rotation(eventWise):
             Parameters
             ----------
             xs :
-                
+                param ys:
             ys :
                 
 
@@ -84,7 +84,7 @@ def phi_rotation(eventWise):
             Parameters
             ----------
             xs :
-                
+                param ys:
             ys :
                 
 
@@ -137,10 +137,10 @@ def normalize_jets(eventWise, jet_name, new_name):
     Parameters
     ----------
     eventWise :
+        param jet_name:
+    new_name :
         
     jet_name :
-        
-    new_name :
         
 
     Returns
@@ -189,10 +189,10 @@ def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
     Parameters
     ----------
     eventWise :
-        
-    jet_name :
-        
+        param jet_name:
     new_name :
+        param min_tracks: (Default value = 3)
+    jet_name :
         
     min_tracks :
          (Default value = 3)
@@ -226,7 +226,7 @@ def make_targets(eventWise, jet_name):
     Parameters
     ----------
     eventWise :
-        
+        param jet_name:
     jet_name :
         
 
@@ -288,7 +288,7 @@ def jet_wide_observables(eventWise, jet_name):
     Parameters
     ----------
     eventWise :
-        
+        param jet_name:
     jet_name :
         
 

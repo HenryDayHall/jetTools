@@ -11,7 +11,7 @@
 #ffmpeg -i homeeventpic/frame%03d.png -c:v libx264 homeeventpic/jet.mp4
 import numpy as np
 from matplotlib import pyplot as plt
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from skhep import math as hepmath
 import os
 import csv
@@ -171,10 +171,10 @@ def tree_motion(start, root, steps_between):
     Parameters
     ----------
     start :
+        param root:
+    steps_between :
         
     root :
-        
-    steps_between :
         
 
     Returns
@@ -260,14 +260,14 @@ def plot_motions(motions, sizes, colours, dir_name, step_interval):
     Parameters
     ----------
     motions :
+        param sizes:
+    colours :
+        param dir_name:
+    step_interval :
         
     sizes :
         
-    colours :
-        
     dir_name :
-        
-    step_interval :
         
 
     Returns
@@ -338,7 +338,7 @@ def whole_event(nodisplay=False):
     Parameters
     ----------
     nodisplay :
-         (Default value = False)
+        Default value = False)
 
     Returns
     -------
@@ -422,7 +422,7 @@ def whole_event_behavior(nodisplay=False):
     Parameters
     ----------
     nodisplay :
-         (Default value = False)
+        Default value = False)
 
     Returns
     -------
@@ -477,14 +477,14 @@ def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump
     Parameters
     ----------
     fast_behavior :
-        
+        param fast_jump:
+    home_behavior :
+        param home_jump:
+    exponent_multiplyer :
+        param deltaR:
     fast_jump :
         
-    home_behavior :
-        
     home_jump :
-        
-    exponent_multiplyer :
         
     deltaR :
         

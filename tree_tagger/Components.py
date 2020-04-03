@@ -7,7 +7,8 @@ import itertools
 import contextlib
 import os
 import csv
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
+import debug
 import numpy as np
 from tree_tagger import Constants, PDGNames, InputTools
 
@@ -70,11 +71,11 @@ def apply_array_func(func, *nested, depth=None):
     Parameters
     ----------
     func :
-        
+        param *nested:
+    depth :
+        Default value = None)
     *nested :
         
-    depth :
-         (Default value = None)
 
     Returns
     -------
@@ -94,7 +95,7 @@ def _apply_array_func(func, depth, *nested):
     Parameters
     ----------
     func :
-        
+        param depth:
     depth :
         
     *nested :
@@ -143,13 +144,12 @@ def safe_convert(cls, string):
     ----------
     cls : class
         the class to convert to
-    string : str
+    string : string: str
         the string that needs converting
 
     Returns
     -------
 
-    
     """
     if string == "None": return None
     elif cls == bool: 
@@ -227,7 +227,7 @@ class EventWise:
         Parameters
         ----------
         name :
-            
+            param target:
         target :
             
 
@@ -275,18 +275,16 @@ class EventWise:
         Parameters
         ----------
         attr_name :
-            
+            param match_from:
+        match_to :
+            Default value = None)
+        event_n :
+            Default value = None)
         match_from :
             
-        match_to :
-             (Default value = None)
-        event_n :
-             (Default value = None)
 
         Returns
         -------
-        type
-            one of match_from or match_to may be projected to make the required dimentions
 
         """
         if event_n is None:
@@ -472,7 +470,7 @@ class EventWise:
         -------
 
         """
-        to_remove = [c for c in self.columns if c.startswith(col_prefix)]
+        to_remove = [c for c in self.columns + self.hyperparameter_columns if c.startswith(col_prefix)]
         for c in to_remove:
             self.remove(c)
 
@@ -483,7 +481,7 @@ class EventWise:
         Parameters
         ----------
         old_name :
-            
+            param new_name:
         new_name :
             
 
@@ -508,6 +506,20 @@ class EventWise:
             del self._column_contents[old_name]
 
     def rename_prefix(self, old_prefix, new_prefix):
+        """
+        
+
+        Parameters
+        ----------
+        old_prefix :
+            param new_prefix:
+        new_prefix :
+            
+
+        Returns
+        -------
+
+        """
         for name in self.columns+self.hyperparameter_columns:
             if name.startswith(old_prefix):
                 new_name = name.replace(old_prefix, new_prefix, 1)
@@ -520,7 +532,7 @@ class EventWise:
         Parameters
         ----------
         per_event_component :
-            
+            param **kwargs:
         **kwargs :
             
 
@@ -550,7 +562,7 @@ class EventWise:
         Parameters
         ----------
         per_event_component :
-            
+            param unfinished_component:
         unfinished_component :
             
         **kwargs :
@@ -590,13 +602,13 @@ class EventWise:
         Parameters
         ----------
         lower_bounds :
-            
+            param upper_bounds:
+        per_event_component :
+            Default value = "Energy")
+        part_name :
+            Default value = "part")
         upper_bounds :
             
-        per_event_component :
-             (Default value = "Energy")
-        part_name :
-             (Default value = "part")
         **kwargs :
             
 
@@ -682,11 +694,11 @@ class EventWise:
         Parameters
         ----------
         dir_name :
-            
+            param check_for_dups: (Default value = False)
+        del_framgents :
+            Default value = True)
         check_for_dups :
              (Default value = False)
-        del_framgents :
-             (Default value = True)
 
         Returns
         -------
@@ -717,15 +729,15 @@ class EventWise:
         Parameters
         ----------
         dir_name :
-            
+            param save_base:
+        fragments :
+            Default value = None)
+        check_for_dups :
+            Default value = False)
+        del_fragments :
+            Default value = False)
         save_base :
             
-        fragments :
-             (Default value = None)
-        check_for_dups :
-             (Default value = False)
-        del_fragments :
-             (Default value = False)
 
         Returns
         -------
@@ -794,7 +806,7 @@ def event_matcher(eventWise1, eventWise2):
     Parameters
     ----------
     eventWise1 :
-        
+        param eventWise2:
     eventWise2 :
         
 
@@ -864,7 +876,7 @@ def recursive_distance(awkward1, awkward2):
     Parameters
     ----------
     awkward1 :
-        
+        param awkward2:
     awkward2 :
         
 
@@ -893,7 +905,7 @@ def add_rapidity(eventWise, base_name=''):
     Parameters
     ----------
     eventWise :
-        
+        param base_name: (Default value = '')
     base_name :
          (Default value = '')
 
@@ -932,7 +944,7 @@ def add_thetas(eventWise, basename=None):
     Parameters
     ----------
     eventWise :
-        
+        param basename: (Default value = None)
     basename :
          (Default value = None)
 
@@ -994,7 +1006,7 @@ def add_pseudorapidity(eventWise, basename=None):
     Parameters
     ----------
     eventWise :
-        
+        param basename: (Default value = None)
     basename :
          (Default value = None)
 
@@ -1028,7 +1040,7 @@ def ptpz_to_theta(pt_list, pz_list):
     Parameters
     ----------
     pt_list :
-        
+        param pz_list:
     pz_list :
         
 
@@ -1046,7 +1058,7 @@ def pxpy_to_phipt(px_list, py_list):
     Parameters
     ----------
     px_list :
-        
+        param py_list:
     py_list :
         
 
@@ -1089,10 +1101,10 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
     Parameters
     ----------
     pt_list :
+        param pz_list:
+    e_list :
         
     pz_list :
-        
-    e_list :
         
 
     Returns
@@ -1127,7 +1139,7 @@ def add_PT(eventWise, basename=None):
     Parameters
     ----------
     eventWise :
-        
+        param basename: (Default value = None)
     basename :
          (Default value = None)
 
@@ -1161,7 +1173,7 @@ def add_phi(eventWise, basename=None):
     Parameters
     ----------
     eventWise :
-        
+        param basename: (Default value = None)
     basename :
          (Default value = None)
 
@@ -1188,6 +1200,22 @@ def add_phi(eventWise, basename=None):
     eventWise.append(**contents)
 
 
+def last_instance(eventWise, particle_idx):
+    assert eventWise.selected_index is not None
+    mcpid = eventWise.MCPID[particle_idx]
+    has_next = True
+    while has_next:
+        children = eventWise.Children[particle_idx]
+        has_next = False
+        for child in children:
+            if eventWise.MCPID[child] == mcpid:
+                has_next = True
+                particle_idx = child
+                break
+    # if we get here there was no child with the mcipd
+    return particle_idx
+
+    
 class RootReadout(EventWise):
     """Reads arbitary components from a root file created by Delphes"""
     def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None, all_prefixed=False):
@@ -1239,7 +1267,7 @@ class RootReadout(EventWise):
         Parameters
         ----------
         component_name :
-            
+            param key_prefix: (Default value = '')
         key_prefix :
              (Default value = '')
 
@@ -1368,11 +1396,11 @@ class RootReadout(EventWise):
         Parameters
         ----------
         reference_col :
-            
+            param target_shape_col:
+        depth :
+            Default value = 1)
         target_shape_col :
             
-        depth :
-             (Default value = 1)
 
         Returns
         -------
@@ -1469,7 +1497,7 @@ class RootReadout(EventWise):
         Parameters
         ----------
         path :
-            
+            param component_name:
         component_name :
             
 
@@ -1487,7 +1515,7 @@ def angular_distance(phi1, phi2):
     Parameters
     ----------
     phi1 :
-        
+        param phi2:
     phi2 :
         
 
@@ -1498,3 +1526,61 @@ def angular_distance(phi1, phi2):
     angular_diffrence = np.abs(phi1 - phi2) % (2*np.pi)
     return np.minimum(angular_diffrence, 2*np.pi - angular_diffrence)
 
+
+def fix_nonexistent_columns(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
+    problems = []
+    for name in eventWise.columns:
+        if name not in eventWise._column_contents:
+            problems.append(name)
+    print(f"removing {problems} from columns")
+    for name in problems:
+        eventWise.columns.remove(name)
+    h_problems = []
+    for name in eventWise.hyperparameter_columns:
+        if name not in eventWise._column_contents:
+            h_problems.append(name)
+    print(f"removing {h_problems} from hyperparameter columns")
+    for name in h_problems:
+        eventWise.hyperparameter_columns.remove(name)
+    return h_problems, eventWise
+
+
+def find_eventWise_in_dir(dir_name):
+    """
+    
+
+    Parameters
+    ----------
+    dir_name :
+        
+
+    Returns
+    -------
+
+    """
+    eventWises = []
+    content = os.listdir(dir_name)
+    for name in content:
+        if name.endswith('awkd'):
+            path = os.path.join(dir_name, name)
+            try:
+                eventWise = EventWise.from_file(path)
+                eventWises.append(eventWise)
+            except Exception:
+                print(f"{name} is not an eventWise")
+    return eventWises
+
+
+#EventWise.combine("./megaIgnore/basis_2k_fragment", "basis_2k")

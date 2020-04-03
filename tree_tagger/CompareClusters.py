@@ -18,7 +18,22 @@ import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting, bokeh.transform
 import socket
 
 def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
-    """ Find a list of clusters in the eventWise files in a directory """
+    """
+    Find a list of clusters in the eventWise files in a directory
+
+    Parameters
+    ----------
+    records : Records
+        the records object 
+    dir_name :
+        Default value = "megaIgnore")
+    jet_ids :
+        
+
+    Returns
+    -------
+
+    """
     array = records.typed_array()
     # get a list of eventWise files
     file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name)
@@ -46,7 +61,6 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
             if records.check_eventWise_match(ew, jid, matching_name):
                 found.append((ew, matching_name))
             else:
-                st()
                 check =  records.check_eventWise_match(ew, jid, matching_name)
                 jet_params = FormJets.get_jet_params(ew, matching_name, True)
                 row = array[array[:, 0] == jid][0]
@@ -65,6 +79,22 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
 
 
 def seek_best(records, number_required=3, dir_name="megaIgnore"):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        param number_required:  (Default value = 3)
+    dir_name :
+        Default value = "megaIgnore")
+    number_required :
+         (Default value = 3)
+
+    Returns
+    -------
+
+    """
     array = records.typed_array()
     jet_classes = set(array[:, records.indices["jet_class"]])
     best_ids = []
@@ -75,7 +105,24 @@ def seek_best(records, number_required=3, dir_name="megaIgnore"):
 
 
 def seek_shapeable(dir_name="megaIgnore", file_names=None, jet_pt_cut='default', tag_before_pt_cut=True):
-    """ Find a list of clusters in the eventWise files in a directory """
+    """
+    Find a list of clusters in the eventWise files in a directory
+
+    Parameters
+    ----------
+    dir_name :
+        Default value = "megaIgnore")
+    file_names :
+        Default value = None)
+    jet_pt_cut :
+        Default value = 'default')
+    tag_before_pt_cut :
+        Default value = True)
+
+    Returns
+    -------
+
+    """
     if jet_pt_cut == 'default':
         jet_pt_cut = Constants.min_jetpt
     if jet_pt_cut is None or tag_before_pt_cut:
@@ -112,7 +159,18 @@ def seek_shapeable(dir_name="megaIgnore", file_names=None, jet_pt_cut='default',
 
 
 def reindex_jets(dir_name="megaIgnore"):
-    """ go through the specified directory and renumber any jets that have the same ID """
+    """
+    go through the specified directory and renumber any jets that have the same ID
+
+    Parameters
+    ----------
+    dir_name :
+        Default value = "megaIgnore")
+
+    Returns
+    -------
+
+    """
     taken_ids = []
     duplicates = dict()
     # get a list of eventWise files
@@ -147,6 +205,18 @@ def reindex_jets(dir_name="megaIgnore"):
             
 
 def id_generator(used_ids):
+    """
+    
+
+    Parameters
+    ----------
+    used_ids :
+        
+
+    Returns
+    -------
+
+    """
     current_id = 1
     while True:
         current_id += 1
@@ -156,6 +226,18 @@ def id_generator(used_ids):
 
 
 def get_jet_names(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     jet_names = {name.split('_', 1)[0]
                  for name in eventWise.columns
                  if "Jet" in name
@@ -164,7 +246,22 @@ def get_jet_names(eventWise):
 
 
 def parameter_step(records, jet_class, ignore_parameteres=None):
-    """Select a varient of the best jet in class that has not yet been tried"""
+    """
+    Select a varient of the best jet in class that has not yet been tried
+
+    Parameters
+    ----------
+    records :
+        param jet_class:
+    ignore_parameteres :
+        Default value = None)
+    jet_class :
+        
+
+    Returns
+    -------
+
+    """
     array = records.typed_array()
     # get the jets parameter list 
     names = FormJets.cluster_classes
@@ -221,6 +318,20 @@ def parameter_step(records, jet_class, ignore_parameteres=None):
 
 
 def parameters_valid(parameters, jet_class):
+    """
+    
+
+    Parameters
+    ----------
+    parameters :
+        param jet_class:
+    jet_class :
+        
+
+    Returns
+    -------
+
+    """
     if parameters['AffinityType']  == 'linear' and parameters['Laplacien'] == 'symmetric':
         return False
     return True
@@ -233,10 +344,10 @@ def rand_score(eventWise, jet_name1, jet_name2):
     Parameters
     ----------
     eventWise :
+        param jet_name1:
+    jet_name2 :
         
     jet_name1 :
-        
-    jet_name2 :
         
 
     Returns
@@ -272,10 +383,10 @@ def visulise_scores(scores, jet_name1, jet_name2, score_name="Rand score"):
     Parameters
     ----------
     scores :
-        
-    jet_name1 :
-        
+        param jet_name1:
     jet_name2 :
+        param score_name: (Default value = "Rand score")
+    jet_name1 :
         
     score_name :
          (Default value = "Rand score")
@@ -300,10 +411,10 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
     Parameters
     ----------
     eventWise :
-        
-    jet_name1 :
-        
+        param jet_name1:
     jet_name2 :
+        param var_name: (Default value = "Rapidity")
+    jet_name1 :
         
     var_name :
          (Default value = "Rapidity")
@@ -351,11 +462,13 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     Parameters
     ----------
     eventWise :
+        param jet_name:
+    event_n :
+        Default value = None)
+    tags_in_jets :
         
     jet_name :
         
-    event_n :
-         (Default value = None)
 
     Returns
     -------
@@ -411,11 +524,19 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
     Parameters
     ----------
     eventWise :
-        
+        param jet_name:
+    silent :
+        Default value = False)
+    jet_pt_cut :
+        Default value = 'default')
+    min_tracks :
+        Default value = None)
+    max_angle :
+        Default value = None)
+    tag_before_pt_cut :
+        Default value = True)
     jet_name :
         
-    silent :
-         (Default value = False)
 
     Returns
     -------
@@ -481,7 +602,7 @@ def score_component_rank(tag_coords, jet_coords):
     Parameters
     ----------
     tag_coords :
-        
+        param jet_coords:
     jet_coords :
         
 
@@ -499,6 +620,22 @@ def score_component_rank(tag_coords, jet_coords):
 
 
 def invarientMass2_distance(tag_coords, jet_coords, rescale_poly=None):
+    """
+    
+
+    Parameters
+    ----------
+    tag_coords :
+        param jet_coords:
+    rescale_poly :
+        Default value = None)
+    jet_coords :
+        
+
+    Returns
+    -------
+
+    """
     epxpypz_idx = [Constants.coordinate_order.index(name) for name in ["Energy", "Px", "Py", "Pz"]]
     if rescale_poly is not None:
         rescale_factors = RescaleJets.polyval2d(jet_coords[:, Constants.coordinate_order.index("PT")],
@@ -517,7 +654,7 @@ def get_catigories(records, content):
     Parameters
     ----------
     records :
-        
+        param content:
     content :
         
 
@@ -552,10 +689,10 @@ def print_remaining(content, records, columns):
     Parameters
     ----------
     content :
+        param records:
+    columns :
         
     records :
-        
-    columns :
         
 
     Returns
@@ -576,7 +713,7 @@ def soft_generic_equality(a, b):
     Parameters
     ----------
     a :
-        
+        param b:
     b :
         
 
@@ -602,6 +739,26 @@ def soft_generic_equality(a, b):
 
 def select_improvements(records, min_jets=0.5,
         metrics=["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        param min_jets:  (Default value = 0.5)
+    metrics :
+        Default value = ["score(PT)")
+    min_jets :
+         (Default value = 0.5)
+    "score(Rapidity)" :
+        
+    "symmetric_diff(Phi)"] :
+        
+
+    Returns
+    -------
+
+    """
     metric_cols = [records.indices[metric] for metric in metrics]
     invert_factor = np.fromiter((1 - 2*("symmetric_diff" in name) for name in metrics),
                                 dtype=float)
@@ -622,7 +779,23 @@ def select_improvements(records, min_jets=0.5,
     return array[improved_selection]
 
 
-def parameter_comparison(records, c_name="mean_percentfound", cuts=True, jet_classes=None):
+def parameter_comparison(records, c_name="mean_percentfound", cuts=True):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        param c_name:  (Default value = "mean_percentfound")
+    cuts :
+        ( Default value = True)
+    c_name :
+         (Default value = "mean_percentfound")
+
+    Returns
+    -------
+
+    """
     array = records.typed_array()[records.scored]
     col_names = ["s_distance", "score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
     # filter anything that scored too close to zero in pt or rapidity
@@ -634,36 +807,32 @@ def parameter_comparison(records, c_name="mean_percentfound", cuts=True, jet_cla
     # now we have a scored valid selection
     y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names
               if name !='TagAngle'}
-    #col_names = ["cumulative"] + col_names
-    #y_cols["cumulative"] = cumulative_score(records, typed_array=array)
-    c_col = array[:, records.indices[c_name]].astype(float)
     sufficient_jets = array[:, records.indices["mean_njets"]].astype(float) > 0.5
-    #sufficient_jets = array[:, 1] == 'SpectralAfterJet'
     if cuts:
         good_angle = y_cols["symmetric_diff(Phi)"] < 1.
         good_distance = y_cols["s_distance"] < 100
         mask = np.logical_and(good_angle, sufficient_jets)
         mask = np.logical_and(good_distance, mask)
-        if jet_classes is not None:
-            class_col = array[:, records.indices['jet_class']]
-            class_mask = [name in jet_classes for name in class_col]
-            mask = np.logical_and(mask, class_mask)
         array = array[mask]
-        c_col = c_col[mask]
         y_cols = {name: y_cols[name][mask] for name in y_cols}
         sufficient_jets = sufficient_jets[mask]
+    c_col = array[:, records.indices[c_name]].astype(float)
     # make the data dict
     data_dict = {}
     data_name = {}
+    name_data = {}
     max_len = 15
     for name, i in records.indices.items():
         if 'uncert' in name or 'std' in name:
             continue
         data_dict[str(i)] = np.array([str(x)[:max_len] for x in array[:, i]])
         data_name[str(i)] = name # somr of the names have probem characters in them
+        name_data[name] = str(i) # need to be able to invert this
     hover = bokeh.models.HoverTool(tooltips=[(data_name[i], "@" + i) for i in data_dict])
     data_dict['colour'] = c_col
     data_dict['alpha'] = [0.6 if suf else 0.2 for suf in sufficient_jets]
+    # now we are done altering the data dict, make a copy
+    orignal_data_dict = {name: np.copy(data_dict[name]) for name in data_dict}
     # fix the colours
     mapper = bokeh.models.LinearColorMapper(palette=bokeh.palettes.Plasma10,
                                             low=min(c_col), high=max(c_col))
@@ -675,76 +844,51 @@ def parameter_comparison(records, c_name="mean_percentfound", cuts=True, jet_cla
     markers = bokeh.transform.factor_mark(marker_key, marker_shapes[:len(marker_matches)],
                                           marker_matches)
     plots = []
+    sources = {}
+    original_positions = {}
     ignore_cols = list(records.evaluation_columns) + ["jet_id", "match_error"]
-    for name, col in records.indices.items():
-        if name in ignore_cols:
-            continue
-        col_content = array[:, col]
-        catigories = set(array[:, col])
+    parameter_order = [name for name in sorted(records.indices.keys()) if name not in ignore_cols if len(set(array[:, records.indices[name]])) > 1]
+    mask_dict = {}
+    for name in parameter_order:
+        # the data_dict contains strings, we need real values
+        parameter_values = array[:, records.indices[name]]
+        catigories = set(parameter_values)
+        has_none = None in catigories
         # None prevents propper sorting
         catigories.discard(None)
-        if len(catigories) == 0:
-            continue
         catigories = sorted(catigories)
-        catigories += [None]
-        if hasattr(catigories[0], '__iter__'):
-            # it is either a string or a list,
-            # the axis spacing will be maufactured
-            scale = list(range(len(catigories)))
-            positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
-                                    dtype=float)
-            str_catigories = []
-            for cat in catigories:
-                if isinstance(cat, tuple):
-                    s = ', '.join((cat[0], str(cat[1])[:4]))
-                    str_catigories.append(s)
-                else:
-                    str_catigories.append(str(cat))
-            label_dict = dict(zip(scale, str_catigories))
+        if has_none:
+            catigories += [None]
+        catigorical = hasattr(catigories[0], '__iter__')
+        if catigorical:
+            scale, positions, label_dict, label_catigories = make_ordinal_scale(catigories, parameter_values)
+            print(f"label_dict = {label_dict}, scale={scale}, set(positions) = {set(positions)}")
+            labels = [label_dict[key] for key in scale]  # to fix the order
+            boxes = bokeh.models.widgets.CheckboxGroup(labels=labels, active=list(range(len(labels))))
         else:
-            scale = np.array(catigories)
-            real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
-                               dtype=float)
-            if len(real) > 1:
-                ave_gap = np.mean(real[1:] - real[:-1])
-            else:
-                ave_gap = 1.
-            scale[scale == -np.inf] = np.min(real) - ave_gap
-            scale[scale == np.inf] = np.max(real) + ave_gap
-            scale[scale == None] = np.min(real) - 2*ave_gap
-            scale = scale.astype(float)
-            positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
-                                    dtype=float)
-            # now check if the scale is too tight and if so drop a few values
-            if len(scale) > 2:
-                length = np.max(scale) - np.min(scale)
-                min_gap = length/30
-                new_scale = [scale[0]]
-                new_catigories = [catigories[0]]
-                last_point = scale[0]
-                for s, c in zip(scale[1:], catigories[1:]):
-                    if s - new_scale[-1] > min_gap:
-                        new_scale.append(s)
-                        new_catigories.append(c)
-                scale = np.array(new_scale)
-                catigories = new_catigories
-            # trim the labels
-            label_dict = {tick: str(cat)[:5] for cat, tick in zip(catigories, scale)}
+            scale, positions, label_dict = make_float_scale(catigories, parameter_values)
+            bottom, top = np.nanmin(catigories[:-1]), np.nanmax(catigories[:-1]) 
+            has_slider = bottom != top
+            if has_slider:
+                slider = bokeh.models.RangeSlider(title=name, start=bottom, end=top,
+                                                 value=(bottom, top), step=(top-bottom)/20,
+                                                 orientation='vertical')
+        original_positions[name] = np.copy(positions)
         plots.append([])
+        sources[name] = {}
         for col_name, y_col in y_cols.items():
             # first the intresting jets
             data_dict['x'] = positions
             data_dict['y'] = y_col
-            if not np.all(np.isfinite(positions)) or not np.all(np.isfinite(y_col)):
-                st()
             source = bokeh.models.ColumnDataSource(data=data_dict)
-            p = bokeh.plotting.figure(tools=[hover], title=name)
+            sources[name][col_name] = source
+            p = bokeh.plotting.figure(tools=[hover, "crosshair", "pan", "reset", "save", "wheel_zoom"], title=name)
             # p.xaxis.axis_label_text_font_size = "30pt" not working
             # p.xaxis.ticker = positions
             p.xaxis.ticker = scale
             p.xaxis.major_label_overrides = label_dict
             p.xaxis.major_label_orientation = "vertical"
-            p.yaxis.axis_label = col_name
+            p.yaxis.axis_label = col_name 
             if "symmetric_diff" in col_name or "distance" in col_name:
                 p.y_range.flipped = True
             y_lims = chose_ylims(y_col, invert=p.y_range.flipped)
@@ -760,12 +904,120 @@ def parameter_comparison(records, c_name="mean_percentfound", cuts=True, jet_cla
         colour_bar = bokeh.models.ColorBar(color_mapper=mapper, location=(0,0),
                                            title=c_name)
         p.add_layout(colour_bar, 'right')
+        # now make the selector features
+        if catigorical:
+            def update(attrname, old, new,
+                       name=name, labels=labels, label_catigories=label_catigories):
+                keep_catigories = [label_catigories[label] for label in np.array(labels)[new]]
+                original_values = array[:, records.indices[name]]
+                new_mask = np.fromiter((value in keep_catigories for value in original_values),
+                                       dtype=bool)
+                mask_dict[name] = new_mask
+                mask = np.vstack(tuple(mask_dict.values()))
+                mask = np.all(np.vstack(tuple(mask_dict.values())), axis=0)
+                new_dict = {name: orignal_data_dict[name][mask] for name in orignal_data_dict}
+                for change_name in parameter_order:
+                    for col_name, y_col in y_cols.items():
+                        new_dict['x'] = original_positions[change_name][mask]
+                        new_dict['y'] = y_col[mask]
+                        sources[change_name][col_name].data = new_dict
+            boxes.on_change('active', update)
+            plots[-1].append(boxes)
+        elif has_slider:
+            def update(attrname, old, new, name=name, top=top, bottom=bottom):
+                original_values = array[:, records.indices[name]]
+                epsilon = (top-bottom)/50
+                new_mask = np.full_like(original_values, True, dtype=bool)
+                if new[0] + epsilon > bottom:
+                    new_mask = np.logical_and(new_mask, original_values>new[0])
+                if new[1] - epsilon < top:
+                    new_mask = np.logical_and(new_mask, original_values<new[1])
+                mask_dict[name] = new_mask
+                mask = np.vstack(tuple(mask_dict.values()))
+                mask = np.all(np.vstack(tuple(mask_dict.values())), axis=0)
+                new_dict = {name: orignal_data_dict[name][mask] for name in orignal_data_dict}
+                for change_name in parameter_order:
+                    for col_name, y_col in y_cols.items():
+                        new_dict['x'] = original_positions[change_name][mask]
+                        new_dict['y'] = y_col[mask]
+                        sources[change_name][col_name].data = new_dict
+            slider.on_change('value', update)
+            plots[-1].append(slider)
     all_p = bokeh.layouts.gridplot(plots, plot_width=400, plot_height=400)
-    bokeh.io.show(all_p)
     return all_p
 
 
+def filter_column_dict(column_dict, filters):
+    mask = np.all(np.vstack(filters), axis=1)
+    new_dict = {name: column_dict[name][mask] for name in column_dict}
+    return new_dict
+
+def make_float_scale(catigories, col_content):
+    scale = np.array(catigories)
+    # the last one is skipped as it is the None value
+    real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
+                       dtype=float)
+    if len(real) > 1:
+        ave_gap = np.mean(real[1:] - real[:-1])
+    else:
+        ave_gap = 1.
+    scale[scale == -np.inf] = np.min(real) - ave_gap
+    scale[scale == np.inf] = np.max(real) + ave_gap
+    scale[scale == None] = np.min(real) - 2*ave_gap
+    scale = scale.astype(float)
+    positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
+                            dtype=float)
+    # now check if the scale is too tight and if so drop a few values
+    if len(scale) > 2:
+        length = np.max(scale) - np.min(scale)
+        min_gap = length/30
+        new_scale = [scale[0]]
+        new_catigories = [catigories[0]]
+        last_point = scale[0]
+        for s, c in zip(scale[1:], catigories[1:]):
+            if s - new_scale[-1] > min_gap:
+                new_scale.append(s)
+                new_catigories.append(c)
+        scale = np.array(new_scale)
+        catigories = new_catigories
+    # trim the labels
+    label_dict = {tick: str(cat)[:5] for cat, tick in zip(catigories, scale)}
+    return scale, positions, label_dict
+
+
+def make_ordinal_scale(catigories, col_content):
+    # it is either a string or a list,
+    # the axis spacing will be maufactured
+    scale = list(range(len(catigories)))
+    positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
+                            dtype=float)
+    label_catigories = {}
+    for cat in catigories:
+        if isinstance(cat, tuple):
+            s = ', '.join((cat[0], str(cat[1])[:4]))
+            label_catigories[s] = cat
+        else:
+            label_catigories[str(cat)] = cat
+    sorted_labels = sorted(label_catigories.keys())
+    label_dict = dict(zip(scale, sorted_labels))
+    return scale, positions, label_dict, label_catigories
+
+
 def chose_ylims(y_data, invert=False):
+    """
+    
+
+    Parameters
+    ----------
+    y_data :
+        param invert:  (Default value = False)
+    invert :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     std = np.std(y_data)
     if invert:
         top = np.min(y_data) - 0.3*std
@@ -777,6 +1029,20 @@ def chose_ylims(y_data, invert=False):
 
 
 def cumulative_score(records, typed_array=None):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        param typed_array:  (Default value = None)
+    typed_array :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if typed_array is None:
         typed_array = records.typed_array()
     col_names = ["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
@@ -788,7 +1054,20 @@ def cumulative_score(records, typed_array=None):
 
 
 def group_discreet(records, only_scored=True):
-    """group the records by their discreet parameters """
+    """
+    group the records by their discreet parameters
+
+    Parameters
+    ----------
+    records :
+        param only_scored:  (Default value = True)
+    only_scored :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     array = records.typed_array()
     if only_scored:
         array = array[records.scored]
@@ -809,7 +1088,22 @@ def group_discreet(records, only_scored=True):
 
 
 def thin_clusters(records, min_mean_jets=0.5, proximity=0.10):
-    """ Identify some clusters to remove in order to save space """
+    """
+    Identify some clusters to remove in order to save space
+
+    Parameters
+    ----------
+    records :
+        param min_mean_jets:  (Default value = 0.5)
+    proximity :
+        Default value = 0.10)
+    min_mean_jets :
+         (Default value = 0.5)
+
+    Returns
+    -------
+
+    """
     removed_name = "removed_records.csv"
     removed_records = Records(removed_name)
     # first remove anything that fails a hard cut
@@ -907,6 +1201,20 @@ def thin_clusters(records, min_mean_jets=0.5, proximity=0.10):
 
 
 def remove_clusters(records, jet_ids):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        param jet_ids:
+    jet_ids :
+        
+
+    Returns
+    -------
+
+    """
     # probably need to deal with one eventwise at a time
     # and not seek too many jets int he first place
     batch_size = 50
@@ -925,8 +1233,23 @@ def remove_clusters(records, jet_ids):
 
 
 def consolidate_clusters(length=2000, dir_name="megaIgnore", max_size=300):
-    """ Sort clusters by hyperparameter groups and 
-    put them into new eventWise awkd files """
+    """
+    Sort clusters by hyperparameter groups and
+    put them into new eventWise awkd files
+
+    Parameters
+    ----------
+    length :
+        Default value = 2000)
+    dir_name :
+        Default value = "megaIgnore")
+    max_size :
+        Default value = 300)
+
+    Returns
+    -------
+
+    """
     # start by learning what's in the directory
     records_name = "tmp{}_records.csv"
     i=0
@@ -1171,13 +1494,13 @@ class Records:
         Parameters
         ----------
         jet_class :
-            
+            param param_dict:
+        existing_idx :
+            Default value = None)
+        write_now :
+            Default value = True)
         param_dict :
             
-        existing_idx :
-             (Default value = None)
-        write_now :
-             (Default value = True)
 
         Returns
         -------
@@ -1206,12 +1529,38 @@ class Records:
         return chosen_id
 
     def remove(self, jet_id):
+        """
+        
+
+        Parameters
+        ----------
+        jet_id :
+            
+
+        Returns
+        -------
+
+        """
         idx = self.jet_ids.index(jet_id)
         removed = self.content.pop(idx)
         removed = {name: removed[idx] for name, idx in self.indices.items()}
         return removed
 
     def transfer(self, donor_records, jet_ids):
+        """
+        
+
+        Parameters
+        ----------
+        donor_records :
+            param jet_ids:
+        jet_ids :
+            
+
+        Returns
+        -------
+
+        """
         self._add_param(*donor_records.indices.keys())
         column_order = sorted(self.indices, key=self.indices.__getitem__)
         for jid in jet_ids:
@@ -1222,16 +1571,33 @@ class Records:
         donor_records.write()
  
     def check_eventWise_match(self, eventWise, jet_id, jet_name):
+        """
+        
+
+        Parameters
+        ----------
+        eventWise :
+            param jet_id:
+        jet_name :
+            
+        jet_id :
+            
+
+        Returns
+        -------
+
+        """
         ignore_params = ['TagAngle']  # this one seems to have issues
         eventWise.selected_index = None
         jet_params = FormJets.get_jet_params(eventWise, jet_name, add_defaults=True)
         for p_name in ignore_params:
-            del jet_params[p_name]
+            jet_params.pop(p_name, None)
         content = self.typed_array()
         row = content[content[:, 0] == jet_id][0]
         for p_name in jet_params:
-            if not soft_generic_equality(row[self.indices[p_name]], jet_params[p_name]):
-                return False
+            if p_name in self.indices:
+                if not soft_generic_equality(row[self.indices[p_name]], jet_params[p_name]):
+                    return False
         return True
 
     def scan(self, eventWise):
@@ -1317,7 +1683,21 @@ class Records:
         self.write()
         return existing, added
 
-    def score(self, target, rescale_for_s_distance=True):
+    def score(self, target, rescale_for_s_distance=False):
+        """
+        
+
+        Parameters
+        ----------
+        target :
+            param rescale_for_s_distance:  (Default value = False)
+        rescale_for_s_distance :
+             (Default value = False)
+
+        Returns
+        -------
+
+        """
         if isinstance(target, str):
             if target.endswith('.awkd'):
                 target = Components.EventWise.from_file(target)
@@ -1355,7 +1735,9 @@ class Records:
         Parameters
         ----------
         eventWise :
-            
+            param rescale_for_s_distance:  (Default value = True)
+        rescale_for_s_distance :
+             (Default value = True)
 
         Returns
         -------
@@ -1461,11 +1843,17 @@ class Records:
         Parameters
         ----------
         metric :
-            
+            Default value = 'cumulative')
         jet_class :
-             (Default value = None)
+            Default value = None)
         invert :
-             (Default value = None)
+            Default value = None)
+        start_mask :
+            Default value = None)
+        return_cols :
+            Default value = None)
+        num_items :
+            Default value = 1)
 
         Returns
         -------
@@ -1496,6 +1884,17 @@ class Records:
 if __name__ == '__main__':
     records_name = InputTools.get_file_name("Records file? (new or existing) ")
     records = Records(records_name)
-    ew_names = [name for name in os.listdir("megaIgnore") if name.endswith('.awkd')]
+    #ew_name = InputTools.get_file_name("EventWise file? (existing) ")
+    #records.score(ew_name.strip())
+    
+    #ew_names = [name for name in os.listdir("megaIgnore") if name.endswith('.awkd')]
     #comparison1(records)
+
+# serve this with
+# bokeh serve --show tree_tagger/CompareClusters.py
+if 'bk_script' in __name__:
+    records_name = InputTools.get_file_name("Records file? (new or existing) ")
+    records = Records(records_name)
+    plots = parameter_comparison(records, cuts=True)
+    bokeh.plotting.curdoc().add_root(plots)
 

@@ -5,7 +5,7 @@
 import numpy as np
 from numpy import testing as tst
 import awkward
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from scipy.cluster import hierarchy
 import scipy.spatial
 
@@ -16,11 +16,11 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
     Parameters
     ----------
     eventWise :
-        
+        param jet_name:
+    batch_length :
+        Default value = np.inf)
     jet_name :
         
-    batch_length :
-         (Default value = np.inf)
 
     Returns
     -------
@@ -78,7 +78,7 @@ def closest_approches_np(start_points, direction_vectors):
     Parameters
     ----------
     start_points :
-        
+        param direction_vectors:
     direction_vectors :
         
 
@@ -116,11 +116,11 @@ def closest_approches(start_points, direction_vectors, dot=None):
     Parameters
     ----------
     start_points :
-        
+        param direction_vectors:
+    dot :
+        Default value = None)
     direction_vectors :
         
-    dot :
-         (Default value = None)
 
     Returns
     -------
@@ -160,10 +160,10 @@ def approch_to_point(point, start_points, direction_vectors, dot=None):
     Parameters
     ----------
     point :
-        
-    start_points :
-        
+        param start_points:
     direction_vectors :
+        param dot: (Default value = None)
+    start_points :
         
     dot :
          (Default value = None)
@@ -203,7 +203,7 @@ def define_dot(dimensions):
             Parameters
             ----------
             a :
-                
+                param b:
             b :
                 
 
@@ -221,7 +221,7 @@ def define_dot(dimensions):
             Parameters
             ----------
             a :
-                
+                param b:
             b :
                 
 
@@ -242,10 +242,10 @@ def distance2_midpoints(start_points, direction_vectors, closest_multiples, midp
     Parameters
     ----------
     start_points :
-        
-    direction_vectors :
-        
+        param direction_vectors:
     closest_multiples :
+        param midpoint2_limit: (Default value = 900.)
+    direction_vectors :
         
     midpoint2_limit :
          (Default value = 900.)
@@ -323,15 +323,15 @@ def find_vertices(eventWise, jet_name, vertex_name=None, batch_length=np.inf, th
     Parameters
     ----------
     eventWise :
-        
+        param jet_name:
+    vertex_name :
+        Default value = None)
+    batch_length :
+        Default value = np.inf)
+    threshold :
+        Default value = 0.02)
     jet_name :
         
-    vertex_name :
-         (Default value = None)
-    batch_length :
-         (Default value = np.inf)
-    threshold :
-         (Default value = 0.02)
 
     Returns
     -------
@@ -437,10 +437,10 @@ def vertex_uncertanty(eventWise, jet_name, vertex_name):
     Parameters
     ----------
     eventWise :
+        param jet_name:
+    vertex_name :
         
     jet_name :
-        
-    vertex_name :
         
 
     Returns
@@ -471,10 +471,10 @@ def compare_vertices(eventWise, jet_name, vertex_name):
     Parameters
     ----------
     eventWise :
+        param jet_name:
+    vertex_name :
         
     jet_name :
-        
-    vertex_name :
         
 
     Returns

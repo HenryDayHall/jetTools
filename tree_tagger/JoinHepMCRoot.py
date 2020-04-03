@@ -1,5 +1,5 @@
 """ Marry a HepMC and root eventwise object """
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from tree_tagger import Components, ReadHepmc
 import os
 import numpy as np
@@ -12,7 +12,7 @@ def marry(hepmc, root_particles):
     Parameters
     ----------
     hepmc :
-        
+        param root_particles:
     root_particles :
         
 
@@ -97,4 +97,5 @@ def marry(hepmc, root_particles):
     dir_name = root_particles.dir_name
     new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
     new_eventWise.write()
+    return new_eventWise
 

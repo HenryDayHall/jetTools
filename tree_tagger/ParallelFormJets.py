@@ -5,7 +5,8 @@ import time
 import os
 import numpy as np
 import multiprocessing
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
+import debug
 
 def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
     """
@@ -14,14 +15,14 @@ def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters,
     Parameters
     ----------
     eventWise_path :
+        param run_condition:
+    cluster_algorithm :
+        param cluster_parameters:
+    batch_size :
         
     run_condition :
         
-    cluster_algorithm :
-        
     cluster_parameters :
-        
-    batch_size :
         
 
     Returns
@@ -58,10 +59,10 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     Parameters
     ----------
     eventWise_path :
+        param n_fragments:
+    jet_name :
         
     n_fragments :
-        
-    jet_name :
         
 
     Returns
@@ -166,10 +167,10 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
     Parameters
     ----------
     eventWise_path :
-        
-    multiapply_function :
-        
+        param multiapply_function:
     jet_params :
+        param leave_one_free: (Default value = False)
+    jet_class :
         
     leave_one_free :
          (Default value = False)
@@ -240,6 +241,20 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
 
 
 def remove_partial(all_paths, jet_name):
+    """
+    
+
+    Parameters
+    ----------
+    all_paths :
+        param jet_name:
+    jet_name :
+        
+
+    Returns
+    -------
+
+    """
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
         rewrite = False
@@ -252,6 +267,18 @@ def remove_partial(all_paths, jet_name):
 
 
 def recombine_eventWise(eventWise_path):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
     split_dir = eventWise_path[:-5]+"_fragment"
     if not os.path.exists(split_dir):
         return Components.EventWise.from_file(eventWise_path)
@@ -267,8 +294,302 @@ def recombine_eventWise(eventWise_path):
     return new_eventWise
 
 
+# In deltaR
+# optimum 0.5 for Homejet, 2 for HomeJet Invarient, 1.5 for SpectralFull jet, 0.2 otherwise
+# range from 0 to 2
+# good varience
+
+# in Exponent multiplier
+# optimum -1 for Invarient, 0 otherwise
+# vary between -1 and 1
+# key varience
+
+# with laplacien scaling
+# optimum is no
+
+# affinity type
+# optimum is inverse, exponent2
+
+# affinity cutoff
+# optimum is None, or knn 1
+# try low valued distance (0-4) low value knn (0-4)
+
+# number eigenvectors
+# optimum 4
+
+# laplacin
+# optimum is unnormalised
+
+# jet class
+# optimum is spectralFull
+# spectral has been changed to try that too
+
+# scan0 = deltaR + ExponentMultiplier + Invarience
+def scan0(eventWise_path):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
+    record_path = "scans.csv"
+    records = CompareClusters.Records(record_path)
+    # prepare to check for existing entries
+    epsilon = 0.01
+    initial_typed = records.typed_array()
+    initial_jet_class = initial_typed[:, records.indices['jet_class']]
+    initial_DeltaR    = initial_typed[:, records.indices['DeltaR']]
+    initial_Exponent  = initial_typed[:, records.indices['ExponentMultiplier']]
+    initial_Invarient = initial_typed[:, records.indices['Invarient']]
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    cols = [c for c in eventWise.columns]
+    del eventWise
+    DeltaR = np.linspace(0.1, 2., 20)
+    exponents = np.linspace(-1, 1, 11)
+    invarience = [True, False]
+    for exponent in exponents:
+        exp_indices = np.where(np.abs(initial_Exponent - exponent) < epsilon)[0]
+        for dR in DeltaR:
+            dr_indices = exp_indices[np.abs(initial_DeltaR[exp_indices] - dR) < epsilon]
+            for invar in invarience:
+                invar_indices = dr_indices[initial_Invarient[dr_indices] == invar]
+                print(f"Exponent {exponent}")
+                print(f"DeltaR {dR}")
+                jet_class = "HomeJet"
+                if jet_class not in initial_jet_class[invar_indices]:
+                    jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent, Invarient=invar)
+                    jet_id = records.append(jet_class, jet_params)
+                    jet_params["jet_name"] = jet_class + str(jet_id)
+                    generate_pool(eventWise_path, jet_class, jet_params, True)
+                else:
+                    print(f"Already done {jet_class}")
+                jet_class = "SpectralFullJet"
+                if jet_class not in initial_jet_class[invar_indices]:
+                    jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                      NumEigenvectors=4,
+                                      Laplacien='unnormalised',
+                                      AffinityType='inverse',
+                                      AffinityCutoff=None,
+                                      Invarient=invar)
+                    jet_id = records.append(jet_class, jet_params)
+                    jet_params["jet_name"] = jet_class + str(jet_id)
+                    generate_pool(eventWise_path, jet_class, jet_params, True)
+                else:
+                    print(f"Already done {jet_class}")
+    records.write()
+# extended
+# scan0 = deltaR + ExponentMultiplier
+def scan00(eventWise_path):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
+    record_path = "scans.csv"
+    records = CompareClusters.Records(record_path)
+    # prepare to check for existing entries
+    epsilon = 0.01
+    initial_typed = records.typed_array()
+    initial_jet_class = initial_typed[:, records.indices['jet_class']]
+    initial_DeltaR    = initial_typed[:, records.indices['DeltaR']]
+    initial_Exponent  = initial_typed[:, records.indices['ExponentMultiplier']]
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    initial_Invarient = initial_typed[:, records.indices['Invarient']]
+    cols = [c for c in eventWise.columns]
+    del eventWise
+    DeltaR = np.linspace(0.1, 2., 20)
+    exponents = np.linspace(-1, 1, 11)
+    invar = "Luclus"
+    for exponent in exponents:
+        exp_indices = np.where(np.abs(initial_Exponent - exponent) < epsilon)[0]
+        for dR in DeltaR:
+            dr_indices = exp_indices[np.abs(initial_DeltaR[exp_indices] - dR) < epsilon]
+            invar_indices = dr_indices[initial_Invarient[dr_indices] == invar]
+            print(f"Exponent {exponent}")
+            print(f"DeltaR {dR}")
+            jet_class = "HomeJet"
+            if jet_class not in initial_jet_class[invar_indices]:
+                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent, Invarient=invar)
+                jet_id = records.append(jet_class, jet_params)
+                jet_params["jet_name"] = jet_class + str(jet_id)
+                generate_pool(eventWise_path, jet_class, jet_params, True)
+            else:
+                print(f"Already done {jet_class}")
+            jet_class = "SpectralFullJet"
+            if jet_class not in initial_jet_class[invar_indices]:
+                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                  NumEigenvectors=4,
+                                  Laplacien='unnormalised',
+                                  AffinityType='inverse',
+                                  AffinityCutoff=None,
+                                  Invarient=invar)
+                jet_id = records.append(jet_class, jet_params)
+                jet_params["jet_name"] = jet_class + str(jet_id)
+                generate_pool(eventWise_path, jet_class, jet_params, True)
+            else:
+                print(f"Already done {jet_class}")
+    records.write()
+# results; exponentMultipler small pos for all spectral
+#          exponentMultipler small neg for homeJet
+#          deltaR lesss than 0.5 for spectral 
+#          deltaR 0.3 to 0.6 for homeJet
+
+# scan1 = deltaR + jet class
+def scan1(eventWise_path):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
+    record_path = "scans.csv"
+    records = CompareClusters.Records(record_path)
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    cols = [c for c in eventWise.columns]
+    del eventWise
+    exponents = np.linspace(-0.4, 0.4, 3)
+    jet_classes = list(FormJets.cluster_classes.keys())
+    jet_classes.remove("FastJet")
+    jet_classes.remove("SpectralFullJet")  # we already seen this
+    jet_classes.remove("HomeJet")  # we already seen this
+    invarients = ['Luclus', 'invarient']
+    DeltaR = np.linspace(0.1, 1., 10)
+    for jet_class in jet_classes:
+        for dR in DeltaR:
+            for exponent in exponents:
+                for invar in invarients:
+                    print(f"JetClass {jet_class}, DeltaR {dR}, Exponent {exponent}, Invarient {invar}")
+                    jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                      NumEigenvectors=4,
+                                      Laplacien='unnormalised',
+                                      AffinityType='inverse',
+                                      AffinityCutoff=None,
+                                      Invarient=invar)
+                    jet_id = records.append(jet_class, jet_params)
+                    jet_params["jet_name"] = jet_class + str(jet_id)
+                    generate_pool(eventWise_path, jet_class, jet_params, True)
+    records.write()
+# results SpectralJet, HomeJet and SpectralFullJet are viable 
+
+# scan2 = deltaR + num eigenvectors
+def scan2(eventWise_path):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
+    record_path = "scans.csv"
+    records = CompareClusters.Records(record_path)
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    cols = [c for c in eventWise.columns]
+    del eventWise
+    exponents = np.linspace(0, 0.4, 2)
+    jet_classes = ["SpectralJet", "SpectralFullJet"]
+    invarients = {'SpectralJet':['Luclus'], 'SpectralFullJet':['Luclus', 'angular']}
+    DeltaR = np.linspace(0.1, 0.5, 5)
+    num_eigenvectors = [2, 3, 4, 5, 6, np.inf]
+    for jet_class in jet_classes:
+        invars = invarients[jet_class]
+        for dR in DeltaR:
+            for exponent in exponents:
+                for invar in invars:
+                    for n_eig in num_eigenvectors:
+                        print(f"JetClass {jet_class}, DeltaR {dR}, Exponent {exponent}, Invarient {invar}")
+                        jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                          NumEigenvectors=n_eig,
+                                          Laplacien='unnormalised',
+                                          AffinityType='inverse',
+                                          AffinityCutoff=None,
+                                          Invarient=invar)
+                        jet_id = records.append(jet_class, jet_params)
+                        jet_params["jet_name"] = jet_class + str(jet_id)
+                        generate_pool(eventWise_path, jet_class, jet_params, True)
+    records.write()
+# result 4 eigenvectors does apear to be the sweet spot
+
+# scan3 = deltaR + affinity type
+def scan3(eventWise_path):  # TODO
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
+    record_path = "scans.csv"
+    records = CompareClusters.Records(record_path)
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    cols = [c for c in eventWise.columns]
+    del eventWise
+    exponents = np.linspace(0, 0.4, 2)
+    jet_classes = ["HomeJet", "SpectralFullJet"]
+    invarients = {'HomeJet':['Luclus'], 'SpectralFullJet':['Luclus', 'angular']}
+    DeltaR = np.linspace(0.1, 0.5, 5)
+    num_eigenvectors = [2, 3, 4, 5, 6, np.inf]
+    for jet_class in jet_classes:
+        invars = invarients[jet_class]
+        for dR in DeltaR:
+            for exponent in exponents:
+                for invar in invars:
+                    for n_eig in num_eigenvectors:
+                        print(f"JetClass {jet_class}, DeltaR {dR}, Exponent {exponent}, Invarient {invar}")
+                        jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                          NumEigenvectors=n_eig,
+                                          Laplacien='unnormalised',
+                                          AffinityType='inverse',
+                                          AffinityCutoff=None,
+                                          Invarient=invar)
+                        jet_id = records.append(jet_class, jet_params)
+                        jet_params["jet_name"] = jet_class + str(jet_id)
+                        generate_pool(eventWise_path, jet_class, jet_params, True)
+    records.write()
+# scan5 = deltaR + affinity cutoff
+# scan6 = deltaR + laplacien scaling + laplacien
 
 def loops(eventWise_path):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        
+
+    Returns
+    -------
+
+    """
     record_path = "records.csv"
     records = CompareClusters.Records(record_path)
     eventWise = Components.EventWise.from_file(eventWise_path)
@@ -286,38 +607,52 @@ def loops(eventWise_path):
             jet_params["jet_name"] = jet_class + str(jet_id)
             generate_pool(eventWise_path, jet_class, jet_params, True)
     records.write()
-    #exponents = [-1, 0, 2]
-    #NumEigenvectors = [1, 3, 4, 6]
-    #distance = [3.5, 4.5, 5.5]
-    #for exponent in exponents:
-    #    for dR in DeltaR:
-    #        for n_eig in NumEigenvectors:
-    #            for dis in distance:
-    #                print(f"Exponent {exponent}")
-    #                print(f"DeltaR {dR}")
-    #                print(f"NumEigenvectors {n_eig}")
-    #                print(f"Distance {dis}")
-    #                jet_class = "SpectralAfterJet"
-    #                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-    #                                  NumEigenvectors=n_eig,
-    #                                  Laplacien='symmetric',
-    #                                  AffinityType='exponent',
-    #                                  AffinityCutoff=('distance', dis))
-    #                jet_id = records.append(jet_class, jet_params)
-    #                jet_params["jet_name"] = jet_class + str(jet_id)
-    #                generate_pool(eventWise_path, jet_class, jet_params, True)
-    #            jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-    #                              NumEigenvectors=n_eig,
-    #                              Laplacien='symmetric',
-    #                              AffinityType='exponent',
-    #                              AffinityCutoff=None)
-    #            jet_id = records.append(jet_class, jet_params)
-    #            jet_params["jet_name"] = jet_class + str(jet_id)
-    #            generate_pool(eventWise_path, jet_class, jet_params, True)
-    #records.write()
+    exponents = [-1, 0, 2]
+    NumEigenvectors = [1, 3, 4, 6]
+    distance = [3.5, 4.5, 5.5]
+    for exponent in exponents:
+        for dR in DeltaR:
+            for n_eig in NumEigenvectors:
+                for dis in distance:
+                    print(f"Exponent {exponent}")
+                    print(f"DeltaR {dR}")
+                    print(f"NumEigenvectors {n_eig}")
+                    print(f"Distance {dis}")
+                    jet_class = "SpectralAfterJet"
+                    jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                      NumEigenvectors=n_eig,
+                                      Laplacien='symmetric',
+                                      AffinityType='exponent',
+                                      AffinityCutoff=('distance', dis))
+                    jet_id = records.append(jet_class, jet_params)
+                    jet_params["jet_name"] = jet_class + str(jet_id)
+                    generate_pool(eventWise_path, jet_class, jet_params, True)
+                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
+                                  NumEigenvectors=n_eig,
+                                  Laplacien='symmetric',
+                                  AffinityType='exponent',
+                                  AffinityCutoff=None)
+                jet_id = records.append(jet_class, jet_params)
+                jet_params["jet_name"] = jet_class + str(jet_id)
+                generate_pool(eventWise_path, jet_class, jet_params, True)
+    records.write()
 
 
 def iterate(eventWise_path, jet_class):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        param jet_class:
+    jet_class :
+        
+
+    Returns
+    -------
+
+    """
     eventWise = Components.EventWise.from_file(eventWise_path)
     record_path = "records.csv"
     records = CompareClusters.Records(record_path)
@@ -343,6 +678,18 @@ def iterate(eventWise_path, jet_class):
 
 
 def random_parameters(jet_class=None):
+    """
+    
+
+    Parameters
+    ----------
+    jet_class :
+        Default value = None)
+
+    Returns
+    -------
+
+    """
     if jet_class is None:
         jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'SpectralMAfterJet', 'HomeInvarientJet']
         jet_class = np.random.choice(jet_classes)
@@ -377,6 +724,20 @@ def random_parameters(jet_class=None):
 
 
 def monte_carlo(eventWise_path, jet_class=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise_path :
+        param jet_class:  (Default value = None)
+    jet_class :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if jet_class is None:
         change_class = True
     eventWise = Components.EventWise.from_file(eventWise_path)
@@ -396,11 +757,15 @@ def monte_carlo(eventWise_path, jet_class=None):
         records.write()
 
 
+def full_run_best(eventWise_path, records, jet_class=None):
+    pass  # TODO
+
 if __name__ == '__main__':
     names = FormJets.cluster_classes
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     #loops(eventWise_path)
     #jet_class = InputTools.list_complete("Jet class? ", list(names.keys())).strip()
     #iterate(eventWise_path, jet_class)
-    monte_carlo(eventWise_path)
+    #monte_carlo(eventWise_path)
+    scan2(eventWise_path)
 

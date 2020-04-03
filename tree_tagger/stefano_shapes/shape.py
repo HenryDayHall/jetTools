@@ -6,6 +6,26 @@ import os
 from ipdb import set_trace as st
 
 def shape(energies, pxs, pys, pzs, my_dir='./'):
+    """
+    
+
+    Parameters
+    ----------
+    energies :
+        param pxs:
+    pys :
+        param pzs:
+    my_dir :
+        Default value = './')
+    pxs :
+        
+    pzs :
+        
+
+    Returns
+    -------
+
+    """
     # these need to be stacked into a momentum vector that 
     # has energy last
     momentums = np.vstack((pxs, pys, pzs, energies)).T

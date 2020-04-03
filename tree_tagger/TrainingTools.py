@@ -1,5 +1,5 @@
 """tools for training the NN """
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import os
 import numpy as np
 import pickle
@@ -14,26 +14,26 @@ def single_pass(nets, run, dataloader, dataset, validation_weights, validation_e
     Parameters
     ----------
     nets :
-        
-    run :
-        
+        param run:
     dataloader :
+        param dataset:
+    validation_weights :
+        param validation_events:
+    test_events :
+        param device:
+    train_losser :
+        param validation_losser:
+    test_losser :
+        param weight_decay:
+    run :
         
     dataset :
         
-    validation_weights :
-        
     validation_events :
-        
-    test_events :
         
     device :
         
-    train_losser :
-        
     validation_losser :
-        
-    test_losser :
         
     weight_decay :
         
@@ -99,30 +99,30 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
     Parameters
     ----------
     nets :
-        
-    run :
-        
+        param run:
     dataloader :
+        param dataset:
+    validation_sampler :
+        param device:
+    train_losser :
+        param batch_losser:
+    test_losser :
+        param optimiser:
+    end_time :
+        param dataset_inv_size:
+    val_schedulers :
+        param viewer: (Default value = None)
+    run :
         
     dataset :
         
-    validation_sampler :
-        
     device :
-        
-    train_losser :
         
     batch_losser :
         
-    test_losser :
-        
     optimiser :
         
-    end_time :
-        
     dataset_inv_size :
-        
-    val_schedulers :
         
     viewer :
          (Default value = None)
