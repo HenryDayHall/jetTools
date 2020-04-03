@@ -344,7 +344,8 @@ class Hepmc(Components.EventWise):
 
 def main():
     """ """
-    filepath = "/home/henry/lazy/h1bBatch2.hepmc"
-    event = Hepmc(filepath, 0, 1)
-    return event
+    dir_name = "./megaIgnore"
+    save_name = "billy_tag_3_pythia8_events.hepmc"
+    event = Hepmc(dir_name, save_name, 0, np.inf)
+    event.write()
 
