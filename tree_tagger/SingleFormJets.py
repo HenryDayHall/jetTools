@@ -166,6 +166,9 @@ def plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base):
 
 if __name__ == '__main__':
     eventWise = get_data_file()
+    BATCH_LENGTH = InputTools.get_literal("How long should the batch be (-1 for all events)? ", int)
+    if BATCH_LENGTH == -1:
+        BATCH_LENGTH = np.inf
     eventWise = define_inputs(eventWise)
     jet_name = get_existing_clusters(eventWise)
     if not jet_name:
