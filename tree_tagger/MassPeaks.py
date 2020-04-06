@@ -38,10 +38,10 @@ def jet_mass(eventWise, jet_name, jet_idxs):
     assert eventWise.selected_index is not None
     input_name = jet_name + '_InputIdx'
     root_name = jet_name + '_RootInputIdx'
-    px = eventWise.match_indices(jet_name+'_Px', root_name, input_name)[jet_idxs]
-    py = eventWise.match_indices(jet_name+'_Py', root_name, input_name)[jet_idxs]
-    pz = eventWise.match_indices(jet_name+'_Pz', root_name, input_name)[jet_idxs]
-    e = eventWise.match_indices(jet_name+'_Energy', root_name, input_name)[jet_idxs]
+    px = eventWise.match_indices(jet_name+'_Px', root_name, input_name)[jet_idxs].flatten()
+    py = eventWise.match_indices(jet_name+'_Py', root_name, input_name)[jet_idxs].flatten()
+    pz = eventWise.match_indices(jet_name+'_Pz', root_name, input_name)[jet_idxs].flatten()
+    e = eventWise.match_indices(jet_name+'_Energy', root_name, input_name)[jet_idxs].flatten()
     mass = np.sqrt(np.sum(e)**2 - np.sum(px)**2 - np.sum(py)**2 - np.sum(pz)**2)
     return mass
 
@@ -108,7 +108,9 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     fig, ax_array = plt.subplots(3, 2)
     ax_array = ax_array.flatten()
-    pairs = itertools.combinations(range(4), 2)
+    # becuase we will use these to take indices from a numpy array they need to be lists 
+    # not tuples
+    pairs = [list(pair) for pair in itertools.combinations(range(4), 2)]
     pair_masses = [[] for _ in pairs]
     for event_n in range(n_events):
         if event_n % 100 == 0:
@@ -119,15 +121,15 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
         n_jets = len(sorted_idx)
         if n_jets == 0:
             continue
-        for masses, pair in zip(pair_masses, pairs):
+        for i, pair in enumerate(pairs):
             if max(pair) < n_jets:
-                masses.append(jet_mass(eventWise, jet_name, sorted_idx[pair]))
+                pair_masses[i].append(jet_mass(eventWise, jet_name, sorted_idx[pair]))
     heavy, light = decendants_masses(eventWise)
     label = [jet_name, "heavy decendants", "light decendants"]
     for ax, pair, masses in zip(ax_array, pairs, pair_masses):
         data = [masses, heavy, light]
         title = f"Jets {pair[0]} and {pair[1]} (pT ordered), counts={len(masses)}"
-        ax.title(title)
+        ax.set_title(title)
         ax.hist(data, density=True, bins=500, histtype='step', label=label)
     ax.legend()
     plt.xlabel("Mass (GeV)")
