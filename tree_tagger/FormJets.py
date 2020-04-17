@@ -10,6 +10,7 @@ from ipdb import set_trace as st
 from skhep import math as hepmath
 from tree_tagger import Components, TrueTag, InputTools
 
+
 class PseudoJet:
     """ """
     int_columns = ["Pseudojet_InputIdx",
@@ -144,6 +145,38 @@ class PseudoJet:
                             - row[px_col]*column[px_col]
                             - row[py_col]*column[py_col]
                             - row[pz_col]*column[pz_col])
+                distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                return distance
+        elif self.Invarient == 'normed':
+            px_col  = self._Px_col 
+            py_col  = self._Py_col 
+            pz_col  = self._Pz_col 
+            e_col = self._Energy_col
+            small_num = 1e-10
+            def physical_distance(row, column):
+                """
+                
+
+                Parameters
+                ----------
+                row :
+                    param column:
+                column :
+                    
+
+                Returns
+                -------
+
+                """
+                if row[e_col] > 0:
+                    row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])/row[e_col]
+                else:
+                    row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])/small_num
+                if column[e_col] > 0:
+                    column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])/column[e_col]
+                else:
+                    column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])/small_num
+                distance = 1 - np.sum(row_3vec*column_3vec)
                 distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
                 return distance
         elif self.Invarient == 'angular':
@@ -852,8 +885,7 @@ class Traditional(PseudoJet):
             if column == row:
                 distance = self._floats[row][self._PT_col]**self.exponent * self.DeltaR**2
             else:
-                angular_diffrence = abs(self._floats[row][self._Phi_col] - self._floats[column][self._Phi_col]) % (2*np.pi)
-                angular_distance = min(angular_diffrence, 2*np.pi - angular_diffrence)
+                angular_distance = Components.angular_distance(self._floats[row][self._Phi_col], self._floats[column][self._Phi_col])
                 distance = min(self._floats[row][self._PT_col]**self.exponent, self._floats[column][self._PT_col]**self.exponent) *\
                            ((self._floats[row][self._Rapidity_col] - self._floats[column][self._Rapidity_col])**2 +
                            (angular_distance)**2)
@@ -1029,6 +1061,7 @@ class Spectral(PseudoJet):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.exponent = 2 * self.ExponentMultiplier
         self._define_calculate_affinity()
+        self.eigenvalues = []  # create a list to track the eigenvalues
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
@@ -1099,6 +1132,7 @@ class Spectral(PseudoJet):
             #print('cdisCspc', flush=True)
         #print('cdis4spc', end='\r', flush=True)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
+        self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
         # these tests often fall short of tollarance, and they arn't really needed
@@ -1509,6 +1543,7 @@ class SpectralAfter(Spectral):
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
+        self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
         # these tests often fall short of tollarance, and they arn't really needed
@@ -1633,6 +1668,7 @@ class SpectralMAfter(SpectralMean):
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
+        self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
         # these tests often fall short of tollarance, and they arn't really needed
@@ -2085,6 +2121,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     # updated_dict will be replaced in the first batch
     updated_dict = None
     checked = False
+    eigenvalues = []
     for event_n in range(start_point, end_point):
         if event_n % 100 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
@@ -2092,12 +2129,14 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
         jets = cluster_algorithm(eventWise, **cluster_parameters)
+        eigenvalues.append(awkward.fromiter(jets.eigenvalues))
         jets = jets.split()
         if not checked and len(jets) > 0:
             assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"
             checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
+    updated_dict[jet_name + "_Eigenvalues"] = awkward.fromiter(eigenvalues)
     eventWise.append(**updated_dict)
     return end_point == n_events
 

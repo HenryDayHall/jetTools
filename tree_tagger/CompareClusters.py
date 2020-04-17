@@ -8,7 +8,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -455,7 +455,7 @@ def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidi
     return pseudojet_vars1, pseudojet_vars2, num_unconnected
 
 
-def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
+def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None, use_quarks=True):
     """
     
 
@@ -479,6 +479,11 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     else:
         eventWise.selected_index = event_n
     tag_idx = list(eventWise.TagIndex)
+    if use_quarks:
+        quark_idx = TrueTag.tags_to_quarks(eventWise, tag_idx)
+        tags_in_jets = awkward.fromiter([[quark_idx[tag_idx.index(tag)] for tag in jet]
+                                         for jet in tags_in_jets])
+        tag_idx = quark_idx
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
     jet_e = eventWise.match_indices(jet_name+"_Energy", inputidx_name, rootinputidx_name).flatten()
@@ -513,10 +518,43 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None):
     # nans are the result of putting 0 pt into the rapidity calculation
     assigned_momentum[np.isnan(assigned_momentum)] = 0.
     # now get the actual coords
-    tag_momentum = np.vstack((getattr(eventWise, name)[tag_idx] for name in Constants.coordinate_order)).transpose()
+    tag_momentum = np.vstack([getattr(eventWise, name)[tag_idx] for name in Constants.coordinate_order]).transpose()
     return found_tags, tag_momentum, assigned_momentum
 
 
+def count_b_heritage(eventWise, jet_name, jet_idxs):
+    assert eventWise.selected_index is not None
+    b_idxs = np.where(np.abs(eventWise.MCPID) == 5)[0]
+    b_decendants = FormShower.decendant_idxs(eventWise, *b_idxs)
+    input_idxs = eventWise.JetInputs_SourceIdx
+    binput_idxs = set(b_decendants.intersection(input_idxs))
+    # filter for the InputIdxs that are leaves
+    is_leaf = getattr(eventWise, jet_name+"_Child1")[jet_idxs].flatten() == -1
+    selected_InputIdxs = getattr(eventWise, jet_name+"_InputIdx")[jet_idxs].flatten()[is_leaf]
+    bjetinput_idxs = set(input_idxs[selected_InputIdxs])
+    true_positives = len(bjetinput_idxs.intersection(binput_idxs))
+    n_positives = len(b_decendants.intersection(input_idxs))
+    false_positives = len(bjetinput_idxs - binput_idxs)
+    n_negatives = len(set(input_idxs) - binput_idxs)
+    try:
+        tpr = true_positives / n_positives
+    except ZeroDivisionError:
+        # probably happens
+        tpr = 1.  # no positives avalible...
+    try:
+        fpr = false_positives / n_negatives
+    except ZeroDivisionError:
+        # shouldn't happen if there are any tracks
+        #if len(input_idxs):
+        #    print(f"Warning, no non b-decendent inputs found in event {eventWise.selected_index}"
+        #          " this is suspect."
+        #          f" All {len(input_idxs)} appear to be b-decndants")
+        # looks like it does happen...
+        fpr = 0.
+    return tpr, fpr
+
+
+# Add the percentage of b heritage here??
 def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min_tracks=None, max_angle=None, tag_before_pt_cut=True):
     """
     
@@ -564,6 +602,7 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
     tag_coords = []
     jet_coords = []
     n_jets_formed = []
+    tpr, fpr = [], []
     percent_tags_found = []
     for event_n in range(n_events):
         if event_n % 10 == 0 and not silent:
@@ -574,7 +613,11 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
         jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
         # note this actually counts num pesudojets, but for more than 2 that is sufficient
         num_tracks = Components.apply_array_func(len, jet_track_pts, depth=Components.EventWise.EVENT_DEPTH).flatten()
-        n_jets = np.sum(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))
+        jet_idxs = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))[0]
+        n_jets = len(jet_idxs)
+        fpr_here, tpr_here = count_b_heritage(eventWise, jet_name, jet_idxs)
+        fpr.append(fpr_here)
+        tpr.append(tpr_here)
         tags_found, tag_c, jet_c = fit_to_tags(eventWise, jet_name, tags_in_jets[event_n])
         percent_tags_found.append(sum(tags_found)/len(tags_found))
         if not np.any(tags_found):
@@ -592,7 +635,7 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
         n_jets_formed.append(n_jets)
     #tag_coords = np.vstack(tag_coords)
     #jet_coords = np.vstack(jet_coords)
-    return tag_coords, jet_coords, n_jets_formed, percent_tags_found, h_content, content
+    return tag_coords, jet_coords, n_jets_formed, fpr, tpr, percent_tags_found, h_content, content
 
 
 def score_component_rank(tag_coords, jet_coords):
@@ -645,6 +688,14 @@ def invarientMass2_distance(tag_coords, jet_coords, rescale_poly=None):
     vec_distance2 = (tag_coords[:, epxpypz_idx] - jet_coords[:, epxpypz_idx])**2
     s = vec_distance2[:, 0] - np.sum(vec_distance2[:, 1:], axis=1)
     return np.abs(s)
+
+
+def distance_to_higgs_mass(jet_coords_by_event):  # no need the jets per event...
+    epxpypz_idx = [Constants.coordinate_order.index(name) for name in ["Energy", "Px", "Py", "Pz"]]
+    all_jet_momentum = np.array([np.sum(coords[:, epxpypz_idx], axis=0) for coords in jet_coords_by_event])
+    jet_mass = np.sqrt(all_jet_momentum[:, 0]**2 - np.sum(all_jet_momentum[:, 1:]**2, axis=1))
+    distance_to_higgs = np.abs(jet_mass - 125.)
+    return distance_to_higgs
 
 
 def get_catigories(records, content):
@@ -762,7 +813,7 @@ def select_improvements(records, min_jets=0.5,
     metric_cols = [records.indices[metric] for metric in metrics]
     invert_factor = np.fromiter((1 - 2*("symmetric_diff" in name) for name in metrics),
                                 dtype=float)
-    n_jets_col = records.indices['mean_njets']
+    n_jets_col = records.indices['njets']
     array = records.typed_array()
     n_jets = array[:, n_jets_col].astype(float)
     sufficient_jets = n_jets > min_jets
@@ -779,25 +830,24 @@ def select_improvements(records, min_jets=0.5,
     return array[improved_selection]
 
 
-def parameter_comparison(records, c_name="mean_percentfound", cuts=True):
+def parameter_comparison(records, c_name="percentfound", cuts=True):
     """
     
 
     Parameters
     ----------
     records :
-        param c_name:  (Default value = "mean_percentfound")
     cuts :
         ( Default value = True)
     c_name :
-         (Default value = "mean_percentfound")
+         (Default value = "percentfound")
 
     Returns
     -------
 
     """
     array = records.typed_array()[records.scored]
-    col_names = ["s_distance", "score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]
+    col_names = ["s_distance", "bdecendant_tpr", "bdecendant_fpr", "distance_to_HiggsMass"]
     # filter anything that scored too close to zero in pt or rapidity
     # these are soem kind of bug
     small = 0.001
@@ -807,12 +857,17 @@ def parameter_comparison(records, c_name="mean_percentfound", cuts=True):
     # now we have a scored valid selection
     y_cols = {name: array[:, records.indices[name]].astype(float) for name in col_names
               if name !='TagAngle'}
-    sufficient_jets = array[:, records.indices["mean_njets"]].astype(float) > 0.5
+    sufficient_jets = array[:, records.indices["njets"]].astype(float) > 0.5
     if cuts:
-        good_angle = y_cols["symmetric_diff(Phi)"] < 1.
-        good_distance = y_cols["s_distance"] < 100
-        mask = np.logical_and(good_angle, sufficient_jets)
-        mask = np.logical_and(good_distance, mask)
+        angles = array[:, records.indices["symmetric_diff(Phi)"]].astype(float)
+        good_angle = angles < 1.
+        #good_distance = y_cols["s_distance"] < 100
+        #mask = np.logical_and(good_angle, sufficient_jets)
+        #mask = np.logical_and(good_distance, mask)
+        # TODO find the source of the infinites so you can drop this mask
+        posinf_mask = np.all(array != np.inf, axis=1)
+        neginf_mask = np.all(array != -np.inf, axis=1)
+        mask = np.logical_and(posinf_mask, neginf_mask)
         array = array[mask]
         y_cols = {name: y_cols[name][mask] for name in y_cols}
         sufficient_jets = sufficient_jets[mask]
@@ -822,13 +877,18 @@ def parameter_comparison(records, c_name="mean_percentfound", cuts=True):
     data_name = {}
     name_data = {}
     max_len = 15
+    # some work on the names is needed for for hover to work
     for name, i in records.indices.items():
         if 'uncert' in name or 'std' in name:
             continue
         data_dict[str(i)] = np.array([str(x)[:max_len] for x in array[:, i]])
         data_name[str(i)] = name # somr of the names have probem characters in them
         name_data[name] = str(i) # need to be able to invert this
-    hover = bokeh.models.HoverTool(tooltips=[(data_name[i], "@" + i) for i in data_dict])
+    use_names = ["jet_class", "DeltaR", "Invarient", "ExponentMultiplier",
+                 "TagAngle", "AffinityCutoff", "Laplacien",
+                 "NumEigenvectors", "AffinityType", "WithLaplacienScaling"]
+    hover = bokeh.models.HoverTool(tooltips=[(data_name[i], "@" + i) for i in data_dict
+                                             if data_name[i] in use_names])
     data_dict['colour'] = c_col
     data_dict['alpha'] = [0.6 if suf else 0.2 for suf in sufficient_jets]
     # now we are done altering the data dict, make a copy
@@ -897,8 +957,8 @@ def parameter_comparison(records, c_name="mean_percentfound", cuts=True):
                      fill_color=bokeh.transform.transform('colour', mapper),
                      fill_alpha='alpha', line_alpha='alpha',
                      marker=markers, legend_group=marker_key)
-            p.legend.click_policy="hide"
-            p.legend.location="bottom_left"
+            p.legend.click_policy = "hide"
+            p.legend.location = "bottom_left"
             plots[-1].append(p)
         # add a colour bar to the last plot only
         colour_bar = bokeh.models.ColorBar(color_mapper=mapper, location=(0,0),
@@ -951,6 +1011,7 @@ def filter_column_dict(column_dict, filters):
     mask = np.all(np.vstack(filters), axis=1)
     new_dict = {name: column_dict[name][mask] for name in column_dict}
     return new_dict
+
 
 def make_float_scale(catigories, col_content):
     scale = np.array(catigories)
@@ -1108,7 +1169,7 @@ def thin_clusters(records, min_mean_jets=0.5, proximity=0.10):
     removed_records = Records(removed_name)
     # first remove anything that fails a hard cut
     array = records.typed_array()
-    mask = array[records.scored, records.indices['mean_njets']] < min_mean_jets
+    mask = array[records.scored, records.indices['njets']] < min_mean_jets
     to_remove = array[records.scored][mask, 0]
     print(f"Removing {len(to_remove)} based on mean jets")
     remove_clusters(records, to_remove)
@@ -1365,11 +1426,13 @@ def consolidate_clusters(length=2000, dir_name="megaIgnore", max_size=300):
 class Records:
     """ """
     delimiter = '\t'
-    evaluation_columns = ("score(PT)", "score_uncert(PT)", "symmetric_diff(PT)", "symdiff_std(PT)",
-                          "score(Rapidity)", "score_uncert(Rapidity)", "symmetric_diff(Rapidity)", "symdiff_std(Rapidity)",
-                          "score(Phi)", "score_uncert(Phi)", "symmetric_diff(Phi)", "symdiff_std(Phi)",
-                          "s_distance", "s_distance_uncert",
-                          "mean_njets", "std_njets", "mean_percentfound", "std_percentfound")
+    evaluation_columns = ("score(PT)", "symmetric_diff(PT)", 
+                          "score(Rapidity)", "symmetric_diff(Rapidity)", 
+                          "score(Phi)", "symmetric_diff(Phi)", 
+                          "s_distance", 
+                          "njets", "percentfound", 
+                          "bdecendant_tpr", "bdecendant_fpr",
+                          "distance_to_HiggsMass")
     ignore_h_parameters = ['RescaleEnergy']
     def __init__(self, file_path):
         self.file_path = file_path
@@ -1460,7 +1523,7 @@ class Records:
     @property
     def scored(self):
         """ """
-        if 'mean_njets' not in self.param_names:
+        if 'njets' not in self.param_names:
             return np.full(len(self.content), False)
         scored = [row[self.indices["score(PT)"]] not in ('', None, 'nan')
                   for row in self.content]
@@ -1772,27 +1835,40 @@ class Records:
             row = self.content[all_jets[name]]
             if not scored[int(row[0])]:
                 coords = {name: i for i, name in enumerate(Constants.coordinate_order)}
-                tag_coords, jet_coords, n_jets_formed, percent_tags_found, h_content_here, content_here = fit_all_to_tags(eventWise, name, silent=True)
+                (tag_coords, jet_coords,
+                        n_jets_formed,
+                        fpr, tpr,
+                        percent_tags_found,
+                        h_content_here, content_here) = fit_all_to_tags(eventWise, name,
+                                                                        silent=True)
                 # construct the rescaling factors if required
                 RescaleJets.energy_poly(eventWise, name)
                 content = {**content, **content_here}
                 h_content = {**h_content, **h_content_here}
                 # these require no futher processing
-                row[self.indices["mean_njets"]] = np.mean(n_jets_formed)
-                row[self.indices["std_njets"]] = np.std(n_jets_formed)
-                row[self.indices["mean_percentfound"]] = np.mean(percent_tags_found)
-                row[self.indices["std_percentfound"]] = np.std(percent_tags_found)
+                simple_mean = {"njets": n_jets_formed, "percentfound": percent_tags_found,
+                               "bdecendant_tpr": tpr, "bdecendant_fpr": fpr}
+                for col_name, variable in simple_mean.items():
+                    row[self.indices[col_name]] = np.mean(variable)
                 # check there are actually matched b jets to process
                 if len(tag_coords) == 0:
                     # if not drop a zero in
                     assert np.sum(percent_tags_found) == 0
                     for col_name in self.evaluation_columns:
-                        if 'uncert' in name or 'score' in name or 'std' in name:
+                        if col_name in simple_mean:
+                            pass  # we already delt with it
+                        elif 'score' in col_name:
                             row[self.indices[col_name]] = 0.
-                        elif name == 's_distance' or 'diff' in name:
+                        elif (col_name in ['s_distance', 'distance_to_HiggsMass']
+                              or 'diff' in col_name):
                             row[self.indices[col_name]] = None
+                        else:
+                            raise NotImplementedError(f"Don't have process for dealing with {col_name} wen no tags have been found")
                     continue
                 # if we reached this point there are jets 
+                # before stacking the coords calculate the distance to the higgs mass
+                dist_to_hmass = distance_to_higgs_mass(jet_coords)
+                # now we no longer care which event each jet came from
                 tag_coords = np.vstack(tag_coords)
                 jet_coords = np.vstack(jet_coords)
                 if len(jet_coords) > 1:
@@ -1811,21 +1887,15 @@ class Records:
                     s = [large_num]
                     n_jets_formed = [0]
                 row[self.indices["score(PT)"]] = scores[0]
-                row[self.indices["score_uncert(PT)"]] = uncerts[0]
                 row[self.indices["score(Rapidity)"]] = scores[1]
-                row[self.indices["score_uncert(Rapidity)"]] = uncerts[1]
                 row[self.indices["score(Phi)"]] = scores[2]
-                row[self.indices["score_uncert(Phi)"]] = uncerts[2]
                 row[self.indices["s_distance"]] = np.mean(s)
-                row[self.indices["s_distance_uncert"]] = np.std(s)
+                row[self.indices["distance_to_HiggsMass"]] = np.mean(dist_to_hmass)
                 # but the symetric difernce for phi should be angular
                 try:
                     row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[:, coords["PT"]])
-                    row[self.indices["symdiff_std(PT)"]] = np.std(syd[:, coords["PT"]])
                     row[self.indices["symmetric_diff(Rapidity)"]] = np.mean(syd[:, coords["Rapidity"]])
-                    row[self.indices["symdiff_std(Rapidity)"]] = np.std(syd[:, coords["Rapidity"]])
                     row[self.indices["symmetric_diff(Phi)"]] = np.mean(syd[:, coords["Phi"]])
-                    row[self.indices["symdiff_std(Phi)"]] = np.std(syd[:, coords["Phi"]])
                 except Exception:
                     st()
                 if np.nan in row:
@@ -1884,8 +1954,8 @@ class Records:
 if __name__ == '__main__':
     records_name = InputTools.get_file_name("Records file? (new or existing) ")
     records = Records(records_name)
-    #ew_name = InputTools.get_file_name("EventWise file? (existing) ")
-    #records.score(ew_name.strip())
+    ew_name = InputTools.get_file_name("EventWise file? (existing) ")
+    records.score(ew_name.strip())
     
     #ew_names = [name for name in os.listdir("megaIgnore") if name.endswith('.awkd')]
     #comparison1(records)

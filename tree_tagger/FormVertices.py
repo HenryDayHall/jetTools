@@ -2,7 +2,7 @@
 import numpy as np
 from numpy import testing as tst
 import awkward
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 from scipy.cluster import hierarchy
 import scipy.spatial
 
@@ -14,16 +14,15 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
 
     Parameters
     ----------
-    eventWise :
-        param jet_name:
-    batch_length :
-        Default value = np.inf)
-    jet_name :
+    eventWise : EventWise
+        An eventwise object containing idetified tag particles
         
-
-    Returns
-    -------
-
+    jet_name : string
+        Name of the jet in the eventwise object
+        
+    batch_length : int
+        Max number of events to process in this call
+         (Default value = np.inf)
     """
     # set up names for saving
     tag_idx_name = jet_name + "_Tags"
@@ -80,11 +79,15 @@ def closest_approches(start_points, direction_vectors):
     ----------
     start_points : numpy nd array of floats, (number of lines, 3)
         3 vectors discribing any point each line passes though.
+        
     direction_vectors : numpy 2d array of floats, (number of lines, 3)
         3 vectors discribing the direction for the lines.
 
     Returns
     -------
+    closest_multiples : numpy 2d array, (number of lines, number of lines)
+        matrix giving the multiple of the direction vector required to reach
+        point of closest approch from the start point.
 
     """
     # https://geomalgorithms.com/a07-_distance.html
@@ -111,24 +114,33 @@ def distance2_midpoints(start_points, direction_vectors, closest_multiples, midp
     """
     At the point of closest approch between a set of lines
     find the distance squared between the lines and the midpoint.
+    
 
     Parameters
     ----------
     start_points : numpy nd array of floats, (number of lines, 3)
         3 vectors discribing any point each line passes though.
+        
     direction_vectors : numpy 2d array of floats, (number of lines, 3)
         3 vectors discribing the direction for the lines.
+        
     closest_multiples : numpy 2d array of floats, (number of lines, number of lines)
         matrix giving the multiple of the direction vector required to reach
         point of closest approch from the start point.
+        
     midpoint2_limit : float
-        Max distance squared that a midpoint can be from
-        the origin before it is considered anomalous
-        and attempts to brin in closer to the origin are employed
-        (Default value = 900.)
+         Max distance squared that a midpoint can be from
+         the origin before it is considered anomalous
+         and attempts to brin in closer to the origin are employed
+         (Default value = 900.)
 
     Returns
     -------
+    distances2 : numpy 2d array of floats, (number of lines, number of lines)
+        Distances between the lines at point of closes approch
+
+    midpoints : numpy array of floats, (number of lines, number of lines, 3)
+        The midpoint between the lines at point of closest approach
 
     """
     n_lines = len(start_points)
@@ -172,19 +184,21 @@ def find_vertices(eventWise, jet_name, vertex_name, batch_length=np.inf, thresho
 
     Parameters
     ----------
-    eventWise :
-        param jet_name:
-    vertex_name :
-        param batch_length:  (Default value = np.inf)
-    threshold :
-        Default value = 0.02)
-    jet_name :
+    eventWise : EventWise
+        An eventwise object containing idetified tag particles
         
-    batch_length :
-         (Default value = np.inf)
+    jet_name : string
+        Name of the jet in the eventwise object
+        
+    vertex_name : string
+        Name to give the vertex in the eventwise object
 
-    Returns
-    -------
+    batch_length : int
+        Max number of events to process in this call
+         (Default value = np.inf)
+    threshold : float
+        Max cluster seperation
+         (Default value = 0.02)
 
     """
     jet_vertex_name = f"{jet_name}_{vertex_name}Vertex"
@@ -279,10 +293,10 @@ def vertex_uncertanty(eventWise, jet_name, vertex_name):
     Parameters
     ----------
     eventWise :
-        param jet_name:
-    vertex_name :
         
     jet_name :
+        
+    vertex_name :
         
 
     Returns
@@ -313,8 +327,10 @@ def compare_vertices(eventWise, jet_name, vertex_name):
     ----------
     eventWise : EventWise
         An eventwise object containing idetified tag particles
+        
     jet_name : string
         Name of the jet in the eventwise object
+        
     vertex_name : string
         Name of the vertex in the eventwise object
 

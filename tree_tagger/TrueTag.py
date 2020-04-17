@@ -1,6 +1,6 @@
 """ a collection of scripts to assocate each jet to it's MC truth """
 display = False
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 if display:
     from tree_tagger import FormJets, DrawBarrel
 from tree_tagger import Components, InputTools, Constants
@@ -49,7 +49,7 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     phi_distance = np.array([[eventWise.Phi[tag_i] - jet_phi for jet_phi
                                in jet_phis]
                               for tag_i in tag_idx])
-    phi_distance[phi_distance > np.pi] = 2*np.pi - phi_distance[phi_distance > np.pi]
+    phi_distance = Components.raw_to_angular_distance(phi_distance)
     rap_distance = np.array([[eventWise.Rapidity[tag_i] - jet_rap for jet_rap
                                in jet_raps]
                               for tag_i in tag_idx])
@@ -151,7 +151,6 @@ def add_tag_particles(eventWise, silent=False):
     end_point = n_events
     if not silent:
         print(f" Will stop at {100*end_point/n_events}%")
-    eventWise.selected_index = None
     tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
@@ -333,4 +332,66 @@ if display:  # have to comment out to run without display
     if __name__ == '__main__':
         main()
 
+
+def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
+    assert eventWise.selected_index is not None
+    # fetch the angular variables for speed
+    rapidity = eventWise.Rapidity
+    phi = eventWise.Phi
+    pids = eventWise.MCPID
+    parents = eventWise.Parents
+    children = eventWise.Children
+    # fetch any quarks in the tag's parents
+    quark_parents = []
+    quark_distances = []
+    for tag_idx in tag_idxs:
+        this_qparents = []
+        parent_stack = [tag_idx]
+        while parent_stack:
+            idx = parent_stack.pop()
+            if pids[idx] in quark_pdgids:
+                this_qparents.append(idx)
+            else:
+                parent_stack += parents[idx].tolist()
+        this_qparents = list(set(this_qparents))
+        # if there are multiple parents, abandon any that have b-quark decendants
+        if len(this_qparents) > 1:
+            last_b = [5 not in np.abs(pids[children[idx]]) for idx in this_qparents]
+            if sum(last_b):  # there must be at least 1 remaining
+                this_qparents = [this_qparents[i] for i, l in enumerate(last_b) if l]
+        quark_parents.append(this_qparents)
+        # if there is more than one quark on a tag calculate the deltaR to that quark
+        # if these is just one parent, call the deltaR 0
+        if len(this_qparents) == 1:
+            quark_distances.append(np.zeros(1))
+        elif len(this_qparents) > 1:
+            distances = np.sqrt((rapidity[this_qparents] - rapidity[tag_idx])**2 +
+                                Components.angular_distance(phi[this_qparents], phi[tag_idx])**2)
+            quark_distances.append(distances.tolist())
+        else:
+            raise RuntimeError(f"Why does this tag have no quark parents? event_n = {eventWise.selected_index}, tag_idx = {tag_idx}.")
+    # go through the quark distances, assigning each quark to its closest tag
+    remaining = list(range(len(quark_parents)))
+    while remaining:
+        tag_num = np.argmin([np.min(quarks) for quarks in quark_distances])
+        remaining.remove(tag_num)  # we found this one
+        quark_distances[tag_num] = [np.inf]
+        quark_num = np.argmin(quark_distances[tag_num])
+        quark_idx = quark_parents[tag_num].pop(quark_num)
+        quark_parents[tag_num] = quark_idx
+        # chekc if this quark_idx is found elsewhere
+        for num in remaining:
+            try:
+                quark_num2 = quark_parents[num].index(quark_idx)
+            except ValueError:
+                # it wasn't in this list, that's fine
+                pass
+            else:
+                quark_parents[num].pop(quark_num2)
+                quark_distances[num].pop(quark_num2)
+                # check if there is now only one parent left at num
+                if len(quark_distances[num]) == 1:
+                    quark_distances[num][0] = 0. # set this distance to 0
+    assert np.all([isinstance(q, int) for q in quark_parents])
+    return quark_parents
 

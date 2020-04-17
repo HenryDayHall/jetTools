@@ -10,10 +10,10 @@ import numpy as np
 import awkward
 
 
-def decendant_idxs(eventWise, start_idx):
+def decendant_idxs(eventWise, *start_idxs):
     assert eventWise.selected_index is not None
     final_idxs = set()
-    stack = [start_idx]
+    stack = list(start_idxs)
     while stack:
         idx = stack.pop()
         children = eventWise.Children[idx].tolist()

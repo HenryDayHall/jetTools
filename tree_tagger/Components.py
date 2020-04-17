@@ -135,6 +135,16 @@ def confine_angle(angle):
     return ((angle + np.pi)%(2*np.pi)) - np.pi
 
 
+def angular_distance(a, b):
+    """ get the distance between a and b """
+    raw = a - b
+    return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
+
+
+def raw_to_angular_distance(raw):
+    return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
+
+
 def safe_convert(cls, string):
     """
     Safe conversion out of strings
@@ -1083,7 +1093,8 @@ def theta_to_pseudorapidity(theta_list):
 
     """
     with np.errstate(invalid='ignore'):
-        restricted_theta = np.minimum(theta_list, np.pi - theta_list)
+        restricted_theta = confine_angle(theta_list)
+        restricted_theta = np.minimum(restricted_theta, np.pi - restricted_theta)
     tan_restricted = np.tan(np.abs(restricted_theta)/2)
     infinite = tan_restricted <= 0.
     pseudorapidity = np.full_like(theta_list, np.inf)
@@ -1506,25 +1517,6 @@ class RootReadout(EventWise):
 
         """
         return cls(*os.path.split(path), component_name)
-
-
-def angular_distance(phi1, phi2):
-    """
-    
-
-    Parameters
-    ----------
-    phi1 :
-        param phi2:
-    phi2 :
-        
-
-    Returns
-    -------
-
-    """
-    angular_diffrence = np.abs(phi1 - phi2) % (2*np.pi)
-    return np.minimum(angular_diffrence, 2*np.pi - angular_diffrence)
 
 
 def fix_nonexistent_columns(eventWise):

@@ -150,7 +150,7 @@ def join_behaviors(root):
     else:
         # the phi coordinate is modular
         phi_step = root.left.phi - root.right.phi
-        adjusted_phi_step = ((phi_step+np.pi)%(2*np.pi)) - np.pi
+        adjusted_phi_step = Components.raw_to_angular_distance(phi_step)
         modular_jump = abs(phi_step) > np.pi
         displacement = [root.left.rap - root.right.rap,
                         adjusted_phi_step,
@@ -227,7 +227,7 @@ def tree_motion(start, root, steps_between):
         else:
             adjusted_next_left = next_left[1]
         phi_left = np.linspace(adjusted_next_left, start[1], steps_between)
-        phi_left = ((phi_left+np.pi)%(2*np.pi)) - np.pi
+        phi_left = Components.confine_angle(phi_left)
         distance = next_right[1] - start[1]
         if distance > np.pi:
             adjusted_next_right = -next_right[1]
@@ -236,7 +236,7 @@ def tree_motion(start, root, steps_between):
         else:
             adjusted_next_right = next_right[1]
         phi_right = np.linspace(adjusted_next_right, start[1], steps_between)
-        phi_right = ((phi_right+np.pi)%(2*np.pi)) - np.pi
+        phi_right = Components.confine_angle(phi_right)
         this_level = [[[eleft, eright], [pleft, pright]]
                       for eleft, eright, pleft, pright in
                       zip(rap_left, rap_right, phi_left, phi_right)]
