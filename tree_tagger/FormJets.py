@@ -168,15 +168,12 @@ class PseudoJet:
                 -------
 
                 """
-                if row[e_col] > 0:
-                    row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])/row[e_col]
-                else:
-                    row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])/small_num
-                if column[e_col] > 0:
-                    column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])/column[e_col]
-                else:
-                    column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])/small_num
-                distance = 1 - np.sum(row_3vec*column_3vec)
+                root_energies = np.sqrt(row[e_col] * column[e_col])
+                if root_energies == 0:
+                    root_energies = small_num
+                row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])
+                column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])
+                distance = root_energies - np.sum(row_3vec*column_3vec)/root_energies
                 distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
                 return distance
         elif self.Invarient == 'angular':
@@ -1132,7 +1129,7 @@ class Spectral(PseudoJet):
             #print('cdisCspc', flush=True)
         #print('cdis4spc', end='\r', flush=True)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
-        self.eigenvalues.append(eigenvalues.tolist())
+        self.eigenvalues.append(eigenvalues[1:].tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
         # these tests often fall short of tollarance, and they arn't really needed
@@ -1543,7 +1540,7 @@ class SpectralAfter(Spectral):
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
-        self.eigenvalues.append(eigenvalues.tolist())
+        self.eigenvalues.append(eigenvalues[1:].tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
         # these tests often fall short of tollarance, and they arn't really needed
@@ -1668,7 +1665,7 @@ class SpectralMAfter(SpectralMean):
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
         self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
-        self.eigenvalues.append(eigenvalues.tolist())
+        self.eigenvalues.append(eigenvalues[1:].tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(self.eigenvectors)
         # these tests often fall short of tollarance, and they arn't really needed
@@ -2121,7 +2118,9 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     # updated_dict will be replaced in the first batch
     updated_dict = None
     checked = False
-    eigenvalues = []
+    has_eigenvalues = 'NumEigenvectors' in cluster_parameters
+    if has_eigenvalues:
+        eigenvalues = []
     for event_n in range(start_point, end_point):
         if event_n % 100 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
@@ -2129,7 +2128,8 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
         jets = cluster_algorithm(eventWise, **cluster_parameters)
-        eigenvalues.append(awkward.fromiter(jets.eigenvalues))
+        if has_eigenvalues:
+            eigenvalues.append(awkward.fromiter(jets.eigenvalues))
         jets = jets.split()
         if not checked and len(jets) > 0:
             assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"

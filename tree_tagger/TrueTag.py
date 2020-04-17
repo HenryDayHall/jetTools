@@ -90,6 +90,8 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     """
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
+        tag_pids = np.array([-5])
+    elif tag_pids == 'hadrons':
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     if include_antiparticles:
         tag_pids = np.concatenate((tag_pids, -tag_pids))
@@ -151,7 +153,8 @@ def add_tag_particles(eventWise, silent=False):
     end_point = n_events
     if not silent:
         print(f" Will stop at {100*end_point/n_events}%")
-    tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    #tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+    tag_pids = np.array([5])
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)

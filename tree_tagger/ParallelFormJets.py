@@ -751,21 +751,22 @@ def random_parameters(jet_class=None):
 
     """
     if jet_class is None:
-        jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'SpectralMAfterJet', 'HomeInvarientJet']
+        jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'SpectralMAfterJet', 'HomeJet']
         jet_class = np.random.choice(jet_classes)
-    if jet_class in ['SpectralMeanJet', 'SpectralMAfterJet', 'SpectralFullJet']:
+    if 'Spectral' in jet_class:
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
         params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
         params['NumEigenvectors'] = np.random.randint(1, 10)
-        #affinites = ['exponent', 'exponent2', 'linear', 'inverse']
-        affinites = ['exponent', 'exponent2', 'inverse']
-        params['AffinityType'] = np.random.choice(affinites)
-        laplaciens = ['unnormalised']
-        if params['AffinityType'] in ['linear']:
-            laplaciens.append('symmetric')
+        laplaciens = ['unnormalised', 'symmetric']
         params['Laplacien'] = np.random.choice(laplaciens)
-        params['WithLaplacienScaling'] = np.random.choice([True, False])
+        if params['Laplacien'] == 'symmetric':
+            params['AffinityType'] = 'linear'
+        else:
+            affinites = ['exponent', 'exponent2', 'inverse']
+            params['AffinityType'] = np.random.choice(affinites)
+        #params['WithLaplacienScaling'] = np.random.choice([True, False])
+        params['WithLaplacienScaling'] = False
         cutofftypes = [None, 'knn', 'distance']
         cutofftype = np.random.choice(cutofftypes)
         if cutofftype is None:
@@ -774,7 +775,9 @@ def random_parameters(jet_class=None):
             params['AffinityCutoff'] = (cutofftype, np.random.randint(1, 6))
         elif cutofftype == 'distance':
             params['AffinityCutoff'] = (cutofftype, np.random.uniform(0., 10.))
-    elif jet_class in ['HomeJet', 'HomeInvarientJet']:
+        invarients = ['Luclus', 'invarient', 'normed', 'angular']
+        params['Invarient'] = np.random.choice(invarients)
+    elif 'Home' in jet_class:
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
         params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
@@ -826,6 +829,6 @@ if __name__ == '__main__':
     #loops(eventWise_path)
     #jet_class = InputTools.list_complete("Jet class? ", list(names.keys())).strip()
     #iterate(eventWise_path, jet_class)
-    #monte_carlo(eventWise_path)
-    scan000(eventWise_path)
+    monte_carlo(eventWise_path)
+    #scan000(eventWise_path)
 
