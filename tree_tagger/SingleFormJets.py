@@ -164,6 +164,18 @@ def plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base):
     #    plt.savefig(img_base + '_smallAngle.png')
 
 
+def check_problem():
+    eventWise = get_data_file()
+    BATCH_LENGTH = InputTools.get_literal("How long should the batch be (-1 for all events)? ", int)
+    if BATCH_LENGTH == -1:
+        BATCH_LENGTH = np.inf
+    eventWise = define_inputs(eventWise)
+    params = {'DeltaR': 0.4, 'ExponentMultiplier': 0.1, 'NumEigenvectors': 2, 'Laplacien': 'symmetric', "AffinityType": 'linear', "WithLaplacienScaling": False, "AffinityCutoff": ('distance', 5.2), "Invarient": 'normed'}
+    jet_name = "ProblemJet"
+    params["jet_name"] = jet_name
+    FormJets.cluster_multiapply(eventWise, FormJets.SpectralFull, params, batch_length=BATCH_LENGTH)
+
+
 if __name__ == '__main__':
     eventWise = get_data_file()
     BATCH_LENGTH = InputTools.get_literal("How long should the batch be (-1 for all events)? ", int)
