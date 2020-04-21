@@ -88,7 +88,7 @@ class PseudoJet:
         self._define_physical_distance()
         # keep track of how many clusters don't yet have a parent
         self._calculate_currently_avalible()
-        self._distances = None
+        self._distances2 = None
         self._calculate_distances()
         if kwargs.get("assign", False):
             self.assign_parents()
@@ -100,15 +100,16 @@ class PseudoJet:
         exponent = self.ExponentMultiplier * 2
         deltaR2 = self.DeltaR**2
         # same for everything but Luclus
-        def beam_distance(row):
-            if exponent_now:
+        if exponent_now:
+            def beam_distance2(row):
                 return deltaR2 * row[pt_col]**exponent
-            else:
+        else:
+            def beam_distance2(row):
                 return deltaR2
         if self.Invarient == "Luclus":
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
-            def physical_distance(row, column):
+            def physical_distance2(row, column):
                 """
                 
 
@@ -124,19 +125,19 @@ class PseudoJet:
 
                 """
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
-                distance = (row[rap_col] - column[rap_col])**2 + angular_distance**2
+                distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
                 if exponent_now:
-                    distance *= (row[pt_col]**exponent)* (column[pt_col]**exponent) *\
-                                (row[pt_col] + column[pt_col])**-exponent
-                return distance
-            def beam_distance(_):
+                    distance2 *= (row[pt_col]**exponent)* (column[pt_col]**exponent) *\
+                                 (row[pt_col] + column[pt_col])**-exponent
+                return distance2
+            def beam_distance2(_):
                 return deltaR2
         elif self.Invarient == 'invarient':
             px_col = self._Px_col 
             py_col = self._Py_col 
             pz_col = self._Pz_col 
             e_col = self._Energy_col
-            def physical_distance(row, column):
+            def physical_distance2(row, column):
                 """
                 
 
@@ -151,20 +152,20 @@ class PseudoJet:
                 -------
 
                 """
-                distance = (row[e_col]*column[e_col]
-                            - row[px_col]*column[px_col]
-                            - row[py_col]*column[py_col]
-                            - row[pz_col]*column[pz_col])
+                distance2 = (row[e_col]*column[e_col]
+                             - row[px_col]*column[px_col]
+                             - row[py_col]*column[py_col]
+                             - row[pz_col]*column[pz_col])
                 if exponent_now:
-                    distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
-                return distance
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                return distance2
         elif self.Invarient == 'normed':
             px_col  = self._Px_col 
             py_col  = self._Py_col 
             pz_col  = self._Pz_col 
             e_col = self._Energy_col
             small_num = 1e-10
-            def physical_distance(row, column):
+            def physical_distance2(row, column):
                 """
                 
 
@@ -179,19 +180,19 @@ class PseudoJet:
                 -------
 
                 """
-                root_energies = np.sqrt(row[e_col] * column[e_col])
-                if root_energies == 0:
-                    root_energies = small_num
+                energies = row[e_col] * column[e_col]
+                if energies == 0:
+                    energies = small_num
                 row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])
                 column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])
-                distance = root_energies - np.sum(row_3vec*column_3vec)/root_energies
+                distance2 = 1. - np.sum(row_3vec*column_3vec)/energies
                 if exponent_now:
-                    distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
-                return distance
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                return distance2
         elif self.Invarient == 'angular':
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
-            def physical_distance(row, column):
+            def physical_distance2(row, column):
                 """
                 
 
@@ -207,14 +208,14 @@ class PseudoJet:
 
                 """
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
-                distance = (row[rap_col] - column[rap_col])**2 + angular_distance**2
+                distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
                 if exponent_now:
-                    distance *= min(row[pt_col]**exponent, column[pt_col]**exponent)
-                return distance
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                return distance2
         else:
             raise ValueError(f"Don't recognise {self.Invarient} as an Invarient")
-        self.physical_distance = physical_distance
-        self.beam_distance = beam_distance
+        self.physical_distance2 = physical_distance2
+        self.beam_distance2 = beam_distance2
 
     def _set_hyperparams(self, param_list, dict_jet_params, kwargs):
         """
@@ -571,7 +572,7 @@ class PseudoJet:
         """
         raise NotImplementedError
 
-    def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance):
+    def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2):
         """
         
 
@@ -579,7 +580,7 @@ class PseudoJet:
         ----------
         pseudojet_index1 :
             param pseudojet_index2:
-        distance :
+        distance2 :
             
         pseudojet_index2 :
             
@@ -588,9 +589,8 @@ class PseudoJet:
         -------
 
         """
-        #print('merg_psu', end='\r', flush=True)
         replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
-        new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance)
+        new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance2)
         # move the first pseudojet to the back without replacement
         pseudojet1_ints = self._ints.pop(remove_index)
         pseudojet1_floats = self._floats.pop(remove_index)
@@ -621,7 +621,6 @@ class PseudoJet:
         -------
 
         """
-        #print('remo_psu', end='\r', flush=True)
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
         pseudojet_floats = self._floats.pop(pseudojet_index)
@@ -629,22 +628,21 @@ class PseudoJet:
         self._floats.append(pseudojet_floats)
         self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
         # delete the row and column
-        self._distances = np.delete(self._distances, (pseudojet_index), axis=0)
-        self._distances = np.delete(self._distances, (pseudojet_index), axis=1)
+        self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=0)
+        self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=1)
         # one less pseudojet avalible
         self.currently_avalible -= 1
         
-
     def assign_parents(self):
         """ """
         #print('asign_psu', end='\r', flush=True)
         while self.currently_avalible > 0:
             # now find the smallest distance
-            row, column = np.unravel_index(np.argmin(self._distances), self._distances.shape)
+            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
             if row == column:
                 self._remove_pseudojet(row)
             else:
-                self._merge_pseudojets(row, column, self._distances[row, column])
+                self._merge_pseudojets(row, column, self._distances2[row, column])
 
     def plt_assign_parents(self):
         """ """
@@ -672,7 +670,7 @@ class PseudoJet:
         input("Press enter to start pseudojeting")
         while self.currently_avalible > 0:
             # now find the smallest distance
-            row, column = np.unravel_index(np.argmin(self._distances), self._distances.shape)
+            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
             if row == column:
                 decendents = self.get_decendants(lastOnly=True, pseudojet_idx=row)
                 decendents_idx = [self.idx_from_inpIdx(d) for d in decendents]
@@ -686,7 +684,7 @@ class PseudoJet:
                 input("Press enter for next pseudojet")
                 self._remove_pseudojet(row)
             else:
-                self._merge_pseudojets(row, column, self._distances[row, column])
+                self._merge_pseudojets(row, column, self._distances2[row, column])
         plt.show()
 
     def idx_from_inpIdx(self, jetInputIdx):
@@ -775,7 +773,7 @@ class PseudoJet:
                        self._ints[i][self._Child2_col] < 0)]
         return idx_are_obs
 
-    def _combine(self, pseudojet_index1, pseudojet_index2, distance):
+    def _combine(self, pseudojet_index1, pseudojet_index2, distance2):
         """
         
 
@@ -783,7 +781,7 @@ class PseudoJet:
         ----------
         pseudojet_index1 :
             param pseudojet_index2:
-        distance :
+        distance2 :
             
         pseudojet_index2 :
             
@@ -824,7 +822,7 @@ class PseudoJet:
         else:
             floats[self._Rapidity_col] = Components.ptpze_to_rapidity(pt, pz, energy)
         # fix the distance
-        floats[self._JoinDistance_col] = distance
+        floats[self._JoinDistance_col] = np.sqrt(distance2)
         return ints, floats
 
     def __len__(self):
@@ -849,7 +847,7 @@ class Traditional(PseudoJet):
     def _calculate_distances(self):
         """ """
         # this is caluculating all the distances
-        self._distances = np.full((self.currently_avalible, self.currently_avalible), np.inf)
+        self._distances2 = np.full((self.currently_avalible, self.currently_avalible), np.inf)
         # for speed, make local variables
         pt_col  = self._PT_col 
         exponent = self.ExponentMultiplier * 2
@@ -859,12 +857,12 @@ class Traditional(PseudoJet):
                 if column > row:
                     continue  # we only need a triangular matrix due to symmetry
                 elif self._floats[row][pt_col] == 0:
-                    distance = 0  # soft radation might as well be at 0 distance
+                    distance2 = 0  # soft radation might as well be at 0 distance
                 elif column == row:
-                    distance = self._floats[row][pt_col]**exponent * DeltaR2
+                    distance2 = self._floats[row][pt_col]**exponent * DeltaR2
                 else:
-                    distance = self.physical_distance(self._floats[row], self._floats[column])
-                self._distances[row, column] = distance
+                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
+                self._distances2[row, column] = distance2
 
     def _recalculate_one(self, remove_index, replace_index):
         """
@@ -884,19 +882,19 @@ class Traditional(PseudoJet):
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
-        self._distances = np.delete(self._distances, (remove_index), axis=0)
-        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=0)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
 
         # calculate new values into the second column
         for row in range(self.currently_avalible):
             column = replace_index
             if column > row:
-                row, column = column, row  # keep the upper triangular form
+                distance2 = self._distances2[column, row]
             if column == row:
-                distance = self.beam_distance(self._floats[row][self._PT_col])
+                distance2 = self.beam_distance2(self._floats[row][self._PT_col])
             else:
-                distance = self.physical_distance(self._floats[row], self._floats[column])
-            self._distances[row, column] = distance
+                distance2 = self.physical_distance2(self._floats[row], self._floats[column])
+            self._distances2[row, column] = distance2
 
     @classmethod
     def read_fastjet(cls, arg, eventWise, jet_name="FastJet", do_checks=False):
@@ -1060,10 +1058,10 @@ class Spectral(PseudoJet):
     """ """
     # list the params with default values
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf,
-            'PTExponentPosition': 'input',
-            'PTExponentMultiplier': None, 'AffinityType': 'exponent',
-            'AffinityCutoff': None, 'Laplacien': 'unnormalised',
-            'WithLaplacienScaling': False, 'Invarient': 'angular'}
+            'PTExponentPosition': 'input', 'PTExponentMultiplier': None,
+            'AffinityType': 'exponent', 'AffinityCutoff': None,
+            'Laplacien': 'unnormalised',
+            'Invarient': 'angular', 'StoppingCondition': 'standard'}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self._define_calculate_affinity()
@@ -1072,41 +1070,54 @@ class Spectral(PseudoJet):
 
     def _calculate_distances(self):
         """ """
-        if self.currently_avalible < 2:
-            self._distances = np.zeros((1, 1))
+        # if there is a beam particle need to get the distance to the beam particle too
+        n_distances = self.currently_avalible + self.beam_particle
+        if n_distances < 2:
+            self._distances2 = np.zeros((1, 1))
             try:
                 self._eigenspace = np.zeros((1, self.NumEigenvectors))
             except (ValueError, TypeError):
                 self._eigenspace = np.zeros((1, 1))
-            return np.zeros(self.currently_avalible).reshape((self.currently_avalible, self.currently_avalible))
+            return np.zeros(n_distances).reshape((n_distances, n_distances))
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
-        physical_distances = np.zeros((self.currently_avalible, self.currently_avalible))
+        physical_distances2 = np.zeros((n_distances, n_distances))
         # for speed, make local variables
         pt_col  = self._PT_col 
         rap_col = self._Rapidity_col
         phi_col = self._Phi_col
         # future calculatins will depend on the starting positions
-        self._starting_position = np.array([[row[pt_col], row[rap_col], row[phi_col]]
-                                            for row in self._floats])
+        self._starting_position = np.array([self._floats[row][:] for row
+                                            in range(self.currently_avalible)])
+        self.beam_particle = self.StoppingCondition == 'beamparticle'
+        if self.beam_particle:
+            # the beam particles dosn't have a real location,
+            # but to preserve the dimensions of future calculations, add it in
+            self._starting_position = np.vstack((self._starting_position,
+                                                 np.ones(len(float_columns))))
+            # it is added to the end so as to maintain the indices
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
                 if column < row:
-                    distance = physical_distances[column, row]  # the matrix is symmetric
+                    distance2 = physical_distances2[column, row]  # the matrix is symmetric
                 elif self._floats[row][pt_col] == 0:
-                    distance = 0  # soft radation might as well be at 0 distance
+                    distance2 = 0  # soft radation might as well be at 0 distance
                 elif column == row:
                     # not used
                     continue
                 else:
-                    distance = self.physical_distance(self._floats[row], self._floats[column])
-                physical_distances[row, column] = distance
-        np.fill_diagonal(physical_distances, 0)
+                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
+                physical_distances2[row, column] = distance2
+        if self.beam_particle:
+            # the last row and column should give the distance of each particle to the beam
+            physical_distances2[-1, :] = [self.beam_distance2(row) for row in self._starting_position]
+            physical_distances2[:, -1] = physical_distances2[-1, :]
+        np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation
-        affinity = self.calculate_affinity(physical_distances)
+        affinity = self.calculate_affinity(physical_distances2)
         # a graph laplacien can be calculated
-        np.fill_diagonal(affinity, 0)
+        np.fill_diagonal(affinity, 0.)  # the affinity may have problems on the diagonal
         diagonal = np.diag(np.sum(affinity, axis=1))
         if self.Laplacien == 'unnormalised':
             laplacien = diagonal - affinity
@@ -1117,43 +1128,46 @@ class Spectral(PseudoJet):
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
         else:
             raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
-        if self.WithLaplacienScaling:
-            # the scaling required to bring the off idagona elements to the length of the diagnoal elements
-            self.laplacien_scaling = np.mean(np.diag(laplacien))/np.mean(laplacien[~np.eye(len(laplacien), dtype=bool)])
-            self.laplacien_scaling = np.sqrt((self.laplacien_scaling**2)/len(laplacien))
         # get the eigenvectors (we know the smallest will be identity)
         try:
-            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(0, self.NumEigenvectors+1))
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(1, self.NumEigenvectors+1))
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
-            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
-        self.eigenvectors = eigenvectors[:, 1:]  # make publically visible
-        self.eigenvalues.append(eigenvalues[1:].tolist())
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)[1:]
+        self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
-        self._eigenspace = np.copy(self.eigenvectors)
-        # these tests often fall short of tollarance, and they arn't really needed
-        #np.testing.assert_allclose(0, eigenvalues[0], atol=0.001)
-        #np.testing.assert_allclose(np.ones(self.currently_avalible), eigenvectors[:, 0]/eigenvectors[0, 0])
-        # now treating the columns of this matrix as the new points get euclidien distances
-        self._distances = scipy.spatial.distance.squareform(
-                scipy.spatial.distance.pdist(eigenvectors[:, 1:]))
+        self._eigenspace = np.copy(eigenvectors)
+        # now treating the rows of this matrix as the new points get euclidien distances
+        self._distances2 = scipy.spatial.distance.squareform(
+                scipy.spatial.distance.pdist(eigenvectors),
+                metric='sqeuclidean')
         if self.PTExponentPosition == 'eigenspace':
             exponent = 2 * self.PTExponentMultiplier
+            # if beamparticle the last entry will be nonsense, but we wont touch it anyway
+            pt_fractions = np.fromiter((row[pt_col]**exponent for row in self._starting_position),
+                                       dtype=float)
             for row in range(self.currently_avalible):
                 for column in range(self.currently_avalible):
                     if column < row:
-                        distance = self._distances[column, row]  # the matrix is symmetric
+                        distance2 = self._distances2[column, row]  # the matrix is symmetric
                     elif column == row:
                         # not used
                         continue
                     else:
                         # at this point apply the pt factors
-                        distance = min(self._floats[row][pt_col]**exponent, self._floats[column][pt_col]**exponent) *\
-                                   self._distances[row, column]
-                    self._distances[row, column] = distance
+                        distance2 = min(pt_fractions[row], pt_fractions[column]) * self._distances2[row, column]
+                    self._distances2[row, column] = distance2
+            if self.beam_particle:
+                self._distances2[-1, :-1] *= pt_fractions[:-1]
+                self._distances2[:-1, -1] *= pt_fractions[:-1]
         # if the clustering is not going to stop at 1 we must put something in the diagonal
-        np.fill_diagonal(self._distances, self.DeltaR)
+        if self.beam_particle:  # in he case of a beam particle we stop the clustering when our particle reaches the beam particle
+            # so the diagonal should never be grouped with
+            np.fill_diagonal(self._distances2, np.inf)
+        else:
+            # the diagonal is the stopping condition
+            np.fill_diagonal(self._distances2, self.DeltaR**2)
 
     def _define_calculate_affinity(self):
         """ """
@@ -1162,143 +1176,144 @@ class Spectral(PseudoJet):
             cutoff_param = self.AffinityCutoff[1]
             if cutoff_type == 'knn':
                 if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = np.exp(-(distances**0.5))
-                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        affinity = np.exp(-(distances2**0.5))
+                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
                         return affinity
                 elif self.AffinityType == 'exponent2':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = np.exp(-(distances))
-                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        affinity = np.exp(-(distances2))
+                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
                         return affinity
                 elif self.AffinityType == 'linear':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = -distances**0.5
-                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        affinity = -distances2**0.5
+                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
                         return affinity
                 elif self.AffinityType == 'inverse':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = distances**-0.5
-                        affinity[np.argsort(distances, axis=0) < cutoff_param] = 0
+                        affinity = distances2**-0.5
+                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
                         return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
             elif cutoff_type == 'distance':
+                cutoff_param2 = cutoff_param**2
                 if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = np.exp(-(distances**0.5))
-                        affinity[distances > cutoff_param] = 0
+                        affinity = np.exp(-(distances2**0.5))
+                        affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 elif self.AffinityType == 'exponent2':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = np.exp(-(distances))
-                        affinity[distances > cutoff_param] = 0
+                        affinity = np.exp(-(distances2))
+                        affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 elif self.AffinityType == 'linear':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = -distances**0.5
-                        affinity[distances > cutoff_param] = 0
+                        affinity = -distances2**0.5
+                        affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 elif self.AffinityType == 'inverse':
-                    def calculate_affinity(distances):
+                    def calculate_affinity(distances2):
                         """
                         
 
                         Parameters
                         ----------
-                        distances :
+                        distances2 :
                             
 
                         Returns
                         -------
 
                         """
-                        affinity = distances**-0.5
-                        affinity[distances > cutoff_param] = 0
+                        affinity = distances2**-0.5
+                        affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1306,68 +1321,68 @@ class Spectral(PseudoJet):
                 raise ValueError(f"cut off {cutoff_type} unknown")
         else:
             if self.AffinityType == 'exponent':
-                def calculate_affinity(distances):
+                def calculate_affinity(distances2):
                     """
                     
 
                     Parameters
                     ----------
-                    distances :
+                    distances2 :
                         
 
                     Returns
                     -------
 
                     """
-                    affinity = np.exp(-(distances**0.5))
+                    affinity = np.exp(-(distances2**0.5))
                     return affinity
             elif self.AffinityType == 'exponent2':
-                def calculate_affinity(distances):
+                def calculate_affinity(distances2):
                     """
                     
 
                     Parameters
                     ----------
-                    distances :
+                    distances2 :
                         
 
                     Returns
                     -------
 
                     """
-                    affinity = np.exp(-(distances))
+                    affinity = np.exp(-(distances2))
                     return affinity
             elif self.AffinityType == 'linear':
-                def calculate_affinity(distances):
+                def calculate_affinity(distances2):
                     """
                     
 
                     Parameters
                     ----------
-                    distances :
+                    distances2 :
                         
 
                     Returns
                     -------
 
                     """
-                    affinity = -distances**0.5
+                    affinity = -distances2**0.5
                     return affinity
             elif self.AffinityType == 'inverse':
-                def calculate_affinity(distances):
+                def calculate_affinity(distances2):
                     """
                     
 
                     Parameters
                     ----------
-                    distances :
+                    distances2 :
                         
 
                     Returns
                     -------
 
                     """
-                    affinity = distances**-0.5
+                    affinity = distances2**-0.5
                     return affinity
             else:
                 raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1387,20 +1402,20 @@ class Spectral(PseudoJet):
         -------
 
         """
-        #print('rmps_spc', end='\r', flush=True)
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
         pseudojet_floats = self._floats.pop(pseudojet_index)
         self._ints.append(pseudojet_ints)
         self._floats.append(pseudojet_floats)
-        # need to give eigenbases same treatment
-        self._eigenspace = np.vstack((self._eigenspace[:pseudojet_index],
-                                      self._eigenspace[pseudojet_index:],
-                                      self._eigenspace[[pseudojet_index]]))
+        # remove from the eigenspace
+        self._eigenspace = np.delete(self._eigenspace, (pseudojet_index), axis=0)
+        #self._eigenspace = np.vstack((self._eigenspace[:pseudojet_index],
+        #                              self._eigenspace[pseudojet_index:],
+        #                              self._eigenspace[[pseudojet_index]]))
         self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
         # delete the row and column
-        self._distances = np.delete(self._distances, (pseudojet_index), axis=0)
-        self._distances = np.delete(self._distances, (pseudojet_index), axis=1)
+        self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=0)
+        self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=1)
         # one less pseudojet avalible
         self.currently_avalible -= 1
         
@@ -1422,42 +1437,121 @@ class Spectral(PseudoJet):
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
-        self._distances = np.delete(self._distances, (remove_index), axis=0)
-        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=0)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # calculate the physical distance of the new point from all original points
-        new_position = [self._floats[replace_index][col] for col in [self._PT_col, self._Rapidity_col, self._Phi_col]]
-        new_distances = np.fromiter((self.physical_distance(row, new_position) for row in self._starting_position),
+        # floats and ints will have been updated already in _mearge_pseudojets
+        new_position = self._floats[replace_index]
+        # since we take rows out of the eigenspace the laplacien also needs to get corrispondingly smaller
+        new_distances2 = np.fromiter((self.physical_distance2(self._floats[row], new_position) for row in range(self.currently_avalible),
                                     dtype=float)
+        if self.beam_particle:
+            # then add in one more index for the beam partical
+            new_distances2 = np.append(new_distances2, self.beam_distance2(new_position))
         # from this get a new line of the laplacien
-        new_laplacien = self.calculate_affinity(new_distances)
+        new_laplacien = -self.calculate_affinity(new_distances2)
+        new_laplacien[replace_index] = 0.
+        new_laplacien[replace_index] = -np.sum(new_laplacien)
         if self.Laplacien == 'symmetric':
+            self.alt_diag = np.delete(self.alt_diag[remove_index])
             new_alt_diag = np.sum(new_laplacien)**(-0.5)
+            self.alt_diag[replace_index] = new_alt_diag
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
-        if self.WithLaplacienScaling:
-            # as this laplacien has no true diagnoal it needs rescaling
-            new_laplacien *= self.laplacien_scaling
+        # CHanged -> simply delete the eigenspace line
+        self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
         # and make its position in vector space
-        new_position = np.dot(self.eigenvectors.T, new_laplacien)
-        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
-        # move the replaced to the back, it will be repalced later
-        # move the removed object to the back without replacement
-        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
-                                      self._eigenspace[remove_index+1:],
-                                      self._eigenspace[[remove_index]],
-                                      self._eigenspace[[replace_index]]))
+        new_position = np.dot(self._eigenspace.T, new_laplacien)
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
+        new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
         if self.PTExponentPosition == 'eigenspace':
             exponent = 2 * self.PTExponentMultiplier
             pt_here = self._floats[replace_index][self._PT_col]**exponent
-            pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
-                                     for row in self._floats[:self.currently_avalible]),
-                                    dtype=float) 
-            new_distances = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+            pt_factor = np.array([min(row[self._PT_col]**exponent, pt_here) for row in self._floats[:self.currently_avalible]),
+                                    dtype=float)
+            new_distances2[:self.currently_avalible] *= pt_factor
         else:
-            new_distances = np.sqrt(np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1))
-        new_distances[replace_index] = self.DeltaR
-        self._distances[replace_index] = new_distances
+            new_distances2 = np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+        if self.beam_particle:
+            new_distances2[replace_index] = np.inf
+        else:
+            new_distances2[replace_index] = self.DeltaR**2
+        self._distances2[replace_index] = new_distances2
+
+    def assign_parents(self):
+        """ """
+        # the beam particle won't count towards the currently avalible
+        while self.currently_avalible > 0:
+            beam_index = self.currently_avalible
+            # now find the smallest distance
+            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
+            if row == column:
+                if self.beam_particle:
+                    raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
+                self._remove_pseudojet(row)
+            elif self.beam_particle and row == beam_index:
+                # the column merged with the beam
+                self._remove_pseudojet(column)
+            elif self.beam_particle and column == beam_index:
+                # the row merged with the beam
+                self._remove_pseudojet(row)
+            else:
+                self._merge_pseudojets(row, column, self._distances2[row, column])
+
+    def plt_assign_parents(self):
+        """ """
+        # dendogram < this should be
+        plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
+        inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
+        plt.scatter(self.Rapidity, self.Phi, inv_pts, c='w')
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.ylabel(r"$\phi$ - barrel angle")
+        if self.from_PseudoRapidity:
+            plt.xlabel(r"$\eta$ - pseudo rapidity")
+        else:
+            plt.xlabel(r"Rapidity")
+        plt.title("Detected Hits")
+        plt.gca().set_facecolor('gray')
+        # for getting rid of the axis
+        #plt.gca().get_xaxis().set_visible(False)
+        #plt.gca().get_yaxis().set_visible(False)
+        #plt.gca().spines['top'].set_visible(False)
+        #plt.gca().spines['right'].set_visible(False)
+        #plt.gca().spines['bottom'].set_visible(False)
+        #plt.gca().spines['left'].set_visible(False)
+        plt.pause(0.05)#
+        input("Press enter to start pseudojeting")
+        while self.currently_avalible > 0:
+            # now find the smallest distance
+            remove_row = None
+            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
+            beam_index = self.currently_avalible - 1
+            if row == column:
+                if self.beam_particle:
+                    raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
+                remove_row = row
+            elif self.beam_particle and row == beam_index:
+                # the column merged with the beam
+                remove_row = column
+            elif self.beam_particle and column == beam_index:
+                # the row merged with the beam
+                remove_row = row
+            else:
+                self._merge_pseudojets(row, column, self._distances2[row, column])
+            if remove_row is not None:
+                decendents = self.get_decendants(lastOnly=True, pseudojet_idx=row)
+                decendents_idx = [self.idx_from_inpIdx(d) for d in decendents]
+                draps = [self._floats[d][self._Rapidity_col] for d in decendents_idx]
+                dphis = [self._floats[d][self._Phi_col] for d in decendents_idx]
+                des = [self._floats[d][self._Energy_col] for d in decendents_idx]
+                dpts = [1/self._floats[d][self._PT_col]**2 for d in decendents_idx]  # WHY??
+                plt.scatter(draps, dphis, dpts, marker='D')
+                print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} pseudojets unfinished")
+                plt.pause(0.05)
+                input("Press enter for next pseudojet")
+                self._remove_pseudojet(row)
+        plt.show()
 
 
 class SpectralMean(Spectral):
@@ -1480,11 +1574,12 @@ class SpectralMean(Spectral):
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
-        self._distances = np.delete(self._distances, (remove_index), axis=0)
-        self._distances = np.delete(self._distances, (remove_index), axis=1)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=0)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # and make its position in eigenspace
         new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
         # reshuffle the eigenspace to reflect the moevment in the floats and ints 
+        if self.beam_particle:
         # move the replaced to the back, it will be repalced later
         # move the removed object to the back without replacement
         self._eigenspace = np.vstack((self._eigenspace[:remove_index],
@@ -1499,11 +1594,14 @@ class SpectralMean(Spectral):
             pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
                                      for row in self._floats[:self.currently_avalible]),
                                     dtype=float) 
-            new_distances = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+            new_distances2 = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
         else:
-            new_distances = np.sqrt(np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1))
-        new_distances[replace_index] = self.DeltaR
-        self._distances[replace_index] = new_distances
+            new_distances2 = np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+        if self.beam_particle:
+            new_distances2[replace_index] = np.inf
+        else:
+            new_distances2[replace_index] = self.DeltaR**2
+        self._distances2[replace_index] = new_distances2
 
 
 class SpectralFull(Spectral):
