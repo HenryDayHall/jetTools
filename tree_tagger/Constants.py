@@ -19,3 +19,34 @@ max_tagangle = 0.8
 
 # soemtiems the coordinates need to go in a grid
 coordinate_order = ["Energy", "Px", "Py", "Pz", "PT", "Rapidity", "Phi"]
+
+# for checking if a parameter is valid
+numeric_classes = {'nn': 'natrual number', 'pdn': 'positive definite number', 'rn': 'real number'}
+
+def is_numeric_class(param, permitted):
+    if permitted == 'natrual number':
+        try:
+            int_value = int(param)
+            if int_value <= 0:
+                return False
+            if int_value != param:
+                return False
+        except (ValueError, TypeError):
+            return False
+    elif permitted == 'positive definite number':
+        try:
+            return param > 0
+        except TypeError:
+            return False
+    elif permitted == 'real number':
+        try:
+            float(param)
+        except TypeError:
+            return False
+    else:
+        raise ValueError(f"permitted {permitted} not a known numeric type")
+    return True
+
+
+
+                

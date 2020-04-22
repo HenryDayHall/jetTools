@@ -8,7 +8,8 @@ import csv
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
 from skhep import math as hepmath
-from tree_tagger import Components, TrueTag, InputTools
+from tree_tagger import Components, TrueTag, InputTools, Constants
+
 
 
 class PseudoJet:
@@ -97,7 +98,7 @@ class PseudoJet:
         """ """
         pt_col  = self._PT_col 
         exponent_now = self.PTExponentPosition == 'input'
-        exponent = self.ExponentMultiplier * 2
+        exponent = self.PTExponentMultiplier * 2
         deltaR2 = self.DeltaR**2
         # same for everything but Luclus
         if exponent_now:
@@ -234,7 +235,6 @@ class PseudoJet:
         -------
 
         """
-        #print('hpar_psu', end='\r', flush=True)
         if dict_jet_params is None:
             dict_jet_params = {}
         stripped_params = {name.split("_")[-1]:name for name in dict_jet_params}
@@ -250,6 +250,9 @@ class PseudoJet:
                 setattr(self, name, param_list[name])
                 dict_jet_params[name] = param_list[name]
         kwargs['dict_jet_params'] = dict_jet_params
+
+    def _check_hyperparams():
+        raise NotImplementedError
 
     def _set_column_numbers(self):
         """ """
@@ -838,7 +841,10 @@ class PseudoJet:
 
 class Traditional(PseudoJet):
     """ """
-    param_list = {'DeltaR': None, 'ExponentMultiplier': None, 'Invarient': 'angular'}
+    param_list = {'DeltaR': None, 'PTExponentMultiplier': None, 'Invarient': 'angular'}
+    permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
+                       'PTExponentMultiplier': Constants.numeric_classes['rn'],
+                       'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.PTExponentPosition = 'input'
@@ -850,7 +856,7 @@ class Traditional(PseudoJet):
         self._distances2 = np.full((self.currently_avalible, self.currently_avalible), np.inf)
         # for speed, make local variables
         pt_col  = self._PT_col 
-        exponent = self.ExponentMultiplier * 2
+        exponent = self.PTExponentMultiplier * 2
         DeltaR2 = self.DeltaR**2
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
@@ -891,7 +897,7 @@ class Traditional(PseudoJet):
             if column > row:
                 distance2 = self._distances2[column, row]
             if column == row:
-                distance2 = self.beam_distance2(self._floats[row][self._PT_col])
+                distance2 = self.beam_distance2(self._floats[row])
             else:
                 distance2 = self.physical_distance2(self._floats[row], self._floats[column])
             self._distances2[row, column] = distance2
@@ -949,11 +955,11 @@ class Traditional(PseudoJet):
         DeltaR = float(header[0].split('=')[1])
         algorithm_name = header[1]
         if algorithm_name == 'kt_algorithm':
-            ExponentMultiplier = 1
+            PTExponentMultiplier = 1
         elif algorithm_name == 'cambridge_algorithm':
-            ExponentMultiplier = 0
+            PTExponentMultiplier = 0
         elif algorithm_name == 'antikt_algorithm':
-            ExponentMultiplier = -1
+            PTExponentMultiplier = -1
         else:
             raise ValueError(f"Algorithm {algorithm_name} not recognised")
         # get the colums for the header
@@ -1047,7 +1053,7 @@ class Traditional(PseudoJet):
         new_pseudojet = cls(ints_floats=(ints, floats),
                             eventWise=eventWise,
                             DeltaR=DeltaR,
-                            ExponentMultiplier=ExponentMultiplier,
+                            PTExponentMultiplier=PTExponentMultiplier,
                             jet_name=jet_name)
         new_pseudojet.currently_avalible = 0
         new_pseudojet._calculate_roots()
@@ -1062,10 +1068,20 @@ class Spectral(PseudoJet):
             'AffinityType': 'exponent', 'AffinityCutoff': None,
             'Laplacien': 'unnormalised',
             'Invarient': 'angular', 'StoppingCondition': 'standard'}
+    permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
+                       'NumEigenvalues': [Constants.numeric_classes['nn'], np.inf],
+                       'PTExponentPosition': ['input', 'eigenspace'],
+                       'PTExponentMultiplier': Constants.numeric_classes['rn'],
+                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
+                       'Laplacien': ['unnormalised', 'symmetric'],
+                       'Invarient': ['angular', 'normed', 'Luclus', 'invarient'],
+                       'StoppingCondition': ['standard', 'beamparticle']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self._define_calculate_affinity()
         self.eigenvalues = []  # create a list to track the eigenvalues
+        self.beam_particle = self.StoppingCondition == 'beamparticle'
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
@@ -1089,7 +1105,6 @@ class Spectral(PseudoJet):
         # future calculatins will depend on the starting positions
         self._starting_position = np.array([self._floats[row][:] for row
                                             in range(self.currently_avalible)])
-        self.beam_particle = self.StoppingCondition == 'beamparticle'
         if self.beam_particle:
             # the beam particles dosn't have a real location,
             # but to preserve the dimensions of future calculations, add it in
@@ -1118,6 +1133,11 @@ class Spectral(PseudoJet):
         affinity = self.calculate_affinity(physical_distances2)
         # a graph laplacien can be calculated
         np.fill_diagonal(affinity, 0.)  # the affinity may have problems on the diagonal
+        if np.sum(np.abs(affinity)) == 0.:
+            # everything is seperated
+            self.root_jetInputIdxs = list(range(self.currently_avalible))
+            self.currently_avalible = 0
+            return
         diagonal = np.diag(np.sum(affinity, axis=1))
         if self.Laplacien == 'unnormalised':
             laplacien = diagonal - affinity
@@ -1134,14 +1154,16 @@ class Spectral(PseudoJet):
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
-            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)[1:]
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+            eigenvalues = eigenvalues[1:]
+            eigenvectors = eigenvectors[:, 1:].T
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
         # now treating the rows of this matrix as the new points get euclidien distances
         self._distances2 = scipy.spatial.distance.squareform(
-                scipy.spatial.distance.pdist(eigenvectors),
-                metric='sqeuclidean')
+                scipy.spatial.distance.pdist(eigenvectors,
+                metric='sqeuclidean'))
         if self.PTExponentPosition == 'eigenspace':
             exponent = 2 * self.PTExponentMultiplier
             # if beamparticle the last entry will be nonsense, but we wont touch it anyway
@@ -1225,6 +1247,7 @@ class Spectral(PseudoJet):
                         """
                         affinity = -distances2**0.5
                         affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
+                        affinity -= np.min(affinity)
                         return affinity
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
@@ -1297,6 +1320,7 @@ class Spectral(PseudoJet):
                         """
                         affinity = -distances2**0.5
                         affinity[distances2 > cutoff_param2] = 0
+                        affinity -= np.min(affinity)
                         return affinity
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
@@ -1367,6 +1391,7 @@ class Spectral(PseudoJet):
 
                     """
                     affinity = -distances2**0.5
+                    affinity -= np.min(affinity)
                     return affinity
             elif self.AffinityType == 'inverse':
                 def calculate_affinity(distances2):
@@ -1409,9 +1434,6 @@ class Spectral(PseudoJet):
         self._floats.append(pseudojet_floats)
         # remove from the eigenspace
         self._eigenspace = np.delete(self._eigenspace, (pseudojet_index), axis=0)
-        #self._eigenspace = np.vstack((self._eigenspace[:pseudojet_index],
-        #                              self._eigenspace[pseudojet_index:],
-        #                              self._eigenspace[[pseudojet_index]]))
         self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
         # delete the row and column
         self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=0)
@@ -1443,8 +1465,9 @@ class Spectral(PseudoJet):
         # floats and ints will have been updated already in _mearge_pseudojets
         new_position = self._floats[replace_index]
         # since we take rows out of the eigenspace the laplacien also needs to get corrispondingly smaller
-        new_distances2 = np.fromiter((self.physical_distance2(self._floats[row], new_position) for row in range(self.currently_avalible),
-                                    dtype=float)
+        new_distances2 = np.fromiter((self.physical_distance2(self._floats[row], new_position)
+                                      for row in range(self.currently_avalible)),
+                                     dtype=float)
         if self.beam_particle:
             # then add in one more index for the beam partical
             new_distances2 = np.append(new_distances2, self.beam_distance2(new_position))
@@ -1453,7 +1476,7 @@ class Spectral(PseudoJet):
         new_laplacien[replace_index] = 0.
         new_laplacien[replace_index] = -np.sum(new_laplacien)
         if self.Laplacien == 'symmetric':
-            self.alt_diag = np.delete(self.alt_diag[remove_index])
+            self.alt_diag = np.delete(self.alt_diag, remove_index)
             new_alt_diag = np.sum(new_laplacien)**(-0.5)
             self.alt_diag[replace_index] = new_alt_diag
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
@@ -1467,11 +1490,10 @@ class Spectral(PseudoJet):
         if self.PTExponentPosition == 'eigenspace':
             exponent = 2 * self.PTExponentMultiplier
             pt_here = self._floats[replace_index][self._PT_col]**exponent
-            pt_factor = np.array([min(row[self._PT_col]**exponent, pt_here) for row in self._floats[:self.currently_avalible]),
-                                    dtype=float)
+            pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
+                                     for row in self._floats[:self.currently_avalible]),
+                                    dtype=float) 
             new_distances2[:self.currently_avalible] *= pt_factor
-        else:
-            new_distances2 = np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
         if self.beam_particle:
             new_distances2[replace_index] = np.inf
         else:
@@ -1578,25 +1600,18 @@ class SpectralMean(Spectral):
         self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # and make its position in eigenspace
         new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
-        # reshuffle the eigenspace to reflect the moevment in the floats and ints 
-        if self.beam_particle:
-        # move the replaced to the back, it will be repalced later
-        # move the removed object to the back without replacement
-        self._eigenspace = np.vstack((self._eigenspace[:remove_index],
-                                      self._eigenspace[remove_index+1:],
-                                      self._eigenspace[[remove_index]],
-                                      self._eigenspace[[replace_index]]))
+        # CHanged -> simply delete the eigenspace line
+        self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
+        new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
         if self.PTExponentPosition == 'eigenspace':
             exponent = 2 * self.PTExponentMultiplier
             pt_here = self._floats[replace_index][self._PT_col]**exponent
             pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
                                      for row in self._floats[:self.currently_avalible]),
                                     dtype=float) 
-            new_distances2 = pt_factor*np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
-        else:
-            new_distances2 = np.sum((self._eigenspace[:self.currently_avalible] - new_position)**2, axis=1)
+            new_distances2[:self.currently_avalible] *= pt_factor
         if self.beam_particle:
             new_distances2[replace_index] = np.inf
         else:
@@ -1621,14 +1636,53 @@ class SpectralFull(Spectral):
         -------
 
         """
-        #print('reon_ful', end='\r', flush=True)
         self._calculate_distances()
 
 
 cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional,
                    "SpectralJet": Spectral, "SpectralMeanJet": SpectralMean,
-                   "SpectralMAfterJet": SpectralMAfter, "SpectralFullJet": SpectralFull,
-                   "SpectralAfterJet": SpectralAfter}
+                   "SpectralFullJet": SpectralFull}
+
+def check_hyperparameters(cluster_class, params):
+    if isinstance(cluster_class, str):
+        cluster_class = cluster_classes[cluster_class]
+    permitted = cluster_class.permited_values
+    error_str = f"In {cluster_class.__name__} {{}} is not a permitted value for {{}}. Permitted value are {{}}"
+    for name, opts in permitted.items():
+        try:
+            value = params[name]
+        except KeyError:
+            continue  # the default will be used
+        try:
+            if value in opts:
+                continue  # no problem
+        except TypeError:
+            pass
+        try:
+            if Constants.is_numeric_class(value, opts):
+                continue  # no problem
+        except TypeError:
+            pass
+        if name == 'AffinityCutoff':
+            primary, secondary = value
+            try:
+                secondary_options = next(s for p, s in opts if p == primary)
+            except StopIteration:
+                raise ValueError(error_str.format(name, value, opts))
+            if Constants.is_numeric_class(secondary, secondary_options):
+                continue  # no problem
+        if isinstance(opts, list):
+            found_correct = False
+            for opt in opts:
+                if opt in Constants.numeric_classes and Constants.is_numeric_class(value, opt):
+                    found_correct = True
+                    break
+            if found_correct:
+                continue  # no problem
+        # if we have yet ot hit a continue statment then this option is not valid
+        raise ValueError(error_str.format(name, value, opts))
+
+            
 
 
 def get_jet_params(eventWise, jet_name, add_defaults=False):
@@ -1844,7 +1898,7 @@ def produce_summary(eventWise, to_file=True):
         return '\n'.join(rows).encode()
 
 
-def run_FastJet(eventWise, DeltaR, ExponentMultiplier, jet_name="FastJet", use_pipe=True):
+def run_FastJet(eventWise, DeltaR, PTExponentMultiplier, jet_name="FastJet", use_pipe=True):
     """
     
 
@@ -1852,7 +1906,7 @@ def run_FastJet(eventWise, DeltaR, ExponentMultiplier, jet_name="FastJet", use_p
     ----------
     eventWise :
         param DeltaR:
-    ExponentMultiplier :
+    PTExponentMultiplier :
         param jet_name: (Default value = "FastJet")
     use_pipe :
         Default value = True)
@@ -1866,15 +1920,15 @@ def run_FastJet(eventWise, DeltaR, ExponentMultiplier, jet_name="FastJet", use_p
 
     """
     assert eventWise.selected_index is not None
-    if ExponentMultiplier == -1:
+    if PTExponentMultiplier == -1:
         # antikt algorithm
         algorithm_num = 1
-    elif ExponentMultiplier == 0:
+    elif PTExponentMultiplier == 0:
         algorithm_num = 2
-    elif ExponentMultiplier == 1:
+    elif PTExponentMultiplier == 1:
         algorithm_num = 0
     else:
-        raise ValueError(f"ExponentMultiplier should be -1, 0 or 1, found {ExponentMultiplier}")
+        raise ValueError(f"PTExponentMultiplier should be -1, 0 or 1, found {PTExponentMultiplier}")
     program_name = "./tree_tagger/applyFastJet"
     if use_pipe:
         summary_lines = produce_summary(eventWise, False)
@@ -1960,6 +2014,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     -------
 
     """
+    check_hyperparameters(cluster_algorithm, cluster_parameters)
     if jet_name is None and 'jet_name' in cluster_parameters:
         jet_name = cluster_parameters['jet_name']
     elif jet_name is None:
@@ -2117,7 +2172,7 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     plt.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size+1)
 
 
-def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spectral_class=SpectralFull):
+def flat_display(eventWise, event_n, fast_jet_params, comparitor_jet_params, comparitor_class=SpectralFull):
     """
     
 
@@ -2125,13 +2180,13 @@ def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spect
     ----------
     eventWise :
         param event_n:
-    home_jet_params :
-        param spectral_jet_params:
-    spectral_class :
+    fast_jet_params :
+        param comparitor_jet_params:
+    comparitor_class :
         Default value = SpectralFull)
     event_n :
         
-    spectral_jet_params :
+    comparitor_jet_params :
         
 
     Returns
@@ -2155,7 +2210,7 @@ def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spect
     tag_phis = eventWise.Phi[eventWise.TagIndex]
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
     plt.scatter(tag_rapidity, tag_phis, marker='d', c='g', label="Tags")
-    pseudojet_traditional = Traditional(eventWise, **home_jet_params)
+    pseudojet_traditional = run_FastJet(eventWise, **fast_jet_params)
     pseudojet_traditional.assign_parents()
     pjets_traditional = pseudojet_traditional.split()
     # plot the pseudojets
@@ -2172,13 +2227,13 @@ def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spect
         #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
         #ax.add_artist(circle)
     plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
-    pseudojet_spectral = SpectralMean(eventWise, **spectral_jet_params)
-    pseudojet_spectral.assign_parents()
-    pjets_spectral = pseudojet_spectral.split()
+    pseudojet_comparitor = comparitor_class(eventWise, **comparitor_jet_params)
+    pseudojet_comparitor.assign_parents()
+    pjets_comparitor = pseudojet_comparitor.split()
     # plot the pseudojets
-    #spectral_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_spectral))]
-    spectral_colours = ['blue' for _ in pjets_spectral]
-    for c, pjet in zip(spectral_colours, pjets_spectral):
+    #comparitor_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_comparitor))]
+    comparitor_colours = ['blue' for _ in pjets_comparitor]
+    for c, pjet in zip(comparitor_colours, pjets_comparitor):
         obs_idx = [i for i, child1 in enumerate(pjet.Child1) if child1==-1]
         input_rap = np.array(pjet._floats)[obs_idx, pjet._Rapidity_col]
         input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
@@ -2194,21 +2249,25 @@ def flat_display(eventWise, event_n, home_jet_params, spectral_jet_params, spect
     plt.xlabel("rapidity")
     plt.ylim(-np.pi, np.pi)
     plt.ylabel("phi")
-    #plt.show()
+    plt.show()
     plt.savefig("test_plot.png")
-    return pjets_spectral
+    return pjets_comparitor
 
 
 if __name__ == '__main__':
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
     event_num = int(input("Event number "))
-    home_jet_params = dict(DeltaR=1., ExponentMultiplier=-1, jet_name="HomeJetTest")
-    spectral_jet_params = dict(DeltaR=0.15, ExponentMultiplier=0,
+    fast_jet_params = dict(DeltaR=1., PTExponentMultiplier=-1, jet_name="FastJet")
+    home_jet_params = dict(DeltaR=1., PTExponentMultiplier=-1, jet_name="HomeJet")
+    spectral_jet_params = dict(DeltaR=0.20, PTExponentMultiplier=0,
+                               PTExponentPosition='input',
                                NumEigenvectors=4,
-                               Laplacien='unnormalised',
-                               AffinityType='exponent',
-                               AffinityCutoff=('distance', 3),
-                               jet_name="SpectralMeanTest")
+                               Laplacien='symmetric',
+                               AffinityType='linear',
+                               AffinityCutoff=('knn', 4),
+                               jet_name="SpectralTest")
 
-    flat_display(eventWise, event_num, home_jet_params, spectral_jet_params)
+    c_class = SpectralFull
+    check_hyperparameters(c_class, spectral_jet_params)
+    flat_display(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
