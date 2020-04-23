@@ -97,8 +97,8 @@ class PseudoJet:
     def _define_physical_distance(self):
         """ """
         pt_col  = self._PT_col 
-        exponent_now = self.PTExponentPosition == 'input'
-        exponent = self.PTExponentMultiplier * 2
+        exponent_now = self.ExpofPTPosition == 'input'
+        exponent = self.ExpofPTMultiplier * 2
         deltaR2 = self.DeltaR**2
         # same for everything but Luclus
         if exponent_now:
@@ -841,13 +841,13 @@ class PseudoJet:
 
 class Traditional(PseudoJet):
     """ """
-    param_list = {'DeltaR': None, 'PTExponentMultiplier': None, 'Invarient': 'angular'}
+    param_list = {'DeltaR': None, 'ExpofPTMultiplier': None, 'Invarient': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
-                       'PTExponentMultiplier': Constants.numeric_classes['rn'],
+                       'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
-        self.PTExponentPosition = 'input'
+        self.ExpofPTPosition = 'input'
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
@@ -856,7 +856,7 @@ class Traditional(PseudoJet):
         self._distances2 = np.full((self.currently_avalible, self.currently_avalible), np.inf)
         # for speed, make local variables
         pt_col  = self._PT_col 
-        exponent = self.PTExponentMultiplier * 2
+        exponent = self.ExpofPTMultiplier * 2
         DeltaR2 = self.DeltaR**2
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
@@ -955,11 +955,11 @@ class Traditional(PseudoJet):
         DeltaR = float(header[0].split('=')[1])
         algorithm_name = header[1]
         if algorithm_name == 'kt_algorithm':
-            PTExponentMultiplier = 1
+            ExpofPTMultiplier = 1
         elif algorithm_name == 'cambridge_algorithm':
-            PTExponentMultiplier = 0
+            ExpofPTMultiplier = 0
         elif algorithm_name == 'antikt_algorithm':
-            PTExponentMultiplier = -1
+            ExpofPTMultiplier = -1
         else:
             raise ValueError(f"Algorithm {algorithm_name} not recognised")
         # get the colums for the header
@@ -1053,7 +1053,7 @@ class Traditional(PseudoJet):
         new_pseudojet = cls(ints_floats=(ints, floats),
                             eventWise=eventWise,
                             DeltaR=DeltaR,
-                            PTExponentMultiplier=PTExponentMultiplier,
+                            ExpofPTMultiplier=ExpofPTMultiplier,
                             jet_name=jet_name)
         new_pseudojet.currently_avalible = 0
         new_pseudojet._calculate_roots()
@@ -1064,14 +1064,14 @@ class Spectral(PseudoJet):
     """ """
     # list the params with default values
     param_list = {'DeltaR': None, 'NumEigenvectors': np.inf,
-            'PTExponentPosition': 'input', 'PTExponentMultiplier': None,
+            'ExpofPTPosition': 'input', 'ExpofPTMultiplier': None,
             'AffinityType': 'exponent', 'AffinityCutoff': None,
             'Laplacien': 'unnormalised',
             'Invarient': 'angular', 'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvalues': [Constants.numeric_classes['nn'], np.inf],
-                       'PTExponentPosition': ['input', 'eigenspace'],
-                       'PTExponentMultiplier': Constants.numeric_classes['rn'],
+                       'ExpofPTPosition': ['input', 'eigenspace'],
+                       'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
@@ -1164,8 +1164,8 @@ class Spectral(PseudoJet):
         self._distances2 = scipy.spatial.distance.squareform(
                 scipy.spatial.distance.pdist(eigenvectors,
                 metric='sqeuclidean'))
-        if self.PTExponentPosition == 'eigenspace':
-            exponent = 2 * self.PTExponentMultiplier
+        if self.ExpofPTPosition == 'eigenspace':
+            exponent = 2 * self.ExpofPTMultiplier
             # if beamparticle the last entry will be nonsense, but we wont touch it anyway
             pt_fractions = np.fromiter((row[pt_col]**exponent for row in self._starting_position),
                                        dtype=float)
@@ -1487,8 +1487,8 @@ class Spectral(PseudoJet):
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
         new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
-        if self.PTExponentPosition == 'eigenspace':
-            exponent = 2 * self.PTExponentMultiplier
+        if self.ExpofPTPosition == 'eigenspace':
+            exponent = 2 * self.ExpofPTMultiplier
             pt_here = self._floats[replace_index][self._PT_col]**exponent
             pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
                                      for row in self._floats[:self.currently_avalible]),
@@ -1605,8 +1605,8 @@ class SpectralMean(Spectral):
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
         new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
-        if self.PTExponentPosition == 'eigenspace':
-            exponent = 2 * self.PTExponentMultiplier
+        if self.ExpofPTPosition == 'eigenspace':
+            exponent = 2 * self.ExpofPTMultiplier
             pt_here = self._floats[replace_index][self._PT_col]**exponent
             pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
                                      for row in self._floats[:self.currently_avalible]),
@@ -1898,7 +1898,7 @@ def produce_summary(eventWise, to_file=True):
         return '\n'.join(rows).encode()
 
 
-def run_FastJet(eventWise, DeltaR, PTExponentMultiplier, jet_name="FastJet", use_pipe=True):
+def run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, jet_name="FastJet", use_pipe=True):
     """
     
 
@@ -1906,7 +1906,7 @@ def run_FastJet(eventWise, DeltaR, PTExponentMultiplier, jet_name="FastJet", use
     ----------
     eventWise :
         param DeltaR:
-    PTExponentMultiplier :
+    ExpofPTMultiplier :
         param jet_name: (Default value = "FastJet")
     use_pipe :
         Default value = True)
@@ -1920,15 +1920,15 @@ def run_FastJet(eventWise, DeltaR, PTExponentMultiplier, jet_name="FastJet", use
 
     """
     assert eventWise.selected_index is not None
-    if PTExponentMultiplier == -1:
+    if ExpofPTMultiplier == -1:
         # antikt algorithm
         algorithm_num = 1
-    elif PTExponentMultiplier == 0:
+    elif ExpofPTMultiplier == 0:
         algorithm_num = 2
-    elif PTExponentMultiplier == 1:
+    elif ExpofPTMultiplier == 1:
         algorithm_num = 0
     else:
-        raise ValueError(f"PTExponentMultiplier should be -1, 0 or 1, found {PTExponentMultiplier}")
+        raise ValueError(f"ExpofPTMultiplier should be -1, 0 or 1, found {ExpofPTMultiplier}")
     program_name = "./tree_tagger/applyFastJet"
     if use_pipe:
         summary_lines = produce_summary(eventWise, False)
@@ -2065,7 +2065,8 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
             checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
-    updated_dict[jet_name + "_Eigenvalues"] = awkward.fromiter(eigenvalues)
+    if has_eigenvalues:
+        updated_dict[jet_name + "_Eigenvalues"] = awkward.fromiter(eigenvalues)
     eventWise.append(**updated_dict)
     return end_point == n_events
 
@@ -2258,10 +2259,10 @@ if __name__ == '__main__':
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
     event_num = int(input("Event number "))
-    fast_jet_params = dict(DeltaR=1., PTExponentMultiplier=-1, jet_name="FastJet")
-    home_jet_params = dict(DeltaR=1., PTExponentMultiplier=-1, jet_name="HomeJet")
-    spectral_jet_params = dict(DeltaR=0.20, PTExponentMultiplier=0,
-                               PTExponentPosition='input',
+    fast_jet_params = dict(DeltaR=1., ExpofPTMultiplier=-1, jet_name="FastJet")
+    home_jet_params = dict(DeltaR=1., ExpofPTMultiplier=-1, jet_name="HomeJet")
+    spectral_jet_params = dict(DeltaR=0.20, ExpofPTMultiplier=0,
+                               ExpofPTPosition='input',
                                NumEigenvectors=4,
                                Laplacien='symmetric',
                                AffinityType='linear',

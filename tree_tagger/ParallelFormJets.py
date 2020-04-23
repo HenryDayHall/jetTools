@@ -751,22 +751,20 @@ def random_parameters(jet_class=None):
 
     """
     if jet_class is None:
-        jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'SpectralMAfterJet', 'HomeJet']
+        jet_classes = ['SpectralMeanJet', 'SpectralFullJet', 'HomeJet']
         jet_class = np.random.choice(jet_classes)
     if 'Spectral' in jet_class:
+        permitted = FormJets.Spectral.permited_values
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
-        params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
+        params['ExpofPTMultiplier'] = np.random.uniform(-1., 1.)
+        exppos = permitted['ExpofPTPosition']
+        params['ExpofPTPosition'] = np.random.choice(exppos)
         params['NumEigenvectors'] = np.random.randint(1, 10)
-        laplaciens = ['unnormalised', 'symmetric']
+        laplaciens = permitted['Laplcien']
         params['Laplacien'] = np.random.choice(laplaciens)
-        if params['Laplacien'] == 'symmetric':
-            params['AffinityType'] = 'linear'
-        else:
-            affinites = ['exponent', 'exponent2', 'inverse']
-            params['AffinityType'] = np.random.choice(affinites)
-        #params['WithLaplacienScaling'] = np.random.choice([True, False])
-        params['WithLaplacienScaling'] = False
+        affinites = permitted['AffinityType']
+        params['AffinityType'] = np.random.choice(affinites)
         cutofftypes = [None, 'knn', 'distance']
         cutofftype = np.random.choice(cutofftypes)
         if cutofftype is None:
@@ -775,8 +773,10 @@ def random_parameters(jet_class=None):
             params['AffinityCutoff'] = (cutofftype, np.random.randint(1, 6))
         elif cutofftype == 'distance':
             params['AffinityCutoff'] = (cutofftype, np.random.uniform(0., 10.))
-        invarients = ['Luclus', 'invarient', 'normed', 'angular']
+        invarients = permitted['Invarient']
         params['Invarient'] = np.random.choice(invarients)
+        stopcon = permitted['StoppingCondition']
+        params['StoppingCondition'] = np.random.choice(stopcon)
     elif 'Home' in jet_class:
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)

@@ -162,6 +162,7 @@ def plot_doubleTagged_jets(eventWise, jet_name, show=True):
 def decendants_masses(eventWise, use_jetInputs=True):
     """ from the JetInputs, plot all tracks that originate from a light higgs,
     and all tracks that originate from the heavy higgs """
+    eventWise.selected_index = None
     heavy_higgs_pid = 35
     heavy_decendants_mass = []
     light_higgs_pid = 25
