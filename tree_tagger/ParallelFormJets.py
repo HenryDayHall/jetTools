@@ -160,7 +160,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     return all_paths
 
 
-def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
+def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False, end_time=None):
     """
     
 
@@ -189,7 +189,9 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False):
     multiapply_function = class_to_function[jet_class]
     batch_size = 500
     # decide on a stop condition
-    if os.path.exists('continue'):
+    if end_time is not None:
+        run_condition = end_time
+    elif os.path.exists('continue'):
         run_condition = 'continue'
     else:
         if InputTools.yesNo_question("Would you like to do a time based run? "):
@@ -821,7 +823,7 @@ def monte_carlo(eventWise_path, jet_class=None):
         print(f"Next try is {jet_class}; {next_try}")
         jet_id = records.append(jet_class, next_try)
         next_try["jet_name"] = jet_class + str(jet_id)
-        generate_pool(eventWise_path, jet_class, next_try, True)
+        generate_pool(eventWise_path, jet_class, next_try, True, end_time=end_time)
         records.write()
 
 

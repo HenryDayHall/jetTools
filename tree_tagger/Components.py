@@ -11,6 +11,7 @@ import csv
 import debug
 import numpy as np
 from tree_tagger import Constants, PDGNames, InputTools
+import scipy.spatial
 
 def flatten(nested):
     """
