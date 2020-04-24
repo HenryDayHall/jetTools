@@ -338,6 +338,9 @@ if display:  # have to comment out to run without display
 
 def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
     assert eventWise.selected_index is not None
+    if np.all([pid in quark_pdgids for pid in eventWise.MCPID[tag_idxs]]):
+        # check if the tags are already quarks
+        return tag_idxs
     # fetch the angular variables for speed
     rapidity = eventWise.Rapidity
     phi = eventWise.Phi

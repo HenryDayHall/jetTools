@@ -2098,9 +2098,11 @@ def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
         colour = tuple(np.random.rand(3))
     ew.selected_index = event_num
     child1 = getattr(ew, jet_name+"_Child1")
-    energy = getattr(ew, jet_name+"_AveEnergy")
-    rap= getattr(ew, jet_name+"_AveRapidity")
-    phi = getattr(ew, jet_name+"_AvePhi")
+    root_name = jet_name + "_RootInputIdx"
+    inputidx_name = jet_name + "_InputIdx"
+    energy = ew.match_indices(jet_name + "_Energy", root_name, inputidx_name).flatten()
+    rap = ew.match_indices(jet_name + "_Rapidity", root_name, inputidx_name).flatten()
+    phi = ew.match_indices(jet_name + "_Phi", root_name, inputidx_name).flatten()
     # mark the centers
     #ax.scatter(rap, phi, s=np.sqrt(energy), color=[colour], label=jet_name)
     # make lines to the inputs

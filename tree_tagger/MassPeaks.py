@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import scipy.spatial
 #import debug
 from ipdb import set_trace as st
-from tree_tagger import Constants, Components, FormShower
+from tree_tagger import Constants, Components, FormShower, PlottingTools
 
 
 def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
@@ -106,8 +106,9 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
 def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
-    fig, ax_array = plt.subplots(3, 2)
+    fig, ax_array = plt.subplots(3, 3)
     ax_array = ax_array.flatten()
+    PlottingTools.discribe_jet(eventWise, jet_name, ax_array[-1])
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
     pairs = [list(pair) for pair in itertools.combinations(range(4), 2)]
@@ -130,7 +131,7 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
         data = [masses, heavy, light]
         title = f"Jets {pair[0]} and {pair[1]} (pT ordered), counts={len(masses)}"
         ax.set_title(title)
-        ax.hist(data, density=True, bins=500, histtype='step', label=label)
+        ax.hist(data, bins=500, histtype='step', label=label)
     ax.legend()
     plt.xlabel("Mass (GeV)")
     plt.ylabel(f"Counts in {n_events} events")

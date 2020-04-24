@@ -23,6 +23,37 @@ def decendant_idxs(eventWise, *start_idxs):
     return final_idxs
 
 
+def append_b_idxs(eventWise, silent=True, append=True):
+    eventWise.selected_index = None
+    name = "BQuarkIdx"
+    n_events = len(eventWise.MCPID)
+    bidxs = list(getattr(eventWise, name, []))
+    start_point = len(bidxs)
+    if start_point >= n_events:
+        print("Finished")
+        return True
+    end_point = n_events
+    if not silent:
+        print(f" Will stop at {100*end_point/n_events}%")
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0 and not silent:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        eventWise.selected_index = event_n
+        # obtain 4 unique b-quarks
+        b_idxs = np.where(np.abs(eventWise.MCPID) == 5)[0]
+        no_b_children = [len(set(children).intersection(b_idxs)) == 0
+                         for children in eventWise.Children[b_idxs]]
+        bidxs.append(b_idxs[no_b_children])
+    bidxs = awkward.fromiter(bidxs)
+    content = {name: bidxs}
+    if append:
+        eventWise.append(**content)
+    return content
+
+
 class Shower:
     """
     Object to hold a shower of particles

@@ -761,7 +761,7 @@ def random_parameters(jet_class=None):
         exppos = permitted['ExpofPTPosition']
         params['ExpofPTPosition'] = np.random.choice(exppos)
         params['NumEigenvectors'] = np.random.randint(1, 10)
-        laplaciens = permitted['Laplcien']
+        laplaciens = permitted['Laplacien']
         params['Laplacien'] = np.random.choice(laplaciens)
         affinites = permitted['AffinityType']
         params['AffinityType'] = np.random.choice(affinites)
@@ -778,9 +778,12 @@ def random_parameters(jet_class=None):
         stopcon = permitted['StoppingCondition']
         params['StoppingCondition'] = np.random.choice(stopcon)
     elif 'Home' in jet_class:
+        permitted = FormJets.Traditional.permited_values
         params = {}
         params['DeltaR'] = np.random.uniform(0., 1.5)
-        params['ExponentMultiplier'] = np.random.uniform(-1., 1.)
+        params['ExpofPTMultiplier'] = np.random.uniform(-1., 1.)
+        invarients = permitted['Invarient']
+        params['Invarient'] = np.random.choice(invarients)
     else:
         raise NotImplementedError
     return jet_class, params
@@ -806,14 +809,16 @@ def monte_carlo(eventWise_path, jet_class=None):
     eventWise = Components.EventWise.from_file(eventWise_path)
     record_path = "records.csv"
     records = CompareClusters.Records(record_path)
-    print("Delete the continue file when you want to stop")
-    if not os.path.exists('continue'):
-        open('continue', 'a').close()
-    while os.path.exists('continue'):
+    #print("Delete the continue file when you want to stop")
+    #if not os.path.exists('continue'):
+    #    open('continue', 'a').close()
+    #while os.path.exists('continue'):
+    end_time = time.time() + InputTools.get_time("How long to make clusters for? ")
+    while time.time() < end_time:
         if change_class:
             jet_class = None
         jet_class, next_try = random_parameters(jet_class)
-        print(f"Next try is {next_try}")
+        print(f"Next try is {jet_class}; {next_try}")
         jet_id = records.append(jet_class, next_try)
         next_try["jet_name"] = jet_class + str(jet_id)
         generate_pool(eventWise_path, jet_class, next_try, True)

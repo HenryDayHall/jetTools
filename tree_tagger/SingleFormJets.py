@@ -150,14 +150,22 @@ def plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base):
             ShapeVariables.plot_shapevars(eventWise, jet_name, jet_pt_cut)
         if img_base:
             plt.tight_layout()
+            fig = plt.gcf()
+            fig.set_size_inches(10, 10)
             plt.savefig(img_base + '_shape.png')
         else:
             plt.show()
     # mass peaks
+    if not hasattr(eventWise, jet_name + "_Tags"):
+        st()
     MassPeaks.plot_PT_pairs(eventWise, jet_name, jet_pt_cut=jet_pt_cut, show=not img_base)
     if img_base:
         plt.tight_layout()
+        fig = plt.gcf()
+        fig.set_size_inches(10, 10)
         plt.savefig(img_base + '_PTpairs.png')
+    else:
+        plt.show()
     #MassPeaks.plot_smallest_angles(eventWise, jet_name, jet_pt_cut=jet_pt_cut, show=not img_base)
     #if img_base:
     #    plt.tight_layout()
