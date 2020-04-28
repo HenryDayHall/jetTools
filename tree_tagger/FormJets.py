@@ -8,8 +8,7 @@ import csv
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
 from skhep import math as hepmath
-from tree_tagger import Components, TrueTag, InputTools, Constants
-
+from tree_tagger import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
 
 
 class PseudoJet:
@@ -1109,7 +1108,7 @@ class Spectral(PseudoJet):
             # the beam particles dosn't have a real location,
             # but to preserve the dimensions of future calculations, add it in
             self._starting_position = np.vstack((self._starting_position,
-                                                 np.ones(len(float_columns))))
+                                                 np.ones(len(self.float_columns))))
             # it is added to the end so as to maintain the indices
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
@@ -1135,7 +1134,7 @@ class Spectral(PseudoJet):
         np.fill_diagonal(affinity, 0.)  # the affinity may have problems on the diagonal
         if np.sum(np.abs(affinity)) == 0.:
             # everything is seperated
-            self.root_jetInputIdxs = list(range(self.currently_avalible))
+            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in self._ints]
             self.currently_avalible = 0
             return
         diagonal = np.diag(np.sum(affinity, axis=1))
@@ -1144,6 +1143,7 @@ class Spectral(PseudoJet):
         elif self.Laplacien == 'symmetric':
             laplacien = diagonal - affinity
             self.alt_diag = np.diag(diagonal)**(-0.5)
+            self.alt_diag[np.diag(diagonal) == 0] = 0.
             diag_alt_diag = np.diag(self.alt_diag)
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
         else:
@@ -1643,6 +1643,7 @@ cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional,
                    "SpectralJet": Spectral, "SpectralMeanJet": SpectralMean,
                    "SpectralFullJet": SpectralFull}
 
+
 def check_hyperparameters(cluster_class, params):
     if isinstance(cluster_class, str):
         cluster_class = cluster_classes[cluster_class]
@@ -1681,8 +1682,6 @@ def check_hyperparameters(cluster_class, params):
                 continue  # no problem
         # if we have yet ot hit a continue statment then this option is not valid
         raise ValueError(error_str.format(name, value, opts))
-
-            
 
 
 def get_jet_params(eventWise, jet_name, add_defaults=False):
@@ -2070,64 +2069,12 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     eventWise.append(**updated_dict)
     return end_point == n_events
 
-
-def plot_jet_spiders(ew, jet_name, event_num, colour=None, ax=None):
-    """
-    
-
-    Parameters
-    ----------
-    ew :
-        param jet_name:
-    event_num :
-        param colour: (Default value = None)
-    ax :
-        Default value = None)
-    jet_name :
-        
-    colour :
-         (Default value = None)
-
-    Returns
-    -------
-
-    """
-    if ax is None:
-        ax = plt.gca()
-    if colour is None:
-        colour = tuple(np.random.rand(3))
-    ew.selected_index = event_num
-    child1 = getattr(ew, jet_name+"_Child1")
-    root_name = jet_name + "_RootInputIdx"
-    inputidx_name = jet_name + "_InputIdx"
-    energy = ew.match_indices(jet_name + "_Energy", root_name, inputidx_name).flatten()
-    rap = ew.match_indices(jet_name + "_Rapidity", root_name, inputidx_name).flatten()
-    phi = ew.match_indices(jet_name + "_Phi", root_name, inputidx_name).flatten()
-    # mark the centers
-    #ax.scatter(rap, phi, s=np.sqrt(energy), color=[colour], label=jet_name)
-    # make lines to the inputs
-    part_Energy = getattr(ew, jet_name+"_Energy")
-    part_phi = getattr(ew, jet_name+"_Phi")
-    part_rap = getattr(ew, jet_name+"_Rapidity")
-    n_jets = len(energy)
-    for jet_n in range(n_jets):
-        if len(part_Energy) == 1:
-            continue
-        center_phi = phi[jet_n]
-        center_rap = rap[jet_n]
-        end_points = np.where([c==-1 for c in child1[jet_n]])[0]
-        for end_idx in end_points:
-            ax.plot([center_rap, part_rap[jet_n][end_idx]], [center_phi, part_phi[jet_n][end_idx]],
-                    linewidth=np.sqrt(part_Energy[jet_n][end_idx]), alpha=0.5, color=colour)
-        if jet_n == 0:
-            plt.scatter(part_rap[jet_n][end_points], part_phi[jet_n][end_points], s=part_Energy[jet_n][end_points], c=[colour],label=jet_name)
-        else:
-            plt.scatter(part_rap[jet_n][end_points], part_phi[jet_n][end_points], s=part_Energy[jet_n][end_points], c=[colour])
-    ax.set_xlabel("Rapidity")
-    ax.set_ylabel("$\\phi$")
-    ax.legend()
-    ew.selected_index = None
-
+truth_colour = 'limegreen'
+spectral_colour = 'dodgerblue'
+fast_colour = 'tomato'
+truth_linewidth = 1.0
+truth_size = 25.
+jet_alpha = 0.5
 
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     """
@@ -2152,30 +2099,129 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     -------
 
     """
-    alpha=0.4
-    leg_size = np.sqrt(leg_size)
+    leg_size = np.clip(np.sqrt(leg_size), 0.2, None)
     for end, size in zip(leg_ends, leg_size):
         line = np.vstack((body, end))
+        # line[body/end, x/y]
         # work out if this leg crossed the edge
+        #         body y - leg y
         if np.abs(line[0, 1] - line[1, 1]) > np.pi:
             # work out the x coord of the axis cross
+            # leg/body closes to np.pi
             top = np.argmax(line[:, 1])
             bottom = (top+1)%2
+            #                   | y_to_top/ 2pi - (top y - bottom y) |
             percent_to_top = np.abs((np.pi - line[top, 1])/(2*np.pi + line[bottom, 1] - line[top, 1]))
-            x_top = line[top, 0] + (line[bottom, 0] - line[top, 0])*percent_to_top
-            plt.plot([line[top, 0],  x_top], [line[top, 1], np.pi], 
-                     c=colour, linewidth=size, alpha=alpha)
-            plt.plot([line[bottom, 0],  x_top], [line[bottom, 1], -np.pi], 
-                     c=colour, linewidth=size, alpha=alpha)
+            #          top x     +  x seperation * percent to top
+            x_cross = line[top, 0] + (line[bottom, 0] - line[top, 0])*percent_to_top
+            ax.plot([line[top, 0],  x_cross], [line[top, 1], np.pi], 
+                     c=colour, linewidth=size, alpha=jet_alpha)
+            ax.plot([line[bottom, 0],  x_cross], [line[bottom, 1], -np.pi], 
+                     c=colour, linewidth=size, alpha=jet_alpha)
                      
         else:
-            plt.plot(line[:, 0], line[:, 1],
-                     c=colour, linewidth=size, alpha=alpha)
-    plt.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size-1)
-    plt.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size+1)
+            ax.plot(line[:, 0], line[:, 1],
+                     c=colour, linewidth=size, alpha=jet_alpha)
+    ax.scatter(leg_ends[:, 0], leg_ends[:, 1], c=colour, s=leg_size)
+    #ax.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size+1)
+    #ax.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size)
+
+def plot_tags(eventWise, b_decendants=True, ax=None):
+    assert eventWise.selected_index is not None
+    if ax is None:
+        ax = plt.gca()
+    tag_phis = eventWise.Phi[eventWise.TagIndex]
+    tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
+    #ax.scatter(tag_rapidity, tag_phis, marker='d', c=truth_colour)
+    if b_decendants:
+        b_decendants = np.fromiter(FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx),
+                                   dtype=int)
+        included = np.fromiter((idx in eventWise.JetInputs_SourceIdx for idx in b_decendants),
+                               dtype=bool)
+        ax.scatter(eventWise.Rapidity[b_decendants[included].tolist()],
+                   eventWise.Phi[b_decendants[included].tolist()],
+                   c=(0., 0., 0., 0.), edgecolors=truth_colour,
+                   linewidths=truth_linewidth, s=truth_size, marker='o')
+        ax.scatter(eventWise.Rapidity[b_decendants[~included]],
+                   eventWise.Phi[b_decendants[~included]],
+                   c='black', alpha=0.,#truth_colour,
+                   s=truth_linewidth, marker='x')
 
 
-def flat_display(eventWise, event_n, fast_jet_params, comparitor_jet_params, comparitor_class=SpectralFull):
+def plot_cluster(pseudojet, colours, ax=None, spiders=True, pt_text=False, circles=False):
+    if ax is None:
+        ax = plt.gca()
+    pseudojet.assign_parents()
+    pjets = pseudojet.split()
+    if isinstance(colours, str):
+        colours = [colours for _ in pjets]
+    # plot the pseudojets
+    for c, pjet in zip(colours, pjets):
+        obs_idx = [i for i, child1 in enumerate(pjet.Child1) if child1==-1]
+        input_rap = np.array(pjet._floats)[obs_idx, pjet._Rapidity_col]
+        input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
+        input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
+        if pt_text:
+            ax.text(pjet.Rapidity, pjet.Phi-.1, str(pjet.PT)[:7], c=c)
+        if spiders:
+            leg_ends = np.vstack((input_rap, input_phi)).T
+            plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
+        else:
+            ax.scatter(input_rap, input_phi, s=input_energy, c=c)
+        if circles:
+            circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=pjet.DeltaR, edgecolor=c, fill=False)
+            ax.add_artist(circle)
+
+
+def plot_eigenspace(eventWise, event_n, spectral_jet_params, eigendim1, eigendim2, ax=None, spiders=True, spectral_class=SpectralFull):
+    eventWise.selected_index = event_n
+    if ax is None:
+        ax = plt.gca()
+    #ax.set_facecolor('black')
+    ax.grid(c='dimgrey', ls='--')
+    # create inputs if needed
+    if "JetInputs_Energy" not in eventWise.columns:
+        filter_funcs = [filter_ends, filter_pt_eta]
+        create_jetInputs(eventWise, filter_funcs)
+    # get the b_decendants
+    b_decendants = FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx)
+    # make the spectral jet and get transformed coordinates
+    pseudojet_spectral = spectral_class(eventWise, **spectral_jet_params)
+    eigenspace = pseudojet_spectral._eigenspace
+    input_idx = list(pseudojet_spectral.InputIdx)
+    energies = np.fromiter((row[pseudojet_spectral._Energy_col] for row in pseudojet_spectral._floats),
+                           dtype=float)
+    # find out which are the b_decendants
+    source_idx = eventWise.JetInputs_SourceIdx[input_idx]
+    is_decendant = np.fromiter((idx in b_decendants for idx in source_idx), dtype=bool)
+    if spiders:
+        # cluster the psudojets and get the end loactions
+        pseudojet_spectral.assign_parents()
+        pjets = pseudojet_spectral.split()
+        for pjet in pjets:
+            new_input_idx = list(pjet.InputIdx)
+            root_new_idx = new_input_idx.index(pjet.root_jetInputIdxs[0])
+            leg_idxs = [input_idx.index(idx) for idx, child1 in zip(pjet.InputIdx, pjet.Child1) if child1 == -1]
+            leg_xs = eigenspace[leg_idxs, eigendim1]
+            leg_ys = eigenspace[leg_idxs, eigendim2]
+            legs = np.vstack((leg_xs, leg_ys)).T
+            leg_energies = energies[leg_idxs]
+            root_pos = np.mean(legs, axis=0)
+            plot_spider(ax, spectral_colour, root_pos, pjet.Energy, legs, leg_energies)
+    else:
+        input_x = eigenspace[:, eigendim1]
+        input_y = eigenspace[:, eigendim2]
+        input_energies = np.array(pseudojet_spectral._floats)[:, pseudojet_spectral._Energy_col]
+        ax.scatter(input_x, input_y, s=input_energies, c=spectral_colour)
+    # on top of this plot the truth
+    ax.scatter(eigenspace[is_decendant, eigendim1], eigenspace[is_decendant, eigendim2],
+               c=(0., 0., 0., 0.), edgecolors=truth_colour,
+               linewidths=truth_linewidth, s=truth_size, marker='o')
+    ax.set_xlabel(f"Eigenvector {eigendim1}")
+    ax.set_ylabel(f"Eigenvector {eigendim2}")
+
+
+def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, ax=None, comparitor_class=SpectralFull):
     """
     
 
@@ -2196,81 +2242,75 @@ def flat_display(eventWise, event_n, fast_jet_params, comparitor_jet_params, com
     -------
 
     """
-    ax = plt.gca()
-    alpha=0.5
-    # colourmap
-    colours = plt.get_cmap('gist_rainbow')
+    if ax is None:
+        ax = plt.gca()
+    ax.set_facecolor('black')
+    ax.grid(c='dimgrey', ls='--')
     # create inputs if needed
     if "JetInputs_Energy" not in eventWise.columns:
         filter_funcs = [filter_ends, filter_pt_eta]
-        if "JetInputs_Energy" not in eventWise.columns:
-            create_jetInputs(eventWise, filter_funcs)
+        create_jetInputs(eventWise, filter_funcs)
     # add tags if needed
     if "TagIndex" not in eventWise.columns:
         TrueTag.add_tag_particles(eventWise)
     # plot the location of the tag particles
     eventWise.selected_index = event_n
-    tag_phis = eventWise.Phi[eventWise.TagIndex]
-    tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
-    plt.scatter(tag_rapidity, tag_phis, marker='d', c='g', label="Tags")
+    plot_tags(eventWise, ax=ax)
     pseudojet_traditional = run_FastJet(eventWise, **fast_jet_params)
-    pseudojet_traditional.assign_parents()
-    pjets_traditional = pseudojet_traditional.split()
     # plot the pseudojets
     # traditional_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets_traditional))]
-    traditional_colours = ['red' for _ in pjets_traditional]
-    for c, pjet in zip(traditional_colours, pjets_traditional):
-        obs_idx = [i for i, child1 in enumerate(pjet.Child1) if child1==-1]
-        input_rap = np.array(pjet._floats)[obs_idx, pjet._Rapidity_col]
-        input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
-        leg_ends = np.vstack((input_rap, input_phi)).T
-        input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
-        plt.text(pjet.Rapidity, pjet.Phi-.1, str(pjet.PT)[:7], c=c)
-        plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
-        #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
-        #ax.add_artist(circle)
-    plt.plot([], [], c=c, alpha=alpha, label="HomeJets")
+    plot_cluster(pseudojet_traditional, fast_colour, ax=ax, pt_text=False)
     pseudojet_comparitor = comparitor_class(eventWise, **comparitor_jet_params)
-    pseudojet_comparitor.assign_parents()
-    pjets_comparitor = pseudojet_comparitor.split()
     # plot the pseudojets
     #comparitor_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_comparitor))]
-    comparitor_colours = ['blue' for _ in pjets_comparitor]
-    for c, pjet in zip(comparitor_colours, pjets_comparitor):
-        obs_idx = [i for i, child1 in enumerate(pjet.Child1) if child1==-1]
-        input_rap = np.array(pjet._floats)[obs_idx, pjet._Rapidity_col]
-        input_phi = np.array(pjet._floats)[obs_idx, pjet._Phi_col]
-        leg_ends = np.vstack((input_rap, input_phi)).T
-        input_energy = np.array(pjet._floats)[obs_idx, pjet._Energy_col]
-        plot_spider(ax, c, [pjet.Rapidity, pjet.Phi], pjet.Energy, leg_ends, input_energy)
-        plt.text(pjet.Rapidity, pjet.Phi+.1, str(pjet.PT)[:7], c=c)
-        #circle = plt.Circle((pjet.Rapidity, pjet.Phi), radius=DeltaR, edgecolor=c, fill=False)
-        #ax.add_artist(circle)
-    plt.plot([], [], c=c, alpha=alpha, label="SpectralJet")
-    plt.legend()
-    plt.title("Jets")
-    plt.xlabel("rapidity")
-    plt.ylim(-np.pi, np.pi)
-    plt.ylabel("phi")
+    plot_cluster(pseudojet_comparitor, spectral_colour, ax=ax, pt_text=False)
+    ax.set_title("Jets")
+    ax.set_xlabel("rapidity")
+    ax.set_ylim(-np.pi, np.pi)
+    ax.set_ylabel("phi")
+
+
+def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class):
+    num_eig = spectral_jet_params['NumEigenvectors']
+    unit_size=5
+    n_rows, n_cols = 2, num_eig-1
+    fig, axarry = plt.subplots(n_rows, n_cols, figsize=(n_rows*unit_size, n_cols*unit_size))
+    axarry = axarry.reshape((2, -1))
+    plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, ax=axarry[0, 0], comparitor_class=c_class)
+    #PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
+    #PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 1])
+    #axarry[0, 0].axis('off')
+    #axarry[0, 2].axis('off')
+    axarry[0, 0].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
+    axarry[0, 0].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
+    axarry[0, 0].scatter([], [], marker='d', c=truth_colour, label="Tags")
+    axarry[0, 0].scatter([], [], label="b decendant",
+                         c=(0., 0., 0., 0.), edgecolors=truth_colour,
+                         linewidths=truth_linewidth, s=truth_size, marker='o')
+    #axarry[0, 1].scatter([], [], label="unseen b decendant",
+    #                     c=truth_colour, s=truth_linewidth, marker='x')
+    axarry[0, 0].legend()
+    for i in range(2, n_rows):
+        axarry[0, i].axis('off')
+    for i in range(1, num_eig):
+        plot_eigenspace(eventWise, event_num, spectral_jet_params, i, 0, ax=axarry[1, i-1], spectral_class=c_class)
     plt.show()
-    plt.savefig("test_plot.png")
-    return pjets_comparitor
 
 
 if __name__ == '__main__':
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
-    event_num = int(input("Event number "))
+    event_num = InputTools.get_literal("Event number? ", int)
     fast_jet_params = dict(DeltaR=1., ExpofPTMultiplier=-1, jet_name="FastJet")
-    home_jet_params = dict(DeltaR=1., ExpofPTMultiplier=-1, jet_name="HomeJet")
     spectral_jet_params = dict(DeltaR=0.20, ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
-                               NumEigenvectors=4,
+                               NumEigenvectors=2,
                                Laplacien='symmetric',
-                               AffinityType='linear',
+                               AffinityType='inverse',
                                AffinityCutoff=('knn', 4),
                                jet_name="SpectralTest")
 
     c_class = SpectralFull
     check_hyperparameters(c_class, spectral_jet_params)
-    flat_display(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
+    eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class)
+

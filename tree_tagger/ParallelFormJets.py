@@ -5,7 +5,7 @@ import time
 import os
 import numpy as np
 import multiprocessing
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 import debug
 
 def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
@@ -41,11 +41,13 @@ def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters,
             print(f"batch {i}", flush=True)
             i+=1
             finished = FormJets.cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters, batch_length=batch_size, silent=True)
-    elif isinstance(run_condition, int):
+    elif isinstance(run_condition, (int, float)):
         while time.time() < run_condition and not finished:
             print(f"batch {i}", flush=True)
             i+=1
             finished = FormJets.cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters, batch_length=batch_size, silent=True)
+    else:
+        raise ValueError(f"Dont recognise run_condition {run_condition}")
     if finished:
         print(f"Finished {i} batches, dataset {eventWise_path} complete")
     else:
@@ -816,6 +818,7 @@ def monte_carlo(eventWise_path, jet_class=None):
     #    open('continue', 'a').close()
     #while os.path.exists('continue'):
     end_time = time.time() + InputTools.get_time("How long to make clusters for? ")
+    print(f"Ending at {end_time}")
     while time.time() < end_time:
         if change_class:
             jet_class = None

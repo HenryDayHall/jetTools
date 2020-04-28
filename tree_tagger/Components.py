@@ -7,7 +7,7 @@ import itertools
 import contextlib
 import os
 import csv
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 import debug
 import numpy as np
 from tree_tagger import Constants, PDGNames, InputTools
@@ -653,7 +653,6 @@ class EventWise:
         # work out which lists have this property
         per_event_cols = [c for c in self.columns
                           if len(self._column_contents[c]) == n_events]
-        per_event_cols += self.hyperparameter_columns
         assert to_check.issubset(per_event_cols)
         new_contents = []
         for lower, upper in zip(lower_bounds, upper_bounds):
@@ -671,10 +670,13 @@ class EventWise:
         all_paths = []
         i = 0
         add_unsplit = True
+        # add the hyperparameters to all things...
+        hyper_param_dict = {name: self._column_contents[name] for name in self.hyperparameter_columns}
         for new_content in new_contents:
             if new_content is None:
                 all_paths.append(None)
                 continue
+            new_content = {**new_content, **hyper_param_dict}
             # this bit isn't thread safe and could create a race condition
             while name_format.format(i) in os.listdir(save_dir):
                 i+=1
