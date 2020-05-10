@@ -259,7 +259,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
             else:
                 valid_jets = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks-0.1))[0]
         jets_tags = [[] for _ in jet_pt]
-        if tags and len(valid_jets) > 0:
+        if len(tags) > 0 and len(valid_jets) > 0:
             # there may not be any of the particles we wish to tag in the event
             # or there may not be any jets
             closest_matches = allocate(eventWise, jet_name, tags, max_angle2, valid_jets)

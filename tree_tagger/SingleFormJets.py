@@ -42,7 +42,7 @@ def define_inputs(eventWise):
             path = os.path.join(eventWise.dir_name, eventWise.save_name)
             print("Will make a copy of the eventWise without existing clusters to change JetInputs")
             print(f"Current file name is {eventWise.save_name}.")
-            new_name = InputTools.get_unformated("Name the copy; ")
+            new_name = InputTools.list_complete("Name the copy; ", [''])
             if not new_name.endswith('.awkd'):
                 new_name += '.awkd'
             new_path = os.path.join(eventWise.dir_name, new_name)
@@ -92,7 +92,7 @@ def make_new_cluster(eventWise):
     chosen_parameters = {}
     print(f"Select the parameters for {cluster_name}, blank for default.")
     for name, default in default_parameters.items():
-        selection = InputTools.get_unformated(f"{name} (default {default_parameters[name]}); ")
+        selection = InputTools.list_complete(f"{name} (default {default_parameters[name]}); ", [''])
         if selection == '':
             chosen_parameters[name] = default
             continue
@@ -102,7 +102,7 @@ def make_new_cluster(eventWise):
             pass
         chosen_parameters[name] = selection
     # now we have parameters, apply them
-    jet_name = InputTools.get_unformated("Name this cluster (empty for autoname); ")
+    jet_name = InputTools.list_complete("Name this cluster (empty for autoname); ", [''])
     if jet_name  == '':
         found = [name.split('_', 1)[0] for name in eventWise.hyperparameters
                  if name.startswith(cluster_name)]

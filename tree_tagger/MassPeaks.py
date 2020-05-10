@@ -106,13 +106,15 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
 def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
-    fig, ax_array = plt.subplots(3, 3)
+    #fig, ax_array = plt.subplots(3, 3)
+    fig, ax_array = plt.subplots(1, 3)
     ax_array = ax_array.flatten()
     PlottingTools.discribe_jet(eventWise, jet_name, ax_array[-1])
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
     pairs = [list(pair) for pair in itertools.combinations(range(4), 2)]
     pair_masses = [[] for _ in pairs]
+    all_masses = []
     for event_n in range(n_events):
         if event_n % 100 == 0:
             print(f"{100*event_n/n_events}%", end='\r')
@@ -122,21 +124,32 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
         n_jets = len(sorted_idx)
         if n_jets == 0:
             continue
+        all_masses.append(jet_mass(eventWise, jet_name, sorted_idx))
         for i, pair in enumerate(pairs):
             if max(pair) < n_jets:
                 pair_masses[i].append(jet_mass(eventWise, jet_name, sorted_idx[pair]))
-    heavy, light = decendants_masses(eventWise)
-    label = [jet_name, "heavy decendants", "light decendants"]
-    for ax, pair, masses in zip(ax_array, pairs, pair_masses):
-        data = [masses, heavy, light]
-        title = f"Jets {pair[0]} and {pair[1]} (pT ordered), counts={len(masses)}"
-        ax.set_title(title)
-        ax.hist(data, bins=500, histtype='step', label=label)
-    ax.legend()
-    plt.xlabel("Mass (GeV)")
-    plt.ylabel(f"Counts in {n_events} events")
+    heavy, light = descendants_masses(eventWise)
+    label = [jet_name, "heavy descendants", "light descendants"]
+    #for ax, pair, masses in zip(ax_array, pairs, pair_masses):
+    #    data = [masses, heavy, light]
+    #    title = f"Jets {pair[0]} and {pair[1]} (pT ordered), counts={len(masses)}"
+    #    ax.set_title(title)
+    #    #ax.hist(data, bins=500, histtype='step', label=label)
+    #    ax.hist(masses, bins=50, histtype='step', label=jet_name)
+    ax_array[0].set_title(f"All b-jets, counts={len(all_masses)}")
+    ax_array[0].hist(all_masses, bins=50, histtype='step', label=jet_name)
+    ax_array[1].set_title(f"Highest and second highest $p_T$ jets, counts={len(pair_masses[0])}")
+    ax_array[1].hist(pair_masses[0], bins=50, histtype='step', label=jet_name)
+    ax_array[2].set_title(f"Highest and third highest $p_T$ jets, counts={len(pair_masses[1])}")
+    ax_array[2].hist(pair_masses[1], bins=50, histtype='step', label=jet_name)
+    #ax.legend()
+    ax_array[0].set_xlabel("Mass (GeV)")
+    ax_array[1].set_xlabel("Mass (GeV)")
+    ax_array[2].set_xlabel("Mass (GeV)")
+    ax_array[0].set_ylabel(f"Counts in {n_events} events")
     if show:
         plt.show()
+    return all_masses, pair_masses
 
 
 def plot_doubleTagged_jets(eventWise, jet_name, show=True):
@@ -160,14 +173,14 @@ def plot_doubleTagged_jets(eventWise, jet_name, show=True):
         plt.show()
 
 
-def decendants_masses(eventWise, use_jetInputs=True):
+def descendants_masses(eventWise, use_jetInputs=True):
     """ from the JetInputs, plot all tracks that originate from a light higgs,
     and all tracks that originate from the heavy higgs """
     eventWise.selected_index = None
     heavy_higgs_pid = 35
-    heavy_decendants_mass = []
+    heavy_descendants_mass = []
     light_higgs_pid = 25
-    light_decendants_mass = []
+    light_descendants_mass = []
     n_events = len(eventWise.MCPID)
     for event_n in range(n_events):
         if event_n % 100 == 0:
@@ -178,25 +191,25 @@ def decendants_masses(eventWise, use_jetInputs=True):
         heavy_idx = {Components.last_instance(eventWise, hidx) for hidx in heavy_idx}
         assert len(heavy_idx) == 1, f"Problem, expected 1 higgs pid {heavy_higgs_pid}, found {len(heavy_idx)}"
         heavy_idx = list(heavy_idx)[0]
-        heavy_decendants = FormShower.decendant_idxs(eventWise, heavy_idx)
+        heavy_descendants = FormShower.descendant_idxs(eventWise, heavy_idx)
         if use_jetInputs:
             # select only particles that have already been used in sourceidx
-            heavy_decendants = heavy_decendants.intersection(eventWise.JetInputs_SourceIdx)
-        if heavy_decendants:
-            heavy_decendants_mass.append(cluster_mass(eventWise, heavy_decendants))
+            heavy_descendants = heavy_descendants.intersection(eventWise.JetInputs_SourceIdx)
+        if heavy_descendants:
+            heavy_descendants_mass.append(cluster_mass(eventWise, heavy_descendants))
         # we expect two light higgs
         light_idxs = np.where(eventWise.MCPID == light_higgs_pid)[0]
         light_idxs = {Components.last_instance(eventWise, lidx) for lidx in light_idxs}
         assert len(light_idxs) == 2, f"Problem, expected 2 higgs pid {light_higgs_pid}, found {len(light_idxs)}"
-        light_decendants = [FormShower.decendant_idxs(eventWise, lidx) for lidx in light_idxs]
+        light_descendants = [FormShower.descendant_idxs(eventWise, lidx) for lidx in light_idxs]
         if use_jetInputs:
             # select only particles that have already been used in sourceidx
-            light_decendants = [ldec.intersection(eventWise.JetInputs_SourceIdx) for ldec in light_decendants]
-        # we also expect that the combination of the light decendants should be the heavy decendants
-        all_light_decendants = light_decendants[0].union(light_decendants[1])
-        assert all_light_decendants == heavy_decendants
-        light_decendants_mass += [cluster_mass(eventWise, ldec) for ldec in light_decendants if ldec]
-    return heavy_decendants_mass, light_decendants_mass
+            light_descendants = [ldec.intersection(eventWise.JetInputs_SourceIdx) for ldec in light_descendants]
+        # we also expect that the combination of the light descendants should be the heavy descendants
+        all_light_descendants = light_descendants[0].union(light_descendants[1])
+        assert all_light_descendants == heavy_descendants
+        light_descendants_mass += [cluster_mass(eventWise, ldec) for ldec in light_descendants if ldec]
+    return heavy_descendants_mass, light_descendants_mass
 
 
 if __name__ == '__main__' and False:

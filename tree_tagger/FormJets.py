@@ -639,6 +639,7 @@ class PseudoJet:
         """ """
         #print('asign_psu', end='\r', flush=True)
         while self.currently_avalible > 0:
+            assert len(self._distances2) in [self.currently_avalible, self.currently_avalible + 1]
             # now find the smallest distance
             row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
             if row == column:
@@ -1062,13 +1063,13 @@ class Traditional(PseudoJet):
 class Spectral(PseudoJet):
     """ """
     # list the params with default values
-    param_list = {'DeltaR': None, 'NumEigenvectors': np.inf,
-            'ExpofPTPosition': 'input', 'ExpofPTMultiplier': None,
+    param_list = {'DeltaR': .2, 'NumEigenvectors': np.inf,
+            'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
             'AffinityType': 'exponent', 'AffinityCutoff': None,
             'Laplacien': 'unnormalised',
             'Invarient': 'angular', 'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
-                       'NumEigenvalues': [Constants.numeric_classes['nn'], np.inf],
+                       'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
@@ -1134,7 +1135,8 @@ class Spectral(PseudoJet):
         np.fill_diagonal(affinity, 0.)  # the affinity may have problems on the diagonal
         if np.sum(np.abs(affinity)) == 0.:
             # everything is seperated
-            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in self._ints]
+            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
+                                      self._ints[:self.currently_avalible]]
             self.currently_avalible = 0
             return
         diagonal = np.diag(np.sum(affinity, axis=1))
@@ -1156,7 +1158,16 @@ class Spectral(PseudoJet):
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
             eigenvalues = eigenvalues[1:]
-            eigenvectors = eigenvectors[:, 1:].T
+            eigenvectors = eigenvectors[:, 1:]
+        except Exception as e:
+            # display whatever caused this
+            print(f"Exception while processing event {self.eventwise.selected_index}")
+            print(f"With jet params; {self.jet_parameters}")
+            print(e)
+            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
+                                      self._ints[:self.currently_avalible]]
+            self.currently_avalible = 0
+            return
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
@@ -1507,6 +1518,7 @@ class Spectral(PseudoJet):
             beam_index = self.currently_avalible
             # now find the smallest distance
             row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
+                # somehow I am getting no distances dispite having 2 particles
             if row == column:
                 if self.beam_particle:
                     raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
@@ -1548,7 +1560,7 @@ class Spectral(PseudoJet):
             # now find the smallest distance
             remove_row = None
             row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
-            beam_index = self.currently_avalible - 1
+            beam_index = self.currently_avalible
             if row == column:
                 if self.beam_particle:
                     raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
@@ -1662,26 +1674,29 @@ def check_hyperparameters(cluster_class, params):
         try:
             if Constants.is_numeric_class(value, opts):
                 continue  # no problem
-        except TypeError:
+        except (ValueError, TypeError):
             pass
         if name == 'AffinityCutoff':
             primary, secondary = value
             try:
                 secondary_options = next(s for p, s in opts if p == primary)
             except StopIteration:
-                raise ValueError(error_str.format(name, value, opts))
+                raise ValueError(error_str.format(value, name, opts))
             if Constants.is_numeric_class(secondary, secondary_options):
                 continue  # no problem
         if isinstance(opts, list):
             found_correct = False
             for opt in opts:
-                if opt in Constants.numeric_classes and Constants.is_numeric_class(value, opt):
-                    found_correct = True
-                    break
+                try:
+                    if Constants.is_numeric_class(value, opt):
+                        found_correct = True
+                        break
+                except (ValueError, TypeError):
+                    pass
             if found_correct:
                 continue  # no problem
         # if we have yet ot hit a continue statment then this option is not valid
-        raise ValueError(error_str.format(name, value, opts))
+        raise ValueError(error_str.format(value, name, opts))
 
 
 def get_jet_params(eventWise, jet_name, add_defaults=False):
@@ -1984,7 +1999,8 @@ def run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_ta
         tries += 1
         if tries > 5:
             print("Tried this 5 times... already")
-            st()
+            #st()
+            raise RuntimeError("Subrocess problems")
         # recursive call
         output_lines = run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path, tries)
     return output_lines
@@ -2132,7 +2148,7 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
         ax = plt.gca()
     tag_phis = eventWise.Phi[eventWise.TagIndex]
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
-    #ax.scatter(tag_rapidity, tag_phis, marker='d', c=truth_colour)
+    ax.scatter(tag_rapidity, tag_phis, marker='d', c=truth_colour)
     if b_decendants:
         b_decendants = np.fromiter(FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx),
                                    dtype=int)
@@ -2255,7 +2271,6 @@ def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, a
         TrueTag.add_tag_particles(eventWise)
     # plot the location of the tag particles
     eventWise.selected_index = event_n
-    plot_tags(eventWise, ax=ax)
     pseudojet_traditional = run_FastJet(eventWise, **fast_jet_params)
     # plot the pseudojets
     # traditional_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets_traditional))]
@@ -2264,6 +2279,7 @@ def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, a
     # plot the pseudojets
     #comparitor_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_comparitor))]
     plot_cluster(pseudojet_comparitor, spectral_colour, ax=ax, pt_text=False)
+    plot_tags(eventWise, ax=ax)
     ax.set_title("Jets")
     ax.set_xlabel("rapidity")
     ax.set_ylim(-np.pi, np.pi)
@@ -2277,19 +2293,19 @@ def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_clas
     fig, axarry = plt.subplots(n_rows, n_cols, figsize=(n_rows*unit_size, n_cols*unit_size))
     axarry = axarry.reshape((2, -1))
     plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, ax=axarry[0, 0], comparitor_class=c_class)
-    #PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
-    #PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 1])
+    PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
+    PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 2])
     #axarry[0, 0].axis('off')
     #axarry[0, 2].axis('off')
-    axarry[0, 0].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
-    axarry[0, 0].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
-    axarry[0, 0].scatter([], [], marker='d', c=truth_colour, label="Tags")
-    axarry[0, 0].scatter([], [], label="b decendant",
+    axarry[0, 1].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
+    axarry[0, 1].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
+    axarry[0, 1].scatter([], [], marker='d', c=truth_colour, label="Tags")
+    axarry[0, 1].scatter([], [], label="b decendant",
                          c=(0., 0., 0., 0.), edgecolors=truth_colour,
                          linewidths=truth_linewidth, s=truth_size, marker='o')
     #axarry[0, 1].scatter([], [], label="unseen b decendant",
     #                     c=truth_colour, s=truth_linewidth, marker='x')
-    axarry[0, 0].legend()
+    axarry[0, 1].legend()
     for i in range(2, n_rows):
         axarry[0, i].axis('off')
     for i in range(1, num_eig):
@@ -2298,16 +2314,18 @@ def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_clas
 
 
 if __name__ == '__main__':
+    #InputTools.pre_selections = InputTools.PreSelections(
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
     event_num = InputTools.get_literal("Event number? ", int)
     fast_jet_params = dict(DeltaR=1., ExpofPTMultiplier=-1, jet_name="FastJet")
-    spectral_jet_params = dict(DeltaR=0.20, ExpofPTMultiplier=0,
+    spectral_jet_params = dict(DeltaR=0.30, ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
-                               NumEigenvectors=2,
+                               NumEigenvectors=4,
                                Laplacien='symmetric',
-                               AffinityType='inverse',
-                               AffinityCutoff=('knn', 4),
+                               AffinityType='exponent2',
+                               AffinityCutoff=None,#('knn', 4),
+                               #AffinityCutoff=('knn', 4),
                                jet_name="SpectralTest")
 
     c_class = SpectralFull

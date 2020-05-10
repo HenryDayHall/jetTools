@@ -861,13 +861,9 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
     if cuts:
         angles = array[:, records.indices["symmetric_diff(Phi)"]].astype(float)
         good_angle = angles < 1.
-        #good_distance = y_cols["s_distance"] < 100
-        #mask = np.logical_and(good_angle, sufficient_jets)
+        #good_distance = y_cols["s_distance"] < 100000
+        mask = np.logical_and(good_angle, sufficient_jets)
         #mask = np.logical_and(good_distance, mask)
-        # TODO find the source of the infinites so you can drop this mask
-        posinf_mask = np.all(array != np.inf, axis=1)
-        neginf_mask = np.all(array != -np.inf, axis=1)
-        mask = np.logical_and(posinf_mask, neginf_mask)
         array = array[mask]
         y_cols = {name: y_cols[name][mask] for name in y_cols}
         sufficient_jets = sufficient_jets[mask]
@@ -910,24 +906,19 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
     parameter_order = [name for name in sorted(records.indices.keys()) if name not in ignore_cols if len(set(array[:, records.indices[name]])) > 1]
     mask_dict = {}
     for name in parameter_order:
+        print(name + "~"*5)
         # the data_dict contains strings, we need real values
         parameter_values = array[:, records.indices[name]]
-        catigories = set(parameter_values)
-        has_none = None in catigories
-        # None prevents propper sorting
-        catigories.discard(None)
-        catigories = sorted(catigories)
-        if has_none:
-            catigories += [None]
-        catigorical = hasattr(catigories[0], '__iter__')
+        not_none = [p for p in parameter_values if p is not None]
+        catigorical = hasattr(not_none[0], '__iter__')
         if catigorical:
-            scale, positions, label_dict, label_catigories = make_ordinal_scale(catigories, parameter_values)
+            scale, positions, label_dict, label_catigories = make_ordinal_scale(parameter_values)
             print(f"label_dict = {label_dict}, scale={scale}, set(positions) = {set(positions)}")
             labels = [label_dict[key] for key in scale]  # to fix the order
             boxes = bokeh.models.widgets.CheckboxGroup(labels=labels, active=list(range(len(labels))))
         else:
-            scale, positions, label_dict = make_float_scale(catigories, parameter_values)
-            bottom, top = np.nanmin(catigories[:-1]), np.nanmax(catigories[:-1]) 
+            scale, positions, label_dict = make_float_scale(parameter_values)
+            bottom, top = np.nanmin(not_none), np.nanmax(not_none) 
             has_slider = bottom != top
             if has_slider:
                 slider = bokeh.models.RangeSlider(title=name, start=bottom, end=top,
@@ -1013,10 +1004,18 @@ def filter_column_dict(column_dict, filters):
     return new_dict
 
 
-def make_float_scale(catigories, col_content):
+def make_float_scale(col_content):
+    catigories = set(col_content)
+    print(f"Unordered catigories {catigories}")
+    has_none = None in catigories
+    # None prevents propper sorting
+    catigories.discard(None)
+    catigories = sorted(catigories)
+    if has_none:
+        catigories += [None]
+    print(f"Ordered catigories {catigories}")
     scale = np.array(catigories)
-    # the last one is skipped as it is the None value
-    real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
+    real = np.fromiter((x for x in catigories if x is not None and np.isfinite(x)),
                        dtype=float)
     if len(real) > 1:
         ave_gap = np.mean(real[1:] - real[:-1])
@@ -1046,21 +1045,35 @@ def make_float_scale(catigories, col_content):
     return scale, positions, label_dict
 
 
-def make_ordinal_scale(catigories, col_content):
+def make_ordinal_scale(col_content):
+    catigories = set(col_content)
+    print(f"Unordered catigories {catigories}")
+    has_none = None in catigories
+    # None prevents propper sorting
+    catigories.discard(None)
+    catigories = sorted(catigories)
+    if has_none:
+        catigories += [None]
+    print(f"Ordered catigories {catigories}")
     # it is either a string or a list,
     # the axis spacing will be maufactured
     scale = list(range(len(catigories)))
     positions = np.fromiter((scale[catigories.index(x)] for x in col_content),
                             dtype=float)
     label_catigories = {}
-    for cat in catigories:
+    label_dict = {}
+    for pos, cat in zip(scale, catigories):
         if isinstance(cat, tuple):
             s = ', '.join((cat[0], str(cat[1])[:4]))
-            label_catigories[s] = cat
         else:
-            label_catigories[str(cat)] = cat
-    sorted_labels = sorted(label_catigories.keys())
-    label_dict = dict(zip(scale, sorted_labels))
+            s = str(cat)
+        if s in label_catigories:  # don't add it
+            exisiting_catigory = label_catigories[s]
+            existing_position = scale[catigories.index(existing_cat)]
+            positions[positions == pos] = existing_position
+        else:
+            label_catigories[s] = cat
+            label_dict[pos] = s
     return scale, positions, label_dict, label_catigories
 
 
