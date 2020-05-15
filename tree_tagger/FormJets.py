@@ -93,6 +93,53 @@ class PseudoJet:
         if kwargs.get("assign", False):
             self.assign_parents()
 
+    def assign_parents(self):
+        """ """
+        while self.currently_avalible > 0:
+            self._step_assign_parents()
+
+    def plt_assign_parents(self):
+        """ """
+        # dendogram < this should be
+        plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
+        inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
+        plt.scatter(self.Rapidity, self.Phi, inv_pts, c='w')
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.ylabel(r"$\phi$ - barrel angle")
+        if self.from_PseudoRapidity:
+            plt.xlabel(r"$\eta$ - pseudo rapidity")
+        else:
+            plt.xlabel(r"Rapidity")
+        plt.title("Detected Hits")
+        plt.gca().set_facecolor('gray')
+        # for getting rid of the axis
+        #plt.gca().get_xaxis().set_visible(False)
+        #plt.gca().get_yaxis().set_visible(False)
+        #plt.gca().spines['top'].set_visible(False)
+        #plt.gca().spines['right'].set_visible(False)
+        #plt.gca().spines['bottom'].set_visible(False)
+        #plt.gca().spines['left'].set_visible(False)
+        plt.pause(0.05)#
+        input("Press enter to start pseudojeting")
+        while self.currently_avalible > 0:
+            removed = self._step_assign_parents()
+            if combined is not None:
+                decendents = self.get_decendants(lastOnly=True, pseudojet_idx=removed)
+                decendents_idx = [self.idx_from_inpIdx(d) for d in decendents]
+                draps = [self._floats[d][self._Rapidity_col] for d in decendents_idx]
+                dphis = [self._floats[d][self._Phi_col] for d in decendents_idx]
+                des = [self._floats[d][self._Energy_col] for d in decendents_idx]
+                dpts = [1/self._floats[d][self._PT_col]**2 for d in decendents_idx]  # WHY??
+                plt.scatter(draps, dphis, dpts, marker='D')
+                print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} pseudojets unfinished")
+                plt.pause(0.05)
+                input("Press enter for next pseudojet")
+        plt.show()
+
+    def _step_assign_parents(self):
+        raise NotImplementedError
+
     def _define_physical_distance(self):
         """ """
         pt_col  = self._PT_col 
@@ -250,7 +297,7 @@ class PseudoJet:
                 dict_jet_params[name] = param_list[name]
         kwargs['dict_jet_params'] = dict_jet_params
 
-    def _check_hyperparams():
+    def _check_hyperparams(self):
         raise NotImplementedError
 
     def _set_column_numbers(self):
@@ -635,60 +682,14 @@ class PseudoJet:
         # one less pseudojet avalible
         self.currently_avalible -= 1
         
-    def assign_parents(self):
-        """ """
-        #print('asign_psu', end='\r', flush=True)
-        while self.currently_avalible > 0:
-            assert len(self._distances2) in [self.currently_avalible, self.currently_avalible + 1]
-            # now find the smallest distance
-            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
-            if row == column:
-                self._remove_pseudojet(row)
-            else:
-                self._merge_pseudojets(row, column, self._distances2[row, column])
-
-    def plt_assign_parents(self):
-        """ """
-        # dendogram < this should be
-        plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
-        inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
-        plt.scatter(self.Rapidity, self.Phi, inv_pts, c='w')
-        plt.rc('text', usetex=True)
-        plt.rc('font', family='serif')
-        plt.ylabel(r"$\phi$ - barrel angle")
-        if self.from_PseudoRapidity:
-            plt.xlabel(r"$\eta$ - pseudo rapidity")
+    def _step_assign_parents(self):
+        # now find the smallest distance
+        row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
+        if row == column:
+            self._remove_pseudojet(row)
+            return row
         else:
-            plt.xlabel(r"Rapidity")
-        plt.title("Detected Hits")
-        plt.gca().set_facecolor('gray')
-        # for getting rid of the axis
-        #plt.gca().get_xaxis().set_visible(False)
-        #plt.gca().get_yaxis().set_visible(False)
-        #plt.gca().spines['top'].set_visible(False)
-        #plt.gca().spines['right'].set_visible(False)
-        #plt.gca().spines['bottom'].set_visible(False)
-        #plt.gca().spines['left'].set_visible(False)
-        plt.pause(0.05)#
-        input("Press enter to start pseudojeting")
-        while self.currently_avalible > 0:
-            # now find the smallest distance
-            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
-            if row == column:
-                decendents = self.get_decendants(lastOnly=True, pseudojet_idx=row)
-                decendents_idx = [self.idx_from_inpIdx(d) for d in decendents]
-                draps = [self._floats[d][self._Rapidity_col] for d in decendents_idx]
-                dphis = [self._floats[d][self._Phi_col] for d in decendents_idx]
-                des = [self._floats[d][self._Energy_col] for d in decendents_idx]
-                dpts = [1/self._floats[d][self._PT_col]**2 for d in decendents_idx]  # WHY??
-                plt.scatter(draps, dphis, dpts, marker='D')
-                print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} pseudojets unfinished")
-                plt.pause(0.05)
-                input("Press enter for next pseudojet")
-                self._remove_pseudojet(row)
-            else:
-                self._merge_pseudojets(row, column, self._distances2[row, column])
-        plt.show()
+            self._merge_pseudojets(row, column, self._distances2[row, column])
 
     def idx_from_inpIdx(self, jetInputIdx):
         """
@@ -816,6 +817,10 @@ class PseudoJet:
         py = floats[self._Py_col]
         pz = floats[self._Pz_col]
         energy = floats[self._Energy_col]
+        # check for tachyonic behavior and fix - makes no diference
+        #if energy**2 < px**2 + py**2 + pz**2:
+        #    energy = np.sqrt(px**2 + py**2 + pz**2)
+        #    floats[self._Energy_col] = energy
         phi, pt = Components.pxpy_to_phipt(px, py)
         floats[self._PT_col] = pt
         floats[self._Phi_col] = phi
@@ -841,7 +846,7 @@ class PseudoJet:
 
 class Traditional(PseudoJet):
     """ """
-    param_list = {'DeltaR': None, 'ExpofPTMultiplier': None, 'Invarient': 'angular'}
+    param_list = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'Invarient': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
@@ -1511,81 +1516,28 @@ class Spectral(PseudoJet):
             new_distances2[replace_index] = self.DeltaR**2
         self._distances2[replace_index] = new_distances2
 
-    def assign_parents(self):
+    def _step_assign_parents(self):
         """ """
-        # the beam particle won't count towards the currently avalible
-        while self.currently_avalible > 0:
-            beam_index = self.currently_avalible
-            # now find the smallest distance
-            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
-                # somehow I am getting no distances dispite having 2 particles
-            if row == column:
-                if self.beam_particle:
-                    raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
-                self._remove_pseudojet(row)
-            elif self.beam_particle and row == beam_index:
-                # the column merged with the beam
-                self._remove_pseudojet(column)
-            elif self.beam_particle and column == beam_index:
-                # the row merged with the beam
-                self._remove_pseudojet(row)
-            else:
-                self._merge_pseudojets(row, column, self._distances2[row, column])
-
-    def plt_assign_parents(self):
-        """ """
-        # dendogram < this should be
-        plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
-        inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
-        plt.scatter(self.Rapidity, self.Phi, inv_pts, c='w')
-        plt.rc('text', usetex=True)
-        plt.rc('font', family='serif')
-        plt.ylabel(r"$\phi$ - barrel angle")
-        if self.from_PseudoRapidity:
-            plt.xlabel(r"$\eta$ - pseudo rapidity")
+        beam_index = self.currently_avalible
+        # now find the smallest distance
+        row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
+        removed = None
+        if row == column:
+            if self.beam_particle:
+                raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
+            self._remove_pseudojet(row)
+            removed = row
+        elif self.beam_particle and row == beam_index:
+            # the column merged with the beam
+            self._remove_pseudojet(column)
+            removed = column
+        elif self.beam_particle and column == beam_index:
+            # the row merged with the beam
+            self._remove_pseudojet(row)
+            removed = row
         else:
-            plt.xlabel(r"Rapidity")
-        plt.title("Detected Hits")
-        plt.gca().set_facecolor('gray')
-        # for getting rid of the axis
-        #plt.gca().get_xaxis().set_visible(False)
-        #plt.gca().get_yaxis().set_visible(False)
-        #plt.gca().spines['top'].set_visible(False)
-        #plt.gca().spines['right'].set_visible(False)
-        #plt.gca().spines['bottom'].set_visible(False)
-        #plt.gca().spines['left'].set_visible(False)
-        plt.pause(0.05)#
-        input("Press enter to start pseudojeting")
-        while self.currently_avalible > 0:
-            # now find the smallest distance
-            remove_row = None
-            row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
-            beam_index = self.currently_avalible
-            if row == column:
-                if self.beam_particle:
-                    raise RuntimeError("A jet with a beam particle should never have a minimal diagonal")
-                remove_row = row
-            elif self.beam_particle and row == beam_index:
-                # the column merged with the beam
-                remove_row = column
-            elif self.beam_particle and column == beam_index:
-                # the row merged with the beam
-                remove_row = row
-            else:
-                self._merge_pseudojets(row, column, self._distances2[row, column])
-            if remove_row is not None:
-                decendents = self.get_decendants(lastOnly=True, pseudojet_idx=row)
-                decendents_idx = [self.idx_from_inpIdx(d) for d in decendents]
-                draps = [self._floats[d][self._Rapidity_col] for d in decendents_idx]
-                dphis = [self._floats[d][self._Phi_col] for d in decendents_idx]
-                des = [self._floats[d][self._Energy_col] for d in decendents_idx]
-                dpts = [1/self._floats[d][self._PT_col]**2 for d in decendents_idx]  # WHY??
-                plt.scatter(draps, dphis, dpts, marker='D')
-                print(f"Added jet of {len(decendents)} tracks, {self.currently_avalible} pseudojets unfinished")
-                plt.pause(0.05)
-                input("Press enter for next pseudojet")
-                self._remove_pseudojet(row)
-        plt.show()
+            self._merge_pseudojets(row, column, self._distances2[row, column])
+        return removed
 
 
 class SpectralMean(Spectral):
@@ -2008,7 +1960,7 @@ def run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_ta
 
 def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_name=None, batch_length=100, silent=False):
     """
-    
+
 
     Parameters
     ----------
@@ -2076,7 +2028,10 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
             eigenvalues.append(awkward.fromiter(jets.eigenvalues))
         jets = jets.split()
         if not checked and len(jets) > 0:
-            assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"
+            try:
+                assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"
+            except:
+                st()
             checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
@@ -2150,7 +2105,7 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
     ax.scatter(tag_rapidity, tag_phis, marker='d', c=truth_colour)
     if b_decendants:
-        b_decendants = np.fromiter(FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx),
+        b_decendants = np.fromiter(FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx),
                                    dtype=int)
         included = np.fromiter((idx in eventWise.JetInputs_SourceIdx for idx in b_decendants),
                                dtype=bool)
@@ -2158,6 +2113,7 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
                    eventWise.Phi[b_decendants[included].tolist()],
                    c=(0., 0., 0., 0.), edgecolors=truth_colour,
                    linewidths=truth_linewidth, s=truth_size, marker='o')
+        # plot the others invisibly so as to set the rapidity axis with them
         ax.scatter(eventWise.Rapidity[b_decendants[~included]],
                    eventWise.Phi[b_decendants[~included]],
                    c='black', alpha=0.,#truth_colour,
@@ -2200,7 +2156,7 @@ def plot_eigenspace(eventWise, event_n, spectral_jet_params, eigendim1, eigendim
         filter_funcs = [filter_ends, filter_pt_eta]
         create_jetInputs(eventWise, filter_funcs)
     # get the b_decendants
-    b_decendants = FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx)
+    b_decendants = FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx)
     # make the spectral jet and get transformed coordinates
     pseudojet_spectral = spectral_class(eventWise, **spectral_jet_params)
     eigenspace = pseudojet_spectral._eigenspace
@@ -2292,22 +2248,26 @@ def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_clas
     n_rows, n_cols = 2, num_eig-1
     fig, axarry = plt.subplots(n_rows, n_cols, figsize=(n_rows*unit_size, n_cols*unit_size))
     axarry = axarry.reshape((2, -1))
+    # top row ~~~
     plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, ax=axarry[0, 0], comparitor_class=c_class)
-    PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
-    PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 2])
-    #axarry[0, 0].axis('off')
-    #axarry[0, 2].axis('off')
-    axarry[0, 1].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
-    axarry[0, 1].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
-    axarry[0, 1].scatter([], [], marker='d', c=truth_colour, label="Tags")
-    axarry[0, 1].scatter([], [], label="b decendant",
-                         c=(0., 0., 0., 0.), edgecolors=truth_colour,
-                         linewidths=truth_linewidth, s=truth_size, marker='o')
-    #axarry[0, 1].scatter([], [], label="unseen b decendant",
-    #                     c=truth_colour, s=truth_linewidth, marker='x')
-    axarry[0, 1].legend()
-    for i in range(2, n_rows):
-        axarry[0, i].axis('off')
+    # add details in the spare axis
+    if n_rows > 1:
+        PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
+        axarry[0, 1].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
+        axarry[0, 1].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
+        axarry[0, 1].scatter([], [], marker='d', c=truth_colour, label="Tags")
+        axarry[0, 1].scatter([], [], label="b decendant",
+                             c=(0., 0., 0., 0.), edgecolors=truth_colour,
+                             linewidths=truth_linewidth, s=truth_size, marker='o')
+        #axarry[0, 1].scatter([], [], label="unseen b decendant",
+        #                     c=truth_colour, s=truth_linewidth, marker='x')
+        axarry[0, 1].legend()
+    if n_rows > 2:
+        PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 2])
+    if n_rows > 3:
+        for i in range(3, n_rows+1):
+            axarry[0, i].axis('off')
+    # bottom row
     for i in range(1, num_eig):
         plot_eigenspace(eventWise, event_num, spectral_jet_params, i, 0, ax=axarry[1, i-1], spectral_class=c_class)
     plt.show()
@@ -2324,7 +2284,7 @@ if __name__ == '__main__':
                                NumEigenvectors=4,
                                Laplacien='symmetric',
                                AffinityType='exponent2',
-                               AffinityCutoff=None,#('knn', 4),
+                               AffinityCutoff=None,
                                #AffinityCutoff=('knn', 4),
                                jet_name="SpectralTest")
 

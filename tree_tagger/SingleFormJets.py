@@ -79,7 +79,7 @@ def get_existing_clusters(eventWise):
     return choice
 
 
-def make_new_cluster(eventWise):
+def pick_class_params():
     fastjet = "FastJet"
     cluster_options = list(FormJets.cluster_classes.keys()) + [fastjet]
     cluster_name = InputTools.list_complete("Which form of clustering? ", cluster_options).strip()
@@ -101,6 +101,11 @@ def make_new_cluster(eventWise):
         except ValueError:
             pass
         chosen_parameters[name] = selection
+    return cluster_name, cluster_class, chosen_parameters
+
+
+def make_new_cluster(eventWise):
+    cluster_name, cluster_class, chosen_parameters = pick_class_params()
     # now we have parameters, apply them
     jet_name = InputTools.list_complete("Name this cluster (empty for autoname); ", [''])
     if jet_name  == '':
@@ -196,7 +201,7 @@ if __name__ == '__main__':
     # now do tagging
     pretag_jet_pt_cut = get_make_tags(eventWise, jet_name)
     # now calculate shapes and mass peaks
-    img_base = InputTools.get_unformated("Give a name to save the plots (empty for no save); ")
+    img_base = InputTools.get_file_name("Give a name to save the plots (empty for no save); ")
     plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base)
 
 

@@ -1552,6 +1552,87 @@ def fix_nonexistent_columns(eventWise):
     return h_problems, eventWise
 
 
+def check_even_length(eventWise, interactive=True, raise_error=False, ignore_prefixes=None):
+    eventWise.selected_index = None
+    if ignore_prefixes is None:
+        ignore_prefixes = []
+    column_lengths = {name: len(getattr(eventWise, name)) for name in eventWise.columns}
+    max_len = np.max(list(column_lengths.values()))
+    if interactive and not InputTools.yesNo_question(f"Max length is {max_len}, require this length? "):
+        max_len = InputTools.get_literal("What should the length be? ")
+    ask_apply_same_choice = 0
+    apply_to_prefix = True
+    prefix_to_remove = []
+    for name, length in column_lengths.items():
+        remove = False
+        # get the prefix
+        prefix = name.split('_')[0]
+        if prefix == name:
+            prefix = ''
+        if prefix in ignore_prefixes:
+            continue
+        if prefix in prefix_to_remove:  # ded we already to decide to remove this?
+            remove = True
+        elif length != max_len:  # is this one a problem?
+            problem = f"Column {name} has {length} items, (should be {max_len})"
+            if raise_error:
+                raise ValueError(problem)
+            if interactive:
+                print(problem)
+                remove = InputTools.yesNo_question("Remove this column? ")
+                apply_to_prefix = InputTools.yesNo_question("Apply this choice to all columns with prefix '{prefix}'? ")
+                ask_apply_same_choice += 1
+                if ask_apply_same_choice % 5 == 0:
+                    interactive = not InputTools.yesNo_question("Do you want to apply this choice to all future columns? ")
+            else:
+                remove = True
+        if remove:
+            eventWise.remove(name)
+
+
+def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_prefixes=None, relaxation=0.0001):
+    eventWise.selected_index = None
+    if ignore_prefixes is None:
+        ignore_prefixes = []
+    energy_prefixes = [name[:-len('Energy')] for name in eventWise.columns
+                       if name.endswith('Energy')]
+    ask_apply_same_choice = 0
+    for prefix in energy_prefixes:
+        if prefix in ignore_prefixes:
+            continue
+        try:
+            join = '_' if prefix else ''
+            energy = getattr(eventWise, prefix + join + "Energy")
+            px = getattr(eventWise, prefix + join + "Px")
+            py = getattr(eventWise, prefix + join + "Py")
+            pz = getattr(eventWise, prefix + join + "Pz")
+            while hasattr(energy[0], '__iter__'):
+                energy = energy.flatten()
+                px = px.flatten()
+                py = py.flatten()
+                pz = pz.flatten()
+        except AttributeError:
+            continue  # thos doesn't have enough columns to make that error
+        restmass2 = energy**2 - px**2 - py**2 - pz**2
+        if np.all(restmass2 >= -relaxation):
+            continue  # it's not tachyonic
+        remove = False
+        min_restmass2 = np.min(restmass2) 
+        problem = f"Prefix {prefix} is tachyonic with min rest mass {min_restmass2}"
+        if raise_error:
+            raise ValueError(problem)
+        if interactive:
+            print(problem)
+            remove = InputTools.yesNo_question("Remove this column? ")
+            ask_apply_same_choice += 1
+            if ask_apply_same_choice % 5 == 0:
+                interactive = not InputTools.yesNo_question("Do you want to apply this choice to all future prefixes? ")
+        else:
+            remove = True
+        if remove:
+            eventWise.remove_prefix(prefix)
+
+
 def find_eventWise_in_dir(dir_name):
     """
     

@@ -10,7 +10,7 @@ import numpy as np
 import awkward
 
 
-def decendant_idxs(eventWise, *start_idxs):
+def descendant_idxs(eventWise, *start_idxs):
     assert eventWise.selected_index is not None
     final_idxs = set()
     stack = list(start_idxs)

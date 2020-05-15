@@ -3,7 +3,7 @@ display = False
 from ipdb import set_trace as st
 if display:
     from tree_tagger import FormJets, DrawBarrel
-from tree_tagger import Components, InputTools, Constants
+from tree_tagger import Components, InputTools, Constants, FormShower
 import numpy as np
 import awkward
 import os
@@ -168,7 +168,7 @@ def add_tag_particles(eventWise, silent=False):
     eventWise.append(**content)
 
 
-def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True, overwrite=True):
+def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True, overwrite=False):
     """
     
 
@@ -281,6 +281,69 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
         eventWise.append_hyperparameters(**hyperparameter_content)
     else:
         return hyperparameter_content, content
+
+
+
+def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
+    """
+
+    Parameters
+    ----------
+    eventWise :
+        param jet_name:
+    append :
+        Default value = True)
+    jet_name :
+        
+    batch_length :
+         (Default value = 100)
+
+    Returns
+    -------
+
+    """
+    eventWise.selected_index = None
+    name = jet_name + "_CTags"
+    n_events = len(getattr(eventWise, jet_name+"_Energy", []))
+    jet_tags = list(getattr(eventWise, name, []))
+    start_point = len(jet_tags)
+    if start_point >= n_events:
+        print("Finished")
+        if append:
+            return
+        else:
+            content = {}
+            content[name] = awkward.fromiter(jet_tags)
+            return content
+    end_point = min(n_events, start_point+batch_length)
+    if not silent:
+        print(f" Will stop at {100*end_point/n_events}%")
+    # will actually compare the square of the angle for speed
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0 and not silent:
+            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        eventWise.selected_index = event_n
+        jets_idxs = getattr(eventWise, jet_name + "_InputIdx")
+        parents_idxs = getattr(eventWise, jet_name + "_Parent")
+        energies = getattr(eventWise, jet_name + "_Energy")
+        sourceidx = eventWise.JetInputs_SourceIdx.tolist()
+        b_idxs = FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx)
+        b_decendants = [sourceidx.index(d) for d in b_idxs
+                        if d in sourceidx]
+        tags_here = []
+        for jet_idxs, parent_idxs, energy in zip(jets_idxs, parents_idxs, energies):
+            ratings = percent_pos(jet_idxs, parent_idxs, b_decendants, energy)
+            tags_here.append(ratings)
+        jet_tags.append(awkward.fromiter(tags_here))
+    content = {}
+    content[name] = awkward.fromiter(jet_tags)
+    if append:
+        eventWise.append(**content)
+    else:
+        return content
 
 
 display=False  # note needs full simulation
@@ -400,4 +463,28 @@ def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
                     quark_distances[num][0] = 0. # set this distance to 0
     assert np.all([isinstance(q, int) for q in quark_parents])
     return quark_parents
+
+
+def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
+    if weights is None:
+        weights = np.ones_like(jet_idxs)
+    percents = np.zeros_like(jet_idxs, dtype=float)
+    # first gen contain the pos idxs
+    percents += [i in pos_idxs for i in jet_idxs]
+    this_gen = np.fromiter((i not in parent_idxs for i in jet_idxs), bool)
+    next_gen = np.empty_like(jet_idxs, dtype=bool)
+    # make jets a list becuase we will index it
+    jet_idxs = list(jet_idxs)
+    while np.any(this_gen):
+        next_gen[:] = False
+        in_next_gen = set(parent_idxs[this_gen])
+        in_next_gen.discard(-1)
+        for nidx in in_next_gen:
+            local_idx = jet_idxs.index(nidx)
+            next_gen[local_idx] = True
+            children = parent_idxs == nidx
+            percents[local_idx] = np.sum(percents[children]*weights[children])/np.sum(weights[children])
+        this_gen[:] = next_gen
+    return percents
+
 

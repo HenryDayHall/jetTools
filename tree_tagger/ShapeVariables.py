@@ -1,10 +1,53 @@
 """calculate shape variables """
+import scipy.optimize
 import numpy as np
 #from ipdb import set_trace as st
 from tree_tagger.stefano_shapes import shape as stefano
 from tree_tagger import TrueTag, Constants
 import awkward
 from matplotlib import pyplot as plt 
+
+
+def D_parameter(energies, pxs, pys, pzs):
+    raise NotImplementedError
+
+def C_parameter(energies, pxs, pys, pzs):
+    raise NotImplementedError
+
+def spherocity(energies, pxs, pys, pzs):
+    momentums = np.vstack((pxs, pys)).T
+    def to_minimise(phi):
+        transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
+        return np.sum(np.abs(np.cross(momentums, transverse_thrust_axis)))
+    best_phi = scipy.optimize.minimize_scalar(to_minimise, bounds=(-np.pi, np.pi),
+                                              method='Bounded').x
+    transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
+    fraction = np.sum(np.abs(np.cross(momentums, transverse_thrust_axis))) \
+               /np.sum(np.abs(momentums))
+    spherocity = 0.25*np.pi**2*fraction**2
+    return spherocity
+
+
+def python_shape(energies, pxs, pys, pzs):
+    shape_names = ['thrust', 'oblateness', 'sphericity',
+                   'heavy_jet_mass2', 'light_jet_mass2',
+                   'difference_jet_mass2', 'alpanarity',
+                   'planarity', 'acoplanarity', 'minor',
+                   'major', 'D parameter', 'C parameter',
+                   'spherocity']
+    shapes = {}
+    momentums = np.vstack((pxs, pys)).T
+    birrs = np.sum(np.abs(momentums), axis=1)
+    sum_birr = np.sum(birrs)
+    def to_minimise(phi):
+        transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
+        return -np.sum(np.abs(momentums*transverse_thrust_axis))
+    best_phi = scipy.optimize.minimize_scalar(to_minimise, bounds=(-np.pi, np.pi),
+                                              method='Bounded').x
+    transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
+    shapes['Thrust'] = np.sum(np.abs(momentums*transverse_thrust_axis))/sum_birr
+    shapes['Minor'] = np.sum(np.abs(np.cross(momentums, transverse_thrust_axis)))/sum_birr
+
 
 def shape(energies, pxs, pys, pzs):
     """
@@ -98,7 +141,7 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
         # select the jets that have been tagged
         jet_idx = [i for i, tags in enumerate(getattr(eventWise, name_tags))
                    if len(tags)>0]
-        # we cna ony work with events with at least two but less that 5 tracks
+        # we cna ony work with events with at least two but less that 5 jets
         if len(jet_idx) > 1 and len(jet_idx) < 5:
             jet_px = eventWise.match_indices(jet_name + "_Px", rootinputidx_name, inputidx_name).flatten()[jet_idx]
             jet_py = eventWise.match_indices(jet_name + "_Py", rootinputidx_name, inputidx_name).flatten()[jet_idx]

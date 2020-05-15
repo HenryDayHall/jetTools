@@ -1,10 +1,15 @@
 """ A module for comparing diferent affinity measures """
+import os
 from ipdb import set_trace as st
 import numpy as np
 from matplotlib import pyplot as plt
-from tree_tagger import FormShower, PlottingTools, Components, InputTools
+from tree_tagger import FormShower, PlottingTools, Components, InputTools, TrueTag, SingleFormJets
 import scipy.spatial
 import scipy.stats
+import sklearn.metrics
+import attrdict
+import ast
+
 
 def component_deltaR(rapidity, phi):
     rapidity_dist2 = scipy.spatial.distance.pdist(rapidity.reshape((-1, 1)), metric='sqeuclidean')
@@ -17,17 +22,32 @@ def component_deltaR(rapidity, phi):
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
     return affinities_grid
 
-def deltaR(eventWise):
-    assert eventWise.selected_index is not None
-    affinities_grid = component_deltaR(eventWise.JetInputs_Rapidity, eventWise.JetInputs_Phi)
+
+def deltaR(particle_collection):
+    affinities_grid = component_deltaR(particle_collection.JetInputs_Rapidity, particle_collection.JetInputs_Phi)
     return affinities_grid
 
 
-def sum_deltaR_tohard(eventWise):
-    assert eventWise.selected_index is not None
-    hardest_idx = np.argmax(eventWise.JetInputs_PT)
-    rapidity_dist2 = np.abs(eventWise.JetInputs_Rapidity - eventWise.JetInputs_Rapidity[hardest_idx])
-    phi_dist = np.sqrt(np.abs(eventWise.JetInputs_Phi - eventWise.JetInputs_Phi[hardest_idx]))
+def angle(particle_collection):
+    phi = particle_collection.JetInputs_Phi
+    phi_dist = scipy.spatial.distance.pdist(phi.reshape((-1,1)))
+    rapidity = particle_collection.JetInputs_Rapidity
+    rapidity_dist = scipy.spatial.distance.pdist(rapidity.reshape((-1,1)))
+    angle = np.arctan2(phi_dist, rapidity_dist)
+    angle[angle>0.5*np.pi] = np.pi - angle[angle>np.pi]
+    angle[angle<-0.5*np.pi] = np.pi + angle[angle>np.pi]
+    return angle
+
+def mean_PT(particle_collection):
+    pt = particle_collection.JetInputs_PT
+    return angle
+
+
+
+def sum_deltaR_tohard(particle_collection):
+    hardest_idx = np.argmax(particle_collection.JetInputs_PT)
+    rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - particle_collection.JetInputs_Rapidity[hardest_idx])
+    phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - particle_collection.JetInputs_Phi[hardest_idx]))
     phi_dist = Components.raw_to_angular_distance(phi_dist)
     dist = np.sqrt(phi_dist**2 + rapidity_dist2).reshape((-1, 1))
     affinities_grid = scipy.spatial.distance.pdist(dist, metric=sum)
@@ -35,16 +55,15 @@ def sum_deltaR_tohard(eventWise):
     return affinities_grid
 
 
-def sum_deltaR_tocentre(eventWise):
-    assert eventWise.selected_index is not None
-    centre = [np.sum(eventWise.JetInputs_Energy),
-              np.sum(eventWise.JetInputs_Px),
-              np.sum(eventWise.JetInputs_Py),
-              np.sum(eventWise.JetInputs_Pz)]
+def sum_deltaR_tocentre(particle_collection):
+    centre = [np.sum(particle_collection.JetInputs_Energy),
+              np.sum(particle_collection.JetInputs_Px),
+              np.sum(particle_collection.JetInputs_Py),
+              np.sum(particle_collection.JetInputs_Pz)]
     phi, pt = Components.pxpy_to_phipt(centre[1], centre[2])
     rapidity = Components.ptpze_to_rapidity(pt, centre[3], centre[0])
-    rapidity_dist2 = np.abs(eventWise.JetInputs_Rapidity - rapidity)
-    phi_dist = np.sqrt(np.abs(eventWise.JetInputs_Phi - phi))
+    rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - rapidity)
+    phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - phi))
     phi_dist = Components.raw_to_angular_distance(phi_dist)
     dist = np.sqrt(phi_dist**2 + rapidity_dist2).reshape((-1, 1))
     affinities_grid = scipy.spatial.distance.pdist(dist, metric=sum)
@@ -52,12 +71,33 @@ def sum_deltaR_tocentre(eventWise):
     return affinities_grid
 
 
-def get_CoM(eventWise):
-    assert eventWise.selected_index is not None
-    four_vectors = np.vstack((eventWise.JetInputs_Energy,
-                              eventWise.JetInputs_Px,
-                              eventWise.JetInputs_Py,
-                              eventWise.JetInputs_Pz))
+def horrizontal_from_line(particle_collection):
+    dr = deltaR(particle_collection)
+    sdrtc = sum_deltaR_tocentre(particle_collection)
+    line = -0.06848*dr*dr + 0.8278*dr + 0.6873
+    return np.abs(line - sdrtc)
+
+
+def deltaR2_minus_displacement(particle_collection):
+    dr = deltaR(particle_collection)
+    sdrtc = sum_deltaR_tocentre(particle_collection)
+    line = -0.06848*dr*dr + 0.8278*dr + 0.6873
+    return dr*dr - np.abs(line - sdrtc)
+
+
+def distance_from_points(particle_collection):
+    dr = deltaR(particle_collection)
+    sdrtc = sum_deltaR_tocentre(particle_collection)
+    log_to_00 = np.log(np.sqrt(dr*dr + sdrtc*sdrtc)+0.1)
+    past_1 = 2*np.sqrt(dr*dr + np.clip(1-sdrtc, 0, None)**2)
+    return log_to_00 + past_1
+
+
+def get_CoM(particle_collection):
+    four_vectors = np.vstack((particle_collection.JetInputs_Energy,
+                              particle_collection.JetInputs_Px,
+                              particle_collection.JetInputs_Py,
+                              particle_collection.JetInputs_Pz))
     invarient_masses2 = four_vectors[0]**2 - np.sum(four_vectors[1:]**2, axis=0)
     boost = -np.sum(four_vectors[1:], axis=1)
     new_three_vectors = four_vectors[1:] + boost.reshape((-1, 1))
@@ -66,12 +106,11 @@ def get_CoM(eventWise):
     return new_four_vectors
 
 
-def CoM_deltaR(eventWise):
-    assert eventWise.selected_index is not None
-    four_vectors = np.vstack((eventWise.JetInputs_Energy,
-                              eventWise.JetInputs_Px,
-                              eventWise.JetInputs_Py,
-                              eventWise.JetInputs_Pz))
+def CoM_deltaR(particle_collection):
+    four_vectors = np.vstack((particle_collection.JetInputs_Energy,
+                              particle_collection.JetInputs_Px,
+                              particle_collection.JetInputs_Py,
+                              particle_collection.JetInputs_Pz))
     invarient_masses2 = four_vectors[0]**2 - np.sum(four_vectors[1:]**2, axis=0)
     boost = -np.sum(four_vectors[1:], axis=1)
     new_three_vectors = four_vectors[1:] + boost.reshape((-1, 1))
@@ -91,13 +130,12 @@ def num_shared(array1, array2):
     return np.intersect1d(array1, array2).shape[0]
 
 
-def mutual_neighbours(eventWise, num_neighbours=10):
+def mutual_neighbours(particle_collection, num_neighbours=10):
     """ count of how many points are mututaly most proximate """
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 2:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
+    proximites_grid = deltaR(particle_collection)
     keep = num_neighbours + 1
     neighbours = np.array([np.argsort(row)[1:keep]
                            for row in proximites_grid])
@@ -118,12 +156,11 @@ def rank_shared(array1, array2):
     return score
 
     
-def ordered_neighbours(eventWise, num_neighbours=20):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def ordered_neighbours(particle_collection, num_neighbours=20):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 2:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
+    proximites_grid = deltaR(particle_collection)
     keep = num_neighbours + 1
     neighbours = np.array([np.argsort(row)[1:keep]
                            for row in proximites_grid])
@@ -137,16 +174,15 @@ def PT_shared(array1, array2, pts):
     return np.sum(pts[np.intersect1d(array1, array2)])
 
 
-def mutual_neighbour_PT(eventWise, num_neighbours=10):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def mutual_neighbour_PT(particle_collection, num_neighbours=10):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 2:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
+    proximites_grid = deltaR(particle_collection)
     keep = num_neighbours + 1
     neighbours = np.array([np.argsort(row)[1:keep]
                            for row in proximites_grid])
-    pts = eventWise.JetInputs_PT
+    pts = particle_collection.JetInputs_PT
     affinities_grid = scipy.spatial.distance.pdist(neighbours, PT_shared, pts=pts)
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
     return affinities_grid
@@ -157,12 +193,11 @@ def closest_third(deltaRs1, deltaRs2):
     return np.min(deltaRs1[third_idxs] + deltaRs2[third_idxs])
 
 
-def thirdparty_distance(eventWise):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def thirdparty_distance(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
+    proximites_grid = deltaR(particle_collection)
     affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third)
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
     return affinities_grid
@@ -175,12 +210,11 @@ def closest_third_diff(deltaRs1, deltaRs2):
     return np.abs(deltaRs1[idx] - deltaRs2[idx])*sign
 
 
-def thirdparty_distancediff(eventWise):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def thirdparty_distancediff(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
+    proximites_grid = deltaR(particle_collection)
     affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_diff)
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
     return affinities_grid
@@ -197,13 +231,12 @@ def area_ptratio(deltaRs1, deltaRs2, pts):
         return pt2/pt1
 
 
-def localarea_ptratio(eventWise):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def localarea_ptratio(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
-    pts = eventWise.JetInputs_PT
+    proximites_grid = deltaR(particle_collection)
+    pts = particle_collection.JetInputs_PT
     affinities_grid = scipy.spatial.distance.pdist(proximites_grid, area_ptratio, pts=pts)
     affinities_grid = scipy.spatial.distance.squareform(np.log(affinities_grid))
     return affinities_grid
@@ -237,15 +270,14 @@ def closest_third_anglediff(deltaRs1, deltaRs2, rapidities, phis, pts):
         return angle2 - angle1
 
 
-def thirdparty_anglediff(eventWise):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def thirdparty_anglediff(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
-    pts = eventWise.JetInputs_PT
-    phis = eventWise.JetInputs_Phi
-    rapidities = eventWise.JetInputs_Rapidity
+    proximites_grid = deltaR(particle_collection)
+    pts = particle_collection.JetInputs_PT
+    phis = particle_collection.JetInputs_Phi
+    rapidities = particle_collection.JetInputs_Rapidity
     affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_anglediff,
                                                    pts=pts, phis=phis, rapidities=rapidities)
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
@@ -281,15 +313,14 @@ def third_anglespreaddiff(deltaRs1, deltaRs2, rapidities, phis, pts):
         return varience2 - varience1
 
 
-def thirdparty_anglespread(eventWise):
-    assert eventWise.selected_index is not None
-    total_particles = len(eventWise.JetInputs_SourceIdx)
+def thirdparty_anglespread(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(eventWise)
-    pts = eventWise.JetInputs_PT
-    phis = eventWise.JetInputs_Phi
-    rapidities = eventWise.JetInputs_Rapidity
+    proximites_grid = deltaR(particle_collection)
+    pts = particle_collection.JetInputs_PT
+    phis = particle_collection.JetInputs_Phi
+    rapidities = particle_collection.JetInputs_Rapidity
     affinities_grid = scipy.spatial.distance.pdist(proximites_grid, third_anglespreaddiff,
                                                    pts=pts, phis=phis, rapidities=rapidities)
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
@@ -298,6 +329,8 @@ def thirdparty_anglespread(eventWise):
 
 affinity_choices = {"deltaR": deltaR, "CoM_deltaR": CoM_deltaR,
                     "sum_deltaR_tohard": sum_deltaR_tohard, "sum_deltaR_tocentre": sum_deltaR_tocentre,
+                    "horrizontal_from_line": horrizontal_from_line, "deltaR2_minus_displacement": deltaR2_minus_displacement,
+                    "distance_from_points": distance_from_points,
                     "mutual_neighbours": mutual_neighbours, "ordered_neighbours": ordered_neighbours, 
                     "mutual_neighbour_PT": mutual_neighbour_PT, "thirdparty_distance": thirdparty_distance,
                     "thirdparty_distancediff": thirdparty_distancediff, "localarea_ptratio": localarea_ptratio,
@@ -315,55 +348,89 @@ def bins_extent(values, max_bins=20):
     bins = np.linspace(*extent, n_bins+1)
     return bins, extent
 
-def affinities_in_event(eventWise, affinity, results, affinity2=None, results2=None,
+
+def affinities_in_event(eventWise, affinities, results,
                         cluster_class=None, cluster_params=None):
     n_parts = 3
     sourceidx = eventWise.JetInputs_SourceIdx.tolist()
     if len(sourceidx) < 2:  # cannot clasisfy relatiosn without at least 2 particles
         return
-    b_decendants = FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx)
-    b_decendants = [sourceidx.index(d) for d in b_decendants
+    b_idxs = FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx)
+    b_decendants = [sourceidx.index(d) for d in b_idxs
                     if d in sourceidx]
     #b_decendants = []  # check the labeling
-    grid = affinity(eventWise)
-    catigory = np.zeros_like(grid, dtype=int)
+    grids = [affinity(eventWise) for affinity in affinities]
+    catigory = np.zeros_like(grids[0], dtype=int)
     catigory[:, b_decendants] += 1
     catigory[b_decendants, :] += 1
-    for i in range(n_parts):
-        results[i] += grid[catigory == i].tolist()
-    if affinity2 is not None:
-        grid2 = affinity2(eventWise)
+    grid = np.empty_like(catigory, dtype=float)
+    for a, affinity in enumerate(affinities):
+        try:
+            grid[:] = affinity(eventWise)
+        except ValueError:
+            continue
         for i in range(n_parts):
-            results2[i] += grid2[catigory == i].tolist()
+            results[a][i] += grid[catigory == i].tolist()
+    if cluster_class is not None:
+        jets = cluster_class(eventWise, dict_jet_params=cluster_params, assign=False)
+        attrs = ["Energy", "Px", "Py", "Pz", "PT", "Rapidity", "Phi"]
+        attrs = {f'JetInputs_{name}': getattr(jets, f'_{name}_col') for name in attrs}
+        while jets.currently_avalible > 0:
+            # cluster and get the new affinity grid
+            jets._step_assign_parents()
+            float_array = np.array(jets._floats)
+            parent_idxs = jets.Parent
+            jet_idxs = jets.InputIdx
+            # this recalcualtes from scratch each time
+            # if this takes too long consider butchering this fiunction into the while loop
+            tagging_criteria = TrueTag.percent_pos(jet_idxs, parent_idxs, b_decendants,
+                                                   float_array[:, jets._Energy_col])
+            top_level = parent_idxs == -1
+            if np.sum(top_level) < 2:
+                return
+            particle_collection = attrdict.AttrDict({name: float_array[top_level, col]
+                                                     for name, col in attrs.items()})
+            b_decendants = np.where(tagging_criteria[top_level] > 0.5)[0]
+            catigory = np.zeros_like(grid, dtype=int)
+            catigory[:, b_decendants] += 1
+            catigory[b_decendants, :] += 1
+            grid = np.empty_like(catigory, dtype=float)
+            for a, affinity in enumerate(affinities):
+                try:
+                    grid[:] = affinity(eventWise)
+                except ValueError:  # bcuase somtimes the affinity will return an empty list
+                    continue
+                for i in range(n_parts):
+                    results[a][i] += grid[catigory == i].tolist()
 
 
-def plot_affinites(eventWise, affinity, affinity2=None, name=None, name2=None,
-                   cluster_class=None, cluster_params=None, silent=False, bins=50):
-    twoD = affinity2 is not None
-    eventWise.selected_index = None
+def all_affinities(eventWise, affinities,
+                   cluster_class, cluster_params, silent=False):
+    n_parts = 3
+    results = np.empty((len(affinities), n_parts, 0)).tolist()
     n_events = len(eventWise.X)
     start_point = 0
     end_point = n_events
-    both_b, both_not, cross = [], [], []
-    parts = [both_not, cross, both_b]
-    n_parts = len(parts)
-    if twoD:
-        parts2 = [[] for _ in range(n_parts)]
-    else:
-        parts2 = None
     if not silent:
         print(f" Will stop at {100*end_point/n_events}%")
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
-        affinities_in_event(eventWise, affinity, parts, affinity2, parts2,
+        affinities_in_event(eventWise, affinities, results,
                             cluster_class, cluster_params)
-    # plot
+    return results
+
+
+def plot_affinities(eventWise, affinity, affinity2=None, name=None, name2=None,
+                   cluster_class=None, cluster_params=None, silent=False, bins=50):
+    twoD = affinity2 is not None
     labels = ['Both background', 'Crossover', 'Both b decendants']
     if name is not None:
         plt.xlabel(name)
     if twoD:
+        parts, parts2 = all_affinities(eventWise, [affinity, affinity2], cluster_class, cluster_params)
+        n_parts = len(parts)
         bins, extent = bins_extent(np.sum(parts))
         bins2, extent2 = bins_extent(np.sum(parts2))
         extent += extent2
@@ -377,30 +444,130 @@ def plot_affinites(eventWise, affinity, affinity2=None, name=None, name2=None,
                     scipy.stats.binned_statistic_2d(parts2[i], parts[i], None,
                                                     statistic='count', bins=(bins2, bins))
             # make the density go from 0 to 1
-            density /= np.max(density)
+            #density /= np.max(density)
             mapable = ax_ar[i+1].imshow(density, origin='lower', extent=extent, aspect='auto')
             ax_ar[i+1].set_xlabel(name + " " + labels[i])
             ax_ar[i+1].set_ylabel(name2)
             colours[:, :, i] += density
         cbar = plt.colorbar(mapable)
         cbar.set_label("Density")
-        ax_ar[0].imshow(colours, origin='lower', extent=extent,
+        positive = colours[:, :, 1] - colours[:, :, 0] - colours[:, :, 2]
+        ax_ar[0].imshow(positive, origin='lower', extent=extent,
                    aspect='auto')
+        #ax_ar[0].imshow(colours, origin='lower', extent=extent,
+        #           aspect='auto')
         ax_ar[0].set_xlabel(name)
         ax_ar[0].set_ylabel(name2)
         for i, name in enumerate(labels):
             colour = [0, 0, 0]
             colour[i] = 1
             ax_ar[0].scatter([], [], marker=',', c=[colour], label=name)
-        ax_ar[0].legend()
+        #ax_ar[0].legend()
+        ys = np.linspace(0, 3, 100)
+        line = -0.06848*ys*ys + 0.8278*ys + 0.6873
+        ax_ar[0].plot(line, ys)
     else:
         # for number of bins
+        parts, = all_affinities(eventWise, [affinity], cluster_class, cluster_params)
         bins, extent = bins_extent(np.sum(parts))
         plt.hist(parts,
                  bins=bins, histtype='step', density=True,
                  label=labels, range=extent)
         plt.ylabel('counts')
         plt.legend()
+
+
+class AffinitySet:
+    def __init__(self, dir_name, eventWise=None):
+        self.dir_name = dir_name
+        if eventWise is None:
+            try:
+                with open(os.path.join(dir_name, "eventWise.txt"), 'r') as ew_loc:
+                    eventWise = ew_loc.read().strip()
+            except FileNotFoundError:
+                eventWise = InputTools.get_file_name("Name the eventWise file to use; ", '.awkd')
+        if isinstance(eventWise, str):
+            eventWise = Components.EventWise.from_file(eventWise)
+        self.eventWise = eventWise
+
+    def calculate(self, affinity_names=None, cluster_class=None, cluster_params=None):
+        if affinity_names is None:
+            affinity_names = [InputTools.list_complete("Name affinity to recalculate; ",
+                                                       affinity_choices.keys()).strip()]
+            if len(affinity_names[0]) == 0:
+                return
+        affinities = [affinity_choices[name] for name in affinity_names]
+        results = all_affinities(self.eventWise, affinities, cluster_class, cluster_params)
+        self.save(affinity_names, results)
+        return results
+
+    def save(self, names, results):
+        with open(os.path.join(self.dir_name, "eventWise.txt"), 'w') as ew_loc:
+            ew_loc.write(os.path.join(self.eventWise.dir_name, self.eventWise.save_name))
+        for name, result in zip(names, results):
+            save_name = os.path.join(self.dir_name, f'{name}_affinities.csv')
+            with open(save_name, 'w') as save:
+                save.write(f"{name}, {self.eventWise.save_name} affinities\n")
+                for l in range(len(result)):
+                    save.write(', '.join([str(x) for x in result[l]]) + '\n')
+
+    def load(self, affinity_name):
+       save_path = os.path.join(self.dir_name, f"{affinity_name}_affinities.csv")
+       return self._load_path(save_path)
+
+    def load_all(self):
+        names = os.listdir(self.dir_name)
+        names.remove('eventWise.txt')
+        paths = [os.path.join(self.dir_name, name) for name in names]
+        affinity_names = [name.split('_affinities', 1)[0] for name in names]
+        results = [self._load_path(path) for path in paths]
+        return affinity_names, results
+
+    def _load_path(self, save_path):
+        with open(save_path, 'r') as save:
+            header = save.readline()
+            data = save.readlines()
+        results = [[float(x) for x in line[:-1].split(', ')] for line in data]
+        return results
+
+    def print_aucs(self):
+        names, results = self.load_all()
+        for name, result in zip(names, results):
+            classA = result[0] + result[2]
+            classB = result[1]
+            score = np.array(classA + classB)
+            # normalise this
+            score /= np.sum(score) 
+            label = np.concatenate((np.ones(len(classA)), np.zeros(len(classB))))
+            auc_here = sklearn.metrics.roc_auc_score(label, score)
+            if auc_here < 0.5:
+                # invert the positive catigory
+                auc_here = 1-auc_here
+            print(f'{name}; {auc_here}')
+
+    def plot_rocs(self):
+        names, results = self.load_all()
+        for name, result in zip(names, results):
+            classA = result[0] + result[2]
+            classB = result[1]
+            score = np.array(classA + classB)
+            # normalise this
+            score /= np.sum(score) 
+            label = np.concatenate((np.ones(len(classA)), np.zeros(len(classB))))
+            fpr, tpr, _ = sklearn.metrics.roc_curve(label, score)
+            auc_here = sklearn.metrics.auc(fpr, tpr)
+            if auc_here < 0.5:
+                # invert the positive catigory
+                tpr, fpr = fpr, tpr
+                auc_here = 1-auc_here
+            if auc_here > 0.6:
+                label = f'{name} {auc_here:.2f}'
+                plt.plot(fpr, tpr, alpha=0.5, label=label)
+        plt.xlabel("False positive rate")
+        plt.ylabel("True positive rate")
+        plt.legend(loc='lower right')
+        plt.savefig("auc_cuves.png")
+        plt.show(block=True)
 
 
 def apply_confusion(eventWise, jet_name, function, silent=False):
@@ -416,7 +583,7 @@ def apply_confusion(eventWise, jet_name, function, silent=False):
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
         eventWise.selected_index = event_n
         jetinputs = eventWise.JetInputs_SourceIdx
-        b_decendants = FormShower.decendant_idxs(eventWise, *eventWise.BQuarkIdx)
+        b_decendants = FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx)
         bjet_jetidx = [i for i, tags in enumerate(getattr(eventWise, jet_name+"_Tags")) if len(tags)]
         bjet_child1 = getattr(eventWise, jet_name+"_Child1")[bjet_jetidx]
         bjet_inputidxs = getattr(eventWise, jet_name+"_InputIdx")[bjet_jetidx][bjet_child1 == -1]
@@ -482,7 +649,8 @@ def kinematic_distributions(eventWise, jet_name, silent=False):
     ax.set_ylabel("counts") 
     ax.set_title(jet_name)
 
-if __name__ == '__main__':
+
+def visulise_affinities():
     file_name = InputTools.get_file_name("Name the eventWise; ")
     ew = Components.EventWise.from_file(file_name)
     name1 = InputTools.list_complete("Chose affinity 1; ", affinity_choices.keys()).strip()
@@ -492,7 +660,19 @@ if __name__ == '__main__':
         affinity2 = affinity_choices[name2]
     else:
         name2 = affinity2 = None
-    plot_affinites(ew, affinity1, affinity2, name=name1, name2=name2)
-    plt.show()
+    if InputTools.yesNo_question("Apply clustering? "):
+        _, cluster_class, chosen_parameters = SingleFormJets.pick_class_params()
+    else:
+        cluster_class = chosen_parameters = None
+    InputTools.last_selections.write("affinity_selections.dat")
+    plot_affinities(ew, affinity1, affinity2, name=name1, name2=name2,
+                   cluster_class=cluster_class, cluster_params=chosen_parameters)
+    plt.show(block=True)
 
+if __name__ == '__main__':
+    visulise_affinities()
+    #affs = AffinitySet("./500_affinities")
+    #affs.calculate()
+    #affs.print_aucs()
+    #affs.plot_rocs()
 

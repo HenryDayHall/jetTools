@@ -202,7 +202,7 @@ def reindex_jets(dir_name="megaIgnore"):
             new_name = j_name.split("Jet", 1)[0] + "Jet" + str(new_id)
             ew.rename_prefix(j_name, new_name)
         ew.write()
-            
+
 
 def id_generator(used_ids):
     """
@@ -337,124 +337,6 @@ def parameters_valid(parameters, jet_class):
     return True
 
 
-def rand_score(eventWise, jet_name1, jet_name2):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        param jet_name1:
-    jet_name2 :
-        
-    jet_name1 :
-        
-
-    Returns
-    -------
-
-    """
-    # two jets clustered from the same eventWise should have
-    # the same JetInput_SourceIdx, 
-    # if I change this in the future I need to update this function
-    selection1 = getattr(eventWise, jet_name1+"_InputIdx")
-    selection2 = getattr(eventWise, jet_name2+"_InputIdx")
-    num_common_events = min(len(selection1), len(selection2))
-    num_inputs_per_event = Components.apply_array_func(len, eventWise.JetInputs_SourceIdx[:num_common_events])
-    scores = []
-    for event_n, n_inputs in enumerate(num_inputs_per_event):
-        labels1 = -np.ones(n_inputs)
-        for i, jet in enumerate(selection1[event_n]):
-            labels1[jet[jet < n_inputs]] = i
-        assert -1 not in labels1
-        labels2 = -np.ones(n_inputs)
-        for i, jet in enumerate(selection2[event_n]):
-            labels2[jet[jet < n_inputs]] = i
-        assert -1 not in labels2
-        score = sklearn.metrics.adjusted_rand_score(labels1, labels2)
-        scores.append(score)
-    return scores
-
-
-def visulise_scores(scores, jet_name1, jet_name2, score_name="Rand score"):
-    """
-    
-
-    Parameters
-    ----------
-    scores :
-        param jet_name1:
-    jet_name2 :
-        param score_name: (Default value = "Rand score")
-    jet_name1 :
-        
-    score_name :
-         (Default value = "Rand score")
-
-    Returns
-    -------
-
-    """
-    plt.hist(scores, bins=40, density=True, histtype='stepfilled')
-    mean = np.mean(scores)
-    std = np.std(scores)
-    plt.vlines([mean - 2*std, mean, mean + 2*std], 0, 1, colors=['orange', 'red', 'orange'])
-    plt.xlabel(score_name)
-    plt.ylabel("Density")
-    plt.title(f"Similarity of {jet_name1} and {jet_name2} (for {len(scores)} events)")
-
-
-def pseudovariable_differences(eventWise, jet_name1, jet_name2, var_name="Rapidity"):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        param jet_name1:
-    jet_name2 :
-        param var_name: (Default value = "Rapidity")
-    jet_name1 :
-        
-    var_name :
-         (Default value = "Rapidity")
-
-    Returns
-    -------
-
-    """
-    eventWise.selected_index = None
-    selection1 = getattr(eventWise, jet_name1+"_InputIdx")
-    selection2 = getattr(eventWise, jet_name2+"_InputIdx")
-    var1 = getattr(eventWise, jet_name1 + "_" + var_name)
-    var2 = getattr(eventWise, jet_name2 + "_" + var_name)
-    num_common_events = min(len(selection1), len(selection2))
-    num_inputs_per_event = Components.apply_array_func(len, eventWise.JetInputs_SourceIdx[:num_common_events])
-    pseudojet_vars1 = []
-    pseudojet_vars2 = []
-    num_unconnected = 0
-    for event_n, n_inputs in enumerate(num_inputs_per_event):
-        values1 = {}
-        for i, jet in enumerate(selection1[event_n]):
-            children = tuple(sorted(jet[jet < n_inputs]))
-            values = sorted(var1[event_n, i, jet >= n_inputs])
-            values1[children] = values
-        values2 = {}
-        for i, jet in enumerate(selection2[event_n]):
-            children = tuple(sorted(jet[jet < n_inputs]))
-            values = sorted(var2[event_n, i, jet >= n_inputs])
-            values2[children] = values
-        for key1 in values1.keys():
-            if key1 in values2:
-                pseudojet_vars1+=values2[key1]
-                pseudojet_vars2+=values2[key1]
-            else:
-                num_unconnected += 1
-    pseudojet_vars1 = np.array(pseudojet_vars1)
-    pseudojet_vars2 = np.array(pseudojet_vars2)
-    return pseudojet_vars1, pseudojet_vars2, num_unconnected
-
-
 def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None, use_quarks=True):
     """
     
@@ -522,10 +404,10 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None, use_quarks=True
     return found_tags, tag_momentum, assigned_momentum
 
 
-def count_b_heritage(eventWise, jet_name, jet_idxs):
+def old_count_b_heritage(eventWise, jet_name, jet_idxs):
     assert eventWise.selected_index is not None
     b_idxs = np.where(np.abs(eventWise.MCPID) == 5)[0]
-    b_decendants = FormShower.decendant_idxs(eventWise, *b_idxs)
+    b_decendants = FormShower.descendant_idxs(eventWise, *b_idxs)
     input_idxs = eventWise.JetInputs_SourceIdx
     binput_idxs = set(b_decendants.intersection(input_idxs))
     # filter for the InputIdxs that are leaves
@@ -554,7 +436,31 @@ def count_b_heritage(eventWise, jet_name, jet_idxs):
     return tpr, fpr
 
 
-# Add the percentage of b heritage here??
+def count_b_heritage(eventWise, jet_name, jet_idxs, ctag):
+    assert eventWise.selected_index is not None
+    is_root = getattr(eventWise, jet_name+"_Parent")[jet_idxs] == -1
+    # consider the 4 jets with highest b_energy
+    # and at least 50% b energy to be b_jets
+    # not that ctag already includes jet energy as it's weighting
+    ctag = ctag[jet_idxs]
+    b_idx = np.argsort(ctag[is_root])[-4:]
+    b_idx = b_idx[ctag[is_root][b_idx].flatten() > 0.5]
+    n_positives = np.sum(ctag.flatten())
+    n_negatives = np.sum(1-ctag.flatten())
+    true_positives = np.sum(ctag[b_idx].flatten())
+    false_positives = np.sum(1-ctag[b_idx].flatten())
+    if n_positives == 0:
+        tpr = 1.  # no positives avalible...
+    else:
+        tpr = true_positives / n_positives
+        # probably happens
+    if n_negatives == 0:
+        fpr = 0.
+    else:
+        fpr = false_positives / n_negatives
+    return tpr, fpr
+
+
 def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min_tracks=None, max_angle=None, tag_before_pt_cut=True):
     """
     
@@ -593,7 +499,10 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
     else:
         tag_name = f'{jet_name}_{int(jet_pt_cut)}Tags'
         h_content, content = TrueTag.add_tags(eventWise, jet_name, max_angle, batch_length=np.inf, jet_pt_cut=jet_pt_cut, min_tracks=min_tracks, silent=True, append=False)
+    more_content = TrueTag.add_ctags(eventWise, jet_name, batch_length=np.inf, silent=True, append=False)
+    content = {**content, **more_content}
     tags_in_jets = content[tag_name]
+    ctags_in_jets = content[jet_name + '_CTags']
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_Energy"))
     # name the vaiables to be cut on
@@ -615,7 +524,7 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
         num_tracks = Components.apply_array_func(len, jet_track_pts, depth=Components.EventWise.EVENT_DEPTH).flatten()
         jet_idxs = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks))[0]
         n_jets = len(jet_idxs)
-        fpr_here, tpr_here = count_b_heritage(eventWise, jet_name, jet_idxs)
+        fpr_here, tpr_here = count_b_heritage(eventWise, jet_name, jet_idxs, ctags_in_jets[event_n])
         fpr.append(fpr_here)
         tpr.append(tpr_here)
         tags_found, tag_c, jet_c = fit_to_tags(eventWise, jet_name, tags_in_jets[event_n])
@@ -698,65 +607,6 @@ def distance_to_higgs_mass(jet_coords_by_event):  # no need the jets per event..
     return distance_to_higgs
 
 
-def get_catigories(records, content):
-    """
-    
-
-    Parameters
-    ----------
-    records :
-        param content:
-    content :
-        
-
-    Returns
-    -------
-
-    """
-    catigories = {}
-    for name, i in records.indices.items():
-        if name in records.evaluation_columns:
-            continue
-        try:
-            possible = list(set(content[:, i]))
-        except TypeError:
-            possible = []
-            for x in content[:, i]:
-                if x not in possible:
-                    possible.append(x)
-        if len(possible) > 1:
-            try:
-                possible = sorted(possible)
-            except TypeError:  #  a conversion to str allows sorting anything really
-                possible.sort(key=str)
-            catigories[name] = possible
-    return catigories
-
-
-def print_remaining(content, records, columns):
-    """
-    
-
-    Parameters
-    ----------
-    content :
-        param records:
-    columns :
-        
-    records :
-        
-
-    Returns
-    -------
-
-    """
-    indices = [records.indices[n] for n in columns]
-    here = [list(row[indices]) for row in content]
-    print(columns)
-    print(np.array(here))
-    print(f"Num remaining {len(here)}")
-
-
 def soft_generic_equality(a, b):
     """
     
@@ -786,48 +636,6 @@ def soft_generic_equality(a, b):
                 sections = [soft_generic_equality(aa, bb) for aa, bb in zip(a, b)]
                 return np.all(sections)
             return False  # diferent lengths
-
-
-def select_improvements(records, min_jets=0.5,
-        metrics=["score(PT)", "score(Rapidity)", "symmetric_diff(Phi)"]):
-    """
-    
-
-    Parameters
-    ----------
-    records :
-        param min_jets:  (Default value = 0.5)
-    metrics :
-        Default value = ["score(PT)")
-    min_jets :
-         (Default value = 0.5)
-    "score(Rapidity)" :
-        
-    "symmetric_diff(Phi)"] :
-        
-
-    Returns
-    -------
-
-    """
-    metric_cols = [records.indices[metric] for metric in metrics]
-    invert_factor = np.fromiter((1 - 2*("symmetric_diff" in name) for name in metrics),
-                                dtype=float)
-    n_jets_col = records.indices['njets']
-    array = records.typed_array()
-    n_jets = array[:, n_jets_col].astype(float)
-    sufficient_jets = n_jets > min_jets
-    array = array[np.logical_and(records.scored, sufficient_jets)]
-    metric_data = (array[:, metric_cols]*invert_factor).T
-    improved_selection = np.full(len(array), False, dtype=bool)
-    for metric in metrics:
-        best_home = records.best(metric, jet_class="HomeJet", start_mask=sufficient_jets,
-                                 return_cols=metric_cols)
-        best_home *= invert_factor
-        improved = np.logical_and.reduce([col > best for col, best in
-                                          zip(metric_data, best_home)])
-        improved_selection = np.logical_or(improved_selection, improved)
-    return array[improved_selection]
 
 
 def parameter_comparison(records, c_name="percentfound", cuts=True):
@@ -909,8 +717,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
         print(name + "~"*5)
         # the data_dict contains strings, we need real values
         parameter_values = array[:, records.indices[name]]
-        not_none = [p for p in parameter_values if p is not None]
-        catigorical = hasattr(not_none[0], '__iter__')
+        catigorical = np.any(hasattr(value, '__iter__') for value in set(parameter_values))
         if catigorical:
             scale, positions, label_dict, label_catigories = make_ordinal_scale(parameter_values)
             print(f"label_dict = {label_dict}, scale={scale}, set(positions) = {set(positions)}")
@@ -918,7 +725,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
             boxes = bokeh.models.widgets.CheckboxGroup(labels=labels, active=list(range(len(labels))))
         else:
             scale, positions, label_dict = make_float_scale(parameter_values)
-            bottom, top = np.nanmin(not_none), np.nanmax(not_none) 
+            bottom, top = np.nanmin(parameter_values), np.nanmax(parameter_values) 
             has_slider = bottom != top
             if has_slider:
                 slider = bokeh.models.RangeSlider(title=name, start=bottom, end=top,
@@ -935,7 +742,6 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
             sources[name][col_name] = source
             p = bokeh.plotting.figure(tools=[hover, "crosshair", "pan", "reset", "save", "wheel_zoom"], title=name)
             # p.xaxis.axis_label_text_font_size = "30pt" not working
-            # p.xaxis.ticker = positions
             p.xaxis.ticker = scale
             p.xaxis.major_label_overrides = label_dict
             p.xaxis.major_label_orientation = "vertical"
@@ -998,12 +804,6 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
     return all_p
 
 
-def filter_column_dict(column_dict, filters):
-    mask = np.all(np.vstack(filters), axis=1)
-    new_dict = {name: column_dict[name][mask] for name in column_dict}
-    return new_dict
-
-
 def make_float_scale(col_content):
     catigories = set(col_content)
     print(f"Unordered catigories {catigories}")
@@ -1015,8 +815,14 @@ def make_float_scale(col_content):
         catigories += [None]
     print(f"Ordered catigories {catigories}")
     scale = np.array(catigories)
-    real = np.fromiter((x for x in catigories if x is not None and np.isfinite(x)),
-                       dtype=float)
+    # the last one is skipped as it is the None value
+    try:
+        real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
+                           dtype=float)
+    except:
+        print(catigories)
+        real = np.fromiter((x for x in catigories[:-1] if np.isfinite(x)),
+                           dtype=float)
     if len(real) > 1:
         ave_gap = np.mean(real[1:] - real[:-1])
     else:
@@ -1826,6 +1632,8 @@ class Records:
         print(f"Found  {num_names}")
         print("Making a continue file, delete it to halt the evauation")
         open("continue", 'w').close()
+        if 'BQuarkIdx' not in eventWise.columns:
+            FormShower.append_b_idxs(eventWise, silent=True)
         jet_ids = self.jet_ids
         scored = {jid: s for jid, s in zip(jet_ids, self.scored)}
         self._add_param(*self.evaluation_columns)
