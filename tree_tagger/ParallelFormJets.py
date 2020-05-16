@@ -213,7 +213,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False, e
     n_threads = min(multiprocessing.cpu_count()-leave_one_free, 20)
     if n_threads < 1:
         n_threads = 1
-    wait_time = 3*60  # in seconds
+    wait_time = 30*60  # in seconds
     # note that the longest wait will be n_cores time this time
     print("Running on {} threads".format(n_threads))
     jet_name = jet_params['jet_name']
@@ -808,8 +808,7 @@ def monte_carlo(eventWise_path, jet_class=None):
     -------
 
     """
-    if jet_class is None:
-        change_class = True
+    change_class = jet_class is None
     eventWise = Components.EventWise.from_file(eventWise_path)
     record_path = "records.csv"
     records = CompareClusters.Records(record_path)
@@ -839,6 +838,6 @@ if __name__ == '__main__':
     #loops(eventWise_path)
     #jet_class = InputTools.list_complete("Jet class? ", list(names.keys())).strip()
     #iterate(eventWise_path, jet_class)
-    monte_carlo(eventWise_path)
+    monte_carlo(eventWise_path, jet_class = "SpectralFullJet")
     #scan000(eventWise_path)
 

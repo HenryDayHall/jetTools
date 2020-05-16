@@ -1,5 +1,6 @@
 """calculate shape variables """
 import scipy.optimize
+import scipy.linalg
 import numpy as np
 #from ipdb import set_trace as st
 from tree_tagger.stefano_shapes import shape as stefano
@@ -8,45 +9,76 @@ import awkward
 from matplotlib import pyplot as plt 
 
 
-def D_parameter(energies, pxs, pys, pzs):
-    raise NotImplementedError
-
-def C_parameter(energies, pxs, pys, pzs):
-    raise NotImplementedError
-
-def spherocity(energies, pxs, pys, pzs):
-    momentums = np.vstack((pxs, pys)).T
-    def to_minimise(phi):
-        transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
-        return np.sum(np.abs(np.cross(momentums, transverse_thrust_axis)))
-    best_phi = scipy.optimize.minimize_scalar(to_minimise, bounds=(-np.pi, np.pi),
-                                              method='Bounded').x
-    transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
-    fraction = np.sum(np.abs(np.cross(momentums, transverse_thrust_axis))) \
-               /np.sum(np.abs(momentums))
-    spherocity = 0.25*np.pi**2*fraction**2
-    return spherocity
-
-
 def python_shape(energies, pxs, pys, pzs):
-    shape_names = ['thrust', 'oblateness', 'sphericity',
-                   'heavy_jet_mass2', 'light_jet_mass2',
-                   'difference_jet_mass2', 'alpanarity',
-                   'planarity', 'acoplanarity', 'minor',
-                   'major', 'D parameter', 'C parameter',
+    shape_names = ['heavy_jet_mass2', 'light_jet_mass2',
+                   'difference_jet_mass2', 
+                   'planarity', 'acoplanarity',
                    'spherocity']
     shapes = {}
-    momentums = np.vstack((pxs, pys)).T
-    birrs = np.sum(np.abs(momentums), axis=1)
-    sum_birr = np.sum(birrs)
-    def to_minimise(phi):
-        transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
-        return -np.sum(np.abs(momentums*transverse_thrust_axis))
-    best_phi = scipy.optimize.minimize_scalar(to_minimise, bounds=(-np.pi, np.pi),
-                                              method='Bounded').x
-    transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
-    shapes['Thrust'] = np.sum(np.abs(momentums*transverse_thrust_axis))/sum_birr
-    shapes['Minor'] = np.sum(np.abs(np.cross(momentums, transverse_thrust_axis)))/sum_birr
+    # https://home.fnal.gov/~mrenna/lutp0613man2/node234.html
+    # precalculate some quantities
+    momentums = np.vstack((pxs, pys, pzs)).T
+    birrs2 = np.sum(momentums**2, axis=1)
+    sum_birr = np.sqrt(np.sum(birrs2))
+    # Thrust
+    def to_minimise(theta_phi):
+        sin_theta = np.sin(theta_phi[0])
+        thrust_axis = [sin_theta*np.cos(theta_phi[1]),
+                       sin_theta*np.sin(theta_phi[1]),
+                       np.cos(theta_phi[0])]
+        return -np.sum(np.abs(momentums*thrust_axis))
+    theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
+    best_theta_phi = scipy.optimize.minimize(to_minimise, np.zeros(2),
+                                             bounds=theta_phi_bounds).x
+    sin_theta = np.sin(best_theta_phi[0])
+    thrust_axis = [sin_theta*np.cos(best_theta_phi[1]),
+                   sin_theta*np.sin(best_theta_phi[1]),
+                   np.cos(best_theta_phi[0])]
+    momentum_dot_thrust = np.dot(momentums, thrust_axis)
+    shapes['Thrust'] = np.sum(np.abs(momentum_dot_thrust))/sum_birr
+    # the major thrust has an exist in the plane perpendicular to the thrust
+    if best_theta_phi[0] in (np.pi, 0):
+        # along the z axis
+        perp1 = np.array([1, 0, 0])
+        perp2 = np.array([0, 1, 0])
+    else:
+        perp1 = np.cross(np.array([0, 0, 1]), thrust_axis)
+        perp1 /= np.sqrt(np.sum(perp1**2))
+        perp2 = np.cross(perp1, thrust_axis)
+        perp2 /= np.sqrt(np.sum(perp2**2))
+    def to_minimise_major(alpha):
+        major_thrust_axis = np.cos(alpha)*perp1 + np.sin(alpha)*perp2
+        return -np.sum(np.abs(momentums*major_thrust_axis))
+    best_alpha = scipy.optimize.minimize_scalar(to_minimise_major, bounds=(-np.pi, np.pi),
+                                                method='Bounded')
+    major_thrust_axis = np.cos(best_alpha)*perp1 + np.sin(best_alpha)*perp2
+    momentum_dot_major = np.dot(momentums, major_thrust_axis)
+    shapes['Major'] = np.sum(np.abs(momentum_dot_major))/sum_birr
+    minor_direction = np.cross(major_thrust_axis, thrust_axis)
+    minor_direction /= np.sqrt(np.sum(minor_direction**2))
+    sum_momentum_dot_minor = max(np.sum(np.abs(np.dot(momentums, minor_direction))),
+                                 np.sum(np.abs(np.dot(momentums, -minor_direction))))
+    shapes['Minor'] = sum_momentum_dot_minor/sum_birr
+    shapes['Oblateness'] = shapes['Major'] - shapes['Minor']
+
+    # sphericity
+    dimension = 3
+    per_mom_tensor = np.ones((dimension, dimension, len(momentums)))
+    for i in range(dimension):
+        per_mom_tensor[:, i, :] *= momentums.T
+        per_mom_tensor[i, :, :] *= momentums.T
+    mom_tensor = np.sum(per_mom_tensor, axis=2)
+    eigenvalues, _ = scipy.linalg.eig(mom_tensor/sum_birr**2)
+    eigenvalues = np.sort(eigenvalues)/np.sum(eigenvalues)
+    shapes['Sphericity'] = 1.5*(eigenvalues[0] + eigenvalues[1])
+    shapes['Aplanarity'] = 1.5*eigenvalues[0]
+    lin_mom_tensor = np.sum(per_mom_tensor/np.sqrt(birrs2).reshape((-1, 1, 1)), axis=2)
+    eigenvalues, _ = scipy.linalg.eig(lin_mom_tensor/sum_birr)
+    eigenvalues = np.sort(eigenvalues)/np.sum(eigenvalues)
+    shapes['Cparameter'] = 3*(eigenvalues[2]*eigenvalues[1] +
+                              eigenvalues[2]*eigenvalues[0] +
+                              eigenvalues[i]*eigenvalues[0])
+    shapes['Dparameter'] = 27*np.product(eigenvalues)
 
 
 def shape(energies, pxs, pys, pzs):

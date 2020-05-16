@@ -717,15 +717,14 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
         print(name + "~"*5)
         # the data_dict contains strings, we need real values
         parameter_values = array[:, records.indices[name]]
-        catigorical = np.any(hasattr(value, '__iter__') for value in set(parameter_values))
+        catigorical = np.any([hasattr(value, '__iter__') for value in set(parameter_values)])
         if catigorical:
             scale, positions, label_dict, label_catigories = make_ordinal_scale(parameter_values)
             print(f"label_dict = {label_dict}, scale={scale}, set(positions) = {set(positions)}")
             labels = [label_dict[key] for key in scale]  # to fix the order
             boxes = bokeh.models.widgets.CheckboxGroup(labels=labels, active=list(range(len(labels))))
         else:
-            scale, positions, label_dict = make_float_scale(parameter_values)
-            bottom, top = np.nanmin(parameter_values), np.nanmax(parameter_values) 
+            scale, positions, label_dict, bottom, top = make_float_scale(parameter_values)
             has_slider = bottom != top
             if has_slider:
                 slider = bokeh.models.RangeSlider(title=name, start=bottom, end=top,
@@ -811,6 +810,7 @@ def make_float_scale(col_content):
     # None prevents propper sorting
     catigories.discard(None)
     catigories = sorted(catigories)
+    min_val, max_val = catigories[0], catigories[-1]
     if has_none:
         catigories += [None]
     print(f"Ordered catigories {catigories}")
@@ -848,7 +848,7 @@ def make_float_scale(col_content):
         catigories = new_catigories
     # trim the labels
     label_dict = {tick: str(cat)[:5] for cat, tick in zip(catigories, scale)}
-    return scale, positions, label_dict
+    return scale, positions, label_dict, min_val, max_val
 
 
 def make_ordinal_scale(col_content):
