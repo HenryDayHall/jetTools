@@ -10,16 +10,13 @@ from matplotlib import pyplot as plt
 
 
 def python_shape(energies, pxs, pys, pzs):
-    shape_names = ['heavy_jet_mass2', 'light_jet_mass2',
-                   'difference_jet_mass2', 
-                   'planarity', 'acoplanarity',
-                   'spherocity']
     shapes = {}
     # https://home.fnal.gov/~mrenna/lutp0613man2/node234.html
     # precalculate some quantities
     momentums = np.vstack((pxs, pys, pzs)).T
     birrs2 = np.sum(momentums**2, axis=1)
     sum_birr = np.sqrt(np.sum(birrs2))
+    sum_Tbirr = np.sqrt(np.sum(momentums[:, :2]**2))
     # Thrust
     def to_minimise(theta_phi):
         sin_theta = np.sin(theta_phi[0])
@@ -36,6 +33,16 @@ def python_shape(energies, pxs, pys, pzs):
                    np.cos(best_theta_phi[0])]
     momentum_dot_thrust = np.dot(momentums, thrust_axis)
     shapes['Thrust'] = np.sum(np.abs(momentum_dot_thrust))/sum_birr
+    # transverse Thrust
+    def to_minimise_transverse(phi):
+        transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
+        return -np.sum(np.abs(momentums[:, :2]*transverse_thrust_axis))
+    phi_bounds = (-np.pi, np.pi)
+    best_phi = scipy.optimize.minimize_scalar(to_minimise_transverse, bounds=phi_bounds,
+                                              method='Bounded').x
+    transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
+    momentum_dot_Tthrust = np.dot(momentums[:, :2], transverse_thrust_axis)
+    shapes['Transversethrust'] = np.sum(np.abs(momentum_dot_Tthrust))/sum_Tbirr
     # the major thrust has an exist in the plane perpendicular to the thrust
     if best_theta_phi[0] in (np.pi, 0):
         # along the z axis
@@ -72,13 +79,47 @@ def python_shape(energies, pxs, pys, pzs):
     eigenvalues = np.sort(eigenvalues)/np.sum(eigenvalues)
     shapes['Sphericity'] = 1.5*(eigenvalues[0] + eigenvalues[1])
     shapes['Aplanarity'] = 1.5*eigenvalues[0]
+    shapes['Planarity'] = eigenvalues[1] - eigenvalues[0]
     lin_mom_tensor = np.sum(per_mom_tensor/np.sqrt(birrs2).reshape((-1, 1, 1)), axis=2)
     eigenvalues, _ = scipy.linalg.eig(lin_mom_tensor/sum_birr)
     eigenvalues = np.sort(eigenvalues)/np.sum(eigenvalues)
     shapes['Cparameter'] = 3*(eigenvalues[2]*eigenvalues[1] +
                               eigenvalues[2]*eigenvalues[0] +
-                              eigenvalues[i]*eigenvalues[0])
+                              eigenvalues[1]*eigenvalues[0])
     shapes['Dparameter'] = 27*np.product(eigenvalues)
+    # spherocity
+    def to_minimise_spherocity(phi):
+        spherocity_axis = [np.cos(phi), np.sin(phi)]
+        return -np.abs(np.sum(np.cross(momentums[:, :2], spherocity_axis)))
+    phi_bounds = (-np.pi, np.pi)
+    best_phi = scipy.optimize.minimize_scalar(to_minimise_spherocity, bounds=phi_bounds,
+                                              method='Bounded').x
+    spherocity_axis = [np.cos(best_phi), np.sin(best_phi)]
+    momentum_cross_sphro = np.cross(momentums[:, :2], spherocity_axis)
+    shapes['Spherocity'] = 0.25*np.pi**2*(np.sum(momentum_cross_sphro)/sum_Tbirr)**2
+    # Acoplanarity
+    def to_minimise_aco(theta_phi):
+        sin_theta = np.sin(theta_phi[0])
+        acoplanarity_axis = [sin_theta*np.cos(theta_phi[1]),
+                             sin_theta*np.sin(theta_phi[1]),
+                             np.cos(theta_phi[0])]
+        return -np.sum(np.abs(momentums*acoplanarity_axis))
+    theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
+    best_theta_phi = scipy.optimize.minimize(to_minimise_aco, np.zeros(2),
+                                             bounds=theta_phi_bounds).x
+    sin_theta = np.sin(best_theta_phi[0])
+    acoplanarity_axis = [sin_theta*np.cos(best_theta_phi[1]),
+                         sin_theta*np.sin(best_theta_phi[1]),
+                         np.cos(best_theta_phi[0])]
+    momentum_dot_aco = np.dot(momentums, acoplanarity_axis)
+    shapes['Acoplanarity'] = 4*np.sum(np.abs(momentum_dot_aco))/sum_birr
+    # jet masses
+    upper = np.dot(momentums[:, :2], transverse_thrust_axis) > 0
+    upper_mass2 = np.sum(energies[upper]**2) - np.sum(momentums[upper]**2)
+    lower_mass2 = np.sum(energies[~upper]**2) - np.sum(momentums[~upper]**2)
+    shapes['Lightjetmass2'], shapes['Heavyjetmass2'] = sorted((upper_mass2, lower_mass2))
+    shapes['Differencejetmass2'] = abs(upper_mass2 - lower_mass2)
+    return shapes
 
 
 def shape(energies, pxs, pys, pzs):
@@ -140,12 +181,19 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
         name_tags = f"{jet_name}_{int(jet_pt_cut)}Tags"
     if name_tags not in eventWise.columns:
         TrueTag.add_tags(eventWise, jet_name, 0.4, np.inf)
-    shape_names = ['thrust', 'oblateness', 'sphericity',
-                   'heavy_jet_mass2', 'light_jet_mass2',
-                   'difference_jet_mass2', 'alpanarity',
-                   'planarity', 'acoplanarity', 'minor',
-                   'major', 'D parameter', 'C parameter',
-                   'spherocity']
+    # for Stefano's version
+    #shape_names = ['thrust', 'oblateness', 'sphericity',
+    #               'heavy_jet_mass2', 'light_jet_mass2',
+    #               'difference_jet_mass2', 'alpanarity',
+    #               'planarity', 'acoplanarity', 'minor',
+    #               'major', 'D parameter', 'C parameter',
+    #               'spherocity']
+    shape_names = ['Thrust', 'Oblateness', 'Sphericity',
+                   'Heavyjetmass2', 'Lightjetmass2',
+                   'Differencejetmass2', 'Alpanarity',
+                   'Planarity', 'Acoplanarity', 'Minor',
+                   'Major', 'Dparameter', 'Cparameter',
+                   'Spherocity']
     append_names = {shape: jet_name + "_" + shape.replace(' ', '').replace('_', '').capitalize()
                     for shape in shape_names}
     eventWise.selected_index = None
@@ -164,8 +212,8 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
         print(f" Starting at {100*start_point/n_events}%")
         print(f" Will stop at {100*end_point/n_events}%")
     # updated_dict will be replaced in the first batch
-    thrust_issues = []
-    hjm_issues = []
+    #thrust_issues = []
+    #hjm_issues = []
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
@@ -173,18 +221,20 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
         # select the jets that have been tagged
         jet_idx = [i for i, tags in enumerate(getattr(eventWise, name_tags))
                    if len(tags)>0]
-        # we cna ony work with events with at least two but less that 5 jets
-        if len(jet_idx) > 1 and len(jet_idx) < 5:
+        # Fortranwe cna ony work with events with at least two but less that 5 jets
+        #if len(jet_idx) > 1 and len(jet_idx) < 5:
+        if len(jet_idx) > 1:
             jet_px = eventWise.match_indices(jet_name + "_Px", rootinputidx_name, inputidx_name).flatten()[jet_idx]
             jet_py = eventWise.match_indices(jet_name + "_Py", rootinputidx_name, inputidx_name).flatten()[jet_idx]
             jet_pz = eventWise.match_indices(jet_name + "_Pz", rootinputidx_name, inputidx_name).flatten()[jet_idx]
             jet_e = eventWise.match_indices(jet_name + "_Energy", rootinputidx_name, inputidx_name).flatten()[jet_idx]
-            call, shape_dict = shape(jet_e, jet_px, jet_py, jet_pz)
-            report = f"INPUT {call} OUTPUT {shape_dict}\n"
-            if shape_dict["thrust"] > 1.:
-                thrust_issues.append(report)
-            if shape_dict['heavy_jet_mass2'] < 0.0001:
-                hjm_issues.append(report)
+            #call, shape_dict = shape(jet_e, jet_px, jet_py, jet_pz)
+            #report = f"INPUT {call} OUTPUT {shape_dict}\n"
+            #if shape_dict["thrust"] > 1.:
+            #    thrust_issues.append(report)
+            #if shape_dict['heavy_jet_mass2'] < 0.0001:
+            #    hjm_issues.append(report)
+            shape_dict = python_shape(jet_e, jet_px, jet_py, jet_pz)
             for name in shape_dict:
                 content[append_names[name]].append(shape_dict[name])
         else:
@@ -192,10 +242,10 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
                 content[name].append(np.nan)
     content = {name: awkward.fromiter(content[name]) for name in content}
     eventWise.append(**content)
-    with open("jet_thrust_problems.dat", 'w') as out_file:
-        out_file.writelines(thrust_issues)
-    with open("jet_heavymass_problems.dat", 'w') as out_file:
-        out_file.writelines(hjm_issues)
+    #with open("jet_thrust_problems.dat", 'w') as out_file:
+    #    out_file.writelines(thrust_issues)
+    #with open("jet_heavymass_problems.dat", 'w') as out_file:
+    #    out_file.writelines(hjm_issues)
     
 
 def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='default', tag_before_pt_cut=True):
@@ -220,12 +270,18 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
 
     """
     # name the vaiables to be cut on
-    shape_names = ['thrust', 'oblateness', 'sphericity',
-                   'heavy_jet_mass2', 'light_jet_mass2',
-                   'difference_jet_mass2', 'alpanarity',
-                   'planarity', 'acoplanarity', 'minor',
-                   'major', 'D parameter', 'C parameter',
-                   'spherocity']
+    #shape_names = ['thrust', 'oblateness', 'sphericity',
+    #               'heavy_jet_mass2', 'light_jet_mass2',
+    #               'difference_jet_mass2', 'alpanarity',
+    #               'planarity', 'acoplanarity', 'minor',
+    #               'major', 'D parameter', 'C parameter',
+    #               'spherocity']
+    shape_names = ['Thrust', 'Oblateness', 'Sphericity',
+                   'Heavyjetmass2', 'Lightjetmass2',
+                   'Differencejetmass2', 'Alpanarity',
+                   'Planarity', 'Acoplanarity', 'Minor',
+                   'Major', 'Dparameter', 'Cparameter',
+                   'Spherocity']
     if jet_pt_cut is None or tag_before_pt_cut:
         name_tag = "Tag"
     else:
@@ -266,9 +322,9 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
         tag_e = eventWise.Energy[tag_idx]
         call, shape_dict = shape(tag_e, tag_px, tag_py, tag_pz)
         report = f"INPUT {call} OUTPUT {shape_dict}\n"
-        if shape_dict["thrust"] > 1.:
+        if shape_dict["Thrust"] > 1.:
             thrust_issues.append(report)
-        if shape_dict['heavy_jet_mass2'] < 0.0001:
+        if shape_dict['Heavyjetmass2'] < 0.0001:
             hjm_issues.append(report)
         for name in shape_dict:
             content[append_names[name]].append(shape_dict[name])

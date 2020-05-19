@@ -646,7 +646,7 @@ def kinematic_distributions(eventWise, jet_name, silent=False):
     ax.hist(collected_values, label=names, bins=50, histtype='step')
     ax.legend()
     ax.set_xlabel("PT")
-    ax.set_ylabel("counts") 
+    ax.set_ylabel("counts")
     ax.set_title(jet_name)
 
 

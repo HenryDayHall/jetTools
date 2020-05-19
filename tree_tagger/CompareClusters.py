@@ -601,10 +601,17 @@ def invarientMass2_distance(tag_coords, jet_coords, rescale_poly=None):
 
 def distance_to_higgs_mass(jet_coords_by_event):  # no need the jets per event...
     epxpypz_idx = [Constants.coordinate_order.index(name) for name in ["Energy", "Px", "Py", "Pz"]]
+    pt_idx = Constants.coordinate_order.index('PT')
     all_jet_momentum = np.array([np.sum(coords[:, epxpypz_idx], axis=0) for coords in jet_coords_by_event])
-    jet_mass = np.sqrt(all_jet_momentum[:, 0]**2 - np.sum(all_jet_momentum[:, 1:]**2, axis=1))
+    first2_jet_momentum = np.array([np.sum(coords[np.argsort(coords[:, pt_idx])[:2]][:, epxpypz_idx], axis=0)
+                                    for coords in jet_coords_by_event])
+    jet_mass2 = all_jet_momentum[:, 0]**2 - np.sum(all_jet_momentum[:, 1:]**2, axis=1)
+    jet_mass = np.sqrt(np.clip(jet_mass2, 0., None))
+    first2_jet_mass2 = first2_jet_momentum[:, 0]**2 - np.sum(first2_jet_momentum[:, 1:]**2, axis=1)
+    first2_jet_mass = np.sqrt(np.clip(first2_jet_mass2, 0., None))
     distance_to_higgs = np.abs(jet_mass - 125.)
-    return distance_to_higgs
+    distance_to_light = np.abs(first2_jet_mass - 40.)
+    return distance_to_light, distance_to_higgs
 
 
 def soft_generic_equality(a, b):
@@ -630,7 +637,7 @@ def soft_generic_equality(a, b):
             return a == b
         except Exception:
             # for whatever reason this is not possible
-            if len(a) == len(b): 
+            if len(a) == len(b):
                 # by this point it's not a string
                 # maybe a tuple of objects, try each one seperatly
                 sections = [soft_generic_equality(aa, bb) for aa, bb in zip(a, b)]
@@ -655,7 +662,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
 
     """
     array = records.typed_array()[records.scored]
-    col_names = ["s_distance", "bdecendant_tpr", "bdecendant_fpr", "distance_to_HiggsMass"]
+    col_names = ["s_distance", "bdecendant_tpr", "bdecendant_fpr", "distance_to_HiggsMass", "distance_to_LightMass"]
     # filter anything that scored too close to zero in pt or rapidity
     # these are soem kind of bug
     small = 0.001
@@ -719,6 +726,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
         parameter_values = array[:, records.indices[name]]
         catigorical = np.any([hasattr(value, '__iter__') for value in set(parameter_values)])
         if catigorical:
+            deciding_value = next(value for value in set(parameter_values) if hasattr(value, '__iter__'))
             scale, positions, label_dict, label_catigories = make_ordinal_scale(parameter_values)
             print(f"label_dict = {label_dict}, scale={scale}, set(positions) = {set(positions)}")
             labels = [label_dict[key] for key in scale]  # to fix the order
@@ -744,7 +752,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
             p.xaxis.ticker = scale
             p.xaxis.major_label_overrides = label_dict
             p.xaxis.major_label_orientation = "vertical"
-            p.yaxis.axis_label = col_name 
+            p.yaxis.axis_label = col_name
             if "symmetric_diff" in col_name or "distance" in col_name:
                 p.y_range.flipped = True
             y_lims = chose_ylims(y_col, invert=p.y_range.flipped)
@@ -757,7 +765,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
             p.legend.location = "bottom_left"
             plots[-1].append(p)
         # add a colour bar to the last plot only
-        colour_bar = bokeh.models.ColorBar(color_mapper=mapper, location=(0,0),
+        colour_bar = bokeh.models.ColorBar(color_mapper=mapper, location=(0, 0),
                                            title=c_name)
         p.add_layout(colour_bar, 'right')
         # now make the selector features
@@ -805,7 +813,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
 
 def make_float_scale(col_content):
     catigories = set(col_content)
-    print(f"Unordered catigories {catigories}")
+    #print(f"Unordered catigories {catigories}")
     has_none = None in catigories
     # None prevents propper sorting
     catigories.discard(None)
@@ -813,7 +821,7 @@ def make_float_scale(col_content):
     min_val, max_val = catigories[0], catigories[-1]
     if has_none:
         catigories += [None]
-    print(f"Ordered catigories {catigories}")
+    #print(f"Ordered catigories {catigories}")
     scale = np.array(catigories)
     # the last one is skipped as it is the None value
     try:
@@ -1251,7 +1259,7 @@ class Records:
                           "s_distance", 
                           "njets", "percentfound", 
                           "bdecendant_tpr", "bdecendant_fpr",
-                          "distance_to_HiggsMass")
+                          "distance_to_HiggsMass", "distance_to_LightMass")
     ignore_h_parameters = ['RescaleEnergy']
     def __init__(self, file_path):
         self.file_path = file_path
@@ -1656,12 +1664,16 @@ class Records:
             row = self.content[all_jets[name]]
             if not scored[int(row[0])]:
                 coords = {name: i for i, name in enumerate(Constants.coordinate_order)}
-                (tag_coords, jet_coords,
-                        n_jets_formed,
-                        fpr, tpr,
-                        percent_tags_found,
-                        h_content_here, content_here) = fit_all_to_tags(eventWise, name,
-                                                                        silent=True)
+                try:
+                    (tag_coords, jet_coords,
+                            n_jets_formed,
+                            fpr, tpr,
+                            percent_tags_found,
+                            h_content_here, content_here) = fit_all_to_tags(eventWise, name,
+                                                                            silent=True)
+                except Exception as e:
+                    print(f"Problem in {eventWise.save_name} jet {name}; {e}")
+                    continue
                 # construct the rescaling factors if required
                 RescaleJets.energy_poly(eventWise, name)
                 content = {**content, **content_here}
@@ -1680,7 +1692,7 @@ class Records:
                             pass  # we already delt with it
                         elif 'score' in col_name:
                             row[self.indices[col_name]] = 0.
-                        elif (col_name in ['s_distance', 'distance_to_HiggsMass']
+                        elif (col_name in ['s_distance', 'distance_to_HiggsMass', 'distance_to_LightMass']
                               or 'diff' in col_name):
                             row[self.indices[col_name]] = None
                         else:
@@ -1688,7 +1700,7 @@ class Records:
                     continue
                 # if we reached this point there are jets 
                 # before stacking the coords calculate the distance to the higgs mass
-                dist_to_hmass = distance_to_higgs_mass(jet_coords)
+                dist_to_lmass, dist_to_hmass = distance_to_higgs_mass(jet_coords)
                 # now we no longer care which event each jet came from
                 tag_coords = np.vstack(tag_coords)
                 jet_coords = np.vstack(jet_coords)
@@ -1712,6 +1724,7 @@ class Records:
                 row[self.indices["score(Phi)"]] = scores[2]
                 row[self.indices["s_distance"]] = np.mean(s)
                 row[self.indices["distance_to_HiggsMass"]] = np.mean(dist_to_hmass)
+                row[self.indices["distance_to_LightMass"]] = np.mean(dist_to_lmass)
                 # but the symetric difernce for phi should be angular
                 try:
                     row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[:, coords["PT"]])
@@ -1775,11 +1788,13 @@ class Records:
 if __name__ == '__main__':
     records_name = InputTools.get_file_name("Records file? (new or existing) ")
     records = Records(records_name)
+    #for i in range(1, 10):
+    #    ew_name = f"megaIgnore/MC{i}.awkd"
+    #    print(ew_name)
+    #    records.score(ew_name.strip())
+    
     ew_name = InputTools.get_file_name("EventWise file? (existing) ")
     records.score(ew_name.strip())
-    
-    #ew_names = [name for name in os.listdir("megaIgnore") if name.endswith('.awkd')]
-    #comparison1(records)
 
 # serve this with
 # bokeh serve --show tree_tagger/CompareClusters.py
