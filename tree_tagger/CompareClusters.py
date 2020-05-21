@@ -1573,16 +1573,13 @@ class Records:
         self.write()
         return existing, added
 
-    def score(self, target, rescale_for_s_distance=False):
+    def score(self, target):
         """
         
 
         Parameters
         ----------
         target :
-            param rescale_for_s_distance:  (Default value = False)
-        rescale_for_s_distance :
-             (Default value = False)
 
         Returns
         -------
@@ -1591,7 +1588,7 @@ class Records:
         if isinstance(target, str):
             if target.endswith('.awkd'):
                 target = Components.EventWise.from_file(target)
-                self._score_eventWise(target, rescale_for_s_distance)
+                self._score_eventWise(target)
             elif os.path.isdir(target):
                 all_scored = []
                 not_scored = []
@@ -1608,7 +1605,7 @@ class Records:
                         continue  # this one is not an eventwise
                     if hasattr(eventWise, "JetInputs_Energy"):
                         all_scored.append(name)
-                        self._score_eventWise(eventWise, rescale_for_s_distance)
+                        self._score_eventWise(eventWise)
                     else:
                         print(f"{name} does not have required components")
                         not_scored.append(name)
@@ -1616,18 +1613,15 @@ class Records:
             else:
                 raise NotImplementedError
         else:  # assume its eventwise
-            self._score_eventWise(target, rescale_for_s_distance)
+            self._score_eventWise(target)
 
-    def _score_eventWise(self, eventWise, rescale_for_s_distance=True):
+    def _score_eventWise(self, eventWise):
         """
         
 
         Parameters
         ----------
         eventWise :
-            param rescale_for_s_distance:  (Default value = True)
-        rescale_for_s_distance :
-             (Default value = True)
 
         Returns
         -------
@@ -1675,7 +1669,6 @@ class Records:
                     print(f"Problem in {eventWise.save_name} jet {name}; {e}")
                     continue
                 # construct the rescaling factors if required
-                RescaleJets.energy_poly(eventWise, name)
                 content = {**content, **content_here}
                 h_content = {**h_content, **h_content_here}
                 # these require no futher processing
@@ -1707,10 +1700,7 @@ class Records:
                 if len(jet_coords) > 1:
                     scores, uncerts = score_component_rank(tag_coords, jet_coords)
                     syd = 2*np.abs(tag_coords - jet_coords)/(np.abs(tag_coords) + np.abs(jet_coords))
-                    if rescale_for_s_distance:
-                        rescale_poly = getattr(eventWise, name + "_RescaleEnergy")
-                    else:
-                        rescale_poly = None
+                    rescale_poly = None
                     s = invarientMass2_distance(tag_coords, jet_coords, rescale_poly)
                 else:
                     large_num = 100000

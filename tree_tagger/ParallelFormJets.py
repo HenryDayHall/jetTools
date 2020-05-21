@@ -1,8 +1,8 @@
 from tree_tagger import FormJets, Components, InputTools, CompareClusters
+import time
 import csv
 import cProfile
 import tabulate
-import time
 import os
 import numpy as np
 import multiprocessing
@@ -324,7 +324,7 @@ def recombine_eventWise(eventWise_path):
     return new_eventWise
 
 
-def scan_spectralfull(eventWise_path):
+def scan_spectralfull(eventWise_path, end_time):
     """
     
 
@@ -387,6 +387,8 @@ def scan_spectralfull(eventWise_path):
                         eig_indices = invar_indices[initial_NEigen[invar_indices] == eig]
                         if (not os.path.exists('continue')) or os.path.exists('stopscan'):
                             return
+                        if time.time()>end_time:
+                            return
                         jet_class = "SpectralFullJet"
                         jet_params = dict(DeltaR=dR,
                                           ExpofPTMultiplier=exponent,
@@ -407,7 +409,7 @@ def scan_spectralfull(eventWise_path):
     records.write()
 
 
-def scan_spectralmean(eventWise_path):
+def scan_spectralmean(eventWise_path, end_time):
     """
     
 
@@ -430,6 +432,7 @@ def scan_spectralmean(eventWise_path):
         initial_jet_class = np.array([])
         initial_DeltaR    =  np.array([])
         initial_Exponent  =  np.array([])
+        initial_Position  =  np.array([])
         initial_Cutoff =  np.array([])
         initial_Invarient =  np.array([])
         initial_NEigen=  np.array([])
@@ -449,9 +452,6 @@ def scan_spectralmean(eventWise_path):
     affinitycutoff = [('distance', 2), None]
     invarient = ['invarient', 'angular', 'Luclus']
     numeigenvectors = [2, 4, 6]
-    time = time.time()
-    runtime = 3*60*60
-    endtime = time+rumtime
     for pos in position:
         pos_indices = np.where(initial_Position==pos)[0]
         for dR in DeltaR:
@@ -474,7 +474,7 @@ def scan_spectralmean(eventWise_path):
                         eig_indices = invar_indices[initial_NEigen[invar_indices] == eig]
                         if (not os.path.exists('continue')) or os.path.exists('stopscan'):
                             return
-                        if time.time() > endtime:
+                        if time.time() > end_time:
                             return
                         jet_class = "SpectralFullJet"
                         jet_params = dict(DeltaR=dR,
@@ -648,7 +648,7 @@ def random_parameters(jet_class=None):
     return jet_class, params
 
 
-def monte_carlo(eventWise_path, jet_class=None):
+def monte_carlo(eventWise_path, end_time, jet_class=None):
     """
     
 
@@ -671,8 +671,6 @@ def monte_carlo(eventWise_path, jet_class=None):
     #if not os.path.exists('continue'):
     #    open('continue', 'a').close()
     #while os.path.exists('continue'):
-    end_time = time.time() + InputTools.get_time("How long to make clusters for? ")
-    print(f"Ending at {end_time}")
     while time.time() < end_time:
         if change_class:
             jet_class = None
@@ -688,11 +686,23 @@ def full_run_best(eventWise_path, records, jet_class=None):
     pass  # TODO
 
 if __name__ == '__main__':
-    #names = FormJets.cluster_classes
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
+    duration = InputTools.get_time("How long to make clusters for (negative for unending)? ")
+    if duration < 0:
+        end_time = np.Inf
+    else:
+        end_time = time.time() + duration
+    print(f"Ending at {end_time}")
+    if InputTools.yesNo_question("Monte carlo? "):
+        names = FormJets.cluster_classes
+        jet_class = InputTools.list_complete("Jet class? ", list(names.keys())).strip()
+        if jet_class == '':
+            jet_class = None
+        monte_carlo(eventWise_path, end_time, jet_class = jet_class)
+    elif InputTools.yesNo_question("SpectralFullScan? "):
+        scan_spectralfull(eventWise_path, end_time)
+    elif InputTools.yesNo_question("SpectralMeanScan? "):
+        scan_spectralmean(eventWise_path, end_time)
     #loops(eventWise_path)
-    #jet_class = InputTools.list_complete("Jet class? ", list(names.keys())).strip()
     #iterate(eventWise_path, jet_class)
-    #monte_carlo(eventWise_path, jet_class = "SpectralFullJet")
-    scan_spectralfull(eventWise_path)
 

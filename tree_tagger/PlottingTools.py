@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 from tree_tagger import FormJets
 
-def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None):
+def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, font_size=12):
     if eventWise is not None:
         eventWise.selected_index = None
     create_ax = ax is None
@@ -27,7 +27,7 @@ def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None):
         if name in ["RescaleEnergy", "jet_name"]:
             continue
         text += f"{name}; {value}\n"
-    ax.text(0, 0, text, fontsize=12)
+    ax.text(0, 0, text, fontsize=font_size)
     if create_ax:
         return fig, ax2
         

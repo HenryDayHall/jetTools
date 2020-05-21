@@ -2,9 +2,9 @@
 import scipy.optimize
 import scipy.linalg
 import numpy as np
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 from tree_tagger.stefano_shapes import shape as stefano
-from tree_tagger import TrueTag, Constants
+from tree_tagger import TrueTag, Constants, PlottingTools
 import awkward
 from matplotlib import pyplot as plt 
 
@@ -15,8 +15,11 @@ def python_shape(energies, pxs, pys, pzs):
     # precalculate some quantities
     momentums = np.vstack((pxs, pys, pzs)).T
     birrs2 = np.sum(momentums**2, axis=1)
-    sum_birr = np.sqrt(np.sum(birrs2))
-    sum_Tbirr = np.sqrt(np.sum(momentums[:, :2]**2))
+    # This way round gets Fortran like results
+    #sum_birr = np.sqrt(np.sum(birrs2))
+    #sum_Tbirr = np.sqrt(np.sum(momentums[:, :2]**2))
+    sum_birr = np.sum(np.sqrt(birrs2))
+    sum_Tbirr = np.sum(np.sqrt(np.sum(momentums[:, :2]**2, axis=1)))
     # Thrust
     def to_minimise(theta_phi):
         sin_theta = np.sin(theta_phi[0])
@@ -57,7 +60,7 @@ def python_shape(energies, pxs, pys, pzs):
         major_thrust_axis = np.cos(alpha)*perp1 + np.sin(alpha)*perp2
         return -np.sum(np.abs(momentums*major_thrust_axis))
     best_alpha = scipy.optimize.minimize_scalar(to_minimise_major, bounds=(-np.pi, np.pi),
-                                                method='Bounded')
+                                                method='Bounded').x
     major_thrust_axis = np.cos(best_alpha)*perp1 + np.sin(best_alpha)*perp2
     momentum_dot_major = np.dot(momentums, major_thrust_axis)
     shapes['Major'] = np.sum(np.abs(momentum_dot_major))/sum_birr
@@ -76,13 +79,13 @@ def python_shape(energies, pxs, pys, pzs):
         per_mom_tensor[i, :, :] *= momentums.T
     mom_tensor = np.sum(per_mom_tensor, axis=2)
     eigenvalues, _ = scipy.linalg.eig(mom_tensor/sum_birr**2)
-    eigenvalues = np.sort(eigenvalues)/np.sum(eigenvalues)
+    eigenvalues = np.real(np.sort(eigenvalues)/np.sum(eigenvalues))
     shapes['Sphericity'] = 1.5*(eigenvalues[0] + eigenvalues[1])
-    shapes['Aplanarity'] = 1.5*eigenvalues[0]
+    shapes['Alpanarity'] = 1.5*eigenvalues[0]
     shapes['Planarity'] = eigenvalues[1] - eigenvalues[0]
-    lin_mom_tensor = np.sum(per_mom_tensor/np.sqrt(birrs2).reshape((-1, 1, 1)), axis=2)
+    lin_mom_tensor = np.sum(per_mom_tensor/np.sqrt(birrs2), axis=2)
     eigenvalues, _ = scipy.linalg.eig(lin_mom_tensor/sum_birr)
-    eigenvalues = np.sort(eigenvalues)/np.sum(eigenvalues)
+    eigenvalues = np.real(np.sort(eigenvalues)/np.sum(eigenvalues))
     shapes['Cparameter'] = 3*(eigenvalues[2]*eigenvalues[1] +
                               eigenvalues[2]*eigenvalues[0] +
                               eigenvalues[1]*eigenvalues[0])
@@ -188,7 +191,7 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
     #               'planarity', 'acoplanarity', 'minor',
     #               'major', 'D parameter', 'C parameter',
     #               'spherocity']
-    shape_names = ['Thrust', 'Oblateness', 'Sphericity',
+    shape_names = ['Thrust', 'Transversethrust', 'Oblateness', 'Sphericity',
                    'Heavyjetmass2', 'Lightjetmass2',
                    'Differencejetmass2', 'Alpanarity',
                    'Planarity', 'Acoplanarity', 'Minor',
@@ -276,7 +279,7 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
     #               'planarity', 'acoplanarity', 'minor',
     #               'major', 'D parameter', 'C parameter',
     #               'spherocity']
-    shape_names = ['Thrust', 'Oblateness', 'Sphericity',
+    shape_names = ['Thrust', 'Transversethrust', 'Oblateness', 'Sphericity',
                    'Heavyjetmass2', 'Lightjetmass2',
                    'Differencejetmass2', 'Alpanarity',
                    'Planarity', 'Acoplanarity', 'Minor',
@@ -291,8 +294,9 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
     append_names = {shape: name_tag + shape.replace(' ', '').replace('_', '').capitalize() 
                               for shape in shape_names}
     eventWise.selected_index = None
-    content = {name: list(getattr(eventWise, name, []))
-               for name in append_names.values()}
+    #content = {name: list(getattr(eventWise, name, []))
+    #           for name in append_names.values()}
+    content = {name: [] for name in append_names.values()}
     n_events = len(eventWise.JetInputs_Energy)
     start_point = len(list(content.values())[0])
     if start_point >= n_events:
@@ -304,8 +308,8 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
         print(f" Starting at {100*start_point/n_events}%")
         print(f" Will stop at {100*end_point/n_events}%")
     # updated_dict will be replaced in the first batch
-    thrust_issues = []
-    hjm_issues = []
+    #thrust_issues = []
+    #hjm_issues = []
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
             print(f"{100*event_n/n_events}%", end='\r', flush=True)
@@ -320,30 +324,31 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
         tag_py = eventWise.Py[tag_idx]
         tag_pz = eventWise.Pz[tag_idx]
         tag_e = eventWise.Energy[tag_idx]
-        call, shape_dict = shape(tag_e, tag_px, tag_py, tag_pz)
-        report = f"INPUT {call} OUTPUT {shape_dict}\n"
-        if shape_dict["Thrust"] > 1.:
-            thrust_issues.append(report)
-        if shape_dict['Heavyjetmass2'] < 0.0001:
-            hjm_issues.append(report)
+        #call, shape_dict = shape(tag_e, tag_px, tag_py, tag_pz)
+        shape_dict = python_shape(tag_e, tag_px, tag_py, tag_pz)
+        #report = f"INPUT {call} OUTPUT {shape_dict}\n"
+        #if shape_dict["Thrust"] > 1.:
+        #    thrust_issues.append(report)
+        #if shape_dict['Heavyjetmass2'] < 0.0001:
+        #    hjm_issues.append(report)
         for name in shape_dict:
             content[append_names[name]].append(shape_dict[name])
     content = {name: awkward.fromiter(content[name]) for name in content}
     eventWise.append(**content)
-    with open("tag_thrust_problems.dat", 'w') as out_file:
-        out_file.writelines(thrust_issues)
-    with open("tag_heavymass_problems.dat", 'w') as out_file:
-        out_file.writelines(hjm_issues)
+    #with open("tag_thrust_problems.dat", 'w') as out_file:
+    #    out_file.writelines(thrust_issues)
+    #with open("tag_heavymass_problems.dat", 'w') as out_file:
+    #    out_file.writelines(hjm_issues)
 
 
 def test():
     """ """
     vectors = np.random.rand(4, 3)
     vectors[0] *= 20  # add some energy....
-    print(shape(*vectors))
+    print(python_shape(*vectors))
 
 
-def plot_shapevars(eventWise, jet_name=None, jet_pt_cut=None):
+def plot_shapevars(eventWise, jet_name=None, jet_pt_cut=None, save=False):
     """
     
 
@@ -374,37 +379,40 @@ def plot_shapevars(eventWise, jet_name=None, jet_pt_cut=None):
     n_cols = int(np.sqrt(len(append_names)))
     n_rows = int(np.ceil(len(append_names)/n_cols))
     fig, axarry = plt.subplots(n_rows, n_cols)
+    axarry = axarry.flatten()
     if jet_pt_cut is None:
         name_tag = "Tag"
     else:
         if jet_pt_cut == 'default':
             jet_pt_cut = Constants.min_jetpt
         name_tag = f"Tag{int(jet_pt_cut)}"
-    if has_jets:
-        fig.suptitle(jet_name)
-    for name, ax in zip(append_names, axarry.flatten()):
+    #if has_jets:
+    #    fig.suptitle(jet_name)
+    for name, ax in zip(append_names, axarry):
         tag_data = getattr(eventWise, name_tag + name)
-        ax.hist(tag_data, density=True, histtype='step', label=f'{name_tag} ({len(tag_data)})')
+        data = [tag_data]
+        labels = [f"Tags ({len(tag_data)})"]
         if has_jets:
             jet_data = getattr(eventWise, '_'.join((jet_name, name)))
             #jet_data[np.isnan(jet_data)] = np.min(jet_data)  - 1.
             jet_data = jet_data[~np.isnan(jet_data)]
-            jet_data = jet_data[jet_data != 0.]
+            #jet_data = jet_data[jet_data != 0.]
             assert not np.any(np.isnan(jet_data))
-            try:
-                ax.hist(jet_data, density=True, histtype='step', label=f'Jets ({len(jet_data)})')
-            except IndexError:
-                print(f"Couldn't histogram {name} for {jet_name} in {eventWise.save_name}")
+            data.append(jet_data)
+            labels.append(f'Jets ({len(jet_data)})')
+        ax.hist(data, density=True, histtype='step', label=labels)
         ax.set_ylabel("Density")
         ax.set_xlabel(name)
         ax.legend()
+    PlottingTools.discribe_jet(eventWise, jet_name, ax=axarry[-1], font_size=7)
     fig.set_size_inches(10, 11)
     plt.tight_layout()
-    dir_name = 'images/shape/'
-    if has_jets:
-        plt.savefig(dir_name + jet_name + '_shapevars.png')
-    else:
-        plt.savefig(dir_name + 'tags_shapevars.png')
+    if save:
+        dir_name = 'images/shape/'
+        if has_jets:
+            plt.savefig(dir_name + jet_name + '_shapevars.png')
+        else:
+            plt.savefig(dir_name + 'tags_shapevars.png')
 
 
 def pairplot():
