@@ -404,38 +404,6 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None, use_quarks=True
     return found_tags, tag_momentum, assigned_momentum
 
 
-def old_count_b_heritage(eventWise, jet_name, jet_idxs):
-    assert eventWise.selected_index is not None
-    b_idxs = np.where(np.abs(eventWise.MCPID) == 5)[0]
-    b_decendants = FormShower.descendant_idxs(eventWise, *b_idxs)
-    input_idxs = eventWise.JetInputs_SourceIdx
-    binput_idxs = set(b_decendants.intersection(input_idxs))
-    # filter for the InputIdxs that are leaves
-    is_leaf = getattr(eventWise, jet_name+"_Child1")[jet_idxs].flatten() == -1
-    selected_InputIdxs = getattr(eventWise, jet_name+"_InputIdx")[jet_idxs].flatten()[is_leaf]
-    bjetinput_idxs = set(input_idxs[selected_InputIdxs])
-    true_positives = len(bjetinput_idxs.intersection(binput_idxs))
-    n_positives = len(b_decendants.intersection(input_idxs))
-    false_positives = len(bjetinput_idxs - binput_idxs)
-    n_negatives = len(set(input_idxs) - binput_idxs)
-    try:
-        tpr = true_positives / n_positives
-    except ZeroDivisionError:
-        # probably happens
-        tpr = 1.  # no positives avalible...
-    try:
-        fpr = false_positives / n_negatives
-    except ZeroDivisionError:
-        # shouldn't happen if there are any tracks
-        #if len(input_idxs):
-        #    print(f"Warning, no non b-decendent inputs found in event {eventWise.selected_index}"
-        #          " this is suspect."
-        #          f" All {len(input_idxs)} appear to be b-decndants")
-        # looks like it does happen...
-        fpr = 0.
-    return tpr, fpr
-
-
 def count_b_heritage(eventWise, jet_name, jet_idxs, ctag):
     assert eventWise.selected_index is not None
     is_root = getattr(eventWise, jet_name+"_Parent")[jet_idxs] == -1
@@ -859,7 +827,7 @@ def make_float_scale(col_content):
     return scale, positions, label_dict, min_val, max_val
 
 
-def make_ordinal_scale(col_content):
+def old_make_ordinal_scale(col_content):
     catigories = set(col_content)
     print(f"Unordered catigories {catigories}")
     has_none = None in catigories
@@ -878,16 +846,48 @@ def make_ordinal_scale(col_content):
     label_dict = {}
     for pos, cat in zip(scale, catigories):
         if isinstance(cat, tuple):
-            s = ', '.join((cat[0], str(cat[1])[:4]))
+            s = ', '.join((cat[0], str(cat[1])[:3]))
         else:
             s = str(cat)
         if s in label_catigories:  # don't add it
-            exisiting_catigory = label_catigories[s]
-            existing_position = scale[catigories.index(existing_cat)]
+            existing_catigory = label_catigories[s]
+            existing_position = scale[catigories.index(existing_catigory)]
             positions[positions == pos] = existing_position
         else:
             label_catigories[s] = cat
             label_dict[pos] = s
+    return scale, positions, label_dict, label_catigories
+
+
+def make_ordinal_scale(col_content):
+    # x positions of each point
+    positions = np.empty(len(col_content), dtype=int)
+    # dictionary of name : example value
+    label_catigories = {}
+    # dictionary of scale position : name
+    label_dict = {}
+    # occasionaly equality comparison on the col_content is not possible
+    # make a translation to names
+    content_names = []
+    for con in col_content:
+        if isinstance(con, tuple):
+            name = ', '.join((con[0], str(con[1])[:1]))
+        else:
+            name = str(con)
+        content_names.append(name)
+    # None prevents propper sorting
+    catigories = [(name, col_content[content_names.index(name)]) for name in set(content_names)
+                  if name != str(None)]
+    catigories = sorted(catigories, key=lambda x: x[1])
+    if str(None) in content_names:
+        catigories.append((str(None), None))
+    # set of possible x positions
+    scale = list(range(len(catigories)))
+    content_names = np.array(content_names)  # need to use this as a mask
+    for pos, (name, cat) in enumerate(catigories):
+        label_catigories[name] = cat
+        label_dict[pos] = name
+        positions[content_names == name] = pos
     return scale, positions, label_dict, label_catigories
 
 

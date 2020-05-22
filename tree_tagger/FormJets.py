@@ -2251,7 +2251,7 @@ def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_clas
     # top row ~~~
     plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, ax=axarry[0, 0], comparitor_class=c_class)
     # add details in the spare axis
-    if n_rows > 1:
+    if n_cols > 1:
         PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
         axarry[0, 1].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
         axarry[0, 1].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
@@ -2262,14 +2262,16 @@ def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_clas
         #axarry[0, 1].scatter([], [], label="unseen b decendant",
         #                     c=truth_colour, s=truth_linewidth, marker='x')
         axarry[0, 1].legend()
-    if n_rows > 2:
+    if n_cols > 2:
         PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 2])
-    if n_rows > 3:
-        for i in range(3, n_rows+1):
+    if n_cols > 3:
+        for i in range(3, n_cols):
             axarry[0, i].axis('off')
     # bottom row
     for i in range(1, num_eig):
         plot_eigenspace(eventWise, event_num, spectral_jet_params, i, 0, ax=axarry[1, i-1], spectral_class=c_class)
+        if i > 1:
+            axarry[1, i-1].set_ylabel(None)
     plt.show()
 
 
@@ -2278,15 +2280,17 @@ if __name__ == '__main__':
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
     event_num = InputTools.get_literal("Event number? ", int)
-    fast_jet_params = dict(DeltaR=1., ExpofPTMultiplier=-1, jet_name="FastJet")
-    spectral_jet_params = dict(DeltaR=0.30, ExpofPTMultiplier=0,
-                               ExpofPTPosition='input',
-                               NumEigenvectors=4,
+    fast_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0, jet_name="CambridgeAachenp8")
+    spectral_jet_params = dict(DeltaR=0.4, ExpofPTMultiplier=0.2,
+                               ExpofPTPosition='eigenspace',
+                               NumEigenvectors=6,
                                Laplacien='symmetric',
                                AffinityType='exponent2',
                                AffinityCutoff=None,
                                #AffinityCutoff=('knn', 4),
-                               jet_name="SpectralTest")
+                               StoppingCondition='standard',
+                               Invarient='Luclus',
+                               jet_name="SpectralFull")
 
     c_class = SpectralFull
     check_hyperparameters(c_class, spectral_jet_params)
