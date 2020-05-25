@@ -18,6 +18,7 @@ down = '\x1b[B'
 # a dictionary of a preselected reponse per quesiton
 
 class PreSelections:
+    _sep = '||'
     def __init__(self, file_name=None):
         self.questions = []
         self.consistant_length = []
@@ -26,9 +27,20 @@ class PreSelections:
         if file_name is not None:
             with open(file_name, 'r') as in_file:
                 str_lines = in_file.readlines()
-                self.questions = ast.literal_eval(str_lines[0])
-                self.consistant_length = ast.literal_eval(str_lines[1])
-                self.answers = ast.literal_eval(str_lines[2])
+                try:
+                    self.questions = str_lines[0].split(self._sep)
+                    self.consistant_length = [int(q) for q in str_lines[1].split(self._sep)]
+                    # answers may contain numpy arrays,
+                    self.answers = []
+                    for answer in str_lines[2].split(self._sep):
+                        try:
+                            answer = ast.literal_eval(answer)
+                        except SyntaxError:
+                            answer = [ast.literal_eval(a) for a in answer[1:-1].split()]
+                        answers.append(answer)
+                except:
+                    st()
+                    str_lines
             assert len(self.questions) == len(self.consistant_length)
             assert len(self.questions) == len(self.answers)
 
@@ -66,10 +78,10 @@ class PreSelections:
         self.answers.append(response)
 
     def write(self, file_name):
+        lines = [self._sep.join([str(p) for p in line]) for line in
+                 [self.questions, self.consistant_length, self.answers]]
         with open(file_name, 'w') as out:
-            out.writelines([str(self.questions) + os.linesep,
-                            str(self.consistant_length) + os.linesep,
-                            str(self.answers)])
+            out.writelines(os.linesep.join(lines))
 
     def replace_string(self, old, new):
         for i, answer in enumerate(self.answers):
@@ -342,14 +354,20 @@ def get_time(message, consistant_length=-1):
     return response
 
 
-def select_values(pretty_name, column_names, defaults, value_class=np.float):
-    print("Select {}".format(pretty_name))
+def select_values(pretty_name, column_names, defaults, value_class=np.float, consistant_length=-1):
+    # make the message
+    message = f"Select {pretty_name}\n"
     if column_names is not None:
-        print("Format is {}".format(', '.join(column_names)))
+        message += "Format is {}\n".format(', '.join(column_names))
         n_columns = len(defaults)
         assert len(defaults) == len(column_names)
-    print("Typical {} are {}".format(pretty_name, ' '.join([str(d) for d in defaults])))
-    inp = input('{} (enter for typical)= '.format(pretty_name))
+    message += "Typical {} are {}\n".format(pretty_name, ' '.join([str(d) for d in defaults]))
+    message += f'{pretty_name} (enter for typical)= '
+    # check for an existing rsponse
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
+    inp = input(message)
     if inp == '':
         chosen = defaults
     else:
@@ -358,16 +376,23 @@ def select_values(pretty_name, column_names, defaults, value_class=np.float):
             n_columns = len(split_inp)
         chosen = np.array([value_class(i) for i in split_inp[:n_columns]])
     print("{} = [{}]".format(pretty_name, ', '.join([str(c) for c in chosen])))
+    last_selections.append(message, chosen, consistant_length)
     return chosen
 
 
-def select_value(pretty_name, default, value_class=np.float):
-    print("Select {}".format(pretty_name))
-    print("Typical {} is {}".format(pretty_name, str(default)))
-    inp = input('{} (enter for typical)= '.format(pretty_name))
+def select_value(pretty_name, default, value_class=np.float, consistant_length=-1):
+    message = f"Select {pretty_name}\n"
+    message += f"Typical {pretty_name} is {default}\n"
+    message += f'{pretty_name} (enter for typical)= '
+    # check for an existing rsponse
+    prepared_response = pre_selections[message]
+    if prepared_response is not None:
+        return prepared_response
+    inp = input(message)
     if inp == '':
         chosen = default
     else:
         chosen = value_class(inp)
     print("{} = {}".format(pretty_name, str(chosen)))
+    last_selections.append(message, chosen, consistant_length)
     return chosen

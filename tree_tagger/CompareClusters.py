@@ -729,8 +729,9 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
                      fill_color=bokeh.transform.transform('colour', mapper),
                      fill_alpha='alpha', line_alpha='alpha',
                      marker=markers, legend_group=marker_key)
-            p.legend.click_policy = "hide"
-            p.legend.location = "bottom_left"
+            #p.legend.click_policy = "hide"
+            #p.legend.location = "bottom_left"
+            p.legend.visible = False
             plots[-1].append(p)
         # add a colour bar to the last plot only
         colour_bar = bokeh.models.ColorBar(color_mapper=mapper, location=(0, 0),
@@ -1455,7 +1456,7 @@ class Records:
         column_order = sorted(self.indices, key=self.indices.__getitem__)
         for jid in jet_ids:
             donated = donor_records.remove(jid)
-            new_line = [donated[name] for name in column_order]
+            new_line = [donated.get(name, None) for name in column_order]
             self.content.append(new_line)
         self.write()
         donor_records.write()

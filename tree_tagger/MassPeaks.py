@@ -20,7 +20,7 @@ def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
     pt = eventWise.match_indices(jet_name+'_PT', root_name, input_name)[jet_idxs[valid]]
     valid = valid[pt.flatten() > min_jet_PT]
     return jet_idxs[valid]
-    
+
 
 def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
     assert eventWise.selected_index is not None
@@ -81,7 +81,7 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
         return pairs
 
 
-def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
+def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     pair_masses = []
@@ -95,21 +95,39 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
             continue
         masses = jet_mass(eventWise, jet_name, pairs)
         pair_masses += (masses[::2] + masses[1::2]).tolist()
+    return pair_masses
+
+
+def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, show=True):
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
+    all_masses = []
+    for event_n in range(n_events):
+        if event_n % 100 == 0:
+            print(f"{100*event_n/n_events}%", end='\r')
+        eventWise.selected_index = event_n
+        tagged_jets = [i for i, t in getattr(eventWise, jet_name + "_Tags") if len(t)]
+        tagged_jets = filter(eventWise, jet_name, tagged_jets, track_cut=2, min_jet_PT=jet_pt_cut)
+        if not tagged_jets:
+            continue
+        all_masses.append(jet_mass(eventWise, jet_name, tagged_jets))
+    return all_masses
+
+
+def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
+    pair_masses = all_smallest_angles(eventWise, jet_name, jet_pt_cut)
+    n_events = len(pair_masses)
     plt.hist(pair_masses, bins=50, label="Masses of single jets at smallest angles")
     plt.title("Masses of pair of single jets at smallest angles")
     plt.xlabel("Mass (GeV)")
     plt.ylabel(f"Counts in {n_events} events")
     if show:
         plt.show()
-            
 
-def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
+
+def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
-    #fig, ax_array = plt.subplots(3, 3)
-    fig, ax_array = plt.subplots(1, 3)
-    ax_array = ax_array.flatten()
-    PlottingTools.discribe_jet(eventWise, jet_name, ax_array[-1])
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
     pairs = [list(pair) for pair in itertools.combinations(range(4), 2)]
@@ -128,6 +146,17 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
         for i, pair in enumerate(pairs):
             if max(pair) < n_jets:
                 pair_masses[i].append(jet_mass(eventWise, jet_name, sorted_idx[pair]))
+    return all_masses, pairs, pair_masses
+
+
+def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
+    all_masses, pairs, pair_masses = all_PT_pairs(eventWise, jet_name, jet_pt_cut)
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
+    fig, ax_array = plt.subplots(3, 3)
+    #fig, ax_array = plt.subplots(1, 3)
+    ax_array = ax_array.flatten()
+    PlottingTools.discribe_jet(eventWise, jet_name, ax_array[-1])
     heavy, light = descendants_masses(eventWise)
     label = [jet_name, "heavy descendants", "light descendants"]
     #for ax, pair, masses in zip(ax_array, pairs, pair_masses):
@@ -152,7 +181,7 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
     return all_masses, pair_masses
 
 
-def plot_doubleTagged_jets(eventWise, jet_name, show=True):
+def all_doubleTagged_jets(eventWise, jet_name):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = []
@@ -165,6 +194,13 @@ def plot_doubleTagged_jets(eventWise, jet_name, show=True):
         if len(tagged_idxs) == 0:
             continue
         masses += jet_mass(eventWise, jet_name, tagged_idxs).tolist()
+    return masses
+
+
+def plot_doubleTagged_jets(eventWise, jet_name, show=True):
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
+    masses = all_doubleTagged_jets(eventWise, jet_name)
     plt.hist(masses, bins=50, label="Masses of fat jets")
     plt.title("Masses of fat jets")
     plt.xlabel("Mass (GeV)")
