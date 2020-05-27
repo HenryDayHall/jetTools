@@ -1720,7 +1720,7 @@ class Records:
                 try:
                     best_width, quality_fraction = JetQuality.quality_width_fracton(eventWise, name, mass_of_obj=40.)
                 except RuntimeError:
-                    best_width = quality_fraction = np.nan
+                    best_width = quality_fraction = None
                 row[self.indices["quality_width"]] = best_width
                 row[self.indices["quality_fraction"]] = quality_fraction
                 # but the symetric difernce for phi should be angular
