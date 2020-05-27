@@ -36,11 +36,15 @@ def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_fun
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut)
+    if len(masses) == 0:
+        msg = f"No masses from {n_events} events"
+        raise RuntimeError(msg)
     window = multiplier*mass_of_obj
     ends = np.searchsorted(masses, masses+window)
     counts = ends - np.arange(len(ends))
     fraction = n_events/np.max(counts)
     return fraction
+
 
 def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multiplier=125.,
                           mass_function='highest pt pair', jet_pt_cut=20.):
@@ -48,6 +52,9 @@ def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multi
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut)
+    if len(masses) == 0:
+        msg = f"No masses from {n_events} events"
+        raise RuntimeError(msg)
     # width
     target_counts = int(np.ceil(fraction*n_events))
     if target_counts > len(masses):

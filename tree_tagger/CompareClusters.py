@@ -1717,7 +1717,10 @@ class Records:
                 row[self.indices["s_distance"]] = np.mean(s)
                 row[self.indices["distance_to_HiggsMass"]] = np.mean(dist_to_hmass)
                 row[self.indices["distance_to_LightMass"]] = np.mean(dist_to_lmass)
-                best_width, quality_fraction = JetQuality.quality_width_fracton(eventWise, name, mass_of_obj=40.)
+                try:
+                    best_width, quality_fraction = JetQuality.quality_width_fracton(eventWise, name, mass_of_obj=40.)
+                except RuntimeError:
+                    best_width = quality_fraction = np.nan
                 row[self.indices["quality_width"]] = best_width
                 row[self.indices["quality_fraction"]] = quality_fraction
                 # but the symetric difernce for phi should be angular
