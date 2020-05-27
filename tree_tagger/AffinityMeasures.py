@@ -11,7 +11,9 @@ import attrdict
 import ast
 
 
-def component_deltaR(rapidity, phi):
+# helper functions
+
+def get_deltaR_grid(rapidity, phi):
     rapidity_dist2 = scipy.spatial.distance.pdist(rapidity.reshape((-1, 1)), metric='sqeuclidean')
     if rapidity_dist2.shape[0] == 0:
         # no elements
@@ -23,12 +25,7 @@ def component_deltaR(rapidity, phi):
     return affinities_grid
 
 
-def deltaR(particle_collection):
-    affinities_grid = component_deltaR(particle_collection.JetInputs_Rapidity, particle_collection.JetInputs_Phi)
-    return affinities_grid
-
-
-def angle(particle_collection):
+def get_angle_grid(particle_collection):
     phi = particle_collection.JetInputs_Phi
     phi_dist = scipy.spatial.distance.pdist(phi.reshape((-1,1)))
     rapidity = particle_collection.JetInputs_Rapidity
@@ -38,62 +35,8 @@ def angle(particle_collection):
     angle[angle<-0.5*np.pi] = np.pi + angle[angle>np.pi]
     return angle
 
-def mean_PT(particle_collection):
-    pt = particle_collection.JetInputs_PT
-    return angle
 
-
-
-def sum_deltaR_tohard(particle_collection):
-    hardest_idx = np.argmax(particle_collection.JetInputs_PT)
-    rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - particle_collection.JetInputs_Rapidity[hardest_idx])
-    phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - particle_collection.JetInputs_Phi[hardest_idx]))
-    phi_dist = Components.raw_to_angular_distance(phi_dist)
-    dist = np.sqrt(phi_dist**2 + rapidity_dist2).reshape((-1, 1))
-    affinities_grid = scipy.spatial.distance.pdist(dist, metric=sum)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
-def sum_deltaR_tocentre(particle_collection):
-    centre = [np.sum(particle_collection.JetInputs_Energy),
-              np.sum(particle_collection.JetInputs_Px),
-              np.sum(particle_collection.JetInputs_Py),
-              np.sum(particle_collection.JetInputs_Pz)]
-    phi, pt = Components.pxpy_to_phipt(centre[1], centre[2])
-    rapidity = Components.ptpze_to_rapidity(pt, centre[3], centre[0])
-    rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - rapidity)
-    phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - phi))
-    phi_dist = Components.raw_to_angular_distance(phi_dist)
-    dist = np.sqrt(phi_dist**2 + rapidity_dist2).reshape((-1, 1))
-    affinities_grid = scipy.spatial.distance.pdist(dist, metric=sum)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
-def horrizontal_from_line(particle_collection):
-    dr = deltaR(particle_collection)
-    sdrtc = sum_deltaR_tocentre(particle_collection)
-    line = -0.06848*dr*dr + 0.8278*dr + 0.6873
-    return np.abs(line - sdrtc)
-
-
-def deltaR2_minus_displacement(particle_collection):
-    dr = deltaR(particle_collection)
-    sdrtc = sum_deltaR_tocentre(particle_collection)
-    line = -0.06848*dr*dr + 0.8278*dr + 0.6873
-    return dr*dr - np.abs(line - sdrtc)
-
-
-def distance_from_points(particle_collection):
-    dr = deltaR(particle_collection)
-    sdrtc = sum_deltaR_tocentre(particle_collection)
-    log_to_00 = np.log(np.sqrt(dr*dr + sdrtc*sdrtc)+0.1)
-    past_1 = 2*np.sqrt(dr*dr + np.clip(1-sdrtc, 0, None)**2)
-    return log_to_00 + past_1
-
-
-def get_CoM(particle_collection):
+def get_CoM_repr(particle_collection):
     four_vectors = np.vstack((particle_collection.JetInputs_Energy,
                               particle_collection.JetInputs_Px,
                               particle_collection.JetInputs_Py,
@@ -106,46 +49,11 @@ def get_CoM(particle_collection):
     return new_four_vectors
 
 
-def CoM_deltaR(particle_collection):
-    four_vectors = np.vstack((particle_collection.JetInputs_Energy,
-                              particle_collection.JetInputs_Px,
-                              particle_collection.JetInputs_Py,
-                              particle_collection.JetInputs_Pz))
-    invarient_masses2 = four_vectors[0]**2 - np.sum(four_vectors[1:]**2, axis=0)
-    boost = -np.sum(four_vectors[1:], axis=1)
-    new_three_vectors = four_vectors[1:] + boost.reshape((-1, 1))
-    new_energies2 = invarient_masses2 + np.sum(new_three_vectors**2, axis=0)
-    new_four_vectors = np.vstack((np.sqrt(new_energies2), new_three_vectors))
-    phi, pt = Components.pxpy_to_phipt(new_four_vectors[1], new_four_vectors[2])
-    rapidity = Components.ptpze_to_rapidity(pt, new_four_vectors[3], new_four_vectors[0])
-    rapidity_dist2 = scipy.spatial.distance.pdist(rapidity.reshape((-1, 1)), metric='sqeuclidean')
-    phi_dist = scipy.spatial.distance.pdist(phi.reshape((-1, 1)), metric='euclidean')
-    phi_dist = Components.raw_to_angular_distance(phi_dist)
-    affinities_grid = np.sqrt(phi_dist**2 + rapidity_dist2)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
-def num_shared(array1, array2):
+def count_shared(array1, array2):
     return np.intersect1d(array1, array2).shape[0]
 
 
-def mutual_neighbours(particle_collection, num_neighbours=10):
-    """ count of how many points are mututaly most proximate """
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 2:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    keep = num_neighbours + 1
-    neighbours = np.array([np.argsort(row)[1:keep]
-                           for row in proximites_grid])
-    affinities_grid = scipy.spatial.distance.pdist(neighbours, num_shared)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    affinities_grid /= total_particles
-    return affinities_grid
-
-
-def rank_shared(array1, array2):
+def score_rank_shared(array1, array2):
     array1 = [x for x in array1 if x in array2]
     array2 = [x for x in array2 if x in array1]
     if not array1:
@@ -155,72 +63,26 @@ def rank_shared(array1, array2):
     score, _ = scipy.stats.spearmanr(array1, array2)
     return score
 
-    
-def ordered_neighbours(particle_collection, num_neighbours=20):
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 2:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    keep = num_neighbours + 1
-    neighbours = np.array([np.argsort(row)[1:keep]
-                           for row in proximites_grid])
-    percent_match = scipy.spatial.distance.pdist(neighbours, num_shared)/num_neighbours
-    rank_score = scipy.spatial.distance.pdist(neighbours, rank_shared)
-    affinities_grid = scipy.spatial.distance.squareform(percent_match*rank_score)
-    return affinities_grid
+
+def sum_shared(array1, array2, var):
+    return np.sum(var[np.intersect1d(array1, array2)])
 
 
-def PT_shared(array1, array2, pts):
-    return np.sum(pts[np.intersect1d(array1, array2)])
-
-
-def mutual_neighbour_PT(particle_collection, num_neighbours=10):
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 2:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    keep = num_neighbours + 1
-    neighbours = np.array([np.argsort(row)[1:keep]
-                           for row in proximites_grid])
-    pts = particle_collection.JetInputs_PT
-    affinities_grid = scipy.spatial.distance.pdist(neighbours, PT_shared, pts=pts)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
-def closest_third(deltaRs1, deltaRs2):
+def find_closest_third(deltaRs1, deltaRs2):
+    # a thing has 0 deltaR to itself
     third_idxs = np.logical_and(deltaRs1 != 0, deltaRs2 != 0)
     return np.min(deltaRs1[third_idxs] + deltaRs2[third_idxs])
 
 
-def thirdparty_distance(particle_collection):
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 3:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
 def closest_third_diff(deltaRs1, deltaRs2):
+    # a thing has 0 deltaR to itself
     third_idxs = np.logical_and(deltaRs1 != 0, deltaRs2 != 0)
     idx = np.argmin(deltaRs1[third_idxs] + deltaRs2[third_idxs])
     sign = 1 - 2*(np.sum(deltaRs1) > np.sum(deltaRs2))
     return np.abs(deltaRs1[idx] - deltaRs2[idx])*sign
 
 
-def thirdparty_distancediff(particle_collection):
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 3:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_diff)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
-def area_ptratio(deltaRs1, deltaRs2, pts):
+def close_pt_ratio(deltaRs1, deltaRs2, pts):
     mask1 = deltaRs1 != 0
     pt1 = np.sum(pts[mask1]/deltaRs1[mask1])
     mask2 = deltaRs2 != 0
@@ -229,17 +91,6 @@ def area_ptratio(deltaRs1, deltaRs2, pts):
         return pt1/pt2
     else:
         return pt2/pt1
-
-
-def localarea_ptratio(particle_collection):
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 3:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    pts = particle_collection.JetInputs_PT
-    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, area_ptratio, pts=pts)
-    affinities_grid = scipy.spatial.distance.squareform(np.log(affinities_grid))
-    return affinities_grid
 
 
 def closest_third_anglediff(deltaRs1, deltaRs2, rapidities, phis, pts):
@@ -270,21 +121,7 @@ def closest_third_anglediff(deltaRs1, deltaRs2, rapidities, phis, pts):
         return angle2 - angle1
 
 
-def thirdparty_anglediff(particle_collection):
-    total_particles = len(particle_collection.JetInputs_Energy)
-    if total_particles < 3:
-        return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
-    pts = particle_collection.JetInputs_PT
-    phis = particle_collection.JetInputs_Phi
-    rapidities = particle_collection.JetInputs_Rapidity
-    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_anglediff,
-                                                   pts=pts, phis=phis, rapidities=rapidities)
-    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
-    return affinities_grid
-
-
-def third_anglespreaddiff(deltaRs1, deltaRs2, rapidities, phis, pts):
+def closest_third_anglespreaddiff(deltaRs1, deltaRs2, rapidities, phis, pts):
     idx1 = deltaRs1 == 0
     idx2 = deltaRs2 == 0
     third_idxs = np.logical_and(~idx1, ~idx2)
@@ -313,30 +150,209 @@ def third_anglespreaddiff(deltaRs1, deltaRs2, rapidities, phis, pts):
         return varience2 - varience1
 
 
-def thirdparty_anglespread(particle_collection):
+
+# affinity measures
+
+def aff_deltaR(particle_collection):
+    affinities_grid = get_deltaR_grid(particle_collection.JetInputs_Rapidity, particle_collection.JetInputs_Phi)
+    return affinities_grid
+
+
+def aff_deltaR_tohard(particle_collection):
+    hardest_idx = np.argmax(particle_collection.JetInputs_PT)
+    rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - particle_collection.JetInputs_Rapidity[hardest_idx])
+    phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - particle_collection.JetInputs_Phi[hardest_idx]))
+    phi_dist = Components.raw_to_angular_distance(phi_dist)
+    dist = np.sqrt(phi_dist**2 + rapidity_dist2).reshape((-1, 1))
+    affinities_grid = scipy.spatial.distance.pdist(dist, metric=sum)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
+
+
+def aff_deltaR_tocentre(particle_collection):
+    centre = [np.sum(particle_collection.JetInputs_Energy),
+              np.sum(particle_collection.JetInputs_Px),
+              np.sum(particle_collection.JetInputs_Py),
+              np.sum(particle_collection.JetInputs_Pz)]
+    phi, pt = Components.pxpy_to_phipt(centre[1], centre[2])
+    rapidity = Components.ptpze_to_rapidity(pt, centre[3], centre[0])
+    rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - rapidity)
+    phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - phi))
+    phi_dist = Components.raw_to_angular_distance(phi_dist)
+    dist = np.sqrt(phi_dist**2 + rapidity_dist2).reshape((-1, 1))
+    affinities_grid = scipy.spatial.distance.pdist(dist, metric=sum)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
+
+
+def aff_horrizontal_from_line(particle_collection):
+    dr = aff_deltaR(particle_collection)
+    sdrtc = aff_deltaR_tocentre(particle_collection)
+    line = -0.06848*dr*dr + 0.8278*dr + 0.6873
+    return np.abs(line - sdrtc)
+
+
+def aff_deltaR2_minus_displacement(particle_collection):
+    dr = aff_deltaR(particle_collection)
+    sdrtc = aff_deltaR_tocentre(particle_collection)
+    line = -0.06848*dr*dr + 0.8278*dr + 0.6873
+    return dr*dr - np.abs(line - sdrtc)
+
+
+def aff_CoM_deltaR(particle_collection):
+    four_vectors = np.vstack((particle_collection.JetInputs_Energy,
+                              particle_collection.JetInputs_Px,
+                              particle_collection.JetInputs_Py,
+                              particle_collection.JetInputs_Pz))
+    invarient_masses2 = four_vectors[0]**2 - np.sum(four_vectors[1:]**2, axis=0)
+    boost = -np.sum(four_vectors[1:], axis=1)
+    new_three_vectors = four_vectors[1:] + boost.reshape((-1, 1))
+    new_energies2 = invarient_masses2 + np.sum(new_three_vectors**2, axis=0)
+    new_four_vectors = np.vstack((np.sqrt(new_energies2), new_three_vectors))
+    phi, pt = Components.pxpy_to_phipt(new_four_vectors[1], new_four_vectors[2])
+    rapidity = Components.ptpze_to_rapidity(pt, new_four_vectors[3], new_four_vectors[0])
+    rapidity_dist2 = scipy.spatial.distance.pdist(rapidity.reshape((-1, 1)), metric='sqeuclidean')
+    phi_dist = scipy.spatial.distance.pdist(phi.reshape((-1, 1)), metric='euclidean')
+    phi_dist = Components.raw_to_angular_distance(phi_dist)
+    affinities_grid = np.sqrt(phi_dist**2 + rapidity_dist2)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
+
+
+def aff_mutual_ns(particle_collection, num_neighbours=10):
+    """ count of how many points are mututaly most proximate """
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 2:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
+    keep = num_neighbours + 1
+    neighbours = np.array([np.argsort(row)[1:keep]
+                           for row in proximites_grid])
+    affinities_grid = scipy.spatial.distance.pdist(neighbours, count_shared)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    affinities_grid /= total_particles
+    return affinities_grid
+
+    
+def aff_score_rank_ns(particle_collection, num_neighbours=20):
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 2:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
+    keep = num_neighbours + 1
+    neighbours = np.array([np.argsort(row)[1:keep]
+                           for row in proximites_grid])
+    percent_match = scipy.spatial.distance.pdist(neighbours, count_shared)/num_neighbours
+    rank_score = scipy.spatial.distance.pdist(neighbours, score_rank_shared)
+    affinities_grid = scipy.spatial.distance.squareform(percent_match*rank_score)
+    return affinities_grid
+
+
+def aff_mutual_ns_PT(particle_collection, num_neighbours=10):
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 2:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
+    keep = num_neighbours + 1
+    neighbours = np.array([np.argsort(row)[1:keep]
+                           for row in proximites_grid])
+    pts = particle_collection.JetInputs_PT
+    affinities_grid = scipy.spatial.distance.pdist(neighbours, sum_shared, var=pts)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
+
+
+def aff_thirdp_distance(particle_collection):
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
-    proximites_grid = deltaR(particle_collection)
+    proximites_grid = aff_deltaR(particle_collection)
+    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, find_closest_third)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
+
+
+def aff_thirdp_distancediff(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 3:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
+    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_diff)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
+
+
+def aff_close_pt_ratio(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 3:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
+    pts = particle_collection.JetInputs_PT
+    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, close_pt_ratio, pts=pts)
+    affinities_grid = scipy.spatial.distance.squareform(np.log(affinities_grid))
+    return affinities_grid
+
+
+def aff_thirdp_anglediff(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 3:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
     pts = particle_collection.JetInputs_PT
     phis = particle_collection.JetInputs_Phi
     rapidities = particle_collection.JetInputs_Rapidity
-    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, third_anglespreaddiff,
+    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_anglediff,
                                                    pts=pts, phis=phis, rapidities=rapidities)
     affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
     return affinities_grid
 
 
-affinity_choices = {"deltaR": deltaR, "CoM_deltaR": CoM_deltaR,
-                    "sum_deltaR_tohard": sum_deltaR_tohard, "sum_deltaR_tocentre": sum_deltaR_tocentre,
-                    "horrizontal_from_line": horrizontal_from_line, "deltaR2_minus_displacement": deltaR2_minus_displacement,
-                    "distance_from_points": distance_from_points,
-                    "mutual_neighbours": mutual_neighbours, "ordered_neighbours": ordered_neighbours, 
-                    "mutual_neighbour_PT": mutual_neighbour_PT, "thirdparty_distance": thirdparty_distance,
-                    "thirdparty_distancediff": thirdparty_distancediff, "localarea_ptratio": localarea_ptratio,
-                    "thirdparty_anglediff": thirdparty_anglediff, "thirdparty_anglespread": thirdparty_anglespread}
+def aff_thirdp_anglespread(particle_collection):
+    total_particles = len(particle_collection.JetInputs_Energy)
+    if total_particles < 3:
+        return np.zeros((0, 0))
+    proximites_grid = aff_deltaR(particle_collection)
+    pts = particle_collection.JetInputs_PT
+    phis = particle_collection.JetInputs_Phi
+    rapidities = particle_collection.JetInputs_Rapidity
+    affinities_grid = scipy.spatial.distance.pdist(proximites_grid, closest_third_anglespreaddiff,
+                                                   pts=pts, phis=phis, rapidities=rapidities)
+    affinities_grid = scipy.spatial.distance.squareform(affinities_grid)
+    return affinities_grid
 
-# PLotting code
+
+affinity_choices = {"deltaR": aff_deltaR,
+                    "deltaR_tohard": aff_deltaR_tohard,
+                    "deltaR_tocentre": aff_deltaR_tocentre,
+                    "horrizontal_from_line": aff_horrizontal_from_line,
+                    "deltaR2_minus_displacement": aff_deltaR2_minus_displacement,
+                    "CoM_deltaR": aff_CoM_deltaR,
+                    "mutual_ns": aff_mutual_ns,
+                    "score_rank_ns": aff_score_rank_ns,
+                    "mutual_ns_PT": aff_mutual_ns_PT,
+                    "thirdp_distance": aff_thirdp_distance,
+                    "thirdp_distancediff": aff_thirdp_distancediff,
+                    "close_pt_ratio": aff_close_pt_ratio,
+                    "thirdp_anglediff": aff_thirdp_anglediff,
+                    "thirdp_anglespread": aff_thirdp_anglespread}
+
+# from paper
+
+def aff_original_JADE(particle_collection):
+    four_vectors = np.vstack((particle_collection.JetInputs_Energy,
+                              particle_collection.JetInputs_Px,
+                              particle_collection.JetInputs_Py,
+                              particle_collection.JetInputs_Pz)).T
+    combined = scipy.spatial.distance.pdist(four_vectors, sum)
+    invar_s2 = combined[:, :, 0]**2 - np.sum(combined[:, :, 1:]**2, axis=2)
+    CoM = np.sum(four_vectors, axis=0)
+    CoM_s2 = CoM[0]**2 - np.sum(CoM[1:]**2)
+    affinities_grid = invar_s2/CoM_s2
+    return affinities_grid
+    
+
+
+# Plotting code
 
 def bins_extent(values, max_bins=20):
     # values must be flat

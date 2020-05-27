@@ -8,7 +8,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower, JetQuality
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -630,7 +630,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
 
     """
     array = records.typed_array()[records.scored]
-    col_names = ["s_distance", "bdecendant_tpr", "bdecendant_fpr", "distance_to_HiggsMass", "distance_to_LightMass"]
+    col_names = ["s_distance", "bdecendant_tpr", "bdecendant_fpr", "distance_to_HiggsMass", "distance_to_LightMass", "quality_width", "quality_fraction"]
     # filter anything that scored too close to zero in pt or rapidity
     # these are soem kind of bug
     small = 0.001
@@ -1260,7 +1260,8 @@ class Records:
                           "s_distance", 
                           "njets", "percentfound", 
                           "bdecendant_tpr", "bdecendant_fpr",
-                          "distance_to_HiggsMass", "distance_to_LightMass")
+                          "distance_to_HiggsMass", "distance_to_LightMass",
+                          "quality_width", "quality_fraction")
     ignore_h_parameters = ['RescaleEnergy']
     def __init__(self, file_path):
         self.file_path = file_path
@@ -1716,6 +1717,9 @@ class Records:
                 row[self.indices["s_distance"]] = np.mean(s)
                 row[self.indices["distance_to_HiggsMass"]] = np.mean(dist_to_hmass)
                 row[self.indices["distance_to_LightMass"]] = np.mean(dist_to_lmass)
+                best_width, quality_fraction = JetQuality.quality_width_fracton(eventWise, name, mass_of_obj=40.)
+                row[self.indices["quality_width"]] = best_width
+                row[self.indices["quality_fraction"]] = quality_fraction
                 # but the symetric difernce for phi should be angular
                 try:
                     row[self.indices["symmetric_diff(PT)"]] = np.mean(syd[:, coords["PT"]])
