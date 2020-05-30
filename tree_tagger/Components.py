@@ -664,14 +664,14 @@ class EventWise:
             else:
                 new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
                 new_contents.append(new_content)
-        unchanged_parts = {k: self._column_contents[k][:] for k in self._column_contents.keys()
-                           if k not in per_event_cols}
         no_dups = kwargs.get('no_dups', True)  # if no dupes only put the unchanged content in the first event
         all_paths = []
         i = 0
         add_unsplit = True
         # add the hyperparameters to all things...
         hyper_param_dict = {name: self._column_contents[name] for name in self.hyperparameter_columns}
+        unchanged_parts = {k: self._column_contents[k][:] for k in self._column_contents.keys()
+                           if k not in per_event_cols and k not in hyper_param_dict}
         for new_content in new_contents:
             if new_content is None:
                 all_paths.append(None)
@@ -1580,7 +1580,7 @@ def check_even_length(eventWise, interactive=True, raise_error=False, ignore_pre
             if interactive:
                 print(problem)
                 remove = InputTools.yesNo_question("Remove this column? ")
-                apply_to_prefix = InputTools.yesNo_question("Apply this choice to all columns with prefix '{prefix}'? ")
+                apply_to_prefix = InputTools.yesNo_question(f"Apply this choice to all columns with prefix '{prefix}'? ")
                 ask_apply_same_choice += 1
                 if ask_apply_same_choice % 5 == 0:
                     interactive = not InputTools.yesNo_question("Do you want to apply this choice to all future columns? ")
