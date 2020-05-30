@@ -59,7 +59,7 @@ def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multi
     target_counts = int(np.ceil(fraction*n_events))
     if target_counts > len(masses):
         target_counts = len(masses)
-    widths = masses[target_counts:] - masses[:-target_counts]
+    widths = masses[target_counts-1:] - masses[:1-target_counts]
     best_width = np.min(widths)
     # fraction
     window = multiplier*mass_of_obj
