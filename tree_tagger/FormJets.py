@@ -143,7 +143,7 @@ class PseudoJet:
         """ """
         pt_col  = self._PT_col 
         # caluclate invarint mass here!
-        leaves = self.Child1 == -1
+        leaves = np.where(self.Child1 == -1)
         sum_energies = sum(row[self._Energy_col] for row in self._floats[leaves])
         sum_p2 = sum(row[pt_col]**2 + row[self._Pz_col] for row in self._floats[leaves])
         invarient_mass = np.sqrt(sum_energies**2 - sum_p2)
