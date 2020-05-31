@@ -26,7 +26,6 @@ class PseudoJet:
                      "Pseudojet_JoinDistance"]
     def __init__(self, eventWise, selected_index=None, jet_name='PseudoJet', from_PseudoRapidity=False,
                  ints_floats=None, **kwargs):
-        #print('init_psu', end='\r', flush=True)
         # jets can have a varient name
         # this allows multiple saves in the same file
         self.jet_name = jet_name
@@ -143,13 +142,19 @@ class PseudoJet:
     def _define_physical_distance(self):
         """ """
         pt_col  = self._PT_col 
+        # caluclate invarint mass here!
+        leaves = self.Child1 == -1
+        sum_energies = sum(row[self._Energy_col] for row in self._floats[leaves])
+        sum_p2 = sum(row[pt_col]**2 + row[self._Pz_col] for row in self._floats[leaves])
+        invarient_mass = np.sqrt(sum_energies**2 - sum_p2)
+        # set up a few more variables
         exponent_now = self.ExpofPTPosition == 'input'
         exponent = self.ExpofPTMultiplier * 2
         deltaR2 = self.DeltaR**2
         # same for everything but Luclus
         if exponent_now:
             def beam_distance2(row):
-                return deltaR2 * row[pt_col]**exponent
+                return deltaR2 * row[pt_col]**exponent * invarient_mass**-exponent
         else:
             def beam_distance2(row):
                 return deltaR2
@@ -174,10 +179,10 @@ class PseudoJet:
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
                 distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
                 if exponent_now:
-                    distance2 *= (row[pt_col]**exponent)* (column[pt_col]**exponent) *\
+                    distance2 *= (invarient_mass**-exponent)*(row[pt_col]**exponent)* (column[pt_col]**exponent) *\
                                  (row[pt_col] + column[pt_col])**-exponent
                 return distance2
-            def beam_distance2(_):
+            def beam_distance2(row):
                 return deltaR2
         elif self.Invarient == 'invarient':
             px_col = self._Px_col 
@@ -204,7 +209,7 @@ class PseudoJet:
                              - row[py_col]*column[py_col]
                              - row[pz_col]*column[pz_col])
                 if exponent_now:
-                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) * invarient_mass**-exponent
                 return distance2
         elif self.Invarient == 'normed':
             px_col  = self._Px_col 
@@ -234,7 +239,7 @@ class PseudoJet:
                 column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])
                 distance2 = 1. - np.sum(row_3vec*column_3vec)/energies
                 if exponent_now:
-                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) * invarient_mass**-exponent
                 return distance2
         elif self.Invarient == 'angular':
             rap_col = self._Rapidity_col
@@ -257,7 +262,7 @@ class PseudoJet:
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
                 distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
                 if exponent_now:
-                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent)
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) * invarient_mass**-exponent
                 return distance2
         else:
             raise ValueError(f"Don't recognise {self.Invarient} as an Invarient")
