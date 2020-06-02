@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import scipy.spatial
 #import debug
 from ipdb import set_trace as st
-from tree_tagger import Constants, Components, FormShower, PlottingTools
+from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTag
 
 
 def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
@@ -125,8 +125,10 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
         plt.show()
 
 
-def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None):
+def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
     eventWise.selected_index = None
+    if jet_name + "_Tags" not in eventWise.columns:
+        TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf, jet_pt_cut=jet_pt_cut)
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
@@ -149,8 +151,8 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None):
     return all_masses, pairs, pair_masses
 
 
-def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True):
-    all_masses, pairs, pair_masses = all_PT_pairs(eventWise, jet_name, jet_pt_cut)
+def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True, max_tag_angle=None):
+    all_masses, pairs, pair_masses = all_PT_pairs(eventWise, jet_name, jet_pt_cut, max_tag_angle=max_tag_angle)
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     fig, ax_array = plt.subplots(3, 3)

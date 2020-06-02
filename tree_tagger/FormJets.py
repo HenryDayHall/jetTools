@@ -1113,13 +1113,13 @@ class Spectral(PseudoJet):
         rap_col = self._Rapidity_col
         phi_col = self._Phi_col
         # future calculatins will depend on the starting positions
-        self._starting_position = np.array([self._floats[row][:] for row
+        starting_position = np.array([self._floats[row][:] for row
                                             in range(self.currently_avalible)])
         if self.beam_particle:
             # the beam particles dosn't have a real location,
             # but to preserve the dimensions of future calculations, add it in
-            self._starting_position = np.vstack((self._starting_position,
-                                                 np.ones(len(self.float_columns))))
+            starting_position = np.vstack((self._starting_position,
+                                          np.ones(len(self.float_columns))))
             # it is added to the end so as to maintain the indices
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
@@ -1135,7 +1135,7 @@ class Spectral(PseudoJet):
                 physical_distances2[row, column] = distance2
         if self.beam_particle:
             # the last row and column should give the distance of each particle to the beam
-            physical_distances2[-1, :] = [self.beam_distance2(row) for row in self._starting_position]
+            physical_distances2[-1, :] = [self.beam_distance2(row) for row in starting_position]
             physical_distances2[:, -1] = physical_distances2[-1, :]
         np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
@@ -1543,6 +1543,164 @@ class Spectral(PseudoJet):
         else:
             self._merge_pseudojets(row, column, self._distances2[row, column])
         return removed
+
+
+class Splitting(Spectral):
+    """ """
+    # list the params with default values
+    param_list = {'NumEigenvectors': np.inf,
+                  'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
+                  'AffinityType': 'exponent', 'AffinityCutoff': None,
+                  'Laplacien': 'unnormalised',
+                  'Invarient': 'angular'}
+    permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'ExpofPTPosition': ['input', 'eigenspace'],
+                       'ExpofPTMultiplier': Constants.numeric_classes['rn'],
+                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
+                       'Laplacien': ['unnormalised', 'symmetric'],
+                       'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
+    def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
+        self._define_calculate_affinity()
+        self.eigenvalues = []  # create a list to track the eigenvalues
+        super().__init__(eventWise, **kwargs)
+
+    def _calculate_distances(self):
+        """ """
+        n_distances = self.currently_avalible
+        if n_distances < 2:
+            self._distances2 = np.zeros((1, 1))
+            try:
+                self._eigenspace = np.zeros((1, self.NumEigenvectors))
+            except (ValueError, TypeError):
+                self._eigenspace = np.zeros((1, 1))
+            return np.zeros(n_distances).reshape((n_distances, n_distances))
+        # to start with create a 'normal' distance measure
+        # this can be based on any of the three algorithms
+        physical_distances2 = np.zeros((n_distances, n_distances))
+        # for speed, make local variables
+        pt_col  = self._PT_col 
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        # future calculatins will depend on the starting positions
+        starting_position = np.array([self._floats[row][:] for row
+                                      in range(self.currently_avalible)])
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance2 = physical_distances2[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance2 = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
+                physical_distances2[row, column] = distance2
+        if self.beam_particle:
+            # the last row and column should give the distance of each particle to the beam
+            physical_distances2[-1, :] = [self.beam_distance2(row) for row in starting_position]
+            physical_distances2[:, -1] = physical_distances2[-1, :]
+        np.fill_diagonal(physical_distances2, 0.)
+        # now we are in posessio of a standard distance matrix for all points,
+        # we can make an affinity calculation, which we will need
+        self._affinity = self.calculate_affinity(physical_distances2)
+        # a graph laplacien can be calculated
+        np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
+        if np.sum(np.abs(self._affinity)) == 0.:
+            # everything is seperated
+            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
+                                      self._ints[:self.currently_avalible]]
+            self.currently_avalible = 0
+            return
+        diagonal = np.diag(np.sum(self._affinity, axis=1))
+        if self.Laplacien == 'unnormalised':
+            laplacien = diagonal - self._affinity
+        elif self.Laplacien == 'symmetric':
+            laplacien = diagonal - self._affinity
+            self.alt_diag = np.diag(diagonal)**(-0.5)
+            self.alt_diag[np.diag(diagonal) == 0] = 0.
+            diag_alt_diag = np.diag(self.alt_diag)
+            laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        else:
+            raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
+        # get the eigenvectors (we know the smallest will be identity)
+        try:
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(1, self.NumEigenvectors+1))
+        except (ValueError, TypeError):
+            # sometimes there are fewer eigenvalues avalible
+            # just take waht can be found
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+            eigenvalues = eigenvalues[1:]
+            eigenvectors = eigenvectors[:, 1:]
+        except Exception as e:
+            # display whatever caused this
+            print(f"Exception while processing event {self.eventwise.selected_index}")
+            print(f"With jet params; {self.jet_parameters}")
+            print(e)
+            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
+                                      self._ints[:self.currently_avalible]]
+            self.currently_avalible = 0
+            return
+        self.eigenvalues.append(eigenvalues.tolist())
+        # at the start the eigenspace positions are the eigenvectors
+        self._eigenspace = eigenvectors
+
+    def _remove_pseudojet(self, pseudojet_index):
+        """
+        
+
+        Parameters
+        ----------
+        pseudojet_index :
+            
+
+        Returns
+        -------
+
+        """
+        # move the first pseudojet to the back without replacement
+        pseudojet_ints = self._ints.pop(pseudojet_index)
+        pseudojet_floats = self._floats.pop(pseudojet_index)
+        self._ints.append(pseudojet_ints)
+        self._floats.append(pseudojet_floats)
+        # remove from the eigenspace
+        self._eigenspace = np.delete(self._eigenspace, (pseudojet_index), axis=0)
+        self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
+        # one less pseudojet avalible
+        self.currently_avalible -= 1
+
+    def _recalculate_one(self, remove_index, replace_index):
+        pass  # do nothing on a single merge
+
+    def _merge_complete_jet(self, input_indices):
+        # for now just merge in pairs
+        input_indices = sorted(input_indices)
+        replace = input_indices[0]
+        for remove in zip(input_indices[:0:-1]):
+            self._merge_pseudojets(replace, remove, 0)
+        self._remove_pseudojet(replace)
+
+    def _step_assign_parents(self):
+        """ """
+        # get the order of elements
+        order = np.argsort(self._eigenspace[:, 0])
+        outcomes = np.zeros(self.currently_avalible-1, dtype=float)
+        for split in range(1, self.currently_avalible-1):
+            in_group = order[:split]
+            out_group = order[split:]
+            numerator = np.sum(self._affinity[out_group][:, in_group])
+            if self.Laplacien == 'unnormalised':
+                denominator = split
+            elif self.Laplacien == 'symmetric':
+                denominator = np.sum(self._affinity[in_group][:, in_group])
+            outcomes[split] = numerator/denominator
+        st()
+        # use the split that minimises the outcome
+        split = np.argmin(outcomes) + 1
+        self._merge_complete_jet(order[:split])
+        return order[:split]
 
 
 class SpectralMean(Spectral):
