@@ -7,8 +7,8 @@ from ipdb import set_trace as st
 
 def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
                   jet_pt_cut=None, max_tag_angle=None):
-    if max_angle is None:
-        max_angle = Constants.max_tagangle
+    if max_tag_angle is None:
+        max_tag_angle = Constants.max_tagangle
     if jet_pt_cut is None:
         jet_pt_cut = Constants.min_jetpt
     if mass_function == 'highest pt pair':
@@ -53,8 +53,8 @@ def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_fun
 def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multiplier=125.,
                           mass_function='highest pt pair', jet_pt_cut=None, max_tag_angle=None):
     """ slightly faster to do both together """
-    if max_angle is None:
-        max_angle = Constants.max_tagangle
+    if max_tag_angle is None:
+        max_tag_angle = Constants.max_tagangle
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut, max_tag_angle=max_tag_angle)
