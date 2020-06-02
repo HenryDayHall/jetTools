@@ -27,6 +27,9 @@ def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt 
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     target_counts = int(np.ceil(fraction*n_events))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut, max_tag_angle=None)
+    if len(masses) < 2:
+        msg = f"Not enough masses from {n_events} events"
+        raise RuntimeError(msg)
     if target_counts > len(masses):
         msg = f"Cannot acheve a fraction of {fraction} with {len(masses)} masses from {n_events} events"
         raise RuntimeError(msg)
@@ -40,8 +43,8 @@ def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_fun
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut, max_tag_angle=max_tag_angle)
-    if len(masses) == 0:
-        msg = f"No masses from {n_events} events"
+    if len(masses) < 2:
+        msg = f"Not enough masses from {n_events} events"
         raise RuntimeError(msg)
     window = multiplier*mass_of_obj
     ends = np.searchsorted(masses, masses+window)
@@ -58,8 +61,8 @@ def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multi
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut, max_tag_angle=max_tag_angle)
-    if len(masses) == 0:
-        msg = f"No masses from {n_events} events"
+    if len(masses) < 2:
+        msg = f"Not enough masses from {n_events} events"
         raise RuntimeError(msg)
     # width
     target_counts = int(np.ceil(fraction*n_events))
