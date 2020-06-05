@@ -1721,30 +1721,37 @@ class Splitting(Spectral):
         # get the order of elements
         order = np.argsort(self._eigenspace[:, 0])
         n_splits = self.currently_avalible - 1
-        outcomes = np.zeros(n_splits, dtype=float)
+        # vector to store the results of calculating the ratiocut/ncut score
+        outcomes = np.empty(n_splits, dtype=float)
+        # if the laplacien is symmetric this is needed to find the flip point
         sum_affinity = np.sum(self._affinity)
-        post_flip = False
-        flip_point = None
-        for split in range(1, self.currently_avalible):
-            in_group = order[:split]
-            out_group = order[split:]
-            if post_flip:
+        # flip point is the element from which the 'inside' group is the trailing elements
+        post_flip = False  # switch for having found the flip point
+        flip_point = None  # index of the flip point
+        for split in range(1, self.currently_avalible):  # start at 1, as in after the 0th element
+            in_group = order[:split]  # in the jet
+            out_group = order[split:]  # yet to be sorted
+            if post_flip:  # in group and out group get switched after flip point has been reached
                 in_group, out_group = out_group, in_group
+            # numerator is the affinities that cross groups
             numerator = np.sum(self._affinity[out_group][:, in_group])
-            if self.Laplacien == 'unnormalised':
-                post_flip = split > 0.5*n_splits
+            if self.Laplacien == 'unnormalised':  # ratiocut style
+                post_flip = split > 0.5*n_splits  # check if we are post flip
                 denominator = abs(split - post_flip*n_splits)
                 if flip_point is None and post_flip:
                     flip_point = split
-            elif self.Laplacien == 'symmetric':
+            elif self.Laplacien == 'symmetric':  # ncut style
                 denominator = np.sum(self._affinity[in_group][:, in_group])
                 if not post_flip:  # calculation is non trivial, so only check when needed
                     if denominator - numerator > 0.5*(sum_affinity - numerator):
+                        # if reached we have found the flip point
                         flip_point = split
                         post_flip = True
+                        # fix the denominator
                         denominator = sum_affinity + numerator - denominator
+            # store the result at this step
             outcomes[split-1] = numerator/denominator
-        if not post_flip:
+        if not post_flip:  # we never found a flip point (can happen when the last affinity is v large)
             flip_point = split + 1
         outcomes[np.isinf(outcomes)] = np.nan  # inifinities are hard for plotting
         if np.all(np.isnan(outcomes)):
