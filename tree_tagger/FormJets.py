@@ -77,14 +77,14 @@ class PseudoJet:
                 rapidity_var = eventWise.JetInputs_PseudoRapidity
             else:
                 rapidity_var = eventWise.JetInputs_Rapidity
-            self._floats = np.hstack((eventWise.JetInputs_PT.reshape((-1, 1)),
-                                      rapidity_var.reshape((-1, 1)),
-                                      eventWise.JetInputs_Phi.reshape((-1, 1)),
-                                      eventWise.JetInputs_Energy.reshape((-1, 1)),
-                                      eventWise.JetInputs_Px.reshape((-1, 1)),
-                                      eventWise.JetInputs_Py.reshape((-1, 1)),
-                                      eventWise.JetInputs_Pz.reshape((-1, 1)),
-                                      np.zeros((self.n_inputs, 1)))).tolist()
+            self._floats = np.vstack((eventWise.JetInputs_PT,
+                                      rapidity_var,
+                                      eventWise.JetInputs_Phi,
+                                      eventWise.JetInputs_Energy,
+                                      eventWise.JetInputs_Px,
+                                      eventWise.JetInputs_Py,
+                                      eventWise.JetInputs_Pz,
+                                      np.zeros(self.n_inputs))).T.tolist()
             # as we go note the root notes of the pseudojets
             self.root_jetInputIdxs = []
         # define the physical distance measure
@@ -1741,14 +1741,14 @@ class Splitting(Spectral):
                 if flip_point is None and post_flip:
                     flip_point = split
             elif self.Laplacien == 'symmetric':  # ncut style
-                denominator = np.sum(self._affinity[in_group][:, in_group])
-                if not post_flip:  # calculation is non trivial, so only check when needed
-                    if denominator - numerator > 0.5*(sum_affinity - numerator):
+                denominator = np.sum(self._affinity[in_group])
+                if not post_flip:  # calculation not easly generalised
+                    if denominator > 0.5*sum_affinity:
                         # if reached we have found the flip point
                         flip_point = split
                         post_flip = True
                         # fix the denominator
-                        denominator = sum_affinity + numerator - denominator
+                        denominator = sum_affinity - denominator
             # store the result at this step
             outcomes[split-1] = numerator/denominator
         if not post_flip:  # we never found a flip point (can happen when the last affinity is v large)
@@ -1761,18 +1761,19 @@ class Splitting(Spectral):
         # use the split that minimises the outcome
         split = np.nanargmin(outcomes) + 1
         flipped = split >= flip_point
+        # why does this work much better?
+        flipped = split < flip_point
         # some useful ranges for plotting
         max_out = np.nanmax(outcomes)
         min_eig, max_eig = self._eigenspace[order, :][0], self._eigenspace[order, :][-1]
         # tempcode for plotting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        fig = plt.figure(figsize=(10,7))
+        fig = plt.figure(figsize=(10, 7))
         ax0 = plt.subplot(221)
         ax1 = plt.subplot(222)
         ax2 = plt.subplot(223)
         ax3 = plt.subplot(224, sharex=ax1)
         #ax0, ax1, ax2, ax3 = ax_arr.flatten()
         # ax1 and ax3 are the points in order
-        # TODO, how on earth are the b tags in diferent x coords for ax1 and ax3
         ax1.set_xlabel("Split position")
         ax1.set_ylabel("Cut score")
         pts = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]), dtype=float)
@@ -1781,8 +1782,10 @@ class Splitting(Spectral):
         # work out which points are b decendants
         b_decendants = np.fromiter(FormShower.descendant_idxs(self.eventWise, *self.eventWise.BQuarkIdx),
                                    dtype=int)
-        b_InputIdxs = np.where([idx in self.eventWise.JetInputs_SourceIdx for idx in b_decendants])[0]
-        b_mask = np.fromiter((idx in b_InputIdxs for idx in self.InputIdx[:self.currently_avalible]), dtype=bool)
+        is_decendant = np.fromiter((idx in b_decendants for idx in self.eventWise.JetInputs_SourceIdx),
+                                   dtype=bool)
+        b_mask = np.fromiter((is_decendant[idx] for idx in self.InputIdx[:self.currently_avalible]), dtype=bool)
+        # scatter plots show disagreement here between thsi and plot_tags
         ordered_b_mask = b_mask[order]
         # the -1 is for zero indexing, the -0.5 is for ebing between second to last and last
         split_colour = np.array([1., 0., 0., 0.5])
@@ -1849,8 +1852,16 @@ class Splitting(Spectral):
                 colour = tuple(split_colour)
             else:
                 colour = 'grey' if (flipped != post_split) else 'black'
-            ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
-                         arrowprops={'arrowstyle':arrow_style, 'color':colour})
+            rap_cross, sign = find_crossing_point(rap[start_idx], phi[start_idx],
+                                          rap[end_idx], phi[end_idx])
+            if rap_cross is not None:
+                ax2.plot([rap[start_idx], rap_cross], [phi[start_idx], sign*np.pi],
+                          c=colour)
+                ax2.annotate('', (rap_cross, -sign*np.pi), (rap[end_idx], phi[end_idx]),
+                             arrowprops={'arrowstyle':arrow_style, 'color':colour})
+            else:
+                ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
+                             arrowprops={'arrowstyle':arrow_style, 'color':colour})
         plot_tags(self.eventWise, ax=ax2)
         ax2.plot([], [], c='grey', label='Outside of jet')
         ax2.plot([], [], c='black', label='Inside of jet')
@@ -2377,6 +2388,26 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     return end_point == n_events
 
 
+def find_crossing_point(x_start, y_start, x_end, y_end, y_max=np.pi, y_min=-np.pi):
+    y_range = y_max - y_min
+    if 2*abs(y_end - y_start) < y_range:
+        return None, None
+    # work out the x coord of the axis cross
+    # leg/body closes to np.pi
+    sign = 1 - 2*(y_end > y_start)
+    if sign < 0:
+        top_y, bottom_y, top_x, bottom_x = y_start, y_end, x_start, x_end
+    else:
+        top_y, bottom_y, top_x, bottom_x = y_end, y_start, x_end, x_start
+    #                   | y_to_top/ range - (top y - bottom y) |
+    percent_to_top = np.abs((y_max - top_y)/(y_range + bottom_y - top_y))
+    #          top x     +  x seperation * percent to top
+    x_cross = top_x + (bottom_x - top_x)*percent_to_top
+    return x_cross, sign
+    
+
+
+
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     """
     
@@ -2406,18 +2437,11 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
         # line[body/end, x/y]
         # work out if this leg crossed the edge
         #         body y - leg y
-        if np.abs(line[0, 1] - line[1, 1]) > np.pi:
-            # work out the x coord of the axis cross
-            # leg/body closes to np.pi
-            top = np.argmax(line[:, 1])
-            bottom = (top+1)%2
-            #                   | y_to_top/ 2pi - (top y - bottom y) |
-            percent_to_top = np.abs((np.pi - line[top, 1])/(2*np.pi + line[bottom, 1] - line[top, 1]))
-            #          top x     +  x seperation * percent to top
-            x_cross = line[top, 0] + (line[bottom, 0] - line[top, 0])*percent_to_top
-            ax.plot([line[top, 0],  x_cross], [line[top, 1], np.pi], 
+        x_cross, sign = find_crossing_point(*line[0], *line[1])
+        if x_cross is not None:
+            ax.plot([line[0, 0],  x_cross], [line[0, 1], sign*np.pi], 
                      c=colour, linewidth=size, alpha=jet_alpha)
-            ax.plot([line[bottom, 0],  x_cross], [line[bottom, 1], -np.pi], 
+            ax.plot([line[1, 0],  x_cross], [line[1, 1], -sign*np.pi], 
                      c=colour, linewidth=size, alpha=jet_alpha)
                      
         else:
@@ -2626,9 +2650,9 @@ if __name__ == '__main__':
     spectral_jet_params = dict(ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
                                NumEigenvectors=1,
-                               Laplacien='unnormalised',
-                               AffinityType='exponent2',
-                               AffinityCutoff=None,
+                               Laplacien='symmetric',
+                               AffinityType='exponent',
+                               AffinityCutoff=('distance', 1),
                                Invarient='invarient',
                                jet_name="Splitting")
 
