@@ -10,6 +10,13 @@ from ipdb import set_trace as st
 from skhep import math as hepmath
 from tree_tagger import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
 
+truth_colour = 'limegreen'
+spectral_colour = 'dodgerblue'
+fast_colour = 'tomato'
+truth_linewidth = 1.0
+truth_size = 25.
+jet_alpha = 0.5
+
 
 class PseudoJet:
     """ """
@@ -32,9 +39,8 @@ class PseudoJet:
         self.jet_parameters = {}
         dict_jet_params = kwargs.get('dict_jet_params', {})
         for key in dict_jet_params:  # create the formatting of a eventWise column
-            key = key.replace(' ', '')
-            key = key[0].upper() + key[1:]
-            self.jet_parameters[key] = dict_jet_params[key]
+            formatted_key = key.replace(' ', '').capitalize()
+            self.jet_parameters[formatted_key] = dict_jet_params[key]
         self.int_columns = [c.replace('Pseudojet', self.jet_name) for c in self.int_columns]
         self.float_columns = [c.replace('Pseudojet', self.jet_name) for c in self.float_columns]
         self.from_PseudoRapidity = from_PseudoRapidity
@@ -87,7 +93,6 @@ class PseudoJet:
         self._define_physical_distance()
         # keep track of how many clusters don't yet have a parent
         self._calculate_currently_avalible()
-        self._distances2 = None
         self._calculate_distances()
         if kwargs.get("assign", False):
             self.assign_parents()
@@ -356,7 +361,7 @@ class PseudoJet:
         elif attr_name in self._int_contents:
             # ints return every value
             col_num = getattr(self, self._int_contents[attr_name])
-            return np.array([ints[col_num] for ints in self._ints])
+            return np.fromiter((ints[col_num] for ints in self._ints), dtype=int)
         elif attr_name == "Rapidity":
             # if the jet was constructed with pseudorapidity we might still want to know the rapidity
             return Components.ptpze_to_rapidity(self.PT, self.Pz, self.Energy)
@@ -858,6 +863,8 @@ class Traditional(PseudoJet):
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.ExpofPTPosition = 'input'
+        if dict_jet_params is not none:
+            kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
@@ -1092,7 +1099,14 @@ class Spectral(PseudoJet):
         self._define_calculate_affinity()
         self.eigenvalues = []  # create a list to track the eigenvalues
         self.beam_particle = self.StoppingCondition == 'beamparticle'
+        assign = kwargs.get('assign', False)
+        kwargs['assign'] = False  # don't let the super constructor assign
+        if dict_jet_params is not None:
+            kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
+        self._calculate_eigenspace()  # we need to make the eigenspace first
+        if assign:
+            self.assign_parents()
 
     def _calculate_distances(self):
         """ """
@@ -1100,11 +1114,8 @@ class Spectral(PseudoJet):
         n_distances = self.currently_avalible + self.beam_particle
         if n_distances < 2:
             self._distances2 = np.zeros((1, 1))
-            try:
-                self._eigenspace = np.zeros((1, self.NumEigenvectors))
-            except (ValueError, TypeError):
-                self._eigenspace = np.zeros((1, 1))
-            return np.zeros(n_distances).reshape((n_distances, n_distances))
+            self._affinity = np.array([[]])
+            return
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
         physical_distances2 = np.zeros((n_distances, n_distances))
@@ -1140,20 +1151,22 @@ class Spectral(PseudoJet):
         np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation
-        affinity = self.calculate_affinity(physical_distances2)
+        self._affinity = self.calculate_self._affinity(physical_distances2)
         # a graph laplacien can be calculated
-        np.fill_diagonal(affinity, 0.)  # the affinity may have problems on the diagonal
-        if np.sum(np.abs(affinity)) == 0.:
+        np.fill_diagonal(self._affinity, 0.)  # the self._affinity may have problems on the diagonal
+    
+    def _calculate_eigenspace(self):
+        if np.sum(np.abs(self._affinity), initial=0) == 0.:
             # everything is seperated
             self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
                                       self._ints[:self.currently_avalible]]
             self.currently_avalible = 0
             return
-        diagonal = np.diag(np.sum(affinity, axis=1))
+        diagonal = np.diag(np.sum(self._affinity, axis=1))
         if self.Laplacien == 'unnormalised':
-            laplacien = diagonal - affinity
+            laplacien = diagonal - self._affinity
         elif self.Laplacien == 'symmetric':
-            laplacien = diagonal - affinity
+            laplacien = diagonal - self._affinity
             self.alt_diag = np.diag(diagonal)**(-0.5)
             self.alt_diag[np.diag(diagonal) == 0] = 0.
             diag_alt_diag = np.diag(self.alt_diag)
@@ -1188,7 +1201,7 @@ class Spectral(PseudoJet):
         if self.ExpofPTPosition == 'eigenspace':
             exponent = 2 * self.ExpofPTMultiplier
             # if beamparticle the last entry will be nonsense, but we wont touch it anyway
-            pt_fractions = np.fromiter((row[pt_col]**exponent for row in self._starting_position),
+            pt_fractions = np.fromiter((row[self._PT_col]**exponent for row in self._starting_position),
                                        dtype=float)
             for row in range(self.currently_avalible):
                 for column in range(self.currently_avalible):
@@ -1435,6 +1448,48 @@ class Spectral(PseudoJet):
         # this is make into a class fuction becuase it will b needed elsewhere
         self.calculate_affinity = calculate_affinity
 
+    def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2):
+        """
+        
+
+        Parameters
+        ----------
+        pseudojet_index1 :
+            param pseudojet_index2:
+        distance2 :
+            
+        pseudojet_index2 :
+            
+
+        Returns
+        -------
+
+        """
+        replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
+        new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance2)
+        # move the first pseudojet to the back without replacement
+        pseudojet1_ints = self._ints.pop(remove_index)
+        pseudojet1_floats = self._floats.pop(remove_index)
+        self._ints.append(pseudojet1_ints)
+        self._floats.append(pseudojet1_floats)
+        # move the second pseudojet to the back but replace it with the new pseudojet
+        pseudojet2_ints = self._ints[replace_index]
+        pseudojet2_floats = self._floats[replace_index]
+        self._ints.append(pseudojet2_ints)
+        self._floats.append(pseudojet2_floats)
+        self._ints[replace_index] = new_pseudojet_ints
+        self._floats[replace_index] = new_pseudojet_floats
+        # one less pseudojet avalible
+        self.currently_avalible -= 1
+        # now recalculate for the new pseudojet
+        self._recalculate_one(remove_index, replace_index)
+        # remove from the affinity and eiegnspace
+        self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
+        self._affinity = np.delete(self._affinity, remove_index, axis=0)
+        self._affinity = np.delete(self._affinity, remove_index, axis=1)
+        self._distances2 = np.delete(self._distances2, remove_index, axis=0)
+        self._distances2 = np.delete(self._distances2, remove_index, axis=1)
+
     def _remove_pseudojet(self, pseudojet_index):
         """
         
@@ -1453,12 +1508,14 @@ class Spectral(PseudoJet):
         pseudojet_floats = self._floats.pop(pseudojet_index)
         self._ints.append(pseudojet_ints)
         self._floats.append(pseudojet_floats)
-        # remove from the eigenspace
-        self._eigenspace = np.delete(self._eigenspace, (pseudojet_index), axis=0)
+        # remove from the affinity and eiegnspace
+        self._eigenspace = np.delete(self._eigenspace, pseudojet_index, axis=0)
+        self._affinity = np.delete(self._affinity, pseudojet_index, axis=0)
+        self._affinity = np.delete(self._affinity, pseudojet_index, axis=1)
         self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
         # delete the row and column
-        self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=0)
-        self._distances2 = np.delete(self._distances2, (pseudojet_index), axis=1)
+        self._distances2 = np.delete(self._distances2, pseudojet_index, axis=0)
+        self._distances2 = np.delete(self._distances2, pseudojet_index, axis=1)
         # one less pseudojet avalible
         self.currently_avalible -= 1
         
@@ -1501,8 +1558,10 @@ class Spectral(PseudoJet):
             new_alt_diag = np.sum(new_laplacien)**(-0.5)
             self.alt_diag[replace_index] = new_alt_diag
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
-        # CHanged -> simply delete the eigenspace line
-        self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
+        # remove from the eigenspace and the affinity
+        self._eigenspace = np.delete(self._eigenspace, (remove_index), axis=0)
+        self._affinity = np.delete(self._affinity, (remove_index), axis=0)
+        self._affinity = np.delete(self._affinity, (remove_index), axis=1)
         # and make its position in vector space
         new_position = np.dot(self._eigenspace.T, new_laplacien)
         self._eigenspace[replace_index] = new_position
@@ -1561,21 +1620,21 @@ class Splitting(Spectral):
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
-        self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
-        self._define_calculate_affinity()
-        self.eigenvalues = []  # create a list to track the eigenvalues
+        self.StoppingCondition = 'standard'  # this is a property used by Spectral Jets
+        self.DeltaR = 1.  # thsi si required for defining the unused beam distances in _define_physical_distance
+        if dict_jet_params is not None:
+            kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
         """ """
         n_distances = self.currently_avalible
+        # this clusterign mechanism doesn't actually use distances,
+        # but other functions expect thier presence
+        self._distances2 = np.empty((n_distances, n_distances))
         if n_distances < 2:
-            self._distances2 = np.zeros((1, 1))
-            try:
-                self._eigenspace = np.zeros((1, self.NumEigenvectors))
-            except (ValueError, TypeError):
-                self._eigenspace = np.zeros((1, 1))
-            return np.zeros(n_distances).reshape((n_distances, n_distances))
+            self._affinity = np.empty((0, 0))
+            return
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
         physical_distances2 = np.zeros((n_distances, n_distances))
@@ -1598,16 +1657,14 @@ class Splitting(Spectral):
                 else:
                     distance2 = self.physical_distance2(self._floats[row], self._floats[column])
                 physical_distances2[row, column] = distance2
-        if self.beam_particle:
-            # the last row and column should give the distance of each particle to the beam
-            physical_distances2[-1, :] = [self.beam_distance2(row) for row in starting_position]
-            physical_distances2[:, -1] = physical_distances2[-1, :]
         np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation, which we will need
         self._affinity = self.calculate_affinity(physical_distances2)
         # a graph laplacien can be calculated
         np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
+
+    def _calculate_eigenspace(self):
         if np.sum(np.abs(self._affinity)) == 0.:
             # everything is seperated
             self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
@@ -1627,7 +1684,7 @@ class Splitting(Spectral):
             raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
         # get the eigenvectors (we know the smallest will be identity)
         try:
-            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(1, self.NumEigenvectors+1))
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien, eigvals=(1, self.NumEigenvectors))
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
@@ -1647,30 +1704,6 @@ class Splitting(Spectral):
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = eigenvectors
 
-    def _remove_pseudojet(self, pseudojet_index):
-        """
-        
-
-        Parameters
-        ----------
-        pseudojet_index :
-            
-
-        Returns
-        -------
-
-        """
-        # move the first pseudojet to the back without replacement
-        pseudojet_ints = self._ints.pop(pseudojet_index)
-        pseudojet_floats = self._floats.pop(pseudojet_index)
-        self._ints.append(pseudojet_ints)
-        self._floats.append(pseudojet_floats)
-        # remove from the eigenspace
-        self._eigenspace = np.delete(self._eigenspace, (pseudojet_index), axis=0)
-        self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
-        # one less pseudojet avalible
-        self.currently_avalible -= 1
-
     def _recalculate_one(self, remove_index, replace_index):
         pass  # do nothing on a single merge
 
@@ -1678,28 +1711,164 @@ class Splitting(Spectral):
         # for now just merge in pairs
         input_indices = sorted(input_indices)
         replace = input_indices[0]
-        for remove in zip(input_indices[:0:-1]):
+        for remove in input_indices[:0:-1]:
             self._merge_pseudojets(replace, remove, 0)
         self._remove_pseudojet(replace)
 
+    step_no = 0
     def _step_assign_parents(self):
         """ """
         # get the order of elements
         order = np.argsort(self._eigenspace[:, 0])
-        outcomes = np.zeros(self.currently_avalible-1, dtype=float)
-        for split in range(1, self.currently_avalible-1):
+        n_splits = self.currently_avalible - 1
+        outcomes = np.zeros(n_splits, dtype=float)
+        sum_affinity = np.sum(self._affinity)
+        post_flip = False
+        flip_point = None
+        for split in range(1, self.currently_avalible):
             in_group = order[:split]
             out_group = order[split:]
+            if post_flip:
+                in_group, out_group = out_group, in_group
             numerator = np.sum(self._affinity[out_group][:, in_group])
             if self.Laplacien == 'unnormalised':
-                denominator = split
+                post_flip = split > 0.5*n_splits
+                denominator = abs(split - post_flip*n_splits)
+                if flip_point is None and post_flip:
+                    flip_point = split
             elif self.Laplacien == 'symmetric':
                 denominator = np.sum(self._affinity[in_group][:, in_group])
-            outcomes[split] = numerator/denominator
-        st()
+                if not post_flip:  # calculation is non trivial, so only check when needed
+                    if denominator - numerator > 0.5*(sum_affinity - numerator):
+                        flip_point = split
+                        post_flip = True
+                        denominator = sum_affinity + numerator - denominator
+            outcomes[split-1] = numerator/denominator
+        if not post_flip:
+            flip_point = split + 1
+        outcomes[np.isinf(outcomes)] = np.nan  # inifinities are hard for plotting
+        if np.all(np.isnan(outcomes)):
+            # everything that's left is BG
+            self.currently_avalible = 0
+            return np.empty(0)
         # use the split that minimises the outcome
-        split = np.argmin(outcomes) + 1
-        self._merge_complete_jet(order[:split])
+        split = np.nanargmin(outcomes) + 1
+        flipped = split >= flip_point
+        # some useful ranges for plotting
+        max_out = np.nanmax(outcomes)
+        min_eig, max_eig = self._eigenspace[order, :][0], self._eigenspace[order, :][-1]
+        # tempcode for plotting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        fig = plt.figure(figsize=(10,7))
+        ax0 = plt.subplot(221)
+        ax1 = plt.subplot(222)
+        ax2 = plt.subplot(223)
+        ax3 = plt.subplot(224, sharex=ax1)
+        #ax0, ax1, ax2, ax3 = ax_arr.flatten()
+        # ax1 and ax3 are the points in order
+        # TODO, how on earth are the b tags in diferent x coords for ax1 and ax3
+        ax1.set_xlabel("Split position")
+        ax1.set_ylabel("Cut score")
+        pts = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]), dtype=float)
+        ordered_pts = pts[order]
+        colour_args = {'vmax':np.max(pts), 'vmin':np.min(pts)}
+        # work out which points are b decendants
+        b_decendants = np.fromiter(FormShower.descendant_idxs(self.eventWise, *self.eventWise.BQuarkIdx),
+                                   dtype=int)
+        b_InputIdxs = np.where([idx in self.eventWise.JetInputs_SourceIdx for idx in b_decendants])[0]
+        b_mask = np.fromiter((idx in b_InputIdxs for idx in self.InputIdx[:self.currently_avalible]), dtype=bool)
+        ordered_b_mask = b_mask[order]
+        # the -1 is for zero indexing, the -0.5 is for ebing between second to last and last
+        split_colour = np.array([1., 0., 0., 0.5])
+        flip_colour = np.array([0., 0., 1., 0.5])
+        ax1.scatter(np.linspace(0.5, self.currently_avalible-1-0.5, n_splits),
+                outcomes, c='black', marker='|')
+        # problem may be that outccomes can be nan, 
+        # create a list of particle psotions between the split conditions
+        # that is never nan
+        filled_outcomes = np.zeros(self.currently_avalible)
+        filled_outcomes[1:] = outcomes
+        filled_outcomes[:-1] += outcomes
+        filled_outcomes[1:-1] *= 0.5
+        for i, out in enumerate(filled_outcomes):
+            if np.isnan(out):
+                out = next(np.nanmean(outcomes[i-width:i+width]) for width in range(self.currently_avalible)
+                           if not np.all(np.isnan(outcomes[i-width:i+width])))
+                filled_outcomes[i] = out
+        ax1.scatter(np.arange(self.currently_avalible), filled_outcomes,
+                    c=ordered_pts, **colour_args)
+        ax1.scatter(np.where(ordered_b_mask)[0], filled_outcomes[ordered_b_mask],
+                    c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
+        ax1.vlines(split-0.5, 0, max_out, colors=split_colour)
+        ax1.text(split-0.4, 0.5*max_out, "Split location",
+                 rotation='vertical', c=split_colour)
+        ax1.vlines(flip_point-0.5, 0, max_out, colors=flip_colour, ls='--')
+        ax1.text(flip_point-0.4, 0.5*max_out, "Flip location",
+                 rotation='vertical', c=flip_colour)
+        ax3.set_xlabel("Eigenvector element")
+        points = ax3.scatter(range(self.currently_avalible), self._eigenspace[order, 0],
+                             c=ordered_pts, **colour_args)
+        ax3.scatter(np.where(ordered_b_mask)[0], self._eigenspace[order, 0][ordered_b_mask],
+                    c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
+        ax3.vlines(split-0.5, min_eig, max_eig, colors=split_colour)
+        ax3.text(split-0.4, 0.5*(max_eig + min_eig), "Split location",
+                 rotation='vertical', c=split_colour)
+        ax3.vlines(flip_point-0.5, min_eig, max_eig, colors=flip_colour, ls='--')
+        ax3.text(flip_point-0.4, 0.5*(max_eig + min_eig), "Flip location",
+                 rotation='vertical', c=flip_colour)
+        # ax2 is the point sin the pt eta plain
+        ax2.set_xlabel("Rapidity")
+        ax2.set_ylabel("$\\phi$")
+        rap = np.array([self._floats[row][self._Rapidity_col] for row
+                        in range(self.currently_avalible)])
+        phi = np.array([self._floats[row][self._Phi_col] for row
+                        in range(self.currently_avalible)])
+        ax2.scatter(rap, phi, c=pts, **colour_args)
+        arrow_style = '<-'
+        post_split = False
+        for i in range(n_splits):
+            start_idx = order[i]
+            end_idx = order[i+1]
+            if arrow_style == '|-|': # last step was the flip
+                arrow_style = '->'
+            if i+1 == flip_point:
+                arrow_style = '|-|'
+                if i+1 == split:
+                    post_split = True
+                    colour = tuple(0.5*(flip_colour + split_colour))
+                else:
+                    colour = tuple(flip_colour)
+            elif i+1 == split:
+                post_split = True
+                colour = tuple(split_colour)
+            else:
+                colour = 'grey' if (flipped != post_split) else 'black'
+            ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
+                         arrowprops={'arrowstyle':arrow_style, 'color':colour})
+        plot_tags(self.eventWise, ax=ax2)
+        ax2.plot([], [], c='grey', label='Outside of jet')
+        ax2.plot([], [], c='black', label='Inside of jet')
+        ax2.legend()
+        # discribe the jet and stick the colour bar on ax 0
+        PlottingTools.discribe_jet(properties_dict=self.jet_parameters, ax=ax0,
+                                   additional_text=f"Step {self.step_no}\nJet multiplicity {split}\nBG multiplicity {self.currently_avalible-split}")
+        colorbar = plt.colorbar(points, ax=ax0)
+        colorbar.set_label("Particle $p_T$")
+        fig.tight_layout()
+        plt.show()
+        # end tmp ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # if split is the first or last position we should stop splitting
+        if split == 1 or split == n_splits:
+            # everything that's left is BG
+            self.currently_avalible = 0
+            return np.empty(0)
+        if flipped:
+            self._merge_complete_jet(order[split:])
+        else:
+            self._merge_complete_jet(order[:split])
+        self._calculate_eigenspace()  # now the eigenspace needs recalculating
+        self.step_no += 1
+        if flipped:
+            return order[split:]
         return order[:split]
 
 
@@ -1763,7 +1932,7 @@ class SpectralFull(Spectral):
         -------
 
         """
-        self._calculate_distances()
+        self._calculate_eigenspace()
 
 
 cluster_classes = {"FastJet": Traditional, "HomeJet": Traditional,
@@ -2191,10 +2360,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
             eigenvalues.append(awkward.fromiter(jets.eigenvalues))
         jets = jets.split()
         if not checked and len(jets) > 0:
-            try:
-                assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"
-            except:
-                st()
+            assert jets[0].check_params(eventWise), f"Jet parameters don't match recorded parameters for {jet_name}"
             checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
@@ -2203,12 +2369,6 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_
     eventWise.append(**updated_dict)
     return end_point == n_events
 
-truth_colour = 'limegreen'
-spectral_colour = 'dodgerblue'
-fast_colour = 'tomato'
-truth_linewidth = 1.0
-truth_size = 25.
-jet_alpha = 0.5
 
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     """
@@ -2274,7 +2434,7 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
                                dtype=bool)
         ax.scatter(eventWise.Rapidity[b_decendants[included].tolist()],
                    eventWise.Phi[b_decendants[included].tolist()],
-                   c=(0., 0., 0., 0.), edgecolors=truth_colour,
+                   c=[(0., 0., 0., 0.),], edgecolors=truth_colour,
                    linewidths=truth_linewidth, s=truth_size, marker='o')
         # plot the others invisibly so as to set the rapidity axis with them
         ax.scatter(eventWise.Rapidity[b_decendants[~included]],
@@ -2444,18 +2604,33 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file(eventWise_path)
     event_num = InputTools.get_literal("Event number? ", int)
     fast_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0, jet_name="CambridgeAachenp8")
-    spectral_jet_params = dict(DeltaR=0.4, ExpofPTMultiplier=0.2,
-                               ExpofPTPosition='eigenspace',
-                               NumEigenvectors=6,
-                               Laplacien='symmetric',
+    #spectral_jet_params = dict(DeltaR=0.4, ExpofPTMultiplier=0.2,
+    #                           ExpofPTPosition='eigenspace',
+    #                           NumEigenvectors=6,
+    #                           Laplacien='symmetric',
+    #                           AffinityType='exponent2',
+    #                           AffinityCutoff=None,
+    #                           #AffinityCutoff=('knn', 4),
+    #                           StoppingCondition='standard',
+    #                           Invarient='Luclus',
+    #                           jet_name="SpectralFull")
+
+    #c_class = SpectralFull
+    spectral_jet_params = dict(ExpofPTMultiplier=0,
+                               ExpofPTPosition='input',
+                               NumEigenvectors=1,
+                               Laplacien='unnormalised',
                                AffinityType='exponent2',
                                AffinityCutoff=None,
-                               #AffinityCutoff=('knn', 4),
-                               StoppingCondition='standard',
-                               Invarient='Luclus',
-                               jet_name="SpectralFull")
+                               Invarient='invarient',
+                               jet_name="Splitting")
 
-    c_class = SpectralFull
+    c_class = Splitting
     check_hyperparameters(c_class, spectral_jet_params)
-    eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class)
+    eventWise.selected_index = event_num
+    #c_class(eventWise, assign=True, **spectral_jet_params)
+    c_class(eventWise, assign=True, dict_jet_params=spectral_jet_params)
+    #plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
+    #plt.show()
+    #eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class)
 
