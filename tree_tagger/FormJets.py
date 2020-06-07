@@ -1715,11 +1715,10 @@ class Splitting(Spectral):
             self._merge_pseudojets(replace, remove, 0)
         self._remove_pseudojet(replace)
 
-    step_no = 0
-    def _step_assign_parents(self):
+    def _step_assign_parents(self, eigenvector_num=0):
         """ """
         # get the order of elements
-        order = np.argsort(self._eigenspace[:, 0])
+        order = np.argsort(self._eigenspace[:, eigenvector_num])
         n_splits = self.currently_avalible - 1
         # vector to store the results of calculating the ratiocut/ncut score
         outcomes = np.empty(n_splits, dtype=float)
@@ -1753,141 +1752,173 @@ class Splitting(Spectral):
             outcomes[split-1] = numerator/denominator
         if not post_flip:  # we never found a flip point (can happen when the last affinity is v large)
             flip_point = split + 1
-        outcomes[np.isinf(outcomes)] = np.nan  # inifinities are hard for plotting
+        outcomes[np.isinf(outcomes)] = np.nan  # treat infinities as nan
         if np.all(np.isnan(outcomes)):
             # everything that's left is BG
             self.currently_avalible = 0
-            return np.empty(0)
+            return order, outcomes, flip_point, np.nan
         # use the split that minimises the outcome
         split = np.nanargmin(outcomes) + 1
         flipped = split >= flip_point
         # why does this work much better?
-        flipped = split < flip_point
-        # some useful ranges for plotting
-        max_out = np.nanmax(outcomes)
-        min_eig, max_eig = self._eigenspace[order, :][0], self._eigenspace[order, :][-1]
-        # tempcode for plotting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        fig = plt.figure(figsize=(10, 7))
-        ax0 = plt.subplot(221)
-        ax1 = plt.subplot(222)
-        ax2 = plt.subplot(223)
-        ax3 = plt.subplot(224, sharex=ax1)
-        #ax0, ax1, ax2, ax3 = ax_arr.flatten()
-        # ax1 and ax3 are the points in order
-        ax1.set_xlabel("Split position")
-        ax1.set_ylabel("Cut score")
-        pts = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]), dtype=float)
-        ordered_pts = pts[order]
-        colour_args = {'vmax':np.max(pts), 'vmin':np.min(pts)}
-        # work out which points are b decendants
-        b_decendants = np.fromiter(FormShower.descendant_idxs(self.eventWise, *self.eventWise.BQuarkIdx),
-                                   dtype=int)
-        is_decendant = np.fromiter((idx in b_decendants for idx in self.eventWise.JetInputs_SourceIdx),
-                                   dtype=bool)
-        b_mask = np.fromiter((is_decendant[idx] for idx in self.InputIdx[:self.currently_avalible]), dtype=bool)
-        # scatter plots show disagreement here between thsi and plot_tags
-        ordered_b_mask = b_mask[order]
-        # the -1 is for zero indexing, the -0.5 is for ebing between second to last and last
-        split_colour = np.array([1., 0., 0., 0.5])
-        flip_colour = np.array([0., 0., 1., 0.5])
-        ax1.scatter(np.linspace(0.5, self.currently_avalible-1-0.5, n_splits),
-                outcomes, c='black', marker='|')
-        # problem may be that outccomes can be nan, 
-        # create a list of particle psotions between the split conditions
-        # that is never nan
-        filled_outcomes = np.zeros(self.currently_avalible)
-        filled_outcomes[1:] = outcomes
-        filled_outcomes[:-1] += outcomes
-        filled_outcomes[1:-1] *= 0.5
-        for i, out in enumerate(filled_outcomes):
-            if np.isnan(out):
-                out = next(np.nanmean(outcomes[i-width:i+width]) for width in range(self.currently_avalible)
-                           if not np.all(np.isnan(outcomes[i-width:i+width])))
-                filled_outcomes[i] = out
-        ax1.scatter(np.arange(self.currently_avalible), filled_outcomes,
-                    c=ordered_pts, **colour_args)
-        ax1.scatter(np.where(ordered_b_mask)[0], filled_outcomes[ordered_b_mask],
-                    c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
-        ax1.vlines(split-0.5, 0, max_out, colors=split_colour)
-        ax1.text(split-0.4, 0.5*max_out, "Split location",
-                 rotation='vertical', c=split_colour)
-        ax1.vlines(flip_point-0.5, 0, max_out, colors=flip_colour, ls='--')
-        ax1.text(flip_point-0.4, 0.5*max_out, "Flip location",
-                 rotation='vertical', c=flip_colour)
-        ax3.set_xlabel("Eigenvector element")
-        points = ax3.scatter(range(self.currently_avalible), self._eigenspace[order, 0],
-                             c=ordered_pts, **colour_args)
-        ax3.scatter(np.where(ordered_b_mask)[0], self._eigenspace[order, 0][ordered_b_mask],
-                    c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
-        ax3.vlines(split-0.5, min_eig, max_eig, colors=split_colour)
-        ax3.text(split-0.4, 0.5*(max_eig + min_eig), "Split location",
-                 rotation='vertical', c=split_colour)
-        ax3.vlines(flip_point-0.5, min_eig, max_eig, colors=flip_colour, ls='--')
-        ax3.text(flip_point-0.4, 0.5*(max_eig + min_eig), "Flip location",
-                 rotation='vertical', c=flip_colour)
-        # ax2 is the point sin the pt eta plain
-        ax2.set_xlabel("Rapidity")
-        ax2.set_ylabel("$\\phi$")
-        rap = np.array([self._floats[row][self._Rapidity_col] for row
-                        in range(self.currently_avalible)])
-        phi = np.array([self._floats[row][self._Phi_col] for row
-                        in range(self.currently_avalible)])
-        ax2.scatter(rap, phi, c=pts, **colour_args)
-        arrow_style = '<-'
-        post_split = False
-        for i in range(n_splits):
-            start_idx = order[i]
-            end_idx = order[i+1]
-            if arrow_style == '|-|': # last step was the flip
-                arrow_style = '->'
-            if i+1 == flip_point:
-                arrow_style = '|-|'
-                if i+1 == split:
-                    post_split = True
-                    colour = tuple(0.5*(flip_colour + split_colour))
-                else:
-                    colour = tuple(flip_colour)
-            elif i+1 == split:
-                post_split = True
-                colour = tuple(split_colour)
-            else:
-                colour = 'grey' if (flipped != post_split) else 'black'
-            rap_cross, sign = find_crossing_point(rap[start_idx], phi[start_idx],
-                                          rap[end_idx], phi[end_idx])
-            if rap_cross is not None:
-                ax2.plot([rap[start_idx], rap_cross], [phi[start_idx], sign*np.pi],
-                          c=colour)
-                ax2.annotate('', (rap_cross, -sign*np.pi), (rap[end_idx], phi[end_idx]),
-                             arrowprops={'arrowstyle':arrow_style, 'color':colour})
-            else:
-                ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
-                             arrowprops={'arrowstyle':arrow_style, 'color':colour})
-        plot_tags(self.eventWise, ax=ax2)
-        ax2.plot([], [], c='grey', label='Outside of jet')
-        ax2.plot([], [], c='black', label='Inside of jet')
-        ax2.legend()
-        # discribe the jet and stick the colour bar on ax 0
-        PlottingTools.discribe_jet(properties_dict=self.jet_parameters, ax=ax0,
-                                   additional_text=f"Step {self.step_no}\nJet multiplicity {split}\nBG multiplicity {self.currently_avalible-split}")
-        colorbar = plt.colorbar(points, ax=ax0)
-        colorbar.set_label("Particle $p_T$")
-        fig.tight_layout()
-        plt.show()
-        # end tmp ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        #flipped = split < flip_point
         # if split is the first or last position we should stop splitting
         if split == 1 or split == n_splits:
             # everything that's left is BG
             self.currently_avalible = 0
-            return np.empty(0)
+            return order, outcomes, flip_point, split
         if flipped:
             self._merge_complete_jet(order[split:])
         else:
             self._merge_complete_jet(order[:split])
         self._calculate_eigenspace()  # now the eigenspace needs recalculating
-        self.step_no += 1
-        if flipped:
-            return order[split:]
-        return order[:split]
+        return order, outcomes, flip_point, split
+
+    def plt_assign_parents(self, save_prefix=None, eigenvector_num=0, steps_required=np.inf):
+        step_no = 0
+        while self.currently_avalible:
+            if eigenvector_num >= self._eigenspace.shape[1]:
+                return # cant get this eigenvector
+            # precalculate some quantities, becuase the step will change them
+            prior_eigenvectors = np.copy(self._eigenspace)
+            prior_eigenvector = prior_eigenvectors[:, eigenvector_num]
+            previously_avalible = self.currently_avalible
+            # work out which points are b decendants
+            b_decendants = np.fromiter(FormShower.descendant_idxs(self.eventWise, *self.eventWise.BQuarkIdx),
+                                       dtype=int)
+            is_decendant = np.fromiter((idx in b_decendants for idx in self.eventWise.JetInputs_SourceIdx),
+                                       dtype=bool)
+            b_mask = np.fromiter((is_decendant[idx] for idx in self.InputIdx[:self.currently_avalible]), dtype=bool)
+            pts = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]), dtype=float)
+            rap = np.array([self._floats[row][self._Rapidity_col] for row
+                            in range(self.currently_avalible)])
+            phi = np.array([self._floats[row][self._Phi_col] for row
+                            in range(self.currently_avalible)])
+            # take a step
+            order, outcomes, flip_point, split = self._step_assign_parents(eigenvector_num)
+            n_splits = len(outcomes)
+            outcomes[np.isinf(outcomes)] = np.nan  # inifinities are hard for plotting
+            # use the split that minimises the outcome
+            split = np.nanargmin(outcomes) + 1
+            flipped = split >= flip_point
+            # why does this work much better?
+            #flipped = split < flip_point
+            fig = plt.figure(figsize=(10, 7))
+            ax0 = plt.subplot(221)
+            ax1 = plt.subplot(222)
+            ax2 = plt.subplot(223)
+            ax3 = plt.subplot(224, sharex=ax1)
+            # some useful ranges for plotting
+            max_out = np.nanmax(outcomes)
+            #ax0, ax1, ax2, ax3 = ax_ar))
+            # ax1 and ax3 are the points in order
+            ax1.set_xlabel("Split position")
+            ax1.set_ylabel("Cut score")
+            ordered_pts = pts[order]
+            colour_args = {'vmax':np.max(pts), 'vmin':np.min(pts)}
+            # scatter plots show disagreement here between thsi and plot_tags
+            ordered_b_mask = b_mask[order]
+            # the -1 is for zero indexing, the -0.5 is for ebing between second to last and last
+            split_colour = np.array([1., 0., 0., 0.5])
+            flip_colour = np.array([0., 0., 1., 0.5])
+            ax1.scatter(np.linspace(0.5, previously_avalible-1-0.5, n_splits),
+                    outcomes, c='black', marker='|')
+            # problem may be that outccomes can be nan, 
+            # create a list of particle psotions between the split conditions
+            # that is never nan
+            filled_outcomes = np.zeros(previously_avalible)
+            filled_outcomes[1:] = outcomes
+            filled_outcomes[:-1] += outcomes
+            filled_outcomes[1:-1] *= 0.5
+            for i, out in enumerate(filled_outcomes):
+                if np.isnan(out):
+                    out = next(np.nanmean(outcomes[i-width:i+width]) for width in range(previously_avalible)
+                               if not np.all(np.isnan(outcomes[i-width:i+width])))
+                    filled_outcomes[i] = out
+            ax1.scatter(np.arange(previously_avalible), filled_outcomes,
+                        c=ordered_pts, **colour_args)
+            ax1.scatter(np.where(ordered_b_mask)[0], filled_outcomes[ordered_b_mask],
+                        c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
+            ax1.vlines(split-0.5, 0, max_out, colors=split_colour)
+            ax1.text(split-0.4, 0.5*max_out, "Split location",
+                     rotation='vertical', c=split_colour)
+            ax1.vlines(flip_point-0.5, 0, max_out, colors=flip_colour, ls='--')
+            ax1.text(flip_point-0.4, 0.5*max_out, "Flip location",
+                     rotation='vertical', c=flip_colour)
+            ax3.set_xlabel("Eigenvector element")
+            # plot all the other eigenvector values in grey
+            for i in range(prior_eigenvectors.shape[1]):
+                if i == eigenvector_num:
+                    continue
+                alpha = 1/(i+2)
+                shape = ['v', 's', '*', 'D', 'P', 'X'][i%6]
+                ax3.scatter(range(previously_avalible), prior_eigenvectors[order, i],
+                                 c='black', alpha=alpha, marker=shape, label=i)
+            # plot the focal ones in colour
+            points = ax3.scatter(range(previously_avalible), prior_eigenvector[order],
+                                 c=ordered_pts, **colour_args, label=eigenvector_num)
+            ax3.scatter(np.where(ordered_b_mask)[0], prior_eigenvector[order][ordered_b_mask],
+                        c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
+            ax3.legend()
+            min_eig, max_eig = np.min(prior_eigenvectors), np.max(prior_eigenvector)
+            ax3.vlines(split-0.5, min_eig, max_eig, colors=split_colour)
+            ax3.text(split-0.4, 0.5*(max_eig + min_eig), "Split location",
+                     rotation='vertical', c=split_colour)
+            ax3.vlines(flip_point-0.5, min_eig, max_eig, colors=flip_colour, ls='--')
+            ax3.text(flip_point-0.4, 0.5*(max_eig + min_eig), "Flip location",
+                     rotation='vertical', c=flip_colour)
+            # ax2 is the point sin the pt eta plain
+            ax2.set_xlabel("Rapidity")
+            ax2.set_ylabel("$\\phi$")
+            ax2.scatter(rap, phi, c=pts, **colour_args)
+            arrow_style = '<-'
+            post_split = False
+            for i in range(n_splits):
+                start_idx = order[i]
+                end_idx = order[i+1]
+                if arrow_style == '|-|': # last step was the flip
+                    arrow_style = '->'
+                if i+1 == flip_point:
+                    arrow_style = '|-|'
+                    if i+1 == split:
+                        post_split = True
+                        colour = tuple(0.5*(flip_colour + split_colour))
+                    else:
+                        colour = tuple(flip_colour)
+                elif i+1 == split:
+                    post_split = True
+                    colour = tuple(split_colour)
+                else:
+                    colour = 'grey' if (flipped != post_split) else 'black'
+                rap_cross, sign = find_crossing_point(rap[start_idx], phi[start_idx],
+                                              rap[end_idx], phi[end_idx])
+                if rap_cross is not None:
+                    ax2.plot([rap[start_idx], rap_cross], [phi[start_idx], sign*np.pi],
+                              c=colour)
+                    ax2.annotate('', (rap_cross, -sign*np.pi), (rap[end_idx], phi[end_idx]),
+                                 arrowprops={'arrowstyle':arrow_style, 'color':colour})
+                else:
+                    ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
+                                 arrowprops={'arrowstyle':arrow_style, 'color':colour})
+            plot_tags(self.eventWise, ax=ax2)
+            ax2.plot([], [], c='grey', label='Outside of jet')
+            ax2.plot([], [], c='black', label='Inside of jet')
+            ax2.legend()
+            # discribe the jet and stick the colour bar on ax 0
+            PlottingTools.discribe_jet(properties_dict=self.jet_parameters, ax=ax0,
+                                       additional_text=f"Step {step_no}\nEigenvector {eigenvector_num}\nJet multiplicity {split}\nBG multiplicity {previously_avalible-split}")
+            colorbar = plt.colorbar(points, ax=ax0)
+            colorbar.set_label("Particle $p_T$")
+            fig.tight_layout()
+            if save_prefix is None:
+                plt.show()
+            else:
+                fig_name = f"images/splitting/{save_prefix}_{self.Laplacien}_step{step_no}_ev{eigenvector_num}.png"
+                plt.savefig(fig_name)
+            plt.close('all')
+            step_no += 1
+            if step_no > steps_required:
+                return
 
 
 class SpectralMean(Spectral):
@@ -2633,7 +2664,7 @@ if __name__ == '__main__':
     #InputTools.pre_selections = InputTools.PreSelections(
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
-    event_num = InputTools.get_literal("Event number? ", int)
+    #event_num = InputTools.get_literal("Event number? ", int)
     fast_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0, jet_name="CambridgeAachenp8")
     #spectral_jet_params = dict(DeltaR=0.4, ExpofPTMultiplier=0.2,
     #                           ExpofPTPosition='eigenspace',
@@ -2649,7 +2680,7 @@ if __name__ == '__main__':
     #c_class = SpectralFull
     spectral_jet_params = dict(ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
-                               NumEigenvectors=1,
+                               NumEigenvectors=3,
                                Laplacien='symmetric',
                                AffinityType='exponent',
                                AffinityCutoff=('distance', 1),
@@ -2658,9 +2689,14 @@ if __name__ == '__main__':
 
     c_class = Splitting
     check_hyperparameters(c_class, spectral_jet_params)
-    eventWise.selected_index = event_num
-    #c_class(eventWise, assign=True, **spectral_jet_params)
-    c_class(eventWise, assign=True, dict_jet_params=spectral_jet_params)
+    for event_num in range(30):
+        eventWise.selected_index = event_num
+        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+        jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=0)
+        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+        jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=1, steps_required=1)
+        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+        jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=2, steps_required=1)
     #plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
     #plt.show()
     #eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class)
