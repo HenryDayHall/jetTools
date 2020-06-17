@@ -19,6 +19,7 @@ def marry(hepmc, root_particles):
     Returns
     -------
 
+    
     """
     if isinstance(root_particles, str):
         root_particles = Components.RootReadout(*os.path.split(root_particles),

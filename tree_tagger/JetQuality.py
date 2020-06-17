@@ -1,12 +1,32 @@
 """ Jet quality measures as discribed in https://arxiv.org/pdf/0810.1304.pdf"""
 import numpy as np
-from tree_tagger import MassPeaks, Constants
+from tree_tagger import MassPeaks, Constants, TrueTag
 import scipy.optimize
 from ipdb import set_trace as st
 
 
 def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
                   jet_pt_cut=None, max_tag_angle=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    mass_function :
+         (Default value = 'highest pt pair')
+    jet_pt_cut :
+         (Default value = None)
+    max_tag_angle :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if max_tag_angle is None:
         max_tag_angle = Constants.max_tagangle
     if jet_pt_cut is None:
@@ -23,6 +43,28 @@ def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
 
 def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt pair',
                   jet_pt_cut=None, max_tag_angle=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    fraction :
+         (Default value = 0.15)
+    mass_function :
+         (Default value = 'highest pt pair')
+    jet_pt_cut :
+         (Default value = None)
+    max_tag_angle :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     target_counts = int(np.ceil(fraction*n_events))
@@ -40,6 +82,30 @@ def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt 
 
 def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_function='highest pt pair',
                      jet_pt_cut=None, max_tag_angle=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    mass_of_obj :
+        
+    multiplier :
+         (Default value = 125.)
+    mass_function :
+         (Default value = 'highest pt pair')
+    jet_pt_cut :
+         (Default value = None)
+    max_tag_angle :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut, max_tag_angle=max_tag_angle)
@@ -55,7 +121,32 @@ def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_fun
 
 def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multiplier=125.,
                           mass_function='highest pt pair', jet_pt_cut=None, max_tag_angle=None):
-    """ slightly faster to do both together """
+    """
+    slightly faster to do both together
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    mass_of_obj :
+        
+    fraction :
+         (Default value = 0.15)
+    multiplier :
+         (Default value = 125.)
+    mass_function :
+         (Default value = 'highest pt pair')
+    jet_pt_cut :
+         (Default value = None)
+    max_tag_angle :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if max_tag_angle is None:
         max_tag_angle = Constants.max_tagangle
     eventWise.selected_index = None

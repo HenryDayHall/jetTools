@@ -17,6 +17,7 @@ def make_finite(ary):
     Returns
     -------
 
+    
     """
     return np.nan_to_num(ary.astype('float32'))
 
@@ -29,11 +30,12 @@ def begin_training(run, viewer=None):
     run :
         param viewer: (Default value = None)
     viewer :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     assert 'bdt' in run.settings['net_type'].lower();
     # create the dataset
@@ -63,6 +65,7 @@ def make_hist(run):
     Returns
     -------
 
+    
     """
     output, test_truth = run.apply_to_test()
     plot_range = (output.min(), output.max())
@@ -92,11 +95,12 @@ def plot_rocs(runs, loglog=False, ax=None):
     ax :
         Default value = None)
     loglog :
-         (Default value = False)
+        (Default value = False)
 
     Returns
     -------
 
+    
     """
     #axis
     if ax is None:
@@ -142,6 +146,7 @@ def feature_importance(run):
     Returns
     -------
 
+    
     """
     bdt = run.best_nets[0]
     importances = bdt.feature_importances_

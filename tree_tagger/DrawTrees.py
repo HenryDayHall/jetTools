@@ -50,11 +50,12 @@ class DotGraph:
         use_TracksTowers :
             Default value = False)
         eventWise :
-             (Default value = None)
+            (Default value = None)
 
         Returns
         -------
 
+        
         """
         # add the edges
         for this_id, this_parents in zip(shower.particle_idxs, shower.parents):
@@ -199,6 +200,7 @@ class DotGraph:
         Returns
         -------
 
+        
         """
         self.__edges += f"\t{ID1} -> {ID2}\n"
 
@@ -220,6 +222,7 @@ class DotGraph:
         Returns
         -------
 
+        
         """
         self.__nodes += f'\t{ID} [label="{label}"'
         if colour is not None:
@@ -240,6 +243,7 @@ class DotGraph:
         Returns
         -------
 
+        
         """
         ID_strings = [str(ID) for ID in IDs]
         id_string = ' '.join(ID_strings)
@@ -263,6 +267,7 @@ class DotGraph:
         Returns
         -------
 
+        
         """
         self.__legend += f'\t{ID} [label="{label}"'
         if colour is not None:
@@ -290,7 +295,7 @@ def main():
         from tree_tagger import FormShower
         eventWise.selected_index = int(input("Event number: "))
         showers = FormShower.get_showers(eventWise)
-        jet_name = "HomeJets"
+        jet_name = "HomeJet"
         chosen_showers = []
         for i, shower in enumerate(showers):
             shower_roots = [shower.labels[i] for i in shower.root_local_idxs]
@@ -304,7 +309,7 @@ def main():
             # pick the jet with largest overlap
             largest_overlap = 0
             picked_jet = 0
-            for i in range(len(eventWise.HomeJets_Parent)):
+            for i in range(len(eventWise.HomeJet_Parent)):
                 is_external = getattr(eventWise, jet_name + "_Child1")[i] < 0
                 input_idx = getattr(eventWise, jet_name + "_InputIdx")[i][is_external]
                 jet_particles = eventWise.JetInputs_SourceIdx[input_idx]

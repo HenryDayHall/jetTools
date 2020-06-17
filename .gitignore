@@ -12,3 +12,4 @@ pyTorchTree/
 *.bk
 # swap files
 *.swp
+.converage

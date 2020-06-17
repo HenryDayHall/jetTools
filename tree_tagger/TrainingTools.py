@@ -41,6 +41,7 @@ def single_pass(nets, run, dataloader, dataset, validation_weights, validation_e
     Returns
     -------
 
+    
     """
     # make initial measures
     for net in nets:
@@ -125,11 +126,12 @@ def train(nets, run, dataloader, dataset, validation_sampler, device, train_loss
     dataset_inv_size :
         
     viewer :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     weight_decay = run.settings['weight_decay']
     sampler = dataloader.batch_sampler

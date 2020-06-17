@@ -52,11 +52,12 @@ def begin_training(run, viewer=None):
     run :
         param viewer: (Default value = None)
     viewer :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
@@ -87,6 +88,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         truth, root_node = data
         truth = torch.DoubleTensor(truth).to(device)
@@ -113,6 +115,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
@@ -140,6 +143,7 @@ def begin_training(run, viewer=None):
             Returns
             -------
 
+            
             """
             if type(m) == nn.Linear:
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.5)

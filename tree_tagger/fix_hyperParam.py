@@ -4,6 +4,18 @@ from ipdb import set_trace as st
 
 
 def fix(variable):
+    """
+    
+
+    Parameters
+    ----------
+    variable :
+        
+
+    Returns
+    -------
+
+    """
     options = {True: 'invarient', False: 'angular', 'Luclus': 'Luclus',
                'True': 'invarient', 'False': 'angular', 'Luclus': 'Luclus'}
     if variable in options:
@@ -13,6 +25,22 @@ def fix(variable):
 
 
 def fix_eventWise(eventWise, variable, fixing_function):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    variable :
+        
+    fixing_function :
+        
+
+    Returns
+    -------
+
+    """
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
     columns = [name for name in eventWise.columns if name.split('_', 1)[-1] == variable]
@@ -36,6 +64,22 @@ def fix_eventWise(eventWise, variable, fixing_function):
 #    
 
 def fix_records(records, variable, fixing_function):
+    """
+    
+
+    Parameters
+    ----------
+    records :
+        
+    variable :
+        
+    fixing_function :
+        
+
+    Returns
+    -------
+
+    """
     if isinstance(records, str):
         records = CompareClusters.Records(records)
     idx = records.indices[variable]

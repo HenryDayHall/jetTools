@@ -1,7 +1,7 @@
 import numpy as np
 import awkward
 import os
-from collections import Counter
+import collections
 from tree_tagger import Components, InputTools
 import csv
 #from ipdb import set_trace as st
@@ -130,7 +130,7 @@ class Hepmc(Components.EventWise):
                 in_indices = np.where(start_barcodes == vertex_b)[0]
                 out_indices = np.where(end_barcodes == vertex_b)[0]
                 # tally the colour flows in and out
-                link_counter = Counter()
+                link_counter = collections.Counter()
                 for in_index in in_indices:
                     for flow in self.prepared_contents["Flow_codes"][event_n, in_index]:
                         link_counter[flow] += 1
@@ -159,11 +159,12 @@ class Hepmc(Components.EventWise):
         stop :
             Default value = np.inf)
         start :
-             (Default value = 0)
+            (Default value = 0)
 
         Returns
         -------
 
+        
         """
         assert os.path.exists(filepath), f"Can't see that file; {filepath}"
         with open(filepath, 'r') as this_file:
@@ -206,6 +207,7 @@ class Hepmc(Components.EventWise):
         Returns
         -------
 
+        
         """
         # start by adding default entries, incase anythign dosn't get content
         add_row = self.particle_cols + self.vertex_cols
@@ -285,6 +287,7 @@ class Hepmc(Components.EventWise):
         Returns
         -------
 
+        
         """
         assert event_line[0][0] == 'E'
         i = 1
@@ -332,6 +335,7 @@ class Hepmc(Components.EventWise):
         Returns
         -------
 
+        
         """
         if header_line[0] == 'N':
             i = 1 # start from 1 because the first item is the key

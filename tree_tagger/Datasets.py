@@ -67,6 +67,7 @@ class EventWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         raise NotImplementedError
 
@@ -83,6 +84,7 @@ class EventWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         folder_name = os.path.split(database_name)[0]
         num_events, events = cls._read_file(folder_name)
@@ -102,6 +104,7 @@ class EventWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         raise NotImplementedError
 
@@ -153,6 +156,7 @@ class TracksTowersDataset(EventWiseDataset):
         Returns
         -------
 
+        
         """
         # list the hieght of all the arrays
         cumulative_tower_entries = np.empty(len(all_events), dtype=int)
@@ -192,6 +196,7 @@ class TracksTowersDataset(EventWiseDataset):
         Returns
         -------
 
+        
         """
         if folder_name is None:
             folder_name = os.path.split(self.database_name)[0]
@@ -225,6 +230,7 @@ class TracksTowersDataset(EventWiseDataset):
         Returns
         -------
 
+        
         """
         folder_name = os.path.split(database_name)[0]
         num_events, events = cls._read_file(folder_name)
@@ -255,6 +261,7 @@ class TracksTowersDataset(EventWiseDataset):
         Returns
         -------
 
+        
         """
         n_events = len(cumulative_tower_entries)
         # split them by event
@@ -294,6 +301,7 @@ class TracksTowersDataset(EventWiseDataset):
         Returns
         -------
 
+        
         """
         # read all the numpy arrays into a npz format
         numpy_save_name = os.path.join(folder_name, cls.numpy_save_name)
@@ -332,6 +340,7 @@ def gen_overall_data(eventWise):
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index != None
     info = []
@@ -374,6 +383,7 @@ def gen_track_data(eventWise, event_info):
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index != None
     num_tracks = len(eventWise.Track_Energy)
@@ -403,6 +413,7 @@ def gen_tower_data(eventWise, event_info):
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index != None
     num_towers = len(eventWise.Track_Energy)
@@ -427,11 +438,12 @@ def simplifier(dataset, num_pairs=1):
     dataset :
         param num_pairs: (Default value = 1)
     num_pairs :
-         (Default value = 1)
+        (Default value = 1)
 
     Returns
     -------
 
+    
     """
     all_events = np.vstack((dataset.test_events, dataset._events))
     reduced_events = []
@@ -534,6 +546,7 @@ class JetWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         self.is_torch = True
         torch.set_default_tensor_type('torch.DoubleTensor')
@@ -554,6 +567,7 @@ class JetWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         jet_idx = [np.arange(self._cumulative_jets[idx-1],
                              self._cumulative_jets[idx])
@@ -576,6 +590,7 @@ class JetWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         in_dir = os.listdir(dir_name)
         possibles = [f for f in in_dir if f.startswith("pros_") and f.endswith(".npz")]
@@ -608,11 +623,12 @@ class JetWiseDataset(Dataset):
         database_name :
             param folder_name: (Default value = None)
         folder_name :
-             (Default value = None)
+            (Default value = None)
 
         Returns
         -------
 
+        
         """
         ds_components = os.path.split(database_name)
         if folder_name is None:
@@ -636,6 +652,7 @@ class JetWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         params = {"database_name": self.database_name,
                   "jet_name": self.jet_name,
@@ -656,11 +673,12 @@ class JetWiseDataset(Dataset):
         dataset_name :
             param folder_name: (Default value = None)
         folder_name :
-             (Default value = None)
+            (Default value = None)
 
         Returns
         -------
 
+        
         """
         params = cls._read_file(dataset_name, folder_name)
         return cls(**params)
@@ -680,6 +698,7 @@ class JetWiseDataset(Dataset):
         Returns
         -------
 
+        
         """
         content = np.load(cls.save_name(dataset_name, folder_name))
         params = content['params'][0]

@@ -1,29 +1,27 @@
 """Low level components, format apes that of root """
 import pickle
 import warnings
-import uproot
-import awkward
-import itertools
-import contextlib
 import os
-import csv
-from ipdb import set_trace as st
-import debug
+# from ipdb import set_trace as st
+import awkward
+import uproot
 import numpy as np
-from tree_tagger import Constants, PDGNames, InputTools
-import scipy.spatial
+import debug
+from tree_tagger import Constants, InputTools
 
 def flatten(nested):
     """
-    
+    Create a flat iterable of an object with any depth.
 
     Parameters
     ----------
-    nested :
-        
+    nested : iterable
+        the object to be flattened
 
     Returns
     -------
+    : iterable
+        a flat iterable
 
     """
     for part in nested:
@@ -31,21 +29,25 @@ def flatten(nested):
             yield from flatten(part)
         else:
             yield part
-    return
 
 
 def detect_depth(nested):
     """
-    
+    Check the maximum depth of an iterable, not counting strings or byte strings.
 
     Parameters
     ----------
-    nested :
-        
+    nested : iterable
+        thing to be checked
 
     Returns
     -------
-
+    found_end : bool
+        True if the max depth is determined by something
+        that isn't itself iterable, rather than an empty iterable
+    max_depth : int
+        The greatest number of layers of iterable
+    
     """
     # assumed arrays are wider than deep
     max_depth = 0
@@ -53,8 +55,8 @@ def detect_depth(nested):
         # some thigs have ittr methods, but are the end goal
         if isinstance(x, (str, bytes)) or not hasattr(x, '__iter__'):
             return True, 0  # absolute end found
-        elif len(x) > 0:
-            abs_end, x_depth = detect_depth(x) 
+        if len(x) > 0:
+            abs_end, x_depth = detect_depth(x)
             if abs_end:
                 return abs_end, x_depth+1
             max_depth = max(max_depth, x_depth+1)
@@ -81,6 +83,7 @@ def apply_array_func(func, *nested, depth=None):
     Returns
     -------
 
+    
     """
     if depth is None:
         abs_end, depth = detect_depth(nested[0])
@@ -105,6 +108,7 @@ def _apply_array_func(func, depth, *nested):
     Returns
     -------
 
+    
     """
     # all nested must have the same shape
     out = []
@@ -122,7 +126,7 @@ def _apply_array_func(func, depth, *nested):
 
 def confine_angle(angle):
     """
-    confine an angle between -pi and pi
+    confine an angle x, s.t. -pi <= x < pi
 
     Parameters
     ----------
@@ -132,17 +136,43 @@ def confine_angle(angle):
     Returns
     -------
 
+    
     """
     return ((angle + np.pi)%(2*np.pi)) - np.pi
 
 
 def angular_distance(a, b):
-    """ get the distance between a and b """
+    """
+    get the distance between a and b
+
+    Parameters
+    ----------
+    a :
+        
+    b :
+        
+
+    Returns
+    -------
+
+    """
     raw = a - b
     return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
 
 
 def raw_to_angular_distance(raw):
+    """
+    
+
+    Parameters
+    ----------
+    raw :
+        
+
+    Returns
+    -------
+
+    """
     return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
 
 
@@ -161,9 +191,11 @@ def safe_convert(cls, string):
     Returns
     -------
 
+    
     """
-    if string == "None": return None
-    elif cls == bool: 
+    if string == "None":
+        return None
+    if cls == bool:
         return Constants.lowerCase_truthies.get(string.lower(), True)
     else: return cls(string)
 
@@ -171,8 +203,8 @@ def safe_convert(cls, string):
 class EventWise:
     """The most basic properties of collections that exist in an eventwise sense"""
     selected_index = None
-    EVENT_DEPTH=1 # events, objects in events
-    JET_DEPTH=2 # events, jets, objects in jets
+    EVENT_DEPTH = 1 # events, objects in events
+    JET_DEPTH = 2 # events, jets, objects in jets
 
     def __init__(self, dir_name, save_name, columns=None, contents=None, hyperparameter_columns=None):
         self._loaded_contents = {}  # keep columns that have been accessed in ram
@@ -197,7 +229,7 @@ class EventWise:
         assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
         self._alias_dict = self._gen_alias()
         self.hyperparameters = {}
-    
+
     def _gen_alias(self):
         """ """
         alias_dict = {}
@@ -221,6 +253,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         alias_keys = list(self._column_contents['alias'][:, 0])
         alias_list = list(self._column_contents['alias'])
@@ -245,6 +278,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         assert target in self.columns
         assert name not in self.columns
@@ -297,6 +331,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         if event_n is None:
             assert self.selected_index is not None
@@ -309,7 +344,7 @@ class EventWise:
             match_to = getattr(self, match_to)
         if match_to is not None:
             try:
-                out = [row[f==t] for f, t, row in zip(match_from, match_to, attr)]
+                out = [row[f == t] for f, t, row in zip(match_from, match_to, attr)]
             except TypeError:
                 mask = match_from == match_to
                 out = [row[m] for m, row in zip(mask, attr)]
@@ -322,7 +357,8 @@ class EventWise:
         return sorted(new_attrs)
 
     def __str__(self):
-        msg = f"<EventWise with {len(self.columns)} columns; {os.path.join(self.dir_name, self.save_name)}>"
+        msg = f"<EventWise with {len(self.columns)} columns;" +\
+              f" {os.path.join(self.dir_name, self.save_name)}>"
         return msg
 
     def __eq__(self, other):
@@ -347,7 +383,7 @@ class EventWise:
         #all_content = {'column_order': column_order,
         #               'hyperparameter_column_order': hyperparameter_column_order,
         #               **self._column_contents}
-        all_content = {k:i for k, i in self._column_contents.items()}
+        all_content = self._column_contents.copy()
         all_content['column_order'] = column_order
         all_content['hyperparameter_column_order'] = hyperparameter_column_order
         awkward.save(path, all_content, mode='w')
@@ -365,6 +401,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         contents = awkward.load(path)
         columns = list(contents['column_order'])
@@ -386,6 +423,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         new_content = kwargs
         new_columns = sorted(kwargs.keys())
@@ -416,6 +454,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         new_content = kwargs
         new_columns = sorted(kwargs.keys())
@@ -452,6 +491,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         if col_name in self._alias_dict:
             self._remove_alias(col_name)
@@ -462,8 +502,8 @@ class EventWise:
                 self.hyperparameter_columns.remove(col_name)
             else:
                 raise KeyError(f"Don't have a column called {col_name}")
-            if type(self._column_contents) != dict:
-                self._column_contents = {k:v for k, v in self._column_contents.items()}
+            if not isinstance(self._column_contents, dict):
+                self._column_contents = self._column_contents.copy()
             del self._column_contents[col_name]
             if col_name in self._loaded_contents:
                 del self._loaded_contents[col_name]
@@ -480,10 +520,12 @@ class EventWise:
         Returns
         -------
 
+        
         """
-        to_remove = [c for c in self.columns + self.hyperparameter_columns if c.startswith(col_prefix)]
-        for c in to_remove:
-            self.remove(c)
+        to_remove = [c for c in self.columns + self.hyperparameter_columns
+                     if c.startswith(col_prefix)]
+        for col in to_remove:
+            self.remove(col)
 
     def rename(self, old_name, new_name):
         """
@@ -499,6 +541,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         if old_name in self._alias_dict:
             target = self._alias_dict[old_name]
@@ -511,8 +554,8 @@ class EventWise:
                 self.hyperparameter_columns[self.hyperparameter_columns.index(old_name)] = new_name
             else:
                 raise KeyError(f"Don't have a column called {old_name}")
-            if type(self._column_contents) != dict:
-                self._column_contents = {k:v for k, v in self._column_contents.items()}
+            if not isinstance(self._column_contents, dict):
+                self._column_contents = self._column_contents.copy()
             self._column_contents[new_name] = self._column_contents[old_name]
             del self._column_contents[old_name]
 
@@ -530,6 +573,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         for name in self.columns+self.hyperparameter_columns:
             if name.startswith(old_prefix):
@@ -550,6 +594,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         if not isinstance(per_event_component, str):
             n_events = len(getattr(self, per_event_component[0]))
@@ -564,7 +609,9 @@ class EventWise:
             n_fragments = int(np.ceil(n_events/fragment_length))
         lower_bounds = [i*fragment_length for i in range(n_fragments)]
         upper_bounds = lower_bounds[1:] + [n_events]
-        return self.split(lower_bounds, upper_bounds, per_event_component, part_name="fragment", **kwargs)
+        return self.split(lower_bounds, upper_bounds,
+                          per_event_component, part_name="fragment",
+                          **kwargs)
 
     def split_unfinished(self, per_event_component, unfinished_component, **kwargs):
         """
@@ -582,6 +629,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         self.selected_index = None
         if not isinstance(per_event_component, str):
@@ -590,7 +638,7 @@ class EventWise:
             n_events = len(getattr(self, per_event_component))
         if not isinstance(unfinished_component, str):
             # check they all have the same length
-            lengths = set([len(getattr(self, name)) for name in unfinished_component])
+            lengths = {len(getattr(self, name)) for name in unfinished_component}
             assert len(lengths) == 1, "Error not all unfinished components have the same length"
             num_unfinished = list(lengths)[0]
         else:
@@ -604,7 +652,9 @@ class EventWise:
             return os.path.join(self.dir_name, self.save_dir), None
         lower_bounds = [0, num_unfinished]
         upper_bounds = [num_unfinished, n_events]
-        return self.split(lower_bounds, upper_bounds, per_event_component, part_name="progress", **kwargs)
+        return self.split(lower_bounds, upper_bounds,
+                          per_event_component, part_name="progress",
+                          **kwargs)
 
     def split(self, lower_bounds, upper_bounds, per_event_component="Energy", part_name="part", **kwargs):
         """
@@ -626,6 +676,7 @@ class EventWise:
         Returns
         -------
 
+        
         """
         # not thread safe....
         self.selected_index = None
@@ -658,18 +709,20 @@ class EventWise:
         for lower, upper in zip(lower_bounds, upper_bounds):
             if lower > upper:
                 raise ValueError(f"lower bound {lower} greater than upper bound {upper}")
-            elif lower == upper:
+            if lower == upper:
                 # append none as a placeholder
                 new_contents.append(None)
             else:
                 new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
                 new_contents.append(new_content)
-        no_dups = kwargs.get('no_dups', True)  # if no dupes only put the unchanged content in the first event
+        # if no dupes only put the unchanged content in the first event
+        no_dups = kwargs.get('no_dups', True)
         all_paths = []
         i = 0
         add_unsplit = True
         # add the hyperparameters to all things...
-        hyper_param_dict = {name: self._column_contents[name] for name in self.hyperparameter_columns}
+        hyper_param_dict = {name: self._column_contents[name] for
+                            name in self.hyperparameter_columns}
         unchanged_parts = {k: self._column_contents[k][:] for k in self._column_contents.keys()
                            if k not in per_event_cols and k not in hyper_param_dict}
         for new_content in new_contents:
@@ -679,11 +732,11 @@ class EventWise:
             new_content = {**new_content, **hyper_param_dict}
             # this bit isn't thread safe and could create a race condition
             while name_format.format(i) in os.listdir(save_dir):
-                i+=1
+                i += 1
             name = name_format.format(i)
             if add_unsplit:
                 new_content = {**new_content, **unchanged_parts}
-                ew = type(self)(save_dir, name,
+                eventWise = type(self)(save_dir, name,
                                 columns=self.columns,
                                 hyperparameter_columns=self.hyperparameter_columns,
                                 contents=new_content)
@@ -691,12 +744,12 @@ class EventWise:
                     # don't do this again
                     add_unsplit = False
             else:
-                ew = type(self)(save_dir, name,
+                eventWise = type(self)(save_dir, name,
                                 columns=per_event_cols,
                                 hyperparameter_columns=self.hyperparameter_columns,
                                 contents=new_content)
             all_paths.append(os.path.join(save_dir, name))
-            ew.write()
+            eventWise.write()
         return all_paths
 
     @classmethod
@@ -711,11 +764,12 @@ class EventWise:
         del_framgents :
             Default value = True)
         check_for_dups :
-             (Default value = False)
+            (Default value = False)
 
         Returns
         -------
 
+        
         """
         if dir_name.endswith('/'):
             dir_name = dir_name[:-1]
@@ -755,11 +809,12 @@ class EventWise:
         Returns
         -------
 
+        
         """
         in_dir = os.listdir(dir_name)
         if fragments is None:
             fragments = [name for name in in_dir
-                         if name.startswith(save_base) 
+                         if name.startswith(save_base)
                          and name.endswith(".awkd")]
         columns = []
         hyperparameter_columns = []
@@ -775,7 +830,8 @@ class EventWise:
                         contents[name] = content_here[name]
                     error_msg = f"Missmatch in hyperparameter {name}"
                     try:
-                        np.testing.assert_allclose(content_here[name], contents[name], err_msg=error_msg)
+                        np.testing.assert_allclose(content_here[name], contents[name],
+                                                   err_msg=error_msg)
                     except TypeError:
                         assert content_here[name] == contents[name], error_msg
             elif found_hcols:
@@ -826,6 +882,7 @@ def event_matcher(eventWise1, eventWise2):
     Returns
     -------
 
+    
     """
     eventWise1.selected_index = None
     eventWise2.selected_index = None
@@ -845,7 +902,7 @@ def event_matcher(eventWise1, eventWise2):
     column_type = np.array(column_type)
     isint = np.array([col == np.int64 for col in column_type])
     int_cols = common_columns[isint]
-    isfloat = np.array([ col == np.float64 for col in column_type])
+    isfloat = np.array([col == np.float64 for col in column_type])
     float_cols = common_columns[isfloat]
     assert "Event_n" in common_columns
     length1 = len(eventWise1.Event_n)
@@ -854,24 +911,20 @@ def event_matcher(eventWise1, eventWise2):
         possibles = np.where(eventWise2.Event_n == eventWise1.Event_n[i])[0]
         if len(possibles) == 0:
             continue
-        int2 = [getattr(eventWise2, col)[possibles] for col in int_cols]
-        int1 = [getattr(eventWise1, col)[i] for col in int_cols]
         int_gap = np.zeros_like(possibles, dtype=int)
         for col in int_cols:
             f1 = getattr(eventWise1, col)[i]
             f2s = getattr(eventWise2, col)[possibles]
             try:
                 int_gap += [np.int64(np.nan_to_num(recursive_distance(f1, f2))) for f2 in f2s]
-            except:
-                int_ap = [np.int64(np.nan_to_num(recursive_distance(f1, f2))) for f2 in f2s]
-        possibles = possibles[int_gap==0]
+            except Exception:
+                int_gap = [np.int64(np.nan_to_num(recursive_distance(f1, f2))) for f2 in f2s]
+        possibles = possibles[int_gap == 0]
         if len(possibles) == 1:
             order[i] = possibles[0]
             continue
         if len(possibles) == 0:
             continue
-        float2 = [getattr(eventWise2, col)[possibles] for col in float_cols]
-        float1 = [getattr(eventWise1, col)[i] for col in float_cols]
         float_gap = np.zeros_like(possibles, dtype=float)
         for col in float_cols:
             f1 = getattr(eventWise1, col)[i]
@@ -880,7 +933,7 @@ def event_matcher(eventWise1, eventWise2):
         best = np.argmin(float_gap)
         order[i] = possibles[best]
     return order
-                
+
 
 def recursive_distance(awkward1, awkward2):
     """
@@ -896,6 +949,7 @@ def recursive_distance(awkward1, awkward2):
     Returns
     -------
 
+    
     """
     distance = 0.
     iter1 = hasattr(awkward1, '__iter__')
@@ -904,10 +958,9 @@ def recursive_distance(awkward1, awkward2):
         if len(awkward1) != len(awkward2):
             return np.inf
         return np.sum([recursive_distance(a1, a2) for a1, a2 in zip(awkward1, awkward2)])
-    elif iter1 or iter2:
+    if iter1 or iter2:
         return np.inf
-    else:
-        distance += np.abs(awkward1 - awkward2)
+    distance += np.abs(awkward1 - awkward2)
     return distance
 
 
@@ -920,11 +973,12 @@ def add_rapidity(eventWise, base_name=''):
     eventWise :
         param base_name: (Default value = '')
     base_name :
-         (Default value = '')
+        (Default value = '')
 
     Returns
     -------
 
+    
     """
     if base_name != '':
         if not base_name.endswith('_'):
@@ -959,11 +1013,12 @@ def add_thetas(eventWise, basename=None):
     eventWise :
         param basename: (Default value = None)
     basename :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     contents = {}
     if basename is None:
@@ -983,7 +1038,6 @@ def add_thetas(eventWise, basename=None):
             set(("Birr", "Pz")) <= set(avalible_components) or
             set(("Px", "Py", "Pz")) <= set(avalible_components)):
             # then we will work with momentum
-            #if "Pz" in avalible_components:
             pz = getattr(eventWise, name+"Pz")
             if "Birr" in avalible_components:
                 birr = getattr(eventWise, name+"Birr")
@@ -1021,11 +1075,12 @@ def add_pseudorapidity(eventWise, basename=None):
     eventWise :
         param basename: (Default value = None)
     basename :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     contents = {}
     if basename is None:
@@ -1060,6 +1115,7 @@ def ptpz_to_theta(pt_list, pz_list):
     Returns
     -------
 
+    
     """
     return np.arctan2(pt_list, pz_list)
 
@@ -1078,6 +1134,7 @@ def pxpy_to_phipt(px_list, py_list):
     Returns
     -------
 
+    
     """
     return np.arctan2(py_list, px_list), np.sqrt(px_list**2 + py_list**2)
 
@@ -1094,15 +1151,21 @@ def theta_to_pseudorapidity(theta_list):
     Returns
     -------
 
+    
     """
+    # awkward arrays also return true for isinstance np.ndarray
+    if not isinstance(theta_list, np.ndarray):
+        theta_list = np.array(theta_list, dtype=float)
+    else:
+        theta_list = theta_list.astype(float)
     with np.errstate(invalid='ignore'):
+        infinite = np.logical_or(theta_list == 0, theta_list == np.pi)
         restricted_theta = confine_angle(theta_list)
         restricted_theta = np.minimum(restricted_theta, np.pi - restricted_theta)
     tan_restricted = np.tan(np.abs(restricted_theta)/2)
-    infinite = tan_restricted <= 0.
     pseudorapidity = np.full_like(theta_list, np.inf)
     pseudorapidity[~infinite] = -np.log(tan_restricted[~infinite])
-    pseudorapidity[theta_list>np.pi/2] *= -1.
+    pseudorapidity[theta_list > np.pi/2] *= -1.
     if not hasattr(theta_list, '__iter__'):
         pseudorapidity = float(pseudorapidity)
     return pseudorapidity
@@ -1124,6 +1187,7 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
     Returns
     -------
 
+    
     """
     # can apply it to arrays of floats or floats, not ints
     rapidity = np.zeros_like(e_list)
@@ -1155,11 +1219,12 @@ def add_PT(eventWise, basename=None):
     eventWise :
         param basename: (Default value = None)
     basename :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     contents = {}
     if basename is None:
@@ -1189,11 +1254,12 @@ def add_phi(eventWise, basename=None):
     eventWise :
         param basename: (Default value = None)
     basename :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     contents = {}
     if basename is None:
@@ -1215,6 +1281,20 @@ def add_phi(eventWise, basename=None):
 
 
 def last_instance(eventWise, particle_idx):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    particle_idx :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     mcpid = eventWise.MCPID[particle_idx]
     has_next = True
@@ -1229,10 +1309,12 @@ def last_instance(eventWise, particle_idx):
     # if we get here there was no child with the mcipd
     return particle_idx
 
-    
+
 class RootReadout(EventWise):
     """Reads arbitary components from a root file created by Delphes"""
-    def __init__(self, dir_name, save_name, component_names, component_of_root_file="Delphes", key_selection_function=None, all_prefixed=False):
+    def __init__(self, dir_name, save_name, component_names,
+                 component_of_root_file="Delphes",
+                 key_selection_function=None, all_prefixed=False):
         # read the root file
         path = os.path.join(dir_name, save_name)
         self._root_file = uproot.open(path)[component_of_root_file]
@@ -1252,6 +1334,7 @@ class RootReadout(EventWise):
                 Returns
                 -------
 
+                
                 """
                 return (key.decode().split('.', 1)[1][0]).isupper()
             self._key_selection_function = func
@@ -1283,11 +1366,12 @@ class RootReadout(EventWise):
         component_name :
             param key_prefix: (Default value = '')
         key_prefix :
-             (Default value = '')
+            (Default value = '')
 
         Returns
         -------
 
+        
         """
         if key_prefix != '':
             key_prefix = key_prefix[0].upper() + key_prefix[1:]
@@ -1313,11 +1397,10 @@ class RootReadout(EventWise):
         for key in full_keys:
             new_attr = key.decode().split('.', 1)[1]
             new_attr = ''.join(filter(str.isalnum, new_attr))
-            if new_attr in rename:
-                new_attr = rename[new_attr]
+            new_attr = rename.get(new_attr, new_attr)
             new_attr = key_prefix + new_attr[0].upper() + new_attr[1:]
             if new_attr[0].isdigit():
-                # atribute naems can contain numbers 
+                # atribute naems can contain numbers
                 # but they must not start with one
                 new_attr = 'x' + new_attr
             attr_names.append(new_attr)
@@ -1332,7 +1415,8 @@ class RootReadout(EventWise):
                     while attr_names[index]+str(n) in attr_names:
                         n += 1
                     attr_names[index] += str(n)
-        assert len(set(attr_names)) == len(attr_names), f"Duplicates in columns; {[n for i, n in enumerate(attr_names) if n in attr_names[i+1:]]}"
+        assert len(set(attr_names)) == len(attr_names), "Duplicates in columns; "+\
+                f"{[n for i, n in enumerate(attr_names) if n in attr_names[i+1:]]}"
         new_column_contents = {name: all_arrays[key]
                                for key, name in zip(full_keys, attr_names)}
         self._column_contents = {**new_column_contents, **self._column_contents}
@@ -1366,11 +1450,11 @@ class RootReadout(EventWise):
         name = "Particle_Track"
         self.columns.append(name)
         self._column_contents[name] = self._reflect_references("Track_Particle",
-                                                         shape_ref, depth=1)
+                                                               shape_ref, depth=1)
         name = "Particle_Tower"
         self.columns.append(name)
         self._column_contents[name] = self._reflect_references("Tower_Particles",
-                                                         shape_ref, depth=2)
+                                                               shape_ref, depth=2)
 
     def _recursive_to_id(self, jagged_array):
         """
@@ -1384,6 +1468,7 @@ class RootReadout(EventWise):
         Returns
         -------
 
+        
         """
         results = []
         is_tRef = True  # an empty list is assumed to be a tRef list
@@ -1402,7 +1487,7 @@ class RootReadout(EventWise):
                 # the trefs are 1 indexed not 0 indexed, so subtract 1
                 results.append(item.id - 1)
         return is_tRef, results
-    
+
     def _reflect_references(self, reference_col, target_shape_col, depth=1):
         """
         
@@ -1419,6 +1504,7 @@ class RootReadout(EventWise):
         Returns
         -------
 
+        
         """
         references = getattr(self, reference_col)
         target_shape = getattr(self, target_shape_col)
@@ -1452,6 +1538,7 @@ class RootReadout(EventWise):
         Returns
         -------
 
+        
         """
         self.selected_index = None
         pt = self.PT
@@ -1484,9 +1571,10 @@ class RootReadout(EventWise):
             Returns
             -------
 
+            
             """
             # we expect inf to be 999.9
-            arry[np.nan_to_num(np.abs(arry))>999.] *= np.inf
+            arry[np.nan_to_num(np.abs(arry)) > 999.] *= np.inf
             return arry
         for name in self._column_contents.keys():
             if "Rapidity" in name:
@@ -1498,7 +1586,7 @@ class RootReadout(EventWise):
         name = "Track_Birr"
         self.columns.remove(name)
         del self._column_contents[name]
-                
+
     def write(self):
         """ """
         raise NotImplementedError("This interface is read only")
@@ -1518,6 +1606,7 @@ class RootReadout(EventWise):
         Returns
         -------
 
+        
         """
         return cls(*os.path.split(path), component_name)
 
@@ -1534,6 +1623,7 @@ def fix_nonexistent_columns(eventWise):
     Returns
     -------
 
+    
     """
     problems = []
     for name in eventWise.columns:
@@ -1553,12 +1643,31 @@ def fix_nonexistent_columns(eventWise):
 
 
 def check_even_length(eventWise, interactive=True, raise_error=False, ignore_prefixes=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    interactive :
+         (Default value = True)
+    raise_error :
+         (Default value = False)
+    ignore_prefixes :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     if ignore_prefixes is None:
         ignore_prefixes = []
     column_lengths = {name: len(getattr(eventWise, name)) for name in eventWise.columns}
     max_len = np.max(list(column_lengths.values()))
-    if interactive and not InputTools.yesNo_question(f"Max length is {max_len}, require this length? "):
+    if interactive and not InputTools.yesNo_question(
+            f"Max length is {max_len}, require this length? "):
         max_len = InputTools.get_literal("What should the length be? ")
     ask_apply_same_choice = 0
     apply_to_prefix = True
@@ -1580,10 +1689,12 @@ def check_even_length(eventWise, interactive=True, raise_error=False, ignore_pre
             if interactive:
                 print(problem)
                 remove = InputTools.yesNo_question("Remove this column? ")
-                apply_to_prefix = InputTools.yesNo_question(f"Apply this choice to all columns with prefix '{prefix}'? ")
+                apply_to_prefix = InputTools.yesNo_question(
+                    f"Apply this choice to all columns with prefix '{prefix}'? ")
                 ask_apply_same_choice += 1
                 if ask_apply_same_choice % 5 == 0:
-                    interactive = not InputTools.yesNo_question("Do you want to apply this choice to all future columns? ")
+                    interactive = not InputTools.yesNo_question(
+                        "Do you want to apply this choice to all future columns? ")
             else:
                 remove = True
         if remove:
@@ -1591,6 +1702,26 @@ def check_even_length(eventWise, interactive=True, raise_error=False, ignore_pre
 
 
 def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_prefixes=None, relaxation=0.0001):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    interactive :
+         (Default value = True)
+    raise_error :
+         (Default value = False)
+    ignore_prefixes :
+         (Default value = None)
+    relaxation :
+         (Default value = 0.0001)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     if ignore_prefixes is None:
         ignore_prefixes = []
@@ -1617,7 +1748,7 @@ def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_pre
         if np.all(restmass2 >= -relaxation):
             continue  # it's not tachyonic
         remove = False
-        min_restmass2 = np.min(restmass2) 
+        min_restmass2 = np.min(restmass2)
         problem = f"Prefix {prefix} is tachyonic with min rest mass {min_restmass2}"
         if raise_error:
             raise ValueError(problem)
@@ -1626,7 +1757,8 @@ def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_pre
             remove = InputTools.yesNo_question("Remove this column? ")
             ask_apply_same_choice += 1
             if ask_apply_same_choice % 5 == 0:
-                interactive = not InputTools.yesNo_question("Do you want to apply this choice to all future prefixes? ")
+                interactive = not InputTools.yesNo_question(
+                    "Do you want to apply this choice to all future prefixes? ")
         else:
             remove = True
         if remove:
@@ -1645,6 +1777,7 @@ def find_eventWise_in_dir(dir_name):
     Returns
     -------
 
+    
     """
     eventWises = []
     content = os.listdir(dir_name)
@@ -1659,4 +1792,3 @@ def find_eventWise_in_dir(dir_name):
     return eventWises
 
 
-#EventWise.combine("./megaIgnore/basis_2k_fragment", "basis_2k")

@@ -29,6 +29,7 @@ def remove_file_extention(path):
     Returns
     -------
 
+    
     """
     suffix = Path(path).suffix
     if len(suffix) == 0:
@@ -52,6 +53,7 @@ def str_is_type(s_type, s, accept_none=False):
     Returns
     -------
 
+    
     """
     if s is None and accept_none:
         return True
@@ -128,6 +130,7 @@ class Run:
                 Returns
                 -------
 
+                
                 """
                 # the line to append must have a value for every column
                 assert len(line) == len(self.column_headings), "tried to append values not equal to number of columns"
@@ -151,6 +154,7 @@ class Run:
                 Returns
                 -------
 
+                
                 """
                 self.table = np.vstack((self.table, line))
         self.append = append
@@ -276,6 +280,7 @@ class Run:
         Returns
         -------
 
+        
         """
         raise NotImplementedError
 
@@ -384,6 +389,7 @@ class Run:
         Returns
         -------
 
+        
         """
         # we can only set column headdings if there arnt ay already
         assert not hasattr(self, 'column_headings'), "Column headdings already set!"
@@ -405,6 +411,7 @@ class Run:
         Returns
         -------
 
+        
         """
         # kill empty strings
         info_line = list(filter(None, info_line))
@@ -451,6 +458,7 @@ class Run:
         Returns
         -------
 
+        
         """
         # just clear the file and start from scratch
         with open(self.progress_file_name, 'w') as pf:
@@ -484,6 +492,7 @@ class Run:
         Returns
         -------
 
+        
         """
         torch.save(net, file_name)
 
@@ -500,6 +509,7 @@ class Run:
         Returns
         -------
 
+        
         """
         # don't allow direct setting of the best net
         # must use set method to ensure we also get the lowest loss
@@ -519,6 +529,7 @@ class Run:
         Returns
         -------
 
+        
         """
         # could make an assertion about this loss being lower thant previous ones,
         # but as i expect this code to be called many times i will omit it
@@ -538,6 +549,7 @@ class Run:
         Returns
         -------
 
+        
         """
         # if we were given a net make it a state dict
         if not isinstance(param_dicts[0], dict):
@@ -558,6 +570,7 @@ class Run:
         Returns
         -------
 
+        
         """
         raise NotImplementedError
 
@@ -636,6 +649,7 @@ class LinkingRun(Run):
         Returns
         -------
 
+        
         """
         towers_projector = LinkingNN.Latent_projector(self.dataset.tower_dimensions,
                                                       self.settings['latent_dimension'])
@@ -684,6 +698,7 @@ class JetWiseRun(Run):
         Returns
         -------
 
+        
         """
         if self._dataset is None:
             self._dataset = Datasets.JetWiseDataset(database_name=self.settings["database_name"],
@@ -704,6 +719,7 @@ class JetWiseRun(Run):
         Returns
         -------
 
+        
         """
         raise NotImplementedError
 
@@ -727,6 +743,7 @@ class FlatJetRun(JetWiseRun):
         Returns
         -------
 
+        
         """
         if self._dataset is None:
             try:
@@ -750,6 +767,7 @@ class FlatJetRun(JetWiseRun):
         Returns
         -------
 
+        
         """
         # Device configuration
         if torch.cuda.is_available():
@@ -834,6 +852,7 @@ class SklearnJetRun(FlatJetRun):
         Returns
         -------
 
+        
         """
         with open(file_name, 'wb') as pickle_file:
             if type(net) == bytes:
@@ -851,11 +870,12 @@ class SklearnJetRun(FlatJetRun):
         net :
             param lowest_loss: (Default value = 0)
         lowest_loss :
-             (Default value = 0)
+            (Default value = 0)
 
         Returns
         -------
 
+        
         """
         # could make an assertion about this loss being lower thant previous ones,
         # but as i expect this code to be called many times i will omit it
@@ -874,6 +894,7 @@ class SklearnJetRun(FlatJetRun):
         Returns
         -------
 
+        
         """
         self._last_net_state_dicts = [pickle.dumps(d) for d in param_dicts]
 
@@ -889,6 +910,7 @@ class SklearnJetRun(FlatJetRun):
         Returns
         -------
 
+        
         """
         nets = [pickle.loads(s) for s in state_dicts]
         return nets
@@ -911,6 +933,7 @@ class SklearnJetRun(FlatJetRun):
         Returns
         -------
 
+        
         """
         if net is None:
             bdt = self.best_nets[0]
@@ -943,6 +966,7 @@ class RecursiveRun(JetWiseRun):
             Returns
             -------
 
+            
             """
             if net_type == "recursive":
                 # legacy for simple_recursive
@@ -965,6 +989,7 @@ class RecursiveRun(JetWiseRun):
         Returns
         -------
 
+        
         """
         if self._dataset is None:
             self._dataset = Datasets.JetTreesDataset(database_name=self.settings["database_name"],
@@ -985,6 +1010,7 @@ class RecursiveRun(JetWiseRun):
         Returns
         -------
 
+        
         """
         # Device configuration
         if torch.cuda.is_available():
@@ -1014,6 +1040,7 @@ class RecursiveRun(JetWiseRun):
         Returns
         -------
 
+        
         """
         if net is None:
             events = self.get_test_input()
@@ -1050,11 +1077,12 @@ def calculate_roc(run, focus=0, target_flavour='b', ddict_name=None):
     ddict_name :
         Default value = None)
     focus :
-         (Default value = 0)
+        (Default value = 0)
 
     Returns
     -------
 
+    
     """
     raise NotImplementedError
 
@@ -1074,6 +1102,7 @@ def get_LinkingProjections(nets, dataset, event_num):
     Returns
     -------
 
+    
     """
     data_event = dataset[event_num]
     towers_data, tracks_data, proximities, MC_truth = event_data
@@ -1100,6 +1129,7 @@ def distances(track_num, tracks_projections, towers_projects):
     Returns
     -------
 
+    
     """
     this_track = tracks_projections[track_num]
     track_dist = np.sqrt(np.sum(np.square(tracks_projections - this_track),
@@ -1162,6 +1192,7 @@ class Liveplot:
         Returns
         -------
 
+        
         """
         # update the plot
         time_stamps = [d[self.time_stamps_idx] for d in data]

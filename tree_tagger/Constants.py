@@ -24,6 +24,20 @@ coordinate_order = ["Energy", "Px", "Py", "Pz", "PT", "Rapidity", "Phi"]
 numeric_classes = {'nn': 'natrual number', 'pdn': 'positive definite number', 'rn': 'real number'}
 
 def is_numeric_class(param, permitted):
+    """
+    
+
+    Parameters
+    ----------
+    param :
+        
+    permitted :
+        
+
+    Returns
+    -------
+
+    """
     if permitted == 'natrual number':
         try:
             int_value = int(param)

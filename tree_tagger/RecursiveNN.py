@@ -37,6 +37,7 @@ class SimpleRecursor(nn.Module):
         Returns
         -------
 
+        
         """
         if node.is_leaf:
             # assume the dataset transforms to a sutable tensor
@@ -70,6 +71,7 @@ class SimpleRecursor(nn.Module):
         Returns
         -------
 
+        
         """
         # the recursion is inside transverse, soo presumably this gets a root node in
         final_hidden = self.traverse(root_node)
@@ -121,6 +123,7 @@ class PseudoStateRecursor(nn.Module):
         Returns
         -------
 
+        
         """
         leaf = node.leaf_inputs.to(self.device)
         embedded = self.activation(self.embedding(leaf))
@@ -156,6 +159,7 @@ class PseudoStateRecursor(nn.Module):
         Returns
         -------
 
+        
         """
         # the recursion is inside transverse, soo presumably this gets a root node in
         final_hidden = self.traverse(root_node)
@@ -187,11 +191,12 @@ def begin_training(run, viewer=None):
     run :
         param viewer: (Default value = None)
     viewer :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
@@ -221,6 +226,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         truth, root_node = data
         truth = torch.DoubleTensor(truth).to(device)
@@ -247,6 +253,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
@@ -277,6 +284,7 @@ def begin_training(run, viewer=None):
             Returns
             -------
 
+            
             """
             if type(m) == nn.Linear:
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.5)

@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 BATCH_LENGTH = 10000
 
 def get_data_file():
+    """ """
     # to start with we know nothing
     root_file = hepmc_file = eventWise_file = False
     start_file = InputTools.get_file_name("Name the data file to start from; ").strip()
@@ -33,6 +34,18 @@ def get_data_file():
 
 
 def define_inputs(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     if 'JetInputs_Energy' in eventWise.columns:
         use_existing = InputTools.yesNo_question("There are already JetInputs, use these? ")
         if use_existing:
@@ -69,6 +82,18 @@ def define_inputs(eventWise):
 
 
 def get_existing_clusters(eventWise):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
     clusters = {name.split('_', 1)[0] for name in eventWise.columns
                 if name.endswith('Parent')}
     if not clusters:
@@ -80,15 +105,18 @@ def get_existing_clusters(eventWise):
 
 
 def pick_class_params():
-    fastjet = "FastJet"
-    cluster_options = list(FormJets.cluster_classes.keys()) + [fastjet]
-    cluster_name = InputTools.list_complete("Which form of clustering? ", cluster_options).strip()
-    if cluster_name == fastjet:
-        cluster_class = FormJets.run_FastJet
-        default_parameters = {'DeltaR':.8, 'ExponentMultiplier':0}
+    """ """
+    cluster_options = FormJets.multiapply_input
+    cluster_name = InputTools.list_complete("Which form of clustering? ", cluster_options.keys()).strip()
+    cluster_function = cluster_options[cluster_name]
+    if cluster_name not in FormJets.cluster_classes:
+        if cluster_name in ["Fast", "Home"]:
+            cluster_class = getattr(FormJets, "Traditional")
+        else:
+            raise NotImplementedError
     else:
-        cluster_class = FormJets.cluster_classes[cluster_name]
-        default_parameters = cluster_class.param_list
+        cluster_class = getattr(FormJets, cluster_name)
+    default_parameters = cluster_class.param_list
     chosen_parameters = {}
     print(f"Select the parameters for {cluster_name}, blank for default.")
     for name, default in default_parameters.items():
@@ -101,28 +129,54 @@ def pick_class_params():
         except ValueError:
             pass
         chosen_parameters[name] = selection
-    return cluster_name, cluster_class, chosen_parameters
+    return cluster_name, cluster_function, chosen_parameters
 
 
 def make_new_cluster(eventWise):
-    cluster_name, cluster_class, chosen_parameters = pick_class_params()
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+
+    Returns
+    -------
+
+    """
+    cluster_name, cluster_function, chosen_parameters = pick_class_params()
     # now we have parameters, apply them
     jet_name = InputTools.list_complete("Name this cluster (empty for autoname); ", [''])
     if jet_name  == '':
         found = [name.split('_', 1)[0] for name in eventWise.hyperparameters
                  if name.startswith(cluster_name)]
         i = 0
-        jet_name = cluster_name + str(i)
+        jet_name = cluster_name + "Jet" + str(i)
         while jet_name in found:
             i += 1
-            jet_name = cluster_name + str(i)
+            jet_name = cluster_name + "Jet" + str(i)
         print(f"Naming this {jet_name}")
     chosen_parameters['jet_name'] = jet_name
-    FormJets.cluster_multiapply(eventWise, cluster_class, chosen_parameters, batch_length=BATCH_LENGTH)
+    FormJets.cluster_multiapply(eventWise, cluster_function, chosen_parameters, batch_length=BATCH_LENGTH)
     return jet_name
 
 
 def get_make_tags(eventWise, jet_name):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+
+    Returns
+    -------
+
+    """
     tag_name = jet_name + '_'
     if InputTools.yesNo_question("Apply pt cut to jets before tagging? "):
         jet_pt_cut = InputTools.get_literal("Jet pt cut; ", float)
@@ -141,6 +195,24 @@ def get_make_tags(eventWise, jet_name):
 
 
 def plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    pretag_jet_pt_cut :
+        
+    img_base :
+        
+
+    Returns
+    -------
+
+    """
     tag_before_pt_cut = pretag_jet_pt_cut is None
     jet_pt_cut = pretag_jet_pt_cut
     if not tag_before_pt_cut:
@@ -178,6 +250,7 @@ def plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base):
 
 
 def check_problem():
+    """ """
     eventWise = get_data_file()
     BATCH_LENGTH = InputTools.get_literal("How long should the batch be (-1 for all events)? ", int)
     if BATCH_LENGTH == -1:

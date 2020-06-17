@@ -144,6 +144,7 @@ def join_behaviors(root):
     Returns
     -------
 
+    
     """
     if root.is_leaf:
         return [], []
@@ -180,6 +181,7 @@ def tree_motion(start, root, steps_between):
     Returns
     -------
 
+    
     """
     if root.is_leaf:
         location = [[[start[0]], [start[1]]]]*(steps_between+1)
@@ -273,6 +275,7 @@ def plot_motions(motions, sizes, colours, dir_name, step_interval):
     Returns
     -------
 
+    
     """
     os.mkdir(dir_name)
     # get the right x limits
@@ -343,6 +346,7 @@ def whole_event(nodisplay=False):
     Returns
     -------
 
+    
     """
     import FormJets
     import Components
@@ -427,6 +431,7 @@ def whole_event_behavior(nodisplay=False):
     Returns
     -------
 
+    
     """
     import FormJets
     import Components
@@ -492,6 +497,7 @@ def plot_whole_event_behavior(fast_behavior, fast_jump, home_behavior, home_jump
     Returns
     -------
 
+    
     """
     if np.any(fast_jump):
         plt.scatter(fast_behavior[fast_jump, 0], fast_behavior[fast_jump, 1], c= fast_behavior[fast_jump, 2], alpha=.5, cmap='viridis', marker='P', label=f"Fast jet, modular jump ({sum(fast_jump)} points)", edgecolor='k')

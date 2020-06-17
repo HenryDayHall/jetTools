@@ -27,6 +27,7 @@ def proximity_lists(etas_1, phis_1, etas_2, phis_2, eta_seperation, phi_seperati
     Returns
     -------
 
+    
     """
 
     # start by binning the data on the scale of the seperation
@@ -116,6 +117,7 @@ def tower_track_proximity(eventWise):
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index != None
     division = 6
@@ -141,6 +143,7 @@ def MC_truth_links(eventWise):
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index != None
     links = {}
@@ -166,6 +169,7 @@ def high_dim_proximity(list_1, list_2):
     Returns
     -------
 
+    
     """
     # standard euclidean brute force
     # make matrices

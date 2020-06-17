@@ -8,6 +8,26 @@ from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTa
 
 
 def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_idxs :
+        
+    track_cut :
+         (Default value = None)
+    min_jet_PT :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if track_cut is None:
         track_cut = Constants.min_ntracks
     if min_jet_PT is None:
@@ -23,6 +43,22 @@ def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
 
 
 def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    ranking_variable :
+         (Default value = "PT")
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_Tags')])[0]
     tagged_idxs = filter(eventWise, jet_name, tagged_idxs)
@@ -34,7 +70,22 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
 
 
 def jet_mass(eventWise, jet_name, jet_idxs):
-    """ calcualte the invarient masses of jets """
+    """
+    calcualte the invarient masses of jets
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_idxs :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     input_name = jet_name + '_InputIdx'
     root_name = jet_name + '_RootInputIdx'
@@ -47,7 +98,20 @@ def jet_mass(eventWise, jet_name, jet_idxs):
 
 
 def cluster_mass(eventWise, particle_idxs):
-    """ calculate the invarint mass of a group of particles """
+    """
+    calculate the invarint mass of a group of particles
+
+    Parameters
+    ----------
+    eventWise :
+        
+    particle_idxs :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     particle_idxs = list(particle_idxs)
     px = np.sum(eventWise.Px[particle_idxs])
@@ -58,6 +122,22 @@ def cluster_mass(eventWise, particle_idxs):
 
 
 def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_pt_cut :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_Tags')])[0]
     tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
@@ -82,6 +162,22 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
 
 
 def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_pt_cut :
+        
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     pair_masses = []
@@ -99,6 +195,24 @@ def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
 
 
 def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, show=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_pt_cut :
+         (Default value = None)
+    show :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     all_masses = []
@@ -115,6 +229,24 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, show=True):
 
 
 def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_pt_cut :
+        
+    show :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     pair_masses = all_smallest_angles(eventWise, jet_name, jet_pt_cut)
     n_events = len(pair_masses)
     plt.hist(pair_masses, bins=50, label="Masses of single jets at smallest angles")
@@ -126,9 +258,28 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
 
 
 def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_pt_cut :
+         (Default value = None)
+    max_tag_angle :
+         (Default value = 0.8)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     if jet_name + "_Tags" not in eventWise.columns:
-        TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf, jet_pt_cut=jet_pt_cut)
+        # jet_pt_cut = None becuase we don't want to cut before tagging
+        TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf, jet_pt_cut=None)
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
@@ -152,6 +303,26 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
 
 
 def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True, max_tag_angle=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_pt_cut :
+         (Default value = None)
+    show :
+         (Default value = True)
+    max_tag_angle :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     all_masses, pairs, pair_masses = all_PT_pairs(eventWise, jet_name, jet_pt_cut, max_tag_angle=max_tag_angle)
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
@@ -184,6 +355,20 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True, max_tag_angle
 
 
 def all_doubleTagged_jets(eventWise, jet_name):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = []
@@ -200,6 +385,22 @@ def all_doubleTagged_jets(eventWise, jet_name):
 
 
 def plot_doubleTagged_jets(eventWise, jet_name, show=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    show :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = all_doubleTagged_jets(eventWise, jet_name)
@@ -212,8 +413,21 @@ def plot_doubleTagged_jets(eventWise, jet_name, show=True):
 
 
 def descendants_masses(eventWise, use_jetInputs=True):
-    """ from the JetInputs, plot all tracks that originate from a light higgs,
-    and all tracks that originate from the heavy higgs """
+    """
+    from the JetInputs, plot all tracks that originate from a light higgs,
+    and all tracks that originate from the heavy higgs
+
+    Parameters
+    ----------
+    eventWise :
+        
+    use_jetInputs :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     heavy_higgs_pid = 35
     heavy_descendants_mass = []

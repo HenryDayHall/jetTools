@@ -19,11 +19,12 @@ def polyfit2d(x, y, z, order=3):
     y :
         
     order :
-         (Default value = 3)
+        (Default value = 3)
 
     Returns
     -------
 
+    
     """
     # ignore nan
     has_nan = np.logical_and(np.isnan(x), np.logical_and(np.isnan(y), np.isnan(z)))
@@ -55,6 +56,7 @@ def polyval2d(x, y, m):
     Returns
     -------
 
+    
     """
     order = int(np.sqrt(len(m))) - 1
     ij = itertools.product(range(order+1), range(order+1))
@@ -85,6 +87,7 @@ def energy_poly(eventWise, jet_name, n_degrees=2, overwrite=False, append=True):
     Returns
     -------
 
+    
     """
     append_name = jet_name + "_RescaleEnergy"
     if overwrite is False:
@@ -145,6 +148,7 @@ def rescale(eventWise, jet_name, jet_indices):
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index is not None
     root_name = jet_name + "_RootInputIdx"

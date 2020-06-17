@@ -10,13 +10,14 @@ import awkward
 
 
 class SimpleClusterSamples:
-    config_1 = {'DeltaR': 1., 'ExponentMultiplier': 0}
-    config_2 = {'DeltaR': 1., 'ExponentMultiplier': 1}
-    config_3 = {'DeltaR': 1., 'ExponentMultiplier': -1}
-    config_4 = {'DeltaR': .4, 'ExponentMultiplier': 0}
-    config_5 = {'DeltaR': .4, 'ExponentMultiplier': 1}
-    config_6 = {'DeltaR': .4, 'ExponentMultiplier': -1}
+    config_1 = {'DeltaR': 1., 'ExpofPTMultiplier': 0}
+    config_2 = {'DeltaR': 1., 'ExpofPTMultiplier': 1}
+    config_3 = {'DeltaR': 1., 'ExpofPTMultiplier': -1}
+    config_4 = {'DeltaR': .4, 'ExpofPTMultiplier': 0}
+    config_5 = {'DeltaR': .4, 'ExpofPTMultiplier': 1}
+    config_6 = {'DeltaR': .4, 'ExpofPTMultiplier': -1}
     # there is no garantee on left right child order, or global order of pseudojets
+    unitless = True   # do we work with a unitless version of distance
     empty_inp = {'ints': np.array([]).reshape((-1, 5)), 'floats': np.array([]).reshape((-1, 8))}
     one_inp = {'ints': np.array([[0, -1, -1, -1, -1]]),
                'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.]])}
@@ -39,11 +40,22 @@ class SimpleClusterSamples:
                                     [2, -1, 0, 1, 0]]),
                   'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
                                       [1., 0., 0.1, 1., np.cos(0.1), np.sin(0.1), 0., 0.],
-                                      [2.*np.cos(0.05), 0., 0.05, 2., 1. + np.cos(0.1), np.sin(0.1), 0., 0.1**2]])}
+                                      [2.*np.cos(0.05), 0., 0.05, 2., 1. + np.cos(0.1), np.sin(0.1), 0., 0.1]])}
     two_oposite = {'ints': np.array([[0, -1, -1, -1, -1],
                                      [1, -1, -1, -1, -1]]),
                    'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
                                        [1., 0., np.pi, 1., -1., 0., 0., 0.]])}
+    @classmethod
+    def get_invarient_mass(cls, inputs):
+        invarient_mass = 1.
+        if cls.unitless:
+                                                           # energy = col3
+            invarient_mass = np.sqrt(np.sum(inputs['floats'][:, 3])**2
+                                                           # pt = col0,  pz = col6
+                                     - np.sum(np.sum(inputs['floats'][:, [0, 6]], axis=0)**2))
+        if invarient_mass == 0:
+            invarient_mass = 1.
+        return invarient_mass
 
     @classmethod
     def pair_production(cls, config):
@@ -77,13 +89,19 @@ class SimpleClusterSamples:
         # get the angular displacement by converting to unit vectors and back
         phi_1 = two['floats'][0, 2]
         phi_2 = two['floats'][1, 2]
-        vec_1 = np.array([np.cos(phi_1), np.sin(phi_1)])
-        vec_2 = np.array([np.cos(phi_2), np.sin(phi_2)])
-        angle = np.arccos(np.clip(np.dot(vec_1, vec_2), -1., 1.))
-        distance = np.min(np.power(two['floats'][:, 0], 2*config['ExponentMultiplier'])) * \
-                   ((two['floats'][0, 1] - two['floats'][1, 1])**2 + angle**2)
-        beam_distance = (config['DeltaR']**2)*np.min(np.power(two['floats'][:, 0], 2*config['ExponentMultiplier']))
-        if distance > beam_distance:
+        angle = abs(phi_1 - phi_2)%(2*np.pi)
+        #vec_1 = np.array([np.cos(phi_1), np.sin(phi_1)])
+        #vec_2 = np.array([np.cos(phi_2), np.sin(phi_2)])
+        #angle = np.arccos(np.clip(np.dot(vec_1, vec_2), -1., 1.))
+        invar_mass = cls.get_invarient_mass(two)
+        exponent = 2*config['ExpofPTMultiplier']
+        distance2 = np.min(np.power(two['floats'][:, 0], exponent)) * \
+                   ((two['floats'][0, 1] - two['floats'][1, 1])**2 + angle**2) *\
+                   invar_mass**-exponent
+        beam_distance2 = (config['DeltaR']**2)*np.min(np.power(two['floats'][:, 0], exponent)) *\
+                        invar_mass**-exponent
+        if distance2 > beam_distance2:
+            #print(f"angle={angle}, exponent={exponent}, invar_mass={invar_mass}, distance2={distance2}, beam_distance2={beam_distance2}")
             # don't join
             return two, two
         else:
@@ -94,6 +112,7 @@ class SimpleClusterSamples:
                                             [1, 2, -1, -1, -1],
                                             [2, -1, 0, 1, 0]]),
                           'floats': np.vstack((two['floats'], joined_floats))}
+            joined_two['floats'][-1, -1] = np.sqrt(distance2)
             return two, joined_two
 
     @classmethod
@@ -148,13 +167,15 @@ class SimpleClusterSamples:
         return order
 
     @classmethod
-    def match_ints_floats(cls, ints1, floats1, ints2, floats2, compare_distance=True):
+    def match_ints_floats(cls, ints1, floats1, ints2, floats2, compare_distance=True, distance_modifier=1.):
         ints_order = cls.match_ints(ints1, ints2)
         floats1 = np.array(floats1)[ints_order]
         floats2 = np.array(floats2)
         if not compare_distance:
             floats1 = floats1[:, :-1]
             floats2 = floats2[:, :-1]
+        else:
+            floats2[:, -1] *= distance_modifier
         tst.assert_allclose(floats1, floats2, atol=0.0001, err_msg="Floats don't match")
 
 
@@ -174,7 +195,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
     config_list = [getattr(SimpleClusterSamples, f"config_{i}") for i in range(1, 7)]
     for config in config_list:
         # an empty set of ints should safely return an empty pseudojet
-        empty_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
+        empty_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
                                              ints = SimpleClusterSamples.empty_inp['ints'],
                                              floats = SimpleClusterSamples.empty_inp['floats'])
         assert len(empty_pseudojet._ints) == 0
@@ -182,7 +203,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         jets = empty_pseudojet.split()
         assert len(jets) == 0
         # one track should return one pseudojet
-        one_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
+        one_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
                                            ints = SimpleClusterSamples.one_inp['ints'],
                                            floats = SimpleClusterSamples.one_inp['floats'])
         SimpleClusterSamples.match_ints_floats(one_pseudojet._ints, one_pseudojet._floats,
@@ -196,9 +217,9 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                                                SimpleClusterSamples.one_inp['floats'],
                                                compare_distance=compare_distance)
         # two tracks degenerate should join
-        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
-                                        ints = SimpleClusterSamples.two_degenerate['ints'],
-                                        floats = SimpleClusterSamples.two_degenerate['floats'])
+        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
+                                        ints=SimpleClusterSamples.two_degenerate['ints'],
+                                        floats=SimpleClusterSamples.two_degenerate['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.degenerate_join['ints'],
                                                SimpleClusterSamples.degenerate_join['floats'],
@@ -210,13 +231,15 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                                                SimpleClusterSamples.degenerate_join['floats'],
                                                compare_distance=compare_distance)
         # two tracks close together should join
-        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
-                                           ints = SimpleClusterSamples.two_close['ints'],
-                                           floats = SimpleClusterSamples.two_close['floats'])
+        modifier = SimpleClusterSamples.get_invarient_mass(SimpleClusterSamples.two_close)**-(2*config['ExpofPTMultiplier'])
+        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
+                                           ints=SimpleClusterSamples.two_close['ints'],
+                                           floats=SimpleClusterSamples.two_close['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.close_join['ints'],
                                                SimpleClusterSamples.close_join['floats'],
-                                               compare_distance=compare_distance)
+                                               compare_distance=compare_distance,
+                                               distance_modifier=modifier)
         jets = two_pseudojet.split()
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
@@ -224,9 +247,9 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                                                SimpleClusterSamples.close_join['floats'],
                                                compare_distance=compare_distance)
         # two tracks far apart should not join
-        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
-                                           ints = SimpleClusterSamples.two_oposite['ints'],
-                                           floats = SimpleClusterSamples.two_oposite['floats'])
+        two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
+                                           ints=SimpleClusterSamples.two_oposite['ints'],
+                                           floats=SimpleClusterSamples.two_oposite['floats'])
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.two_oposite['ints'],
                                                SimpleClusterSamples.two_oposite['floats'],
@@ -243,7 +266,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         phis = np.linspace(-np.pi, np.pi, 11)
         for phi in phis:
             start, expected_end = SimpleClusterSamples.phi_split(config, phi)
-            pseudojets = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
+            pseudojets = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
                                             ints = start['ints'], floats = start['floats'])
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
@@ -261,15 +284,21 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
         fails = 0
         for i in range(n_random_tries):
             start, expected_end = SimpleClusterSamples.pair_production(config)
-            pseudojets = make_pseudojets(empty_ew, config['DeltaR'], config['ExponentMultiplier'],
+            modifier = SimpleClusterSamples.get_invarient_mass(start)**-(2*config['ExpofPTMultiplier'])
+            pseudojets = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
                                             ints=start['ints'], floats=start['floats'])
             jets = pseudojets.split()
             end_ints = np.vstack([j._ints for j in jets])
             end_floats = np.vstack([j._floats for j in jets])
+            # check the split dosn't chagne things
+            SimpleClusterSamples.match_ints_floats(pseudojets._ints, pseudojets._floats,
+                                                   end_ints, end_floats, distance_modifier=1)
             if len(end_ints) == len(expected_end['ints']):
-                SimpleClusterSamples.match_ints_floats(pseudojets._ints, pseudojets._floats,
-                                                       end_ints, end_floats)
+                SimpleClusterSamples.match_ints_floats(end_ints, end_floats,
+                                                       expected_end['ints'], expected_end['floats'],
+                                                       compare_distance=True)
             else:
+                st()
                 fails += 1
                 print("Failed to join/incorrectly joined")
                 if fails > n_acceptable_fails:
@@ -287,23 +316,23 @@ def test_Traditional():
         empty_ew = Components.EventWise(dir_name, empty_name)
         empty_ew.selected_index = 0
         # method 1
-        def make_jets1(eventWise, DeltaR, ExponentMultiplier, ints, floats):
-            pseudojets = FormJets.Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=ExponentMultiplier, ints_floats=(ints, floats))
+        def make_jets1(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
+            pseudojets = FormJets.Traditional(eventWise, DeltaR=DeltaR, ExpofPTMultiplier=ExpofPTMultiplier, ints_floats=(ints, floats))
             pseudojets.assign_parents()
             return pseudojets
         clustering_algorithm(empty_ew, make_jets1)
         # method 2
-        def make_jets2(eventWise, DeltaR, ExponentMultiplier, ints, floats):
+        def make_jets2(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
             set_JetInputs(eventWise, floats)
             eventWise.selected_index = 0
-            pseudojets = FormJets.Traditional(eventWise, DeltaR=DeltaR, ExponentMultiplier=ExponentMultiplier)
+            pseudojets = FormJets.Traditional(eventWise, DeltaR=DeltaR, ExpofPTMultiplier=ExpofPTMultiplier)
             pseudojets.assign_parents()
             return pseudojets
         clustering_algorithm(empty_ew, make_jets2)
         # test the save method
         test_inp = SimpleClusterSamples.one_inp
         name = "TestA"
-        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1.,
+        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExpofPTMultiplier=-1.,
                                         ints_floats=(test_inp['ints'], test_inp['floats']), jet_name=name)
         FormJets.Traditional.write_event([test_jet], name, event_index=2)
         test_jet.check_params(empty_ew)  # required to put in hyperparameters
@@ -315,14 +344,17 @@ def test_Traditional():
         # test collective properties
         test_inp = SimpleClusterSamples.empty_inp
         empty_ew.selected_index = 0
-        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
+        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExpofPTMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         expected_summaries = np.full(10, np.nan)
         found_summaries = np.array([test_jet.PT, test_jet.Rapidity, test_jet.Phi, test_jet.Energy,
                                     test_jet.Px, test_jet.Py, test_jet.Pz, test_jet.JoinDistance,
                                     test_jet.Pseudorapidity, test_jet.Theta])
-        tst.assert_allclose(expected_summaries, found_summaries)
+        try:
+            tst.assert_allclose(expected_summaries, found_summaries)
+        except:
+            st()
         test_inp = SimpleClusterSamples.one_inp
-        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExponentMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
+        test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExpofPTMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         test_jet.assign_parents()
         test_jets = test_jet.split()
         for expected, jet in zip(test_inp['floats'], test_jets):
@@ -553,15 +585,15 @@ def test_produce_summary():
 #            empty_path = os.path.join(dir_name, empty_name)
 #            empty_ew = Components.EventWise(dir_name, empty_name)
 #            # can run fast jets via summary files or the pipe
-#            def make_jets3(eventWise, DeltaR, ExponentMultiplier, ints, floats):
+#            def make_jets3(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
 #                set_JetInputs(eventWise, floats)
 #                eventWise.selected_index = 0
-#                return FormJets.run_FastJet(eventWise, DeltaR, ExponentMultiplier, use_pipe=False)
+#                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=False)
 #            clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
-#            def make_jets4(eventWise, DeltaR, ExponentMultiplier, ints, floats):
+#            def make_jets4(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
 #                set_JetInputs(eventWise, floats)
 #                eventWise.selected_index = 0
-#                return FormJets.run_FastJet(eventWise, DeltaR, ExponentMultiplier, use_pipe=True)
+#                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=True)
 #            clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
 #
 

@@ -18,11 +18,12 @@ def plot_rocs(runs, loglog=False, ax=None):
     ax :
         Default value = None)
     loglog :
-         (Default value = False)
+        (Default value = False)
 
     Returns
     -------
 
+    
     """
     #axis
     if ax is None:
@@ -63,11 +64,12 @@ def plot_hist(run, ax=None, log_y=True):
     log_y :
         Default value = True)
     ax :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     outputs, truth = run.apply_to_test()
     if ax is None:
@@ -124,6 +126,7 @@ class ResponsePlot:
         Returns
         -------
 
+        
         """
         outputs, MC_truth = self.run.apply_to_test(nets, self.test_input)
         # update the plot

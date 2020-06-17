@@ -25,6 +25,7 @@ def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, to
     Returns
     -------
 
+    
     """
     # angles under this are on the endcap
     barrel_theta = np.arctan(barrel_radius/barrel_length)
@@ -63,6 +64,7 @@ def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
     Returns
     -------
 
+    
     """
     half_basesize = barrel_radius * np.pi / 200.
     cos_phis = np.cos(phis)
@@ -98,6 +100,7 @@ def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
     Returns
     -------
 
+    
     """
     half_basesize = barrel_radius * np.pi / 200.
     cos_phis = np.cos(phis)
@@ -136,6 +139,7 @@ def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
     Returns
     -------
 
+    
     """
     point_1 = center_vec + half_basesize * (surface_1 + surface_2)
     point_2 = center_vec + half_basesize * (surface_1 - surface_2)
@@ -171,11 +175,12 @@ def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
     colourmap :
         Default value = "cool")
     colours :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     if colourmap is False: # use a flat colour
         for scale in np.linspace(120, 200, 4):
@@ -204,11 +209,12 @@ def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
     indices :
         
     colourmap :
-         (Default value = "Blues")
+        (Default value = "Blues")
 
     Returns
     -------
 
+    
     """
     if isinstance(all_positions, list):
         all_positions = np.array(all_positions)
@@ -242,7 +248,7 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
     0 :
         param 0.):
     track_name :
-         (Default value = "Track")
+        (Default value = "Track")
     0.9 :
         
     0.9) :
@@ -255,6 +261,7 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
     Returns
     -------
 
+    
     """
     assert eventWise.selected_index is not None, "You must select an event to plot"
     names = list()
@@ -434,6 +441,7 @@ def add_single(pos, colour, scale=100, name=None):
     Returns
     -------
 
+    
     """
     if len(pos) == 3:
         vertices = mlab.points3d([pos[0]], [pos[1]],
@@ -468,11 +476,12 @@ def colour_set(num_colours, colourmap='gist_rainbow'):
     num_colours :
         param colourmap: (Default value = 'gist_rainbow')
     colourmap :
-         (Default value = 'gist_rainbow')
+        (Default value = 'gist_rainbow')
 
     Returns
     -------
 
+    
     """
     cmap = matplotlib.cm.get_cmap(colourmap)
     colours = [cmap(i)[:3] for i in np.linspace(0., 1., num_colours)]
@@ -494,7 +503,7 @@ def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
     interaction :
         Default value = True)
     colour :
-         (Default value = (1.)
+        (Default value = (1.)
     0.7 :
         
     0.2) :
@@ -503,6 +512,7 @@ def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
     Returns
     -------
 
+    
     """
     mlab.plot3d([0, 0], [0, 0], [-length, length], color=colour, tube_radius=length/1000.)
     if interaction:

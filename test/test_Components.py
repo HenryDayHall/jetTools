@@ -1,11 +1,10 @@
 import numpy as np
 import os
 from ipdb import set_trace as st
-import collections
 from numpy import testing as tst
 import pytest
 from tree_tagger import Components, PDGNames
-from tools import generic_equality_comp, TempTestDir
+from tools import generic_equality_comp, TempTestDir, data_dir
 import awkward
 
 class AwkdArrays:
@@ -379,8 +378,6 @@ def test_split_unfinished():
         tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
 
 
-
-
 def test_combine():
     with TempTestDir("tst") as dir_name:
         # splitting a blank ew should result in only Nones
@@ -551,6 +548,7 @@ def test_theta_to_pseudorapidity():
     input_output = [
             (0., np.inf),
             (np.pi/2, 0.),
+            (3, -np.log(np.tan(1.5))),
             (np.pi, -np.inf)]
     for inp, out in input_output:
         etas = Components.theta_to_pseudorapidity(np.array([inp]))
@@ -605,7 +603,7 @@ def test_add_PT():
 
 
 def test_RootReadout():
-    root_file = "/home/hadh1g17/tree_tagger_repo/megaIgnore/h1bBatch2.root"
+    root_file = os.path.join(data_dir, "h1bBatch2.root")
     dir_name, save_name = os.path.split(root_file)
     components = ["Particle", "Track", "Tower"]
     rr = Components.RootReadout(dir_name, save_name, components)

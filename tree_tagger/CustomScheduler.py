@@ -63,6 +63,7 @@ class ReduceBatchSizeOnPlateau(object):
     Returns
     -------
 
+    
     >>> batch_sampler = BatchSampler(sampler, batch_size=5, drop_last=False)
         >>> scheduler = ReduceBatchSizeOnPlateau(batch_sampler, 'min')
         >>> for epoch in range(10):
@@ -118,11 +119,12 @@ class ReduceBatchSizeOnPlateau(object):
         metrics :
             param epoch: (Default value = None)
         epoch :
-             (Default value = None)
+            (Default value = None)
 
         Returns
         -------
 
+        
         """
         current = metrics
         if epoch is None:
@@ -156,6 +158,7 @@ class ReduceBatchSizeOnPlateau(object):
         Returns
         -------
 
+        
         """
         old_bs = self.sampler.batch_size
         new_bs = int(max(old_bs * self.factor, self.min_bs))
@@ -190,6 +193,7 @@ class ReduceBatchSizeOnPlateau(object):
         Returns
         -------
 
+        
         """
         if mode == 'min' and threshold_mode == 'rel':
             rel_epsilon = 1. - threshold
@@ -221,6 +225,7 @@ class ReduceBatchSizeOnPlateau(object):
         Returns
         -------
 
+        
         """
         if mode not in {'min', 'max'}:
             raise ValueError('mode ' + mode + ' is unknown!')
@@ -250,6 +255,7 @@ class ReduceBatchSizeOnPlateau(object):
         Returns
         -------
 
+        
         """
         self.__dict__.update(state_dict)
         self._init_is_better(mode=self.mode, threshold=self.threshold, threshold_mode=self.threshold_mode)
@@ -332,6 +338,7 @@ class CammieWeightDecay(object):
     Returns
     -------
 
+    
     >>> batch_sampler = BatchSampler(sampler, batch_size=5, drop_last=False)
         >>> scheduler = ReduceBatchSizeOnPlateau(batch_sampler, 'min')
         >>> for epoch in range(10):
@@ -441,6 +448,7 @@ class CammieWeightDecay(object):
         Returns
         -------
 
+        
         """
         if mode == 'min' and threshold_mode == 'rel':
             rel_epsilon = 1. - threshold
@@ -482,6 +490,7 @@ class CammieWeightDecay(object):
         Returns
         -------
 
+        
         """
         if mode not in {'min', 'max'}:
             raise ValueError('mode ' + mode + ' is unknown!')
@@ -505,11 +514,12 @@ class CammieWeightDecay(object):
         metric :
             param epoch: (Default value = None)
         epoch :
-             (Default value = None)
+            (Default value = None)
 
         Returns
         -------
 
+        
         """
         if epoch is None:
             epoch = self.last_epoch = self.last_epoch + 1
@@ -580,5 +590,6 @@ class CammieWeightDecay(object):
         Returns
         -------
 
+        
         """
         self.__dict__.update(state_dict)

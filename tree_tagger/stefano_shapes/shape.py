@@ -25,6 +25,7 @@ def shape(energies, pxs, pys, pzs, my_dir='./'):
     Returns
     -------
 
+    
     """
     # these need to be stacked into a momentum vector that 
     # has energy last

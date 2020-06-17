@@ -15,11 +15,12 @@ def apply_linking_net(run, use_test=True, nets=None):
     nets :
         Default value = None)
     use_test :
-         (Default value = True)
+        (Default value = True)
 
     Returns
     -------
 
+    
     """
     if nets is None:
         tower_net, track_net = run.best_nets
@@ -55,6 +56,7 @@ def get_distance_to_neighbor(output_events):
     Returns
     -------
 
+    
     """
     match_status = []  # was it correctly matched?
     match_distance = []  # how far to the closest match?
@@ -92,11 +94,12 @@ def plot_distances(output_events, ax=None):
     output_events :
         param ax: (Default value = None)
     ax :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     if ax is None:
         _, ax = plt.subplots()
@@ -153,6 +156,7 @@ def view_progress(run, nets, ax=None):
     Returns
     -------
 
+    
     """
     output = apply_linking_net(run, nets=nets)
     plot_distances(output, ax=None)
@@ -184,6 +188,7 @@ class ResponsePlot:
         Returns
         -------
 
+        
         """
         output = apply_linking_net(self.run, nets=nets)
         # update the plot

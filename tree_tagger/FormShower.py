@@ -11,6 +11,20 @@ import awkward
 
 
 def descendant_idxs(eventWise, *start_idxs):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    *start_idxs :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     final_idxs = set()
     stack = list(start_idxs)
@@ -24,6 +38,22 @@ def descendant_idxs(eventWise, *start_idxs):
 
 
 def append_b_idxs(eventWise, silent=True, append=True):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    silent :
+         (Default value = True)
+    append :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     name = "BQuarkIdx"
     n_events = len(eventWise.MCPID)
@@ -66,6 +96,7 @@ class Shower:
     Returns
     -------
 
+    
     """
     def __init__(self, particle_idxs, parents, children, labels, amalgam=False):
         self.amalgam = amalgam
@@ -91,6 +122,7 @@ class Shower:
         Returns
         -------
 
+        
         """
         self.amalgam = True
         total_particle_idxs = len(set(self.particle_idxs).union(set(other_shower.particle_idxs)))
@@ -128,6 +160,7 @@ class Shower:
         Returns
         -------
 
+        
         """
         root_idxs = get_roots(self.particle_idxs, self.parents)
         if not self.amalgam:
@@ -153,6 +186,7 @@ class Shower:
         Returns
         -------
 
+        
         """
         #TODO not working.
         # put the first rank in
@@ -206,6 +240,7 @@ class Shower:
         Returns
         -------
 
+        
         """
         outside_idxs = []
         for idx, parents_here in zip(self.particle_idxs, self.parents):
@@ -230,7 +265,22 @@ class Shower:
 
 
 def upper_layers(eventWise, n_layers=5, capture_pids=[]):
-    """ Make a shower of just the topmost layers of the event """
+    """
+    Make a shower of just the topmost layers of the event
+
+    Parameters
+    ----------
+    eventWise :
+        
+    n_layers :
+         (Default value = 5)
+    capture_pids :
+         (Default value = [])
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     n_particles = len(eventWise.Parents)
     # start from the roots
@@ -262,11 +312,12 @@ def get_showers(eventWise, exclude_pids=True):
     eventWise :
         param exclude_pids: (Default value = [2212, 25, 35])
     exclude_pids :
-         (Default value = True)
+        (Default value = True)
 
     Returns
     -------
 
+    
     """
     if exclude_pids is True:
         exclude_pids = [2212, 25, 35]
@@ -334,6 +385,7 @@ def get_roots(particle_ids, parents):
     Returns
     -------
 
+    
     """
     roots = []
     for gid, parents_here in zip(particle_ids, parents):
@@ -365,6 +417,7 @@ def make_tree(particle_idxs, parents, children, labels):
     Returns
     -------
 
+    
     """
     graph =  networkx.Graph()
     graph.add_nodes_from(particle_idxs)
@@ -397,6 +450,7 @@ def recursive_grab(seed_id, particle_idxs, relatives):
     Returns
     -------
 
+    
     """
     try:
         index = np.where(particle_idxs == seed_id)[0][0]
@@ -426,6 +480,7 @@ def x_event_shared_ends(eventWise, all_roots, shared_counts):
     Returns
     -------
 
+    
     """
     n_roots = len(all_roots)
     showers = get_showers(eventWise)
@@ -464,11 +519,12 @@ def event_shared_ends(eventWise, all_roots, shared_counts, exclude_pids=True):
     all_roots :
         
     exclude_pids :
-         (Default value = True)
+        (Default value = True)
 
     Returns
     -------
 
+    
     """
     if exclude_pids is True:
         exclude_pids = [2212, 25, 35]
@@ -522,6 +578,7 @@ def shared_ends(eventWise):
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     n_events = len(eventWise.MCPID)
@@ -554,6 +611,7 @@ def plot_shared_ends(eventWise=None, all_roots=None, shared_counts=None):
     Returns
     -------
 
+    
     """
     if all_roots is None:
         if isinstance(eventWise, str):

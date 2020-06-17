@@ -14,6 +14,20 @@ import ast
 # helper functions
 
 def get_deltaR_grid(rapidity, phi):
+    """
+    
+
+    Parameters
+    ----------
+    rapidity :
+        
+    phi :
+        
+
+    Returns
+    -------
+
+    """
     rapidity_dist2 = scipy.spatial.distance.pdist(rapidity.reshape((-1, 1)), metric='sqeuclidean')
     if rapidity_dist2.shape[0] == 0:
         # no elements
@@ -26,6 +40,18 @@ def get_deltaR_grid(rapidity, phi):
 
 
 def get_angle_grid(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     phi = particle_collection.JetInputs_Phi
     phi_dist = scipy.spatial.distance.pdist(phi.reshape((-1,1)))
     rapidity = particle_collection.JetInputs_Rapidity
@@ -37,6 +63,18 @@ def get_angle_grid(particle_collection):
 
 
 def get_CoM_repr(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     four_vectors = np.vstack((particle_collection.JetInputs_Energy,
                               particle_collection.JetInputs_Px,
                               particle_collection.JetInputs_Py,
@@ -50,10 +88,38 @@ def get_CoM_repr(particle_collection):
 
 
 def count_shared(array1, array2):
+    """
+    
+
+    Parameters
+    ----------
+    array1 :
+        
+    array2 :
+        
+
+    Returns
+    -------
+
+    """
     return np.intersect1d(array1, array2).shape[0]
 
 
 def score_rank_shared(array1, array2):
+    """
+    
+
+    Parameters
+    ----------
+    array1 :
+        
+    array2 :
+        
+
+    Returns
+    -------
+
+    """
     array1 = [x for x in array1 if x in array2]
     array2 = [x for x in array2 if x in array1]
     if not array1:
@@ -65,16 +131,60 @@ def score_rank_shared(array1, array2):
 
 
 def sum_shared(array1, array2, var):
+    """
+    
+
+    Parameters
+    ----------
+    array1 :
+        
+    array2 :
+        
+    var :
+        
+
+    Returns
+    -------
+
+    """
     return np.sum(var[np.intersect1d(array1, array2)])
 
 
 def find_closest_third(deltaRs1, deltaRs2):
+    """
+    
+
+    Parameters
+    ----------
+    deltaRs1 :
+        
+    deltaRs2 :
+        
+
+    Returns
+    -------
+
+    """
     # a thing has 0 deltaR to itself
     third_idxs = np.logical_and(deltaRs1 != 0, deltaRs2 != 0)
     return np.min(deltaRs1[third_idxs] + deltaRs2[third_idxs])
 
 
 def closest_third_diff(deltaRs1, deltaRs2):
+    """
+    
+
+    Parameters
+    ----------
+    deltaRs1 :
+        
+    deltaRs2 :
+        
+
+    Returns
+    -------
+
+    """
     # a thing has 0 deltaR to itself
     third_idxs = np.logical_and(deltaRs1 != 0, deltaRs2 != 0)
     idx = np.argmin(deltaRs1[third_idxs] + deltaRs2[third_idxs])
@@ -83,6 +193,22 @@ def closest_third_diff(deltaRs1, deltaRs2):
 
 
 def close_pt_ratio(deltaRs1, deltaRs2, pts):
+    """
+    
+
+    Parameters
+    ----------
+    deltaRs1 :
+        
+    deltaRs2 :
+        
+    pts :
+        
+
+    Returns
+    -------
+
+    """
     mask1 = deltaRs1 != 0
     pt1 = np.sum(pts[mask1]/deltaRs1[mask1])
     mask2 = deltaRs2 != 0
@@ -94,6 +220,26 @@ def close_pt_ratio(deltaRs1, deltaRs2, pts):
 
 
 def closest_third_anglediff(deltaRs1, deltaRs2, rapidities, phis, pts):
+    """
+    
+
+    Parameters
+    ----------
+    deltaRs1 :
+        
+    deltaRs2 :
+        
+    rapidities :
+        
+    phis :
+        
+    pts :
+        
+
+    Returns
+    -------
+
+    """
     idx1 = deltaRs1 == 0
     idx2 = deltaRs2 == 0
     third_idxs = np.logical_and(~idx1, ~idx2)
@@ -122,6 +268,26 @@ def closest_third_anglediff(deltaRs1, deltaRs2, rapidities, phis, pts):
 
 
 def closest_third_anglespreaddiff(deltaRs1, deltaRs2, rapidities, phis, pts):
+    """
+    
+
+    Parameters
+    ----------
+    deltaRs1 :
+        
+    deltaRs2 :
+        
+    rapidities :
+        
+    phis :
+        
+    pts :
+        
+
+    Returns
+    -------
+
+    """
     idx1 = deltaRs1 == 0
     idx2 = deltaRs2 == 0
     third_idxs = np.logical_and(~idx1, ~idx2)
@@ -154,11 +320,35 @@ def closest_third_anglespreaddiff(deltaRs1, deltaRs2, rapidities, phis, pts):
 # affinity measures
 
 def aff_deltaR(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     affinities_grid = get_deltaR_grid(particle_collection.JetInputs_Rapidity, particle_collection.JetInputs_Phi)
     return affinities_grid
 
 
 def aff_deltaR_tohard(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     hardest_idx = np.argmax(particle_collection.JetInputs_PT)
     rapidity_dist2 = np.abs(particle_collection.JetInputs_Rapidity - particle_collection.JetInputs_Rapidity[hardest_idx])
     phi_dist = np.sqrt(np.abs(particle_collection.JetInputs_Phi - particle_collection.JetInputs_Phi[hardest_idx]))
@@ -170,6 +360,18 @@ def aff_deltaR_tohard(particle_collection):
 
 
 def aff_deltaR_tocentre(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     centre = [np.sum(particle_collection.JetInputs_Energy),
               np.sum(particle_collection.JetInputs_Px),
               np.sum(particle_collection.JetInputs_Py),
@@ -186,6 +388,18 @@ def aff_deltaR_tocentre(particle_collection):
 
 
 def aff_horrizontal_from_line(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     dr = aff_deltaR(particle_collection)
     sdrtc = aff_deltaR_tocentre(particle_collection)
     line = -0.06848*dr*dr + 0.8278*dr + 0.6873
@@ -193,6 +407,18 @@ def aff_horrizontal_from_line(particle_collection):
 
 
 def aff_deltaR2_minus_displacement(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     dr = aff_deltaR(particle_collection)
     sdrtc = aff_deltaR_tocentre(particle_collection)
     line = -0.06848*dr*dr + 0.8278*dr + 0.6873
@@ -200,6 +426,18 @@ def aff_deltaR2_minus_displacement(particle_collection):
 
 
 def aff_CoM_deltaR(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     four_vectors = np.vstack((particle_collection.JetInputs_Energy,
                               particle_collection.JetInputs_Px,
                               particle_collection.JetInputs_Py,
@@ -220,7 +458,20 @@ def aff_CoM_deltaR(particle_collection):
 
 
 def aff_mutual_ns(particle_collection, num_neighbours=10):
-    """ count of how many points are mututaly most proximate """
+    """
+    count of how many points are mututaly most proximate
+
+    Parameters
+    ----------
+    particle_collection :
+        
+    num_neighbours :
+         (Default value = 10)
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 2:
         return np.zeros((0, 0))
@@ -235,6 +486,20 @@ def aff_mutual_ns(particle_collection, num_neighbours=10):
 
     
 def aff_score_rank_ns(particle_collection, num_neighbours=20):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+    num_neighbours :
+         (Default value = 20)
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 2:
         return np.zeros((0, 0))
@@ -249,6 +514,20 @@ def aff_score_rank_ns(particle_collection, num_neighbours=20):
 
 
 def aff_mutual_ns_PT(particle_collection, num_neighbours=10):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+    num_neighbours :
+         (Default value = 10)
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 2:
         return np.zeros((0, 0))
@@ -263,6 +542,18 @@ def aff_mutual_ns_PT(particle_collection, num_neighbours=10):
 
 
 def aff_thirdp_distance(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
@@ -273,6 +564,18 @@ def aff_thirdp_distance(particle_collection):
 
 
 def aff_thirdp_distancediff(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
@@ -283,6 +586,18 @@ def aff_thirdp_distancediff(particle_collection):
 
 
 def aff_close_pt_ratio(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
@@ -294,6 +609,18 @@ def aff_close_pt_ratio(particle_collection):
 
 
 def aff_thirdp_anglediff(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
@@ -308,6 +635,18 @@ def aff_thirdp_anglediff(particle_collection):
 
 
 def aff_thirdp_anglespread(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     total_particles = len(particle_collection.JetInputs_Energy)
     if total_particles < 3:
         return np.zeros((0, 0))
@@ -339,6 +678,18 @@ affinity_choices = {"deltaR": aff_deltaR,
 # from paper
 
 def aff_original_JADE(particle_collection):
+    """
+    
+
+    Parameters
+    ----------
+    particle_collection :
+        
+
+    Returns
+    -------
+
+    """
     four_vectors = np.vstack((particle_collection.JetInputs_Energy,
                               particle_collection.JetInputs_Px,
                               particle_collection.JetInputs_Py,
@@ -355,6 +706,20 @@ def aff_original_JADE(particle_collection):
 # Plotting code
 
 def bins_extent(values, max_bins=20):
+    """
+    
+
+    Parameters
+    ----------
+    values :
+        
+    max_bins :
+         (Default value = 20)
+
+    Returns
+    -------
+
+    """
     # values must be flat
     values = np.array(sorted(set(values)))
     extent = [np.min(values), np.max(values)]
@@ -367,6 +732,26 @@ def bins_extent(values, max_bins=20):
 
 def affinities_in_event(eventWise, affinities, results,
                         cluster_class=None, cluster_params=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    affinities :
+        
+    results :
+        
+    cluster_class :
+         (Default value = None)
+    cluster_params :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     n_parts = 3
     sourceidx = eventWise.JetInputs_SourceIdx.tolist()
     if len(sourceidx) < 2:  # cannot clasisfy relatiosn without at least 2 particles
@@ -422,6 +807,26 @@ def affinities_in_event(eventWise, affinities, results,
 
 def all_affinities(eventWise, affinities,
                    cluster_class, cluster_params, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    affinities :
+        
+    cluster_class :
+        
+    cluster_params :
+        
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     n_parts = 3
     results = np.empty((len(affinities), n_parts, 0)).tolist()
     n_events = len(eventWise.X)
@@ -440,6 +845,34 @@ def all_affinities(eventWise, affinities,
 
 def plot_affinities(eventWise, affinity, affinity2=None, name=None, name2=None,
                    cluster_class=None, cluster_params=None, silent=False, bins=50):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    affinity :
+        
+    affinity2 :
+         (Default value = None)
+    name :
+         (Default value = None)
+    name2 :
+         (Default value = None)
+    cluster_class :
+         (Default value = None)
+    cluster_params :
+         (Default value = None)
+    silent :
+         (Default value = False)
+    bins :
+         (Default value = 50)
+
+    Returns
+    -------
+
+    """
     twoD = affinity2 is not None
     labels = ['Both background', 'Crossover', 'Both b decendants']
     if name is not None:
@@ -494,6 +927,7 @@ def plot_affinities(eventWise, affinity, affinity2=None, name=None, name2=None,
 
 
 class AffinitySet:
+    """ """
     def __init__(self, dir_name, eventWise=None):
         self.dir_name = dir_name
         if eventWise is None:
@@ -507,6 +941,22 @@ class AffinitySet:
         self.eventWise = eventWise
 
     def calculate(self, affinity_names=None, cluster_class=None, cluster_params=None):
+        """
+        
+
+        Parameters
+        ----------
+        affinity_names :
+             (Default value = None)
+        cluster_class :
+             (Default value = None)
+        cluster_params :
+             (Default value = None)
+
+        Returns
+        -------
+
+        """
         if affinity_names is None:
             affinity_names = [InputTools.list_complete("Name affinity to recalculate; ",
                                                        affinity_choices.keys()).strip()]
@@ -518,6 +968,20 @@ class AffinitySet:
         return results
 
     def save(self, names, results):
+        """
+        
+
+        Parameters
+        ----------
+        names :
+            
+        results :
+            
+
+        Returns
+        -------
+
+        """
         with open(os.path.join(self.dir_name, "eventWise.txt"), 'w') as ew_loc:
             ew_loc.write(os.path.join(self.eventWise.dir_name, self.eventWise.save_name))
         for name, result in zip(names, results):
@@ -528,10 +992,23 @@ class AffinitySet:
                     save.write(', '.join([str(x) for x in result[l]]) + '\n')
 
     def load(self, affinity_name):
+        """
+        
+
+        Parameters
+        ----------
+        affinity_name :
+            
+
+        Returns
+        -------
+
+        """
        save_path = os.path.join(self.dir_name, f"{affinity_name}_affinities.csv")
        return self._load_path(save_path)
 
     def load_all(self):
+        """ """
         names = os.listdir(self.dir_name)
         names.remove('eventWise.txt')
         paths = [os.path.join(self.dir_name, name) for name in names]
@@ -540,6 +1017,18 @@ class AffinitySet:
         return affinity_names, results
 
     def _load_path(self, save_path):
+        """
+        
+
+        Parameters
+        ----------
+        save_path :
+            
+
+        Returns
+        -------
+
+        """
         with open(save_path, 'r') as save:
             header = save.readline()
             data = save.readlines()
@@ -547,6 +1036,7 @@ class AffinitySet:
         return results
 
     def print_aucs(self):
+        """ """
         names, results = self.load_all()
         for name, result in zip(names, results):
             classA = result[0] + result[2]
@@ -562,6 +1052,7 @@ class AffinitySet:
             print(f'{name}; {auc_here}')
 
     def plot_rocs(self):
+        """ """
         names, results = self.load_all()
         for name, result in zip(names, results):
             classA = result[0] + result[2]
@@ -587,6 +1078,24 @@ class AffinitySet:
 
 
 def apply_confusion(eventWise, jet_name, function, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    function :
+        
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name + "_PT"))
     start_point = 0
@@ -614,7 +1123,43 @@ def apply_confusion(eventWise, jet_name, function, silent=False):
 
 
 def roc(eventWise, jet_name, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     def function(ew, tp, fp, tn, fn):
+        """
+        
+
+        Parameters
+        ----------
+        ew :
+            
+        tp :
+            
+        fp :
+            
+        tn :
+            
+        fn :
+            
+
+        Returns
+        -------
+
+        """
         tp = len(tp)
         fp = len(fp)
         tn = len(tn)
@@ -646,7 +1191,43 @@ def roc(eventWise, jet_name, silent=False):
 
 
 def kinematic_distributions(eventWise, jet_name, silent=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    silent :
+         (Default value = False)
+
+    Returns
+    -------
+
+    """
     def function(ew, tp, fp, tn, fn):
+        """
+        
+
+        Parameters
+        ----------
+        ew :
+            
+        tp :
+            
+        fp :
+            
+        tn :
+            
+        fn :
+            
+
+        Returns
+        -------
+
+        """
         tp = list(tp)
         fp = list(fp)
         fn = list(fn)
@@ -667,6 +1248,7 @@ def kinematic_distributions(eventWise, jet_name, silent=False):
 
 
 def visulise_affinities():
+    """ """
     file_name = InputTools.get_file_name("Name the eventWise; ")
     ew = Components.EventWise.from_file(file_name)
     name1 = InputTools.list_complete("Chose affinity 1; ", affinity_choices.keys()).strip()

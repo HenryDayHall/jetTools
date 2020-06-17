@@ -20,6 +20,7 @@ def phi_rotation(eventWise):
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     content = {}
@@ -51,6 +52,7 @@ def phi_rotation(eventWise):
         Returns
         -------
 
+        
         """
         return np.sum(values[no_dez])
     px_sums = apply_array_func(leaf_sum, pxs, no_decendants)
@@ -75,6 +77,7 @@ def phi_rotation(eventWise):
             Returns
             -------
 
+            
             """
             return xs*cos - ys*sin
         def rotate_y(xs, ys):
@@ -91,6 +94,7 @@ def phi_rotation(eventWise):
             Returns
             -------
 
+            
             """
             return xs*sin + ys*cos
         def rotate_phi(phis): 
@@ -105,6 +109,7 @@ def phi_rotation(eventWise):
             Returns
             -------
 
+            
             """
             return Components.confine_angle(phis - angle) 
         for px_name, py_name in pxy_cols:
@@ -146,6 +151,7 @@ def normalize_jets(eventWise, jet_name, new_name):
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     jet_cols = [(c, c.replace(jet_name, new_name))
@@ -173,6 +179,7 @@ def normalize_jets(eventWise, jet_name, new_name):
                 Returns
                 -------
 
+                
                 """
                 if len(vals) == 0:
                     return vals
@@ -195,11 +202,12 @@ def set_min_tracks(eventWise, jet_name, new_name, min_tracks=3):
     jet_name :
         
     min_tracks :
-         (Default value = 3)
+        (Default value = 3)
 
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     jet_cols = [(c, c.replace(jet_name, new_name))
@@ -233,6 +241,7 @@ def make_targets(eventWise, jet_name):
     Returns
     -------
 
+    
     """
     truth_tags = getattr(eventWise, jet_name+"_Tags")
     def target_func(array):
@@ -247,6 +256,7 @@ def make_targets(eventWise, jet_name):
         Returns
         -------
 
+        
         """
         return len(array) > 0
     contents = {jet_name + "_Target": apply_array_func(target_func, truth_tags, depth=eventWise.EVENT_DEPTH)}
@@ -265,6 +275,7 @@ def event_wide_observables(eventWise):
     Returns
     -------
 
+    
     """
     contents = {}
     cumulative_columns = ["Energy", "Rapidity", "PT",
@@ -295,6 +306,7 @@ def jet_wide_observables(eventWise, jet_name):
     Returns
     -------
 
+    
     """
     # calculate averages and num hits
     eventWise.selected_index = None

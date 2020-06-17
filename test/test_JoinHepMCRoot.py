@@ -1,14 +1,13 @@
 import numpy as np
 from numpy import testing as tst
 from tree_tagger import Components, JoinHepMCRoot, ReadHepmc
-from tools import TempTestDir, generic_equality_comp
+from tools import TempTestDir, generic_equality_comp, data_dir
 import os
 from ipdb import set_trace as st
 
-
 def test_marry():
     # get a root file
-    root_file = "/home/hadh1g17/tree_tagger_repo/megaIgnore/h1bBatch2.root"
+    root_file = os.path.join(data_dir, "h1bBatch2.root")
     dir_name, save_name = os.path.split(root_file)
     components = ["Particle", "Track", "Tower"]
     rootreadout = Components.RootReadout(dir_name, save_name, components)
@@ -20,7 +19,7 @@ def test_marry():
         contents = {name: getattr(rootreadout, name)[:n_events] for name in rootreadout.columns}
         columns = list(contents.keys())
         restricted = Components.EventWise(dir_name, "restricted.awkd", columns=columns, contents=contents)
-        hepmc_file = "/home/hadh1g17/tree_tagger_repo/megaIgnore/h1bBatch2.hepmc"
+        hepmc_file = os.path.join(data_dir, "h1bBatch2.hepmc")
         hepmc_dir_name, hepmc_save_name = os.path.split(hepmc_file)
         hepmc = ReadHepmc.Hepmc(hepmc_dir_name, hepmc_save_name, 0, n_events)
         JoinHepMCRoot.marry(hepmc, restricted)

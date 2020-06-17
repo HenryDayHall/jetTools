@@ -65,6 +65,7 @@ def soft_truth_criterion(towers_projection, tracks_projection, proximities, MC_t
     Returns
     -------
 
+    
     """
     loss = 0
     # get the closeast tower fro each track
@@ -105,6 +106,7 @@ def old_prox_criterion(towers_projection, tracks_projection, proximities, MC_tru
     Returns
     -------
 
+    
     """
     loss = 0
     mask = np.ones(len(towers_projection), dtype=int)
@@ -148,6 +150,7 @@ def a_truth_criterion(towers_projection, tracks_projection, proximities, MC_trut
     Returns
     -------
 
+    
     """
     loss = 0
     # get the closeast tower fro each track
@@ -173,6 +176,7 @@ def truth_criterion(towers_projection, tracks_projection, proximities, MC_truth)
     Returns
     -------
 
+    
     """
     loss = 0
     # get the closeast tower fro each track
@@ -211,6 +215,7 @@ def a_prox_criterion(towers_projection, tracks_projection, proximities, MC_truth
     Returns
     -------
 
+    
     """
     loss = 0
     track_distance = 0
@@ -260,11 +265,12 @@ def begin_training(run, viewer=None):
     run :
         param viewer: (Default value = None)
     viewer :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     torch.set_default_tensor_type('torch.DoubleTensor')
     end_time = run.settings['time'] + time.time()
@@ -293,6 +299,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         towers_data, tracks_data, proximities, MC_truth = event_data
         tower_net, track_net = nets
@@ -319,6 +326,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         towers_data, tracks_data, proximities, MC_truth = event_data
         tower_net, track_net = nets
@@ -347,6 +355,7 @@ def begin_training(run, viewer=None):
         Returns
         -------
 
+        
         """
         losses = [losser(e_data, nets, device) for e_data in events_data]
         return sum(losses)
@@ -373,6 +382,7 @@ def begin_training(run, viewer=None):
             Returns
             -------
 
+            
             """
             if type(m) == nn.Linear:
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.5)

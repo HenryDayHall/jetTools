@@ -25,6 +25,7 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
     Returns
     -------
 
+    
     """
     tag_idx_name = jet_name + "_Tags"
     tag_vertex_name = jet_name + "_TrueSecondaryVertex"
@@ -85,6 +86,7 @@ def closest_approches_np(start_points, direction_vectors):
     Returns
     -------
 
+    
     """
     # https://geomalgorithms.com/a07-_distance.html
     # m_u = ((u.v)(v.u0 - v.v0) - (v.v)(u.u0 - u.v0))/((u.u)(v.v) - (u.v)**2)
@@ -125,6 +127,7 @@ def closest_approches(start_points, direction_vectors, dot=None):
     Returns
     -------
 
+    
     """
     # https://geomalgorithms.com/a07-_distance.html
     # m_u = ((u.v)(v.u0 - v.v0) - (v.v)(u.u0 - u.v0))/((u.u)(v.v) - (u.v)**2)
@@ -166,11 +169,12 @@ def approch_to_point(point, start_points, direction_vectors, dot=None):
     start_points :
         
     dot :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     if dot is None:
         if not len(start_points):
@@ -194,6 +198,7 @@ def define_dot(dimensions):
     Returns
     -------
 
+    
     """
     if dimensions == 4:
         def dot(a, b):
@@ -210,6 +215,7 @@ def define_dot(dimensions):
             Returns
             -------
 
+            
             """
             return a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3]
         return dot
@@ -228,6 +234,7 @@ def define_dot(dimensions):
             Returns
             -------
 
+            
             """
             return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
         return dot
@@ -248,11 +255,12 @@ def distance2_midpoints(start_points, direction_vectors, closest_multiples, midp
     direction_vectors :
         
     midpoint2_limit :
-         (Default value = 900.)
+        (Default value = 900.)
 
     Returns
     -------
 
+    
     """
     n_lines = len(start_points)
     if not n_lines:
@@ -336,6 +344,7 @@ def find_vertices(eventWise, jet_name, vertex_name=None, batch_length=np.inf, th
     Returns
     -------
 
+    
     """
     if vertex_name is None:
         vertex_name = ''
@@ -446,6 +455,7 @@ def vertex_uncertanty(eventWise, jet_name, vertex_name):
     Returns
     -------
 
+    
     """
     if vertex_name is None:
         vertex_name = ''
@@ -480,6 +490,7 @@ def compare_vertices(eventWise, jet_name, vertex_name):
     Returns
     -------
 
+    
     """
     vertex_name = f"{jet_name}_{vertex_name}Vertex"
     tag_vertex_name = jet_name + "_TrueSecondaryVertex"

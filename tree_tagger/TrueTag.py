@@ -30,6 +30,7 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     Returns
     -------
 
+    
     """
     root_name = jet_name + "_RootInputIdx"
     inputidx_name = jet_name + "_InputIdx"
@@ -78,15 +79,16 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     include_antiparticles :
         Default value = True)
     hard_interaction_pids :
-         (Default value = [25)
+        (Default value = [25)
     35] :
         
     tag_pids :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
@@ -136,11 +138,12 @@ def add_tag_particles(eventWise, silent=False):
     eventWise :
         param silent:  (Default value = False)
     silent :
-         (Default value = False)
+        (Default value = False)
 
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     name = "TagIndex"
@@ -191,11 +194,12 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     jet_name :
         
     batch_length :
-         (Default value = 100)
+        (Default value = 100)
 
     Returns
     -------
 
+    
     """
     if min_tracks is None:
         min_tracks = Constants.min_ntracks
@@ -286,6 +290,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
 
 def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
     """
+    
 
     Parameters
     ----------
@@ -296,11 +301,14 @@ def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
     jet_name :
         
     batch_length :
-         (Default value = 100)
+        (Default value = 100)
+    silent :
+         (Default value = False)
 
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     name = jet_name + "_CTags"
@@ -400,6 +408,24 @@ if display:  # have to comment out to run without display
 
 
 def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    tag_idxs :
+        
+    quark_pdgids :
+         (Default value = [-5)
+    5] :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     if np.all([pid in quark_pdgids for pid in eventWise.MCPID[tag_idxs]]):
         # check if the tags are already quarks
@@ -466,6 +492,24 @@ def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
 
 
 def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
+    """
+    
+
+    Parameters
+    ----------
+    jet_idxs :
+        
+    parent_idxs :
+        
+    pos_idxs :
+        
+    weights :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     if weights is None:
         weights = np.ones_like(jet_idxs)
     percents = np.zeros_like(jet_idxs, dtype=float)

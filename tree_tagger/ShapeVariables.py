@@ -10,6 +10,24 @@ from matplotlib import pyplot as plt
 
 
 def python_shape(energies, pxs, pys, pzs):
+    """
+    
+
+    Parameters
+    ----------
+    energies :
+        
+    pxs :
+        
+    pys :
+        
+    pzs :
+        
+
+    Returns
+    -------
+
+    """
     shapes = {}
     # https://home.fnal.gov/~mrenna/lutp0613man2/node234.html
     # precalculate some quantities
@@ -22,6 +40,18 @@ def python_shape(energies, pxs, pys, pzs):
     sum_Tbirr = np.sum(np.sqrt(np.sum(momentums[:, :2]**2, axis=1)))
     # Thrust
     def to_minimise(theta_phi):
+        """
+        
+
+        Parameters
+        ----------
+        theta_phi :
+            
+
+        Returns
+        -------
+
+        """
         sin_theta = np.sin(theta_phi[0])
         thrust_axis = [sin_theta*np.cos(theta_phi[1]),
                        sin_theta*np.sin(theta_phi[1]),
@@ -38,6 +68,18 @@ def python_shape(energies, pxs, pys, pzs):
     shapes['Thrust'] = np.sum(np.abs(momentum_dot_thrust))/sum_birr
     # transverse Thrust
     def to_minimise_transverse(phi):
+        """
+        
+
+        Parameters
+        ----------
+        phi :
+            
+
+        Returns
+        -------
+
+        """
         transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
         return -np.sum(np.abs(momentums[:, :2]*transverse_thrust_axis))
     phi_bounds = (-np.pi, np.pi)
@@ -57,6 +99,18 @@ def python_shape(energies, pxs, pys, pzs):
         perp2 = np.cross(perp1, thrust_axis)
         perp2 /= np.sqrt(np.sum(perp2**2))
     def to_minimise_major(alpha):
+        """
+        
+
+        Parameters
+        ----------
+        alpha :
+            
+
+        Returns
+        -------
+
+        """
         major_thrust_axis = np.cos(alpha)*perp1 + np.sin(alpha)*perp2
         return -np.sum(np.abs(momentums*major_thrust_axis))
     best_alpha = scipy.optimize.minimize_scalar(to_minimise_major, bounds=(-np.pi, np.pi),
@@ -92,6 +146,18 @@ def python_shape(energies, pxs, pys, pzs):
     shapes['Dparameter'] = 27*np.product(eigenvalues)
     # spherocity
     def to_minimise_spherocity(phi):
+        """
+        
+
+        Parameters
+        ----------
+        phi :
+            
+
+        Returns
+        -------
+
+        """
         spherocity_axis = [np.cos(phi), np.sin(phi)]
         return -np.abs(np.sum(np.cross(momentums[:, :2], spherocity_axis)))
     phi_bounds = (-np.pi, np.pi)
@@ -102,6 +168,18 @@ def python_shape(energies, pxs, pys, pzs):
     shapes['Spherocity'] = 0.25*np.pi**2*(np.sum(momentum_cross_sphro)/sum_Tbirr)**2
     # Acoplanarity
     def to_minimise_aco(theta_phi):
+        """
+        
+
+        Parameters
+        ----------
+        theta_phi :
+            
+
+        Returns
+        -------
+
+        """
         sin_theta = np.sin(theta_phi[0])
         acoplanarity_axis = [sin_theta*np.cos(theta_phi[1]),
                              sin_theta*np.sin(theta_phi[1]),
@@ -143,6 +221,7 @@ def shape(energies, pxs, pys, pzs):
     Returns
     -------
 
+    
     """
     if len(energies) > 1 and len(energies) < 5:
         return stefano.shape(energies, pxs, pys, pzs, my_dir="./tree_tagger/stefano_shapes/")
@@ -171,6 +250,7 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
     Returns
     -------
 
+    
     """
     # name the vaiables to be cut on
     inputidx_name = jet_name + "_InputIdx"
@@ -266,11 +346,12 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
     tag_before_pt_cut :
         Default value = True)
     batch_length :
-         (Default value = 100)
+        (Default value = 100)
 
     Returns
     -------
 
+    
     """
     # name the vaiables to be cut on
     #shape_names = ['thrust', 'oblateness', 'sphericity',
@@ -359,11 +440,14 @@ def plot_shapevars(eventWise, jet_name=None, jet_pt_cut=None, save=False):
     jet_pt_cut :
         Default value = None)
     jet_name :
-         (Default value = None)
+        (Default value = None)
+    save :
+         (Default value = False)
 
     Returns
     -------
 
+    
     """
     eventWise.selected_index = None
     shape_names = ['thrust', 'oblateness', 'sphericity',

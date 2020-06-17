@@ -8,7 +8,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower, JetQuality
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower, JetQuality, FormJets
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -24,7 +24,7 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
     Parameters
     ----------
     records : Records
-        the records object 
+        the records object
     dir_name :
         Default value = "megaIgnore")
     jet_ids :
@@ -33,6 +33,7 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
     Returns
     -------
 
+    
     """
     array = records.typed_array()
     # get a list of eventWise files
@@ -52,8 +53,7 @@ def seek_clusters(records, jet_ids, dir_name="megaIgnore"):
     for jid in jet_ids:
         found = []
         for ew in eventWises:
-            jet_names = list(set([name.split('_', 1)[0] for name in ew.columns
-                                  if "Jet" in name and name.split('_', 1)[0][-1].isdigit()]))
+            jet_names = FormJets.get_jet_names(ew)
             jet_numbers = [int(''.join(filter(str.isdigit, name))) for name in jet_names]
             if jid not in jet_numbers:
                 continue
@@ -89,11 +89,12 @@ def seek_best(records, number_required=3, dir_name="megaIgnore"):
     dir_name :
         Default value = "megaIgnore")
     number_required :
-         (Default value = 3)
+        (Default value = 3)
 
     Returns
     -------
 
+    
     """
     array = records.typed_array()
     jet_classes = set(array[:, records.indices["jet_class"]])
@@ -122,6 +123,7 @@ def seek_shapeable(dir_name="megaIgnore", file_names=None, jet_pt_cut='default',
     Returns
     -------
 
+    
     """
     if jet_pt_cut == 'default':
         jet_pt_cut = Constants.min_jetpt
@@ -170,6 +172,7 @@ def reindex_jets(dir_name="megaIgnore"):
     Returns
     -------
 
+    
     """
     taken_ids = []
     duplicates = dict()
@@ -181,7 +184,7 @@ def reindex_jets(dir_name="megaIgnore"):
             ew = Components.EventWise.from_file(ew_name)
         except KeyError:
             continue  # it's not actually an eventwise
-        jet_names = get_jet_names(ew)
+        jet_names = FormJets.get_jet_names(ew)
         duplicates[ew_name] = []
         for j_name in jet_names:
             jet_id = int(j_name.split("Jet", 1)[1])
@@ -216,6 +219,7 @@ def id_generator(used_ids):
     Returns
     -------
 
+    
     """
     current_id = 1
     while True:
@@ -223,26 +227,6 @@ def id_generator(used_ids):
         if current_id not in used_ids:
             yield current_id
             used_ids.append(current_id)
-
-
-def get_jet_names(eventWise):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        
-
-    Returns
-    -------
-
-    """
-    jet_names = {name.split('_', 1)[0]
-                 for name in eventWise.columns
-                 if "Jet" in name
-                 and not name.startswith("JetInputs")}
-    return sorted(jet_names)
 
 
 def parameter_step(records, jet_class, ignore_parameteres=None):
@@ -261,6 +245,7 @@ def parameter_step(records, jet_class, ignore_parameteres=None):
     Returns
     -------
 
+    
     """
     array = records.typed_array()
     # get the jets parameter list 
@@ -331,6 +316,7 @@ def parameters_valid(parameters, jet_class):
     Returns
     -------
 
+    
     """
     if parameters['AffinityType']  == 'linear' and parameters['Laplacien'] == 'symmetric':
         return False
@@ -351,10 +337,13 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None, use_quarks=True
         
     jet_name :
         
+    use_quarks :
+         (Default value = True)
 
     Returns
     -------
 
+    
     """
     if event_n is None:
         assert eventWise.selected_index is not None
@@ -405,6 +394,24 @@ def fit_to_tags(eventWise, jet_name, tags_in_jets, event_n=None, use_quarks=True
 
 
 def count_b_heritage(eventWise, jet_name, jet_idxs, ctag):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_idxs :
+        
+    ctag :
+        
+
+    Returns
+    -------
+
+    """
     assert eventWise.selected_index is not None
     is_root = getattr(eventWise, jet_name+"_Parent")[jet_idxs] == -1
     # consider the 4 jets with highest b_energy
@@ -453,6 +460,7 @@ def fit_all_to_tags(eventWise, jet_name, silent=False, jet_pt_cut='default', min
     Returns
     -------
 
+    
     """
     if jet_pt_cut == 'default':
         jet_pt_cut = Constants.min_jetpt
@@ -529,6 +537,7 @@ def score_component_rank(tag_coords, jet_coords):
     Returns
     -------
 
+    
     """
     indices = [Constants.coordinate_order.index(name) for name in ["PT", "Rapidity", "Phi"]]
     dims = len(indices)
@@ -555,6 +564,7 @@ def invarientMass2_distance(tag_coords, jet_coords, rescale_poly=None):
     Returns
     -------
 
+    
     """
     epxpypz_idx = [Constants.coordinate_order.index(name) for name in ["Energy", "Px", "Py", "Pz"]]
     if rescale_poly is not None:
@@ -568,6 +578,18 @@ def invarientMass2_distance(tag_coords, jet_coords, rescale_poly=None):
 
 
 def distance_to_higgs_mass(jet_coords_by_event):  # no need the jets per event...
+    """
+    
+
+    Parameters
+    ----------
+    jet_coords_by_event :
+        
+
+    Returns
+    -------
+
+    """
     epxpypz_idx = [Constants.coordinate_order.index(name) for name in ["Energy", "Px", "Py", "Pz"]]
     pt_idx = Constants.coordinate_order.index('PT')
     all_jet_momentum = np.array([np.sum(coords[:, epxpypz_idx], axis=0) for coords in jet_coords_by_event])
@@ -596,6 +618,7 @@ def soft_generic_equality(a, b):
     Returns
     -------
 
+    
     """
     try:
         # floats, ints and arrays of these should work here
@@ -620,14 +643,16 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
     Parameters
     ----------
     records :
+        
     cuts :
         ( Default value = True)
     c_name :
-         (Default value = "percentfound")
+        (Default value = "percentfound")
 
     Returns
     -------
 
+    
     """
     array = records.typed_array()[records.scored]
     col_names = ["s_distance", "bdecendant_tpr", "bdecendant_fpr", "distance_to_HiggsMass", "distance_to_LightMass", "quality_width", "quality_fraction"]
@@ -741,6 +766,28 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
         if catigorical:
             def update(attrname, old, new,
                        name=name, labels=labels, label_catigories=label_catigories):
+                """
+                
+
+                Parameters
+                ----------
+                attrname :
+                    
+                old :
+                    
+                new :
+                    
+                name :
+                     (Default value = name)
+                labels :
+                     (Default value = labels)
+                label_catigories :
+                     (Default value = label_catigories)
+
+                Returns
+                -------
+
+                """
                 keep_catigories = [label_catigories[label] for label in np.array(labels)[new]]
                 original_values = array[:, records.indices[name]]
                 new_mask = np.fromiter((value in keep_catigories for value in original_values),
@@ -758,6 +805,28 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
             plots[-1].append(boxes)
         elif has_slider:
             def update(attrname, old, new, name=name, top=top, bottom=bottom):
+                """
+                
+
+                Parameters
+                ----------
+                attrname :
+                    
+                old :
+                    
+                new :
+                    
+                name :
+                     (Default value = name)
+                top :
+                     (Default value = top)
+                bottom :
+                     (Default value = bottom)
+
+                Returns
+                -------
+
+                """
                 original_values = array[:, records.indices[name]]
                 epsilon = (top-bottom)/50
                 new_mask = np.full_like(original_values, True, dtype=bool)
@@ -781,6 +850,18 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
 
 
 def make_float_scale(col_content):
+    """
+    
+
+    Parameters
+    ----------
+    col_content :
+        
+
+    Returns
+    -------
+
+    """
     catigories = set(col_content)
     #print(f"Unordered catigories {catigories}")
     has_none = None in catigories
@@ -829,6 +910,18 @@ def make_float_scale(col_content):
 
 
 def old_make_ordinal_scale(col_content):
+    """
+    
+
+    Parameters
+    ----------
+    col_content :
+        
+
+    Returns
+    -------
+
+    """
     catigories = set(col_content)
     print(f"Unordered catigories {catigories}")
     has_none = None in catigories
@@ -861,6 +954,18 @@ def old_make_ordinal_scale(col_content):
 
 
 def make_ordinal_scale(col_content):
+    """
+    
+
+    Parameters
+    ----------
+    col_content :
+        
+
+    Returns
+    -------
+
+    """
     # x positions of each point
     positions = np.empty(len(col_content), dtype=int)
     # dictionary of name : example value
@@ -901,11 +1006,12 @@ def chose_ylims(y_data, invert=False):
     y_data :
         param invert:  (Default value = False)
     invert :
-         (Default value = False)
+        (Default value = False)
 
     Returns
     -------
 
+    
     """
     std = np.std(y_data)
     if invert:
@@ -926,11 +1032,12 @@ def cumulative_score(records, typed_array=None):
     records :
         param typed_array:  (Default value = None)
     typed_array :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     if typed_array is None:
         typed_array = records.typed_array()
@@ -951,11 +1058,12 @@ def group_discreet(records, only_scored=True):
     records :
         param only_scored:  (Default value = True)
     only_scored :
-         (Default value = True)
+        (Default value = True)
 
     Returns
     -------
 
+    
     """
     array = records.typed_array()
     if only_scored:
@@ -987,11 +1095,12 @@ def thin_clusters(records, min_mean_jets=0.5, proximity=0.10):
     proximity :
         Default value = 0.10)
     min_mean_jets :
-         (Default value = 0.5)
+        (Default value = 0.5)
 
     Returns
     -------
 
+    
     """
     removed_name = "removed_records.csv"
     removed_records = Records(removed_name)
@@ -1103,6 +1212,7 @@ def remove_clusters(records, jet_ids):
     Returns
     -------
 
+    
     """
     # probably need to deal with one eventwise at a time
     # and not seek too many jets int he first place
@@ -1138,6 +1248,7 @@ def consolidate_clusters(length=2000, dir_name="megaIgnore", max_size=300):
     Returns
     -------
 
+    
     """
     # start by learning what's in the directory
     records_name = "tmp{}_records.csv"
@@ -1213,10 +1324,11 @@ def consolidate_clusters(length=2000, dir_name="megaIgnore", max_size=300):
         cluster = seek_clusters(records, [jet_ids[0]])
         print(f"Adding non-jet colummns")
         first_eventWise = cluster[0][0]
-        non_jet_colunms = [name for name in first_eventWise.columns
-                           if "Jet" not in name or name.startswith("JetInputs")]
-        non_jet_hcolunms = [name for name in first_eventWise.hyperparameter_columns
-                            if "Jet" not in name or name.startswith("JetInputs")]
+        jet_names = FormJets.jet_names(first_eventWise)
+        non_jet_colunms = [name for name in first_eventWise.columns if
+                           not any(name.startswith(jname) for jname in jet_names)]
+        non_jet_hcolunms = [name for name in first_eventWise.hyperparameter_columns if
+                           not any(name.startswith(jname) for jname in jet_names)]
         non_jet_content = {name: getattr(first_eventWise, name) for name in non_jet_colunms + non_jet_hcolunms}
         new_eventWise = Components.EventWise(new_dir, save_name, contents=non_jet_content,
                                              columns=non_jet_colunms, hyperparameter_columns=non_jet_hcolunms)
@@ -1311,6 +1423,7 @@ class Records:
         Returns
         -------
 
+        
         """
         jet_classes = FormJets.cluster_classes
         typed_content = []
@@ -1370,6 +1483,7 @@ class Records:
         Returns
         -------
 
+        
         """
         new_params = [n for n in new_params if n not in self.param_names]
         self.param_names += new_params
@@ -1397,6 +1511,7 @@ class Records:
         Returns
         -------
 
+        
         """
         if existing_idx is None:
             chosen_id = self.next_uid
@@ -1432,6 +1547,7 @@ class Records:
         Returns
         -------
 
+        
         """
         idx = self.jet_ids.index(jet_id)
         removed = self.content.pop(idx)
@@ -1452,6 +1568,7 @@ class Records:
         Returns
         -------
 
+        
         """
         self._add_param(*donor_records.indices.keys())
         column_order = sorted(self.indices, key=self.indices.__getitem__)
@@ -1478,6 +1595,7 @@ class Records:
         Returns
         -------
 
+        
         """
         ignore_params = ['TagAngle']  # this one seems to have issues
         eventWise.selected_index = None
@@ -1504,9 +1622,10 @@ class Records:
         Returns
         -------
 
+        
         """
         eventWise.selected_index = None
-        jet_names = get_jet_names(eventWise)
+        jet_names = FormJets.get_jet_names(eventWise)
         existing = {}  # dicts like  "jet_name": int(row_idx)
         added = {}
         starting_ids = self.jet_ids
@@ -1582,10 +1701,12 @@ class Records:
         Parameters
         ----------
         target :
+            
 
         Returns
         -------
 
+        
         """
         if isinstance(target, str):
             if target.endswith('.awkd'):
@@ -1624,10 +1745,12 @@ class Records:
         Parameters
         ----------
         eventWise :
+            
 
         Returns
         -------
 
+        
         """
         print("Scanning eventWise")
         existing, added = self.scan(eventWise)
@@ -1763,6 +1886,7 @@ class Records:
         Returns
         -------
 
+        
         """
         mask = self.scored
         if start_mask is not None:

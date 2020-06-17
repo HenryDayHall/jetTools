@@ -1,11 +1,14 @@
 """ tools used in various tests """
 import numpy as np
-import collections
+#import collections
 from ipdb import set_trace as st
 import os
 import awkward
 import pickle
 
+data_dir = "./megaIgnore"
+if not os.path.exists(data_dir):
+    data_dir = "../megaIgnore"
 
 
 def generic_equality_comp(x, y):
