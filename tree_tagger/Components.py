@@ -69,20 +69,25 @@ def detect_depth(nested):
 
 def apply_array_func(func, *nested, depth=None):
     """
-    
+    Apply a function to an object with arbitary nested depth,
+    such that the function is always applyed at the lowest n layers.
 
     Parameters
     ----------
-    func :
-        param *nested:
-    depth :
-        Default value = None)
-    *nested :
-        
+    func : callable
+        function to be applied, should accept as many
+        arguments as there are nested objects provided
+    *nested: nested iterables
+        objects to apply the function to
+    depth : int
+        number of layers down to apply the function
+        None is equivalent to applying at full depth
+        (Default value = None)
 
     Returns
     -------
-
+    : nested iterables
+        objects after function application
     
     """
     if depth is None:
@@ -94,20 +99,22 @@ def apply_array_func(func, *nested, depth=None):
 
 def _apply_array_func(func, depth, *nested):
     """
-    
+    Recursive helper function for apply_array_func
 
     Parameters
     ----------
-    func :
-        param depth:
-    depth :
-        
-    *nested :
-        
+    func : callable
+        function to be applied, should accept as many
+        arguments as there are nested objects provided
+    depth : int
+        number of layers down to apply the function
+    *nested: nested iterables
+        objects to apply the function to
 
     Returns
     -------
-
+    : nested iterables
+        objects after function application
     
     """
     # all nested must have the same shape
@@ -126,16 +133,17 @@ def _apply_array_func(func, depth, *nested):
 
 def confine_angle(angle):
     """
-    confine an angle x, s.t. -pi <= x < pi
+    Confine angle x, s.t. -pi <= x < pi
 
     Parameters
     ----------
-    angle :
-        
+    angle : float or arraylike of floats
+        angle to be confined
 
     Returns
     -------
-
+    angle : float or arraylike of floats
+        confined angle
     
     """
     return ((angle + np.pi)%(2*np.pi)) - np.pi
@@ -143,17 +151,21 @@ def confine_angle(angle):
 
 def angular_distance(a, b):
     """
-    get the distance between a and b
+    Get the shortest distance between a and b
 
     Parameters
     ----------
-    a :
+    a : float or arraylike of floats
+        angle
         
-    b :
+    b : float or arraylike of floats
+        angle
         
 
     Returns
     -------
+    : float or arraylike of floats
+        absolute distance between angles
 
     """
     raw = a - b
@@ -162,15 +174,17 @@ def angular_distance(a, b):
 
 def raw_to_angular_distance(raw):
     """
-    
+    Convert a angular measurment to the smallest distance in cyclic coordinates.
 
     Parameters
     ----------
-    raw :
-        
+    raw : float or arraylike of floats
+        angular measurements
 
     Returns
     -------
+    : float or arraylike of floats
+        absolute distance between angles
 
     """
     return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
@@ -190,7 +204,8 @@ def safe_convert(cls, string):
 
     Returns
     -------
-
+    : object
+        the properly typed object
     
     """
     if string == "None":
@@ -207,6 +222,28 @@ class EventWise:
     JET_DEPTH = 2 # events, jets, objects in jets
 
     def __init__(self, dir_name, save_name, columns=None, contents=None, hyperparameter_columns=None):
+        """
+        Default constructor.
+        If loading from file see 'from_file' method as alterative constructor.
+
+        Parameters
+        ----------
+        dir_name : string
+            directory for saving into
+        save_name : string
+            file name for saving with
+        columns : list of strings
+            names for the contents that should be accessable as attributes
+        contents : dict of iterable
+            the keys are names (strings), the values are iterables
+            the iterabels whoes names are found in the columns list
+            should all have the same length int he 0th axis,
+            this length beign the number of events
+        hyperparameter_columns : list
+            members of the contents that should be accessable as attributes
+            but may not be iterable and will not be equal to the number of events
+
+        """
         self._loaded_contents = {}  # keep columns that have been accessed in ram
         # the init method must generate some table of items,
         # nomally a jagged array
@@ -231,7 +268,16 @@ class EventWise:
         self.hyperparameters = {}
 
     def _gen_alias(self):
-        """ """
+        """
+        Some columns may be refered to by more than one name.
+        This method checks the _column_contents dict for a list of know alias
+        and implements them
+
+        Returns
+        -------
+        alias_dict : dict
+            keys are the alias names values are the name to which the alias refers
+        """
         alias_dict = {}
         if 'alias' in self._column_contents:
             for row in self._column_contents['alias']:
@@ -243,17 +289,14 @@ class EventWise:
 
     def _remove_alias(self, to_remove):
         """
-        
+        Remove an existing alias, no data is removed as the data belongs to
+        the actual naem not the alias.
 
         Parameters
         ----------
-        to_remove :
-            
+        to_remove : string
+            alisas name to remove
 
-        Returns
-        -------
-
-        
         """
         alias_keys = list(self._column_contents['alias'][:, 0])
         alias_list = list(self._column_contents['alias'])
@@ -266,19 +309,14 @@ class EventWise:
 
     def add_alias(self, name, target):
         """
-        
+        Create a new alias.
 
         Parameters
         ----------
-        name :
-            param target:
-        target :
-            
-
-        Returns
-        -------
-
-        
+        name : string
+            alias name
+        target : string
+            column the alias refers to
         """
         assert target in self.columns
         assert name not in self.columns
@@ -289,7 +327,16 @@ class EventWise:
         self.columns.append(name)
 
     def __getattr__(self, attr_name):
-        """ the columns are all avalible attrs """
+        """
+        The columns and hyperparameter_columns are all avalible attrs
+        
+        Parameters
+        ----------
+        attr_name : string
+            name of the column or hyperparameter_column being access
+            case insensative
+            can be an alias
+        """
         # if _alias_dict gets here then it doent exist yet
         if attr_name == '_alias_dict':
             # we can safely return an empty dict
@@ -315,22 +362,40 @@ class EventWise:
 
     def match_indices(self, attr_name, match_from, match_to=None, event_n=None):
         """
-        
+        Applies to a single event.
+        Given a column and one or two lists of indices,
+        select items from those columns.
+        If only one list of indices are given, then
+        the list of indices selects an item from each row in the specified column.
+        If two lists of indices are given then the second
+        list is taken to be the ordering of the column,
+        it should have the same shape as the column,
+        and items from the column are taken from each row
+        where the two lists of indices match.
+
+        The second form is useful when a column has id codes for each row
+        and you wish to pick out the value corrisponding to a given id from each row.
+        Then the first list of indices is the desired id
+        and the second list is the assigned ids.
 
         Parameters
         ----------
-        attr_name :
-            param match_from:
-        match_to :
-            Default value = None)
-        event_n :
-            Default value = None)
-        match_from :
-            
+        attr_name : string
+            column to return values from
+        match_from: string or arraylike
+            column name or list of desired indices 
+        match_to : string or arraylike
+            column name or list of indices that indicate
+            the order of the attribute
+            (Default value = None)
+        event_n : int
+            Required if this eventWise does not already have a selected_index
+            (Default value = None)
 
         Returns
         -------
-
+        out : awkward array
+            the selected objects from this event
         
         """
         if event_n is None:
@@ -353,19 +418,22 @@ class EventWise:
         return awkward.fromiter(out)
 
     def __dir__(self):
+        """Overiding the __dir__ to add the columns and hyperparameter_columns """
         new_attrs = set(super().__dir__() + self.columns + self.hyperparameter_columns)
         return sorted(new_attrs)
 
     def __str__(self):
+        """ Overrridign the string conversion with a simple description """
         msg = f"<EventWise with {len(self.columns)} columns;" +\
               f" {os.path.join(self.dir_name, self.save_name)}>"
         return msg
 
     def __eq__(self, other):
+        """ Assumeing two eventwise objects saved in the same place are the same object """
         return self.save_name == other.save_name and self.dir_name == other.dir_name
 
     def write(self):
-        """write to disk"""
+        """Write to disk"""
         path = os.path.join(self.dir_name, self.save_name)
         assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
         non_alias_cols = [c for c in self.columns if c not in self._alias_dict]
@@ -391,16 +459,17 @@ class EventWise:
     @classmethod
     def from_file(cls, path):
         """
-        
+        Alternative constructor.
 
         Parameters
         ----------
-        path :
-            
+        path : string
+            full or relative file path to the saved eventWise
 
         Returns
         -------
-
+        new_eventWise : EventWise
+            loaded eventWise object
         
         """
         contents = awkward.load(path)
@@ -413,17 +482,15 @@ class EventWise:
 
     def append(self, **kwargs):
         """
-        
+        Append a new column to the eventwise.
+        Will remove any existing column with the same name.
+        Will write the results to disk.
 
         Parameters
         ----------
-        **kwargs :
-            
-
-        Returns
-        -------
-
-        
+        **kwargs : iterables
+            the parameter names are the names for the columns
+            the parameter values are the column content
         """
         new_content = kwargs
         new_columns = sorted(kwargs.keys())
@@ -444,29 +511,21 @@ class EventWise:
 
     def append_hyperparameters(self, **kwargs):
         """
-        
+        Append a new hyperparameter to the eventwise.
+        Will remove any existing hyperparameters with the same name.
+        Will write the results to disk.
 
         Parameters
         ----------
-        **kwargs :
-            
-
-        Returns
-        -------
-
-        
+        **kwargs : objects
+            the parameter names are the names for the hyperparameters
+            the parameter values are the hyperparameters
         """
         new_content = kwargs
         new_columns = sorted(kwargs.keys())
         # enforce the first letter of each attrbute to be capital
         New_columns = [c[0].upper() + c[1:] for c in new_columns]
         new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
-        # check none of there are itterables asside from strings
-        # assumption is that someone trying to set an itterable hyperparameter
-        # is actually setting an eventWise object
-        #assert all([isinstance(content, str) or not hasattr(content, '__iter__')
-        #            for content in new_content.values()])
-        # scratch that, there are tuple hyper parameters too
         # check it's not in columns
         for name in New_columns:
             if name in self.columns:
@@ -481,17 +540,13 @@ class EventWise:
 
     def remove(self, col_name):
         """
-        
+        Delete a column or a hyperparameter_column from the eventwise.
+        Does not write.
 
         Parameters
         ----------
-        col_name :
-            
-
-        Returns
-        -------
-
-        
+        col_name : string
+            name of column or hyperparameter_column to be deleted
         """
         if col_name in self._alias_dict:
             self._remove_alias(col_name)
@@ -510,17 +565,13 @@ class EventWise:
 
     def remove_prefix(self, col_prefix):
         """
-        
+        Delete all columns and hyperparameter_columns that begin with the 
+        given prefix. Does not write.
 
         Parameters
         ----------
-        col_prefix :
-            
-
-        Returns
-        -------
-
-        
+        col_prefix : string
+            Prefix or everythign to be deleted.
         """
         to_remove = [c for c in self.columns + self.hyperparameter_columns
                      if c.startswith(col_prefix)]
@@ -529,19 +580,16 @@ class EventWise:
 
     def rename(self, old_name, new_name):
         """
-        
+        Rename a column or hyperparameter.
+        This is not creating an alias, this is changing the actual name.
+        Does not write.
 
         Parameters
         ----------
-        old_name :
-            param new_name:
-        new_name :
-            
-
-        Returns
-        -------
-
-        
+        old_name : string
+            name that should be changed
+        new_name : string
+            what the name should be changed to
         """
         if old_name in self._alias_dict:
             target = self._alias_dict[old_name]
@@ -561,19 +609,16 @@ class EventWise:
 
     def rename_prefix(self, old_prefix, new_prefix):
         """
-        
+        Change all instances of a prefix in columns and hyperparameter_columns.
+        This is not creating an alias, this is changing the actual names.
+        Does not write.
 
         Parameters
         ----------
-        old_prefix :
-            param new_prefix:
-        new_prefix :
-            
-
-        Returns
-        -------
-
-        
+        old_prefix : string
+            prefix that should be changed
+        new_prefix : string
+            what the prefix should be changed to
         """
         for name in self.columns+self.hyperparameter_columns:
             if name.startswith(old_prefix):
@@ -582,17 +627,39 @@ class EventWise:
 
     def fragment(self, per_event_component, **kwargs):
         """
-        
+        Split an eventWise into reguar length parts, each one containing
+        the same columns but an exclusive subset of the events.
+        Writes the new events in a subfolder of the save_dir.
 
         Parameters
         ----------
-        per_event_component :
-            param **kwargs:
-        **kwargs :
-            
+        per_event_component : string or list like
+            The name of at least one column (or the column vaues itself)
+            that has the same axis 0 length as the number of events.
+        n_fragments : int
+            number of fragments to break into
+            (optional, may supply this or fragment_length)
+        fragment_length : int
+            number of events to put in each fragment
+            (optional, may supply this or n_fragments,
+             if both supplied, n_fragments is used)
+        part_name : string
+            component to append to the save name,
+            before the filetype extention
+            (Default value = "part")
+        dir_name : string
+            Name of directory to save the new eventWises
+            (Optional, if not given a name will be generated from the
+            name of the eventWise being split)
+        no_dups : bool
+            Should content that is not per-event should be stored
+            only in the first split created?
+            (Default; True)
 
         Returns
         -------
+        all_paths : list of strings
+            file paths to the new eventWise objects
 
         
         """
@@ -615,19 +682,36 @@ class EventWise:
 
     def split_unfinished(self, per_event_component, unfinished_component, **kwargs):
         """
-        
+        Split the eventWise object into an eventWise where all columns have the
+        same length (finished) and an eventWise that lacks content in one or 
+        more columns (unfinished)
+        Writes the new eventWises in a subfolder of the save_dir.
 
         Parameters
         ----------
-        per_event_component :
-            param unfinished_component:
-        unfinished_component :
-            
-        **kwargs :
-            
+        per_event_component : string or list like
+            the name of (or content of) a component that
+            has one row per event
+        unfinished_component : string or list like
+            the name of (or content of) a component that is shorter than
+            one row per event
+        part_name : string
+            component to append to the save name,
+            before the filetype extention
+            (Default value = "part")
+        dir_name : string
+            Name of directory to save the new eventWises
+            (Optional, if not given a name will be generated from the
+            name of the eventWise being split)
+        no_dups : bool
+            Should content that is not per-event should be stored
+            only in the first split created?
+            (Default; True)
 
         Returns
         -------
+        all_paths : list of strings
+            file paths to the new eventWise objects
 
         
         """
@@ -658,24 +742,37 @@ class EventWise:
 
     def split(self, lower_bounds, upper_bounds, per_event_component="Energy", part_name="part", **kwargs):
         """
-        
+        Split an eventWise into specified parts, each one containing
+        the same columns but a subset of the events.
+        Writes the new eventWises in a subfolder of the save_dir.
 
         Parameters
         ----------
-        lower_bounds :
-            param upper_bounds:
-        per_event_component :
-            Default value = "Energy")
-        part_name :
-            Default value = "part")
-        upper_bounds :
-            
-        **kwargs :
-            
+        lower_bounds : array like of int
+            first event in each section, inclusive
+        upper_bounds : array like of int
+            last event in each section, exclusive
+        per_event_component : string or list like
+            the name of (or content of) a component that
+            has one row per event
+            (Default value = "Energy")
+        part_name : string
+            component to append to the save name,
+            before the filetype extention
+            (Default value = "part")
+        dir_name : string
+            Name of directory to save the new eventWises
+            (Optional, if not given a name will be generated from the
+            name of the eventWise being split)
+        no_dups : bool
+            Should content that is not per-event should be stored
+            only in the first split created?
+            (Default; True)
 
         Returns
         -------
-
+        all_paths : list of strings
+            file paths to the new eventWise objects
         
         """
         # not thread safe....
@@ -755,20 +852,26 @@ class EventWise:
     @classmethod
     def recursive_combine(cls, dir_name, check_for_dups=False, del_framgents=True):
         """
-        
+        Combine every eventWise found in or under the given directory.
 
         Parameters
         ----------
-        dir_name :
-            param check_for_dups: (Default value = False)
-        del_framgents :
-            Default value = True)
-        check_for_dups :
+        dir_name : string
+            directory naem to find the eventWise files in
+        check_for_dups : bool
+            If True prevents adding columns or hyperparameter_columns with the same name and 
+            content multiple times.
+            Shouldn't be needed if the split was done with no_dups.
             (Default value = False)
+        del_fragments : bool
+            Should the fragments that have been combined be deleted
+            once the combined file is written.
+            (Default value = True)
 
         Returns
         -------
-
+        joined_name : string
+            name of disk of the joined eventWise
         
         """
         if dir_name.endswith('/'):
@@ -791,24 +894,35 @@ class EventWise:
     @classmethod
     def combine(cls, dir_name, save_base, fragments=None, check_for_dups=False, del_fragments=False):
         """
-        
+        Join multiple eventWise objects so that all events are contaiend in a single eventWise.
+        Inverts the split funciton.
+        Writes to disk.
 
         Parameters
         ----------
-        dir_name :
-            param save_base:
-        fragments :
-            Default value = None)
-        check_for_dups :
-            Default value = False)
-        del_fragments :
-            Default value = False)
-        save_base :
-            
+        dir_name : string
+            directory naem to find the eventWise files in
+        save_base: string
+            the prefix of the file names to be combined
+        fragments : list of strings
+            names of the files to be combined
+            if None then all files that start with the save_base
+            are combined
+            (Default value = None)
+        check_for_dups : bool
+            If True prevents adding columns or hyperparameter_columns with the same name and 
+            content multiple times.
+            Shouldn't be needed if the split was done with no_dups.
+            (Default value = False)
+        del_fragments : bool
+            Should the fragments that have been combined be deleted
+            once the combined file is written.
+            (Default value = False)
 
         Returns
         -------
-
+        new_eventWise : EventWise
+            the combined eventWise object
         
         """
         in_dir = os.listdir(dir_name)
@@ -870,18 +984,22 @@ class EventWise:
 
 def event_matcher(eventWise1, eventWise2):
     """
+    Find the indices required to match two eventWise objects.
+    Currently untested... used with caution.
     
 
     Parameters
     ----------
-    eventWise1 :
-        param eventWise2:
-    eventWise2 :
+    eventWise1 : EventWise
+        eventWise object to match from
+    eventWise2 : EventWise
+        eventWise object to match from
         
 
     Returns
     -------
-
+    order : list of int
+        order required to match eventWise2 to eventWise1
     
     """
     eventWise1.selected_index = None
@@ -937,18 +1055,20 @@ def event_matcher(eventWise1, eventWise2):
 
 def recursive_distance(awkward1, awkward2):
     """
-    
+    Get the sum of the absolute diference between two arrays
+    with the same shape. Shape can be arbitary.
 
     Parameters
     ----------
-    awkward1 :
-        param awkward2:
-    awkward2 :
-        
+    awkward1 : array like
+        first array of values
+    awkward2 : array like
+        second array of values
 
     Returns
     -------
-
+    distance : float
+        absolute cumulative diference
     
     """
     distance = 0.
@@ -966,19 +1086,15 @@ def recursive_distance(awkward1, awkward2):
 
 def add_rapidity(eventWise, base_name=''):
     """
-    
+    Append a calculated rapidity to the eventWise.
 
     Parameters
     ----------
-    eventWise :
-        param base_name: (Default value = '')
-    base_name :
+    eventWise : EventWise
+        contains data and will store result
+    base_name : string
+        prefix for inputs to calculation
         (Default value = '')
-
-    Returns
-    -------
-
-    
     """
     if base_name != '':
         if not base_name.endswith('_'):
@@ -1006,19 +1122,16 @@ def add_rapidity(eventWise, base_name=''):
 
 def add_thetas(eventWise, basename=None):
     """
-    
+    Append a calculated theta to the eventWise.
 
     Parameters
     ----------
-    eventWise :
-        param basename: (Default value = None)
-    basename :
+    eventWise : EventWise
+        contains data and will store result
+    base_name : string
+        prefix for inputs to calculation
+        if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
-
-    Returns
-    -------
-
-    
     """
     contents = {}
     if basename is None:
@@ -1068,19 +1181,16 @@ def add_thetas(eventWise, basename=None):
 
 def add_pseudorapidity(eventWise, basename=None):
     """
-    
+    Append a calculated pseudorapidity to the eventWise.
 
     Parameters
     ----------
-    eventWise :
-        param basename: (Default value = None)
-    basename :
+    eventWise : EventWise
+        contains data and will store result
+    base_name : string
+        prefix for inputs to calculation
+        if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
-
-    Returns
-    -------
-
-    
     """
     contents = {}
     if basename is None:
@@ -1103,18 +1213,20 @@ def add_pseudorapidity(eventWise, basename=None):
 
 def ptpz_to_theta(pt_list, pz_list):
     """
-    
+    Given pt (transverse momentum) and pz (momentum in the z direction)
+    calculate theta.
 
     Parameters
     ----------
-    pt_list :
-        param pz_list:
-    pz_list :
-        
+    pt_list : float or array like
+        pt inputs
+    pz_list : float or array like
+        pz inputs
 
     Returns
     -------
-
+    theta : float or array like
+        theta as a float or a numpy array, depending on the input
     
     """
     return np.arctan2(pt_list, pz_list)
@@ -1122,35 +1234,39 @@ def ptpz_to_theta(pt_list, pz_list):
 
 def pxpy_to_phipt(px_list, py_list):
     """
-    
+    Given px and py (momentum in the x and y directions) calculate
+    phi angle and pt (transverse momentum)
 
     Parameters
     ----------
-    px_list :
-        param py_list:
-    py_list :
-        
+    px_list : float or array like
+        px inputs
+    py_list : float or array like
+        py inputs
 
     Returns
     -------
-
-    
+    phi : float or array like
+        phi as a float or a numpy array, depending on the input
+    pt : float or array like
+        pt as a float or a numpy array, depending on the input
     """
     return np.arctan2(py_list, px_list), np.sqrt(px_list**2 + py_list**2)
 
 
 def theta_to_pseudorapidity(theta_list):
     """
-    
+    Given the angle theta calculate pseudorapidity.
 
     Parameters
     ----------
-    theta_list :
-        
+    theta_list : float or array like
+        theta inputs
 
     Returns
     -------
-
+    pseudorapidity : float or array like
+        pseudorapidity as a float or a numpy array, depending on the input
     
     """
     # awkward arrays also return true for isinstance np.ndarray
@@ -1173,20 +1289,22 @@ def theta_to_pseudorapidity(theta_list):
 
 def ptpze_to_rapidity(pt_list, pz_list, e_list):
     """
-    
+    Given pt and pz (momentum in the transverse and z directions) and energy
+    calculate the rapidity.
 
     Parameters
     ----------
-    pt_list :
-        param pz_list:
-    e_list :
-        
-    pz_list :
-        
+    pt_list : float or array like
+        pt inputs
+    pz_list : float or array like
+        pz inputs
+    e_list : float or array like
+        energy inputs
 
     Returns
     -------
-
+    rapidity : float or array like
+        rapidity as a float or a numpy array, depending on the input
     
     """
     # can apply it to arrays of floats or floats, not ints
@@ -1212,19 +1330,16 @@ def ptpze_to_rapidity(pt_list, pz_list, e_list):
 
 def add_PT(eventWise, basename=None):
     """
-    
+    Append a calculated pt (transverse momentum) to the eventWise.
 
     Parameters
     ----------
-    eventWise :
-        param basename: (Default value = None)
-    basename :
+    eventWise : EventWise
+        contains data and will store result
+    base_name : string
+        prefix for inputs to calculation
+        if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
-
-    Returns
-    -------
-
-    
     """
     contents = {}
     if basename is None:
@@ -1247,19 +1362,16 @@ def add_PT(eventWise, basename=None):
 
 def add_phi(eventWise, basename=None):
     """
-    
+    Append a calculated phi (barrel angle) to the eventWise.
 
     Parameters
     ----------
-    eventWise :
-        param basename: (Default value = None)
-    basename :
+    eventWise : EventWise
+        contains data and will store result
+    base_name : string
+        prefix for inputs to calculation
+        if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
-
-    Returns
-    -------
-
-    
     """
     contents = {}
     if basename is None:
@@ -1282,17 +1394,21 @@ def add_phi(eventWise, basename=None):
 
 def last_instance(eventWise, particle_idx):
     """
-    
+    Find the particle_idx at which the specified particle decays.
 
     Parameters
     ----------
-    eventWise :
+    eventWise : EventWise
+        EventWise object containign particles,
+        should have an event specifed with selected_index
         
-    particle_idx :
-        
+    particle_idx : int
+        the idx of the particle within the event
 
     Returns
     -------
+    particle_idx : int
+        the idx of the particle in the instance it decays
 
     """
     assert eventWise.selected_index is not None
@@ -1315,6 +1431,30 @@ class RootReadout(EventWise):
     def __init__(self, dir_name, save_name, component_names,
                  component_of_root_file="Delphes",
                  key_selection_function=None, all_prefixed=False):
+        """
+        Default constructor.
+
+        Parameters
+        ----------
+        dir_name : string
+            directory for reading from
+        save_name : string
+            file name of the root file to read
+        component_names : list of strings
+            names of the subcomponents
+            inside the specified component to be read
+        component_of_root_file : string
+            start point for finding components
+            (Default; "Delphes")
+        key_selection_function : callable
+            a function to filter what is read
+            should reduce the junk entries
+        all_prefixed : bool
+            True if the first component has a prefix too
+            otherwise replace the first component with an empty list
+            (Default; False)
+
+        """
         # read the root file
         path = os.path.join(dir_name, save_name)
         self._root_file = uproot.open(path)[component_of_root_file]
@@ -1324,17 +1464,18 @@ class RootReadout(EventWise):
             # remove keys starting with lower case letters (they seem to be junk)
             def func(key):
                 """
+                Decide if a key should be filtered
                 
 
                 Parameters
                 ----------
-                key :
-                    
+                key : string
+                    name of key
 
                 Returns
                 -------
-
-                
+                : bool
+                    should the key be kept?
                 """
                 return (key.decode().split('.', 1)[1][0]).isupper()
             self._key_selection_function = func
@@ -1359,19 +1500,14 @@ class RootReadout(EventWise):
 
     def add_component(self, component_name, key_prefix=''):
         """
-        
+        Reads a given component from the root file and adds it to this object.
 
         Parameters
         ----------
-        component_name :
-            param key_prefix: (Default value = '')
-        key_prefix :
-            (Default value = '')
-
-        Returns
-        -------
-
-        
+        component_name : string
+            the subcomponent of the root file to add
+        key_prefix : string
+            prefix to used when saving in this object
         """
         if key_prefix != '':
             key_prefix = key_prefix[0].upper() + key_prefix[1:]
@@ -1424,7 +1560,7 @@ class RootReadout(EventWise):
         self.columns += sorted(new_column_contents.keys())
 
     def _unpack_TRefs(self):
-        """ """
+        """ Lists of TRefs must be converted from uproot.rootio.trefs into integer indices. """
         for name in self.columns:
             is_tRef, converted = self._recursive_to_id(self._column_contents[name])
             if is_tRef:
@@ -1458,17 +1594,20 @@ class RootReadout(EventWise):
 
     def _recursive_to_id(self, jagged_array):
         """
-        
+        For a given, unknown depth, iterable convert any trefs into indices.
+        Assumes either all non iterables are trefs or none are.
 
         Parameters
         ----------
-        jagged_array :
-            
+        jagged_array : iterable
+            array that may contain uproot.rootio.trefs
 
         Returns
         -------
-
-        
+        is_tRef : bool
+            if trefs have been found and converted
+        results : iterable
+            output of conversion attempt, same shape as jagged_array
         """
         results = []
         is_tRef = True  # an empty list is assumed to be a tRef list
@@ -1490,20 +1629,23 @@ class RootReadout(EventWise):
 
     def _reflect_references(self, reference_col, target_shape_col, depth=1):
         """
-        
+        From a list of pointers a->b and an object that has the shape of b
+        create a list of pointers b->a
 
         Parameters
         ----------
-        reference_col :
-            param target_shape_col:
-        depth :
-            Default value = 1)
-        target_shape_col :
-            
+        reference_col : string
+            name of column with integer pointers from a->b, depth 1 or 2
+        target_shape_col : iterable
+            name of column with shape of b
+        depth : int
+            the depth at which the pointers refer to objects in b
+            (Default value = 1)
 
         Returns
         -------
-
+        reflection : awkward array of ints
+            array of pointers from b->a
         
         """
         references = getattr(self, reference_col)
@@ -1529,16 +1671,7 @@ class RootReadout(EventWise):
     def _fix_Birr(self):
         """
         for reasons known unto god and some lonely coder
-            some momentum values are incorrectly set to zero
-            fix them
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-
-        
+        some momentum values are incorrectly set to zero fix them
         """
         self.selected_index = None
         pt = self.PT
@@ -1558,20 +1691,20 @@ class RootReadout(EventWise):
         self._column_contents["Tower_NTimeHits"] = times_hit
 
     def _insert_inf_rapidities(self):
-        """we use np.inf not 999.9 for infinity"""
+        """ use np.inf not 999.9 for infinity, replace this number with np.inf"""
         def big_to_inf(arry):
             """
-            
+            Replace 999.9 with np.inf
 
             Parameters
             ----------
-            arry :
-                
+            arry : mutable array like
+                array in which to make substitutions
 
             Returns
             -------
-
-            
+            arry : mutable array like
+                array with substitutions made
             """
             # we expect inf to be 999.9
             arry[np.nan_to_num(np.abs(arry)) > 999.] *= np.inf
@@ -1582,48 +1715,53 @@ class RootReadout(EventWise):
                 self._column_contents[name] = new_values
 
     def _remove_Track_Birr(self):
-        """ """
+        """ Remove Track_Birr from self """
         name = "Track_Birr"
         self.columns.remove(name)
         del self._column_contents[name]
 
     def write(self):
-        """ """
+        """ Overwrite the write function in EventWise becuase RootReadout is not writable """
         raise NotImplementedError("This interface is read only")
 
     @classmethod
-    def from_file(cls, path, component_name):
+    def from_file(cls, path, component_names):
         """
-        
+        Read a root file from file, by specifying the full path and components to read
 
         Parameters
         ----------
-        path :
-            param component_name:
-        component_name :
-            
+        path : string
+            path to root file
+        component_names : list of strings
+            names of the subcomponents
+            inside the specified component to be read
 
         Returns
         -------
-
-        
+        : RootReadout
+            data read from disk
         """
-        return cls(*os.path.split(path), component_name)
+        return cls(*os.path.split(path), component_names)
 
 
 def fix_nonexistent_columns(eventWise):
     """
-    
+    Sometimes when a manipulation goes wrong entries are added to the 
+    columns (or hyperparameter_columns) list of an eventwise that don't corrispond to
+    any content. This removes them and reports what was removed.
 
     Parameters
     ----------
-    eventWise :
-        
+    eventWise : EventWise
+        data with pottential problems
 
     Returns
     -------
-
-    
+    h_problems: list of strings
+        names of removed hyperparameters
+    eventWise : EventWise
+        data with problems removed
     """
     problems = []
     for name in eventWise.columns:
@@ -1644,21 +1782,26 @@ def fix_nonexistent_columns(eventWise):
 
 def check_even_length(eventWise, interactive=True, raise_error=False, ignore_prefixes=None):
     """
-    
+    Check that all the items in the list of columns contain the same
+    number of events (i.e. have the same length). either delete or
+    raise errors for columns with the wrong length.
+    Has interactive mode. Doesn't write changes.
+    No return value, works in place.
 
     Parameters
     ----------
-    eventWise :
-        
-    interactive :
+    eventWise : EventWise
+        data to check
+    interactive : bool
+        Should the user be asked about changes?
          (Default value = True)
-    raise_error :
+    raise_error : bool
+        Should the function raise an error
+        instead of deleteing columns of the wrong length?
          (Default value = False)
-    ignore_prefixes :
+    ignore_prefixes : list of strings
+        Prefixes of columns not to check
          (Default value = None)
-
-    Returns
-    -------
 
     """
     eventWise.selected_index = None
@@ -1703,24 +1846,27 @@ def check_even_length(eventWise, interactive=True, raise_error=False, ignore_pre
 
 def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_prefixes=None, relaxation=0.0001):
     """
-    
+    Check no objects in an eventwise appear to go faster than light.
+    Works in place, dosn't write changes to disk.
 
     Parameters
     ----------
-    eventWise :
-        
-    interactive :
+    eventWise : EventWise
+        data to check
+    interactive : bool
+        Ask user before changing data
          (Default value = True)
-    raise_error :
+    raise_error : bool
+        Raise an error insead of deleteing the columns
+        when a tachyon is found.
          (Default value = False)
-    ignore_prefixes :
+    ignore_prefixes : list of str
+        Prefixes not to check
          (Default value = None)
-    relaxation :
+    relaxation : float
+        amount by which the invarient mass squared may be negative
+        without considering the particle tachyonic
          (Default value = 0.0001)
-
-    Returns
-    -------
-
     """
     eventWise.selected_index = None
     if ignore_prefixes is None:
@@ -1767,16 +1913,18 @@ def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_pre
 
 def find_eventWise_in_dir(dir_name):
     """
-    
+    Look though a directory for valid eventWise saves.
+    Not recursive.
 
     Parameters
     ----------
-    dir_name :
-        
+    dir_name : string
+        directory to look in
 
     Returns
     -------
-
+    eventWises : list of EventWise
+        loaded eventWise objects found in dir
     
     """
     eventWises = []
