@@ -2,7 +2,7 @@
 import pickle
 import warnings
 import os
-# from ipdb import set_trace as st
+from ipdb import set_trace as st
 import awkward
 import uproot
 import numpy as np
@@ -169,7 +169,7 @@ def angular_distance(a, b):
 
     """
     raw = a - b
-    return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
+    return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))), axis=0)
 
 
 def raw_to_angular_distance(raw):
@@ -187,7 +187,7 @@ def raw_to_angular_distance(raw):
         absolute distance between angles
 
     """
-    return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))))
+    return np.min((raw%(2*np.pi), np.abs(-raw%(2*np.pi))), axis=0)
 
 
 def safe_convert(cls, string):
@@ -689,11 +689,11 @@ class EventWise:
 
         Parameters
         ----------
-        per_event_component : string or list like
-            the name of (or content of) a component that
+        per_event_component : string or list of strings
+            the name of (or names) a component that
             has one row per event
-        unfinished_component : string or list like
-            the name of (or content of) a component that is shorter than
+        unfinished_component : string or list of strings
+            the name of (or names) a component that is shorter than
             one row per event
         part_name : string
             component to append to the save name,
@@ -724,18 +724,18 @@ class EventWise:
             # check they all have the same length
             lengths = {len(getattr(self, name)) for name in unfinished_component}
             assert len(lengths) == 1, "Error not all unfinished components have the same length"
-            num_unfinished = list(lengths)[0]
+            point_reached = list(lengths)[0]
         else:
-            num_unfinished = len(getattr(self, unfinished_component))
-        assert num_unfinished <= n_events
-        if num_unfinished == n_events:
+            point_reached = len(getattr(self, unfinished_component))
+        assert point_reached <= n_events
+        if point_reached == 0:
             # the whole thing is unfinished
             return None, os.path.join(self.dir_name, self.save_name)
-        if num_unfinished == 0:
+        if point_reached == n_events:
             # the event is complete
-            return os.path.join(self.dir_name, self.save_dir), None
-        lower_bounds = [0, num_unfinished]
-        upper_bounds = [num_unfinished, n_events]
+            return os.path.join(self.dir_name, self.save_name), None
+        lower_bounds = [0, point_reached]
+        upper_bounds = [point_reached, n_events]
         return self.split(lower_bounds, upper_bounds,
                           per_event_component, part_name="progress",
                           **kwargs)
@@ -793,7 +793,7 @@ class EventWise:
         if not isinstance(per_event_component, str):
             # if a list of per event compoenents are given
             # it should eb verified that they are all the same length
-            to_check = set(per_event_component[1:])
+            to_check = set([c.capitalize() for c in per_event_component[1:]])
             per_event_component = per_event_component[0]
         else:
             to_check = set()

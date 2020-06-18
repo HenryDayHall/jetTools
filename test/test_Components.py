@@ -132,6 +132,27 @@ def test_confine_angle():
         tst.assert_allclose(Components.confine_angle(inp), out)
 
 
+def test_angular_distance():
+    inputs_a = np.array([0., 0., 0., 0., -1., -np.pi-0.1])
+    inputs_b = np.array([0., 1., -1., 2*np.pi, 1., np.pi+0.1])
+    expected = np.array([0., 1., 1., 0., 2., 0.2])
+    found = Components.angular_distance(inputs_a, inputs_b)
+    tst.assert_allclose(found, expected)
+    # check giving a single out
+    single_out = Components.angular_distance(0., 0.)
+    assert single_out == 0.
+
+
+def test_raw_to_angular_distance():
+    inputs = np.array([0., np.pi, -np.pi, 2*np.pi, 3*np.pi])
+    expected = np.array([0., np.pi, np.pi, 0,  np.pi])
+    found = Components.raw_to_angular_distance(inputs)
+    tst.assert_allclose(found, expected)
+    # check a single output
+    single_out = Components.raw_to_angular_distance(0.)
+    assert single_out == 0
+
+
 def test_safe_convert():
     # edge case tests
     examples = (('None', str, None),
@@ -258,7 +279,48 @@ def test_EventWise():
         # overwrite a hyperparameter
         alt_ew_clone.append_hyperparameters(Hyper=AwkdArrays.one_one*2)
         assert generic_equality_comp(alt_ew_clone.Hyper, 2*alt_ew.Hyper)
-       
+
+# test subsections of eventwise ~~~~~~~~~~~~~~~
+def test_match_indices():
+    with TempTestDir("tst") as dir_name:
+        # splitting a blank ew should result in only Nones
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        col_lengths = [1, 5, 4, 0]
+        n_events = len(col_lengths)
+        values = awkward.fromiter(awkward.fromiter([0.5*np.arange(cols)]) for cols in col_lengths)
+        # have the ids count down so they don't match the indices
+        ids = awkward.fromiter([np.arange(cols-1, -1, -1)] for cols in col_lengths)
+        # it is impossible to picka  valid index for the last event so don't try
+        selectors = awkward.fromiter(([0], [(2, 1)], [(2, 2)]))
+        # last one tests what happens when the requested id dosn't exist
+        id_selectors = awkward.fromiter(([0], [2], [2], [0]))
+        ew.append(Values=values, Ids=ids, Selectors=selectors, Id_selectors=id_selectors)
+        # check that the results are as expected
+        out = ew.match_indices('Values', 'Selectors', event_n=0)
+        tst.assert_allclose(out.tolist(), [0])
+        ew.selected_index = 0
+        out = ew.match_indices('Values', 'Selectors')
+        tst.assert_allclose(out.tolist(), [0])
+        out = ew.match_indices('Values', 'Selectors', event_n=0)
+        tst.assert_allclose(out.tolist(), [0])
+        out = ew.match_indices('Values', 'Id_selectors', 'Ids', event_n=0)
+        tst.assert_allclose(out.tolist(), [[0]])
+        out = ew.match_indices('Values', 'Selectors', event_n=1)
+        tst.assert_allclose(out.tolist(), [[1, 0.5]])
+        out = ew.match_indices('Values', id_selectors[1], ids[1], event_n=1)
+        tst.assert_allclose(out.tolist(), [[1]])
+        out = ew.match_indices('Values', 'Selectors', event_n=2)
+        tst.assert_allclose(out.tolist(), [[1, 1]])
+        out = ew.match_indices('Values', 'Id_selectors', 'Ids', event_n=2)
+        tst.assert_allclose(out.tolist(), [[0.5]])
+        out = ew.match_indices('Values', 'Id_selectors', 'Ids', event_n=3)
+        assert len(out.flatten()) == 0
+
+
+
+
+
 
 def test_split():
     with TempTestDir("tst") as dir_name:
@@ -278,7 +340,6 @@ def test_split():
         content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
-        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
         ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
         # check nothing changes in the original
         tst.assert_allclose(ew.c1, content_1)
@@ -311,6 +372,28 @@ def test_split():
         tst.assert_allclose(ew3.c3.flatten(), content_3[7:].flatten())
         tst.assert_allclose(ew3.c4.flatten().flatten(), content_4[7:].flatten().flatten())
         assert np.all(["dog" in name for name in paths if name is not None])
+        # give multiple lists to check
+        # and check it deselects any selected_index
+        ew.selected_index = 2
+        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], ["c1", "c3", "c4"] , "dog")
+        ew0 = Components.EventWise.from_file(paths[0])
+        assert len(ew0.c1) == 5
+        tst.assert_allclose(ew0.c1, content_1[:5])
+        tst.assert_allclose(ew0.c2, content_2[:5])
+        tst.assert_allclose(ew0.c3.flatten(), content_3[:5].flatten())
+        tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[:5].flatten().flatten())
+        # also check it throws an AssertionError if columns are diferent lengths
+        try:
+            paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], ["c1", "c3", "c4"] , "dog")
+            raise AssertionError("Should have raise error as c2 is a diferent length")
+        except AssertionError:
+            pass
+        # check it throws an error if the lower and upper bounds don't make sense
+        try:
+            paths = ew.split([0, 8, 7, 7], [5, 7, 7, 10], ["c1", "c3", "c4"] , "dog")
+            raise AssertionError("Should have raised error as bounds are invalid")
+        except ValueError:
+            pass
 
 
 def test_fragment():
@@ -376,6 +459,35 @@ def test_split_unfinished():
         tst.assert_allclose(ew1.c1, content_1[idxs])
         tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
         tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+        # try saving in another dir
+        with TempTestDir(os.path.join(dir_name, "subdir")) as sub_dir:
+            # also try giveing the finished and unfinished components as list
+            paths = ew.split_unfinished(['c1'], ['c2'], dir_name=sub_dir)
+            # should work the same from here
+            ew0 = Components.EventWise.from_file(paths[0])
+            assert len(ew0.c1) == n_events - n_unfinished
+            idxs = slice(n_events-n_unfinished)
+            tst.assert_allclose(ew0.c1, content_1[idxs])
+            tst.assert_allclose(ew0.c2, content_2[idxs])
+            tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
+            tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+            ew1 = Components.EventWise.from_file(paths[1])
+            assert len(ew1.c1) == n_unfinished
+            idxs = slice(n_events-n_unfinished, None)
+            tst.assert_allclose(ew1.c1, content_1[idxs])
+            tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
+            tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+        # try with all events unfinished
+        ew.append(c2=awkward.fromiter([]))
+        paths = ew.split_unfinished('c1', 'c2')
+        assert paths[0] is None, f"Expected the first path to be None, instead paths are {paths}"
+        assert isinstance(paths[1], str), f"Expected the second path to be a string, instead paths are {paths}"
+
+        # try with no unfinished events
+        ew.append(c2=content_1)
+        paths = ew.split_unfinished('c1', 'c2')
+        assert paths[1] is None, f"Expected the second path to be None, instead paths are {paths}"
+        assert isinstance(paths[0], str), f"Expected the first path to be a string, instead paths are {paths}"
 
 
 def test_combine():
@@ -403,12 +515,11 @@ def test_combine():
         for i in range(n_events):
             tst.assert_allclose(recombined.c4[order[i]].flatten().flatten(), content_4[i].flatten().flatten())
 
-        
 
 def test_recursive_combine():
     pass
 
-
+# out of eventwise ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # warnings
 def test_add_rapidity():
     large_num = np.inf
