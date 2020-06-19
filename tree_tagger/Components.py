@@ -411,7 +411,7 @@ class EventWise:
             try:
                 out = [row[f == t] for f, t, row in zip(match_from, match_to, attr)]
             except TypeError:
-                mask = match_from == match_to
+                mask = int(match_from) == match_to
                 out = [row[m] for m, row in zip(mask, attr)]
         else:
             out = [row[m] for m, row in zip(match_from, attr)]
@@ -850,7 +850,7 @@ class EventWise:
         return all_paths
 
     @classmethod
-    def recursive_combine(cls, dir_name, check_for_dups=False, del_framgents=True):
+    def recursive_combine(cls, dir_name, check_for_dups=False, del_fragments=True):
         """
         Combine every eventWise found in or under the given directory.
 
@@ -876,19 +876,20 @@ class EventWise:
         """
         if dir_name.endswith('/'):
             dir_name = dir_name[:-1]
-        root_dir = '/'.join(*dir_name.split('/')[:-1])
+        root_dir = '/'.join(dir_name.split('/')[:-1])
         save_base = dir_name.split('/')[-1].split('_', 1)[0]
-        dir_content = os.listdir(dir_name)
-        fragments = [n for n in dir_content if n.endswith('.awkd')]
-        for name in fragments:
-            if name[:-4] in dir_content:
-                joined_name = cls.recursive_combine(name[:-4], check_for_dups, del_framgents)
-                os.replace(joined_name, name)
+        for name in os.listdir(dir_name):
+            if not name.endswith('.awkd'):
+                subdir_name = os.path.join(dir_name, name)
+                merged_name = cls.recursive_combine(subdir_name, check_for_dups, del_fragments)
+                os.rename(merged_name, subdir_name + ".awkd")
+        fragments = [n for n in os.listdir(dir_name) if n.endswith('.awkd')]
         combined_eventWise = cls.combine(dir_name, save_base, fragments, check_for_dups, del_fragments=True)
         joined_name = os.path.join(root_dir, save_base+".awkd")
         os.rename(os.path.join(combined_eventWise.dir_name, combined_eventWise.save_name),
                   joined_name)
-        os.rmdir(dir_name)
+        if del_fragments:
+            os.rmdir(dir_name)
         return joined_name
 
     @classmethod
@@ -933,6 +934,7 @@ class EventWise:
         columns = []
         hyperparameter_columns = []
         contents = {}
+        pickle_strs = {}  # when checking for dups
         for fragment in fragments:
             path = os.path.join(dir_name, fragment)
             content_here = awkward.load(path)
@@ -952,16 +954,16 @@ class EventWise:
                 hyperparameter_columns = found_hcols
                 for name in found_hcols:
                     contents[name] = content_here[name]
-            pickle_strs = {}  # when checking for dups
             for key in content_here:
                 if key in hyperparameter_columns:
                     continue
-                if key not in contents:
-                    contents[key] = list(content_here[key])
-                elif check_for_dups:
+                if key not in contents: # start a new list
+                    contents[key] = []
+                if check_for_dups:
                     # then add iff not a duplicate of the existign data
                     if key not in pickle_strs:
                         pickle_strs[key] = pickle.dumps(content_here[key])
+                        contents[key] += list(content_here[key])
                     elif pickle.dumps(content_here[key]) != pickle_strs[key]:
                         contents[key] += list(content_here[key])
 
@@ -1024,7 +1026,9 @@ def event_matcher(eventWise1, eventWise2):
     float_cols = common_columns[isfloat]
     assert "Event_n" in common_columns
     length1 = len(eventWise1.Event_n)
+    length2 = len(eventWise2.Event_n)
     order = np.full(length1, -1, dtype=int)
+    best_float_matches = np.zeros(length2)
     for i in range(length1):
         possibles = np.where(eventWise2.Event_n == eventWise1.Event_n[i])[0]
         if len(possibles) == 0:
@@ -1038,7 +1042,7 @@ def event_matcher(eventWise1, eventWise2):
             except Exception:
                 int_gap = [np.int64(np.nan_to_num(recursive_distance(f1, f2))) for f2 in f2s]
         possibles = possibles[int_gap == 0]
-        if len(possibles) == 1:
+        if len(possibles) == 1 and possibles[0] not in order:
             order[i] = possibles[0]
             continue
         if len(possibles) == 0:
@@ -1049,7 +1053,15 @@ def event_matcher(eventWise1, eventWise2):
             f2s = getattr(eventWise2, col)[possibles]
             float_gap += [recursive_distance(f1, f2) for f2 in f2s]
         best = np.argmin(float_gap)
-        order[i] = possibles[best]
+        best_idx = possibles[best]
+        if best_idx not in order:  # hasen't been used yet
+            order[i] = best_idx
+            best_float_matches[best_idx] = float_gap[best]
+        elif float_gap[best] < best_float_matches[best_idx]:
+            # then steal it
+            order[order == best_idx] = -1
+            order[i] = best_idx
+            best_float_matches[best_idx] = float_gap[best]
     return order
 
 
@@ -1269,6 +1281,7 @@ def theta_to_pseudorapidity(theta_list):
         pseudorapidity as a float or a numpy array, depending on the input
     
     """
+    return_float = isinstance(theta_list, float)
     # awkward arrays also return true for isinstance np.ndarray
     if not isinstance(theta_list, np.ndarray):
         theta_list = np.array(theta_list, dtype=float)
@@ -1282,7 +1295,7 @@ def theta_to_pseudorapidity(theta_list):
     pseudorapidity = np.full_like(theta_list, np.inf)
     pseudorapidity[~infinite] = -np.log(tan_restricted[~infinite])
     pseudorapidity[theta_list > np.pi/2] *= -1.
-    if not hasattr(theta_list, '__iter__'):
+    if return_float:
         pseudorapidity = float(pseudorapidity)
     return pseudorapidity
 
@@ -1345,7 +1358,7 @@ def add_PT(eventWise, basename=None):
     if basename is None:
         # find all the things with px, py
         px_cols = [c[:-2] for c in eventWise.columns if c.endswith("Px")]
-        pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c in px_cols]
+        pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c[:-2] in px_cols]
         missing_pt = [c for c in pxpy_cols if (c+"PT") not in eventWise.columns]
     else:
         if len(basename) > 0:
@@ -1377,7 +1390,7 @@ def add_phi(eventWise, basename=None):
     if basename is None:
         # find all the things with px, py
         px_cols = [c[:-2] for c in eventWise.columns if c.endswith("Px")]
-        pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c in px_cols]
+        pxpy_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c[:-2] in px_cols]
         missing_phi = [c for c in pxpy_cols if (c+"Phi") not in eventWise.columns]
     else:
         if len(basename) > 0:

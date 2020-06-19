@@ -203,7 +203,6 @@ def test_safe_convert():
 
 
 def test_EventWise():
-    # blank
     with TempTestDir("tst") as dir_name:
         # instansation
         save_name = "blank.awkd"
@@ -246,9 +245,15 @@ def test_EventWise():
         blank_ew.append(**{"A": AwkdArrays.empty, "Bc": AwkdArrays.one_one, "Bd": AwkdArrays.minus_plus})
         blank_ew.remove_prefix("B")
         assert list(blank_ew.columns) == ["A"]
+        # cannot remove somehting that does not exist
+        try:
+            blank_ew.remove("non_existant")
+            raise AssertionError("Should throw an error when removing columns that don't exist")
+        except KeyError:
+            pass
         # instancate with content
-        content = {"A1": AwkdArrays.minus_plus, "Long_name": AwkdArrays.minus_plus, "Hyper": AwkdArrays.one_one}
-        columns = ["A1", "Long_name"]
+        content = {"A1": AwkdArrays.minus_plus, "Long_name": AwkdArrays.minus_plus, "Hyper": AwkdArrays.one_one, "Prefix_1": AwkdArrays.jet_ints, "Prefix_2": AwkdArrays.jet_floats}
+        columns = ["A1", "Long_name", "Prefix_1", "Prefix_2"]
         hyperparameter_columns = ["Hyper"]
         filled_name = "filled.awkd"
         alt_ew = Components.EventWise(dir_name, filled_name, columns=columns,
@@ -279,6 +284,41 @@ def test_EventWise():
         # overwrite a hyperparameter
         alt_ew_clone.append_hyperparameters(Hyper=AwkdArrays.one_one*2)
         assert generic_equality_comp(alt_ew_clone.Hyper, 2*alt_ew.Hyper)
+        # fail to overwrite a hyperparameter with a parameter
+        try:
+            alt_ew_clone.append(Hyper=AwkdArrays.one_one)
+            raise AssertionError("Should not be possible to overwrite a column wiht a hayperparamter")
+        except KeyError:
+            pass
+        # fail to overwrite a parameter with a hyperparamter
+        try:
+            alt_ew_clone.append_hyperparameters(A1=AwkdArrays.one_one)
+            raise AssertionError("Should not be possible to overwrite a hyperparameter with a paramter")
+        except KeyError:
+            pass
+        # rename a column
+        alt_ew.rename("Prefix_1", "Prefix_A")
+        assert generic_equality_comp(alt_ew.Prefix_A, AwkdArrays.jet_ints)
+        assert "Prefix_1" not in alt_ew.columns
+        # rename a prefix
+        alt_ew.rename_prefix("Prefix", "Dog")
+        assert generic_equality_comp(alt_ew.Dog_A, AwkdArrays.jet_ints)
+        assert generic_equality_comp(alt_ew.Dog_2, AwkdArrays.jet_floats)
+        # rename a hyperparameter
+        alt_ew.rename("Hyper", "Hyperdog")
+        assert generic_equality_comp(alt_ew.Hyperdog, AwkdArrays.one_one)
+        assert "Hyper" not in alt_ew.hyperparameter_columns
+        # rename an alias
+        alt_ew.rename("A2", "Alias2")
+        assert "A2" not in alt_ew.columns
+        assert generic_equality_comp(alt_ew.Alias2, AwkdArrays.minus_plus)
+        # cannot rename something we don't have
+        try:
+            alt_ew.rename("non_existant", "sphinx")
+            raise AssertionError("Shouldn't be able to rename an non-existant column")
+        except KeyError:
+            pass
+
 
 # test subsections of eventwise ~~~~~~~~~~~~~~~
 def test_match_indices():
@@ -294,7 +334,7 @@ def test_match_indices():
         # it is impossible to picka  valid index for the last event so don't try
         selectors = awkward.fromiter(([0], [(2, 1)], [(2, 2)]))
         # last one tests what happens when the requested id dosn't exist
-        id_selectors = awkward.fromiter(([0], [2], [2], [0]))
+        id_selectors = awkward.fromiter(([0], 2, [2], [0]))
         ew.append(Values=values, Ids=ids, Selectors=selectors, Id_selectors=id_selectors)
         # check that the results are as expected
         out = ew.match_indices('Values', 'Selectors', event_n=0)
@@ -316,10 +356,6 @@ def test_match_indices():
         tst.assert_allclose(out.tolist(), [[0.5]])
         out = ew.match_indices('Values', 'Id_selectors', 'Ids', event_n=3)
         assert len(out.flatten()) == 0
-
-
-
-
 
 
 def test_split():
@@ -503,10 +539,15 @@ def test_combine():
         content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
+        hyper = AwkdArrays.one_one
         ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
+        ew.append_hyperparameters(Hyper=hyper)
         paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
-        dir_name = os.path.split(paths[0])[0]
-        recombined = Components.EventWise.combine(dir_name, "test")
+        # delete the original
+        os.remove(os.path.join(dir_name, save_name))
+        subdir_name = os.path.split(paths[0])[0]
+        # combine the fragments
+        recombined = Components.EventWise.combine(subdir_name, "test", del_fragments=False, check_for_dups=False)
         # tere in no order garentee, so get the new order from c1
         order = np.argsort(recombined.c1)
         tst.assert_allclose(recombined.c1[order], content_1)
@@ -514,13 +555,102 @@ def test_combine():
         tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
         for i in range(n_events):
             tst.assert_allclose(recombined.c4[order[i]].flatten().flatten(), content_4[i].flatten().flatten())
+        assert generic_equality_comp(recombined.Hyper, AwkdArrays.one_one)
+        # delete the combination
+        os.remove(os.path.join(recombined.dir_name, recombined.save_name))
+        # check if check_for_dups prevents adding the same column multiple times
+        dup = awkward.fromiter([7, 8])
+        for path in paths:
+            if path is None:
+                continue
+            ew = Components.EventWise.from_file(path)
+            ew.append(Dup=dup)
+        # combine the fragments
+        recombined = Components.EventWise.combine(subdir_name, "test", check_for_dups=True, del_fragments=True)
+        assert len(recombined.Dup) == 2
+        # check for dups should not otehrwise change the content
+        order = np.argsort(recombined.c1)
+        tst.assert_allclose(recombined.c1[order], content_1)
+        tst.assert_allclose(recombined.c2[order], content_2)
+        tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
+        for i in range(n_events):
+            tst.assert_allclose(recombined.c4[order[i]].flatten().flatten(), content_4[i].flatten().flatten())
+        assert generic_equality_comp(recombined.Hyper, AwkdArrays.one_one)
+        # check if the fragments were deleted
+        assert len(os.listdir(dir_name)) == 1
 
 
 def test_recursive_combine():
-    pass
+    with TempTestDir("tst") as dir_name:
+        dir_name += '/'
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        # try with 10 events
+        n_events = 10
+        content_1 = awkward.fromiter(np.arange(n_events))
+        content_2 = awkward.fromiter(np.random.rand(n_events))
+        ew.append(c1=content_1, c2=content_2)
+        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
+        del ew
+        os.remove(os.path.join(dir_name, save_name))  # so it isn't added twice
+        resplit = Components.EventWise.from_file(paths[0])
+        more_paths = resplit.fragment("C1", n_fragments=3)
+        os.remove(paths[0])  # so it isn't added twice
+        dir_name = os.path.split(paths[0])[0]
+        recombined = Components.EventWise.recursive_combine(dir_name)
+        recombined = Components.EventWise.from_file(recombined)
+        # tere in no order garentee, so get the new order from c1
+        order = np.argsort(recombined.c1)
+        tst.assert_allclose(recombined.c1[order], content_1)
+        tst.assert_allclose(recombined.c2[order], content_2)
 
 # out of eventwise ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# warnings
+
+def test_event_matcher():
+    with TempTestDir("tst") as dir_name:
+        # splitting a blank ew should result in only Nones
+        save_nameA = "testA.awkd"
+        ewA = Components.EventWise(dir_name, save_nameA)
+        # make a longer eventwise
+        n_events = 10
+        #                              0  1  2  3  4  5  6  7  8  9
+        content_A1 = awkward.fromiter([0, 1, 2, 3, 3, 3, 4, 5, 6, 6])
+        n_eventsA = len(content_A1)
+        content_A2 = awkward.fromiter(0.5*np.arange(n_events*2).reshape(n_events, 2))
+        content_A3 = awkward.fromiter([0, 1, 2, 3, 3, 9, 4, 5, 6, 6])
+        hyper = AwkdArrays.one_one
+        ewA.append(Event_n=content_A1, c2=content_A2, c3=content_A3)
+        ewA.append_hyperparameters(Hyper=hyper)
+        # make an eventWise with a subset of the longer ones events
+        save_nameB = "testB.awkd"
+        ewB = Components.EventWise(dir_name, save_nameB)
+        required_order = [5, 3, 2, 8, 4]
+        content_B1 = content_A1[required_order]
+        content_B2 = content_A2[required_order]
+        content_B3 = content_A3[required_order]
+        hyper = AwkdArrays.one_one
+        ewB.append(Event_n=content_B1, c2=content_B2, c3=content_B3)
+        ewB.append_hyperparameters(Hyper=hyper)
+        # the arrangment required to make B into A
+        expected = np.array([-1, -1, 2, 1, 4, 0, -1, -1, 3, -1])
+        found = Components.event_matcher(ewA, ewB)
+        assert np.all(expected == found), f"expected = {expected}, found={found}"
+
+
+def test_recursive_distance():
+    # for arrays of diferign shape the distance should be infinite
+    found = Components.recursive_distance(AwkdArrays.jet_ints, AwkdArrays.jet_ints[:1])
+    assert found == np.Inf
+    found = Components.recursive_distance(AwkdArrays.jet_ints, AwkdArrays.one_one)
+    assert found == np.Inf
+    version1 = awkward.fromiter([0,[1,2]])
+    version2 = awkward.fromiter([-1,[1,2]])
+    found = Components.recursive_distance(version1, version1)
+    assert found == 0
+    found = Components.recursive_distance(version2, version1)
+    assert found == 1
+
+
 def test_add_rapidity():
     large_num = np.inf
     pts = awkward.fromiter([[0., 0., 0., 0.,  0., 1., 1.,  1., 1., 10.]])
@@ -547,7 +677,6 @@ def test_add_rapidity():
         tst.assert_allclose(ew.A_Rapidity, rap)
         with pytest.raises(AttributeError):
             ew.B_Rapidity
-
 
 
 class Particle:
@@ -653,6 +782,24 @@ def test_add_thetas():
             #                          contents=contents)
             #Components.add_thetas(ew, '')
             #tst.assert_allclose(ew.Theta[0], out)
+            # try letting the function find the naems
+            contents = {"Dog_Birr": particle.p, "Dog_Pz": particle.pz, "Dog_Phi": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, None)
+            tst.assert_allclose(ew.Dog_Theta[0], out)
+            # try letting the fix the prefix
+            contents = {"Dog_Birr": particle.p, "Dog_Pz": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, "Dog")
+            tst.assert_allclose(ew.Dog_Theta[0], out)
+            # give it an impossible task
+            contents = {"Dog_Birr": particle.p, "Dog_Phi": particle.pz}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_thetas(ew, "Dog")
+            assert "Dog_Theta" not in ew.columns
 
 
 def test_theta_to_pseudorapidity():
@@ -664,6 +811,9 @@ def test_theta_to_pseudorapidity():
     for inp, out in input_output:
         etas = Components.theta_to_pseudorapidity(np.array([inp]))
         tst.assert_allclose(etas[0], out, atol=0.0001)
+    # try as a float
+    eta = Components.theta_to_pseudorapidity(input_output[0][0])
+    assert isinstance(eta, float), f"eta={eta} and has type {type(eta)}"
 
 
 def test_add_pseudorapidity():
@@ -691,6 +841,39 @@ def test_add_pseudorapidity():
             ew.B_PseudoRapidity
 
 
+def test_add_phi():
+    input_output = [
+            ({"Px": 1, "Py": 0, "Pz": 10}, 0.),
+            ({"Px": 1, "Py": 0, "Pz": 0}, 0.),
+            ({"Px": -1, "Py": 0, "Pz": 0}, np.pi),
+            ({"Px": 0, "Py": 1, "Pz": 0}, np.pi/2),
+            ({"Px": 0, "Py": -1, "Pz": 0}, -np.pi/2),]
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "phi.awkd"
+        for contents, out in input_output:
+            contents = {key: awkward.fromiter([[value]]) for key, value
+                        in contents.items()}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            Components.add_phi(ew, '')
+            tst.assert_allclose(ew.phi[0], out)
+        # try letting the function idetify valid columns
+        contents = {"Px": awkward.fromiter([[0]]), "Py": awkward.fromiter([[1]]),
+                    "Dog_Px": awkward.fromiter([[1]]), "Dog_Py": awkward.fromiter([[0]])}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_phi(ew)
+        tst.assert_allclose(ew.Phi[0], np.pi/2)
+        tst.assert_allclose(ew.Dog_Phi[0], 0)
+        # let the function fix a basename
+        contents = {"Dog_Px": awkward.fromiter([[1]]), "Dog_Py": awkward.fromiter([[1]])}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_phi(ew, "Dog")
+        tst.assert_allclose(ew.Dog_Phi[0], np.pi/4)
+
+
 def test_add_PT():
     # particles could go down each axial direction
     input_output = [
@@ -711,6 +894,20 @@ def test_add_PT():
                                       contents=contents)
             Components.add_PT(ew, '')
             tst.assert_allclose(ew.PT[0], out)
+        # try letting the function idetify valid columns
+        contents = {"Px": particle.px, "Py": particle.py,
+                    "Dog_Px": particle.px, "Dog_Py": particle.py}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+                                  contents=contents)
+        Components.add_PT(ew)
+        tst.assert_allclose(ew.PT[0], out)
+        tst.assert_allclose(ew.Dog_PT[0], out)
+        # let the function fix a basename
+        contents = {"Dog_Px": particle.px, "Dog_Py": particle.py}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+                                  contents=contents)
+        Components.add_PT(ew, "Dog")
+        tst.assert_allclose(ew.Dog_PT[0], out)
 
 
 def test_RootReadout():
@@ -768,3 +965,50 @@ def test_RootReadout():
         assert np.all(rr.Track_Particle >= 0)
     
 
+def test_last_instance():
+    input_output = [
+            (0, {"MCPID": [1], "Children": [[]]}, 0),  # lone particle return itself
+            (0, {"MCPID": [1, 2], "Children": [[1], []]}, 0),  # particle decays immediatly
+            (0, {"MCPID": [1, 1, 2], "Children": [[1], [2], []]}, 1),  # particle decays after 1 step
+            (1, {"MCPID": [2, 1, 1], "Children": [[], [2], [0]]}, 2),  # particle decays out of order
+            (2, {"MCPID": [2, 1, 1], "Children": [[], [2], [0]]}, 2),  # particle decays out of order
+            (0, {"MCPID": [1, 2, 1], "Children": [[1, 2], [], []]}, 2)]  # multiple children
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "last.awkd"
+        for start, contents, expected in input_output:
+            contents = {key: awkward.fromiter([value]) for key, value
+                        in contents.items()}
+            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                      contents=contents)
+            ew.selected_index = 0
+            found = Components.last_instance(ew, start)
+            assert found == expected, f"For setup {contents}, expected {expected} found {found}"
+
+
+def test_fix_nonexistent_columns():
+    with TempTestDir("tst") as dir_name:
+        save_name = "blank.awkd"
+        blank_ew = Components.EventWise(dir_name, save_name)
+        # should have in effect on a blank eventWise
+        h_problems, blank_ew = Components.fix_nonexistent_columns(blank_ew)
+        assert len(h_problems) == 0
+        assert len(blank_ew.columns) == 0
+        assert len(blank_ew.hyperparameter_columns) == 0
+        # should not remove anything from a valid eventWise
+        contents = {"A": AwkdArrays.one_one, "B": AwkdArrays.empty}
+        blank_ew.append(**contents)
+        h_problems, blank_ew = Components.fix_nonexistent_columns(blank_ew)
+        assert len(h_problems) == 0
+        assert generic_equality_comp(blank_ew.A, contents["A"])
+        assert generic_equality_comp(blank_ew.B, contents["B"])
+        # should remove eronious objects
+        blank_ew.columns += ["oops"]
+        blank_ew.hyperparameter_columns += ["oops2"]
+        h_problems, blank_ew = Components.fix_nonexistent_columns(blank_ew)
+        assert len(h_problems) == 1
+        assert "oops2" == h_problems[0]
+        assert len(blank_ew.columns) == 2
+        assert generic_equality_comp(blank_ew.A, contents["A"])
+        assert generic_equality_comp(blank_ew.B, contents["B"])
+    
