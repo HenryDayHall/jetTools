@@ -1,26 +1,26 @@
-import numpy as np
-import scipy
-import scipy.spatial
-import awkward
+""" Module for tools to create and handle jets """
 import subprocess
 import os
 import csv
+import scipy
+import scipy.spatial
+import awkward
 from matplotlib import pyplot as plt
 import matplotlib
-from ipdb import set_trace as st
-from skhep import math as hepmath
+# from ipdb import set_trace as st
+import numpy as np
 from tree_tagger import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
 
-truth_colour = 'limegreen'
-spectral_colour = 'dodgerblue'
-fast_colour = 'tomato'
-truth_linewidth = 1.0
-truth_size = 25.
-jet_alpha = 0.5
+TRUTH_COLOUR = 'limegreen'
+SPECTRAL_COLOUR = 'dodgerblue'
+FAST_COLOUR = 'tomato'
+TRUTH_LINEWIDTH = 1.0
+TRUTH_SIZE = 25.
+JET_ALPHA = 0.5
 
 
 class PseudoJet:
-    """ """
+    """ Base class for jets, needs to be extended to be usable """
     int_columns = ["Pseudojet_InputIdx",
                    "Pseudojet_Parent", "Pseudojet_Child1", "Pseudojet_Child2",
                    "Pseudojet_Rank"]
@@ -35,6 +35,34 @@ class PseudoJet:
     def __init__(self, eventWise, selected_index=None,
                  jet_name='PseudoJet', from_PseudoRapidity=False,
                  ints_floats=None, **kwargs):
+        """
+        Class constructor
+
+        Parameters
+        ----------
+        eventWise : EventWise
+            data file for inputs
+        selected_index : int
+            event number to use, can already be set in the eventWise
+            (Default; None)
+        jet_name : string
+            name to prefix the jet properties with when saving
+            (Default; "PseudoJet")
+        from_PseudoRapidity : bool
+            Use pseudorapidity instead or rapidity
+            (Default; False)
+        int_floats : tuple of 2d array likes
+            Predefined int and float tables.
+            If not given they will be constructed from the eventWise.
+            (Default; None)
+        dict_jet_params : dict (optional)
+            Settings for jet clustering. If not given defaults are used.
+        root_jetInputIdxs : list of ints (optional)
+            List of the indices of the roots of each jet.
+        assign : bool (optional)
+            Should the jets eb clustered immediatly?
+            (Default; False)
+        """
         # jets can have a varient name
         # this allows multiple saves in the same file
         self.jet_name = jet_name
@@ -100,12 +128,15 @@ class PseudoJet:
             self.assign_parents()
 
     def assign_parents(self):
-        """ """
+        """ Join pseudojets until all avalible psseudojets are taken """
         while self.currently_avalible > 0:
             self._step_assign_parents()
 
     def plt_assign_parents(self):
-        """ """
+        """
+        Join pseudojets until all avalible psseudojets are taken.
+        Also plot the process 
+        """
         # dendogram < this should be
         plt.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
         inv_pts = [1/p[self._PT_col]**2 for p in self._floats]
@@ -144,7 +175,7 @@ class PseudoJet:
         plt.show()
 
     def _step_assign_parents(self):
-        """ """
+        """ Take a single step to join pseudojets """
         # now find the smallest distance
         row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
         if row == column:
@@ -154,12 +185,14 @@ class PseudoJet:
             self._merge_pseudojets(row, column, self._distances2[row, column])
 
     def _define_physical_distance(self):
-        """ """
+        """
+        Define a function that measures distance in physical space,
+        and also a function that measures distance of a particle to the beam.
+        """
         pt_col  = self._PT_col 
         # caluclate invarint mass here!
         leaves = np.where(self.Child1 == -1)[0]
         sum_energies = sum(self._floats[row][self._Energy_col] for row in leaves)
-        # wrong!
         sum_pt = sum(self._floats[row][pt_col] for row in leaves)
         sum_pz = sum(self._floats[row][self._Pz_col] for row in leaves)
         invarient_mass2 = sum_energies**2 - sum_pt**2 - sum_pz**2
@@ -177,30 +210,35 @@ class PseudoJet:
         if exponent_now:
             def beam_distance2(row):
                 """
-                
+                Calculate the distance of this particle to the beam squared
 
                 Parameters
                 ----------
-                row :
-                    
+                row : list of floats
+                    data about particle, in the order specified by the column
+                    attributes
 
                 Returns
                 -------
+                : float
+                    the distance squared to the beam
 
                 """
                 return deltaR2 * row[pt_col]**exponent * invarient_mass**-exponent
         else:
             def beam_distance2(row):
                 """
-                
+                Calculate the distance of this particle to the beam squared
 
                 Parameters
                 ----------
-                row :
-                    
+                row : list of floats
+                    data about particle, in the order specified by the column attributes
 
                 Returns
                 -------
+                : float
+                    the distance squared to the beam
 
                 """
                 return deltaR2
@@ -209,18 +247,19 @@ class PseudoJet:
             phi_col = self._Phi_col
             def physical_distance2(row, column):
                 """
-                
+                Calculate the physical distance between 2 particles.
 
                 Parameters
                 ----------
-                row :
-                    param column:
-                column :
-                    
+                row : list of ints
+                    data about particle, in the order specified by the column attributes
+                column : list of ints
+                    data about particle, in the order specified by the column attributes
 
                 Returns
                 -------
-
+                : float
+                    the distance squared between the two particles
                 
                 """
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
@@ -231,15 +270,18 @@ class PseudoJet:
                 return distance2
             def beam_distance2(row):
                 """
-                
+                Calculate the distance of this particle to the beam squared
 
                 Parameters
                 ----------
-                row :
-                    
+                row : list of floats
+                    data about particle, in the order specified by the column
+                    attributes
 
                 Returns
                 -------
+                : float
+                    the distance squared to the beam
 
                 """
                 return deltaR2
@@ -250,18 +292,19 @@ class PseudoJet:
             e_col = self._Energy_col
             def physical_distance2(row, column):
                 """
-                
+                Calculate the physical distance between 2 particles.
 
                 Parameters
                 ----------
-                row :
-                    param column:
-                column :
-                    
+                row : list of ints
+                    data about particle, in the order specified by the column attributes
+                column : list of ints
+                    data about particle, in the order specified by the column attributes
 
                 Returns
                 -------
-
+                : float
+                    the distance squared between the two particles
                 
                 """
                 distance2 = (row[e_col]*column[e_col]
@@ -279,18 +322,19 @@ class PseudoJet:
             small_num = 1e-10
             def physical_distance2(row, column):
                 """
-                
+                Calculate the physical distance between 2 particles.
 
                 Parameters
                 ----------
-                row :
-                    param column:
-                column :
-                    
+                row : list of ints
+                    data about particle, in the order specified by the column attributes
+                column : list of ints
+                    data about particle, in the order specified by the column attributes
 
                 Returns
                 -------
-
+                : float
+                    the distance squared between the two particles
                 
                 """
                 energies = row[e_col] * column[e_col]
@@ -307,18 +351,19 @@ class PseudoJet:
             phi_col = self._Phi_col
             def physical_distance2(row, column):
                 """
-                
+                Calculate the physical distance between 2 particles.
 
                 Parameters
                 ----------
-                row :
-                    param column:
-                column :
-                    
+                row : list of ints
+                    data about particle, in the order specified by the column attributes
+                column : list of ints
+                    data about particle, in the order specified by the column attributes
 
                 Returns
                 -------
-
+                : float
+                    the distance squared between the two particles
                 
                 """
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
@@ -333,21 +378,21 @@ class PseudoJet:
 
     def _set_hyperparams(self, param_list, dict_jet_params, kwargs):
         """
-        
+        Using the default parameters and the chosen parameters set the attributes
+        of the Pseudojet to contain the parameters used for clustering.
 
         Parameters
         ----------
-        param_list :
-            param dict_jet_params:
-        kwargs :
-            
-        dict_jet_params :
-            
-
-        Returns
-        -------
-
-        
+        param_list : dict of params
+            dictionary of default settings, to be applied
+            when parameters are not set elsewhere
+            key is parameter name, value is parameter value
+        kwargs : dict
+            Parameters may be specified in the kwargs dict
+            alongside other things
+        dict_jet_params : dict of params
+            parameters may be supplied together as a dictionary
+            key is parameter name, value is parameter value
         """
         if dict_jet_params is None:
             dict_jet_params = {}
@@ -365,12 +410,11 @@ class PseudoJet:
                 dict_jet_params[name] = param_list[name]
         kwargs['dict_jet_params'] = dict_jet_params
 
-    def _check_hyperparams(self):
-        """ """
-        raise NotImplementedError
-
     def _set_column_numbers(self):
-        """ """
+        """
+        Using the list of column names make the index of each
+        column accesable as an attribute with the form self._col_<Varname>
+        """
         #print('coln_psu', end='\r', flush=True)
         prefix_len = len(self.jet_name) + 1
         # int columns
@@ -389,17 +433,21 @@ class PseudoJet:
             setattr(self, attr_name, i)
 
     def __dir__(self):
+        """ Ensure the attributes are displayed in consistant order """
         new_attrs = set(super().__dir__())
         return sorted(new_attrs)
 
     def _calculate_currently_avalible(self):
-        """ """
-        #print('cavl_psu', end='\r', flush=True)
+        """ Update the cound of how many pseudojets could pottentially be combined """
         # keep track of how many clusters don't yet have a parent
         self.currently_avalible = sum([p[self._Parent_col]==-1 for p in self._ints])
 
     def __getattr__(self, attr_name):
-        """ the float columns form whole jet attrs"""
+        """ 
+        Make the attributes for the floats and ints used to construct jets.
+        The integer columns are simply returned as numpy arrays.
+        The float columns are used to calculate overall flat properties of each formed jet.
+        """
         # capitalise raises the case of the first letter
         attr_name = attr_name[0].upper() + attr_name[1:]
         if attr_name in self._float_contents:
@@ -431,14 +479,14 @@ class PseudoJet:
 
     @property
     def P(self):
-        """ """
+        """ Total momentum of the jets """
         if len(self) == 0:
             return np.nan
         return np.linalg.norm([self.Px, self.Py, self.Pz])
 
     @property
     def Theta(self):
-        """ """
+        """ Theta of the jets"""
         if len(self) == 0:
             return np.nan
         theta = Components.ptpz_to_theta(self.PT, self.Pz)
@@ -447,27 +495,31 @@ class PseudoJet:
     @classmethod
     def create_updated_dict(cls, pseudojets, jet_name, event_index, eventWise=None, arrays=None):
         """
-        Make the dictionary to be appended to an eventWise for writing
+        Adds an event to the dictionary of columns to be appended to an eventWise for writing
 
         Parameters
         ----------
-        pseudojets :
-            param jet_name:
-        event_index :
-            param eventWise: (Default value = None)
-        arrays :
-            Default value = None)
-        jet_name :
-            
-        eventWise :
+        pseudojets : list of PseudoJet
+            pseudojet objects created in a chosen event.
+        jet_name: string
+            name of the jet for prefixes in the eventWise
+        event_index : int
+            zero index event number that these pseudojets belong to
+        eventWise : EventWise
+            eventWise object which can be used to find jets form other events.
+            If not given, an arrays must be given.
+            Will not be written to.
+            (Default value = None)
+        arrays : dictionary of lists
+            The data from other events
+            If not given, an eventWise must be given.
             (Default value = None)
 
         Returns
         -------
-
-        
+        arrays : dictionary of lists
+            The data from existing events plus this one.
         """
-        #print('udic_psu', end='\r', flush=True)
         if arrays is None:
             save_columns = [jet_name + "_RootInputIdx"]
             int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
@@ -493,8 +545,14 @@ class PseudoJet:
         return arrays
 
     def create_param_dict(self):
-        """ """
-        #print('pdic_psu', end='\r', flush=True)
+        """
+        Create a dictionary of parameters discribing the settings used for this jet.
+
+        Returns
+        -------
+        params : dict
+            keys are name sof parameters and values are parameter values
+        """
         jet_name = self.jet_name
         # add any default values
         defaults = {name:value for name, value in self.param_list.items()
@@ -505,25 +563,23 @@ class PseudoJet:
     @classmethod
     def write_event(cls, pseudojets, jet_name="Pseudojet", event_index=None, eventWise=None):
         """
-        Save a handful of jets together
+        Save a jets from a single event
 
         Parameters
         ----------
-        pseudojets :
-            param jet_name: (Default value = "Pseudojet")
-        event_index :
-            Default value = None)
-        eventWise :
-            Default value = None)
-        jet_name :
-            (Default value = "Pseudojet")
-
-        Returns
-        -------
-
-        
+        pseudojets : list of PseudoJet
+            pseudojet objects created in a chosen event.
+        jet_name: string
+            name of the jet for prefixes in the eventWise
+        event_index : int
+            zero index event number that these pseudojets belong to
+            can also be specified as a selected_index of the eventWise
+            (Default value = None)
+        eventWise : EventWise
+            eventWise object in which to store these pseudojets
+            If not given, the eventWise of the first pseudojet will be used
+            (Default value = None)
         """
-        #print('wevt_psu', end='\r', flush=True)
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
         # only need to check the parameters of one jet (adds the hyperparameters)
@@ -536,19 +592,20 @@ class PseudoJet:
 
     def check_params(self, eventWise):
         """
-        if the  eventWise contains params, verify they are the same, else write them
+        If the eventWise contains params, verify they are the same as in this Pseudojet.
+        If no parameters are found in the eventWise add them.
 
         Parameters
         ----------
-        eventWise :
-            
+        eventWise : EventWise
+            eventWise object to look for jet parameters in
 
         Returns
         -------
-
+        : bool
+            The parameters in the eventWise match those of this jet.
         
         """
-        #print('ckpr_psu', end='\r', flush=True)
         my_params = self.create_param_dict()
         written_params = get_jet_params(eventWise, self.jet_name)
         if written_params:  # if written params exist check they match the jets params
@@ -572,24 +629,26 @@ class PseudoJet:
     @classmethod
     def multi_from_file(cls, file_name, event_idx, jet_name="Pseudojet", batch_start=None, batch_end=None):
         """
-        read a handful of jets from file
+        Read jets form a given event from file.
 
         Parameters
         ----------
-        file_name :
-            param event_idx:
-        jet_name :
-            Default value = "Pseudojet")
-        batch_start :
-            Default value = None)
-        batch_end :
-            Default value = None)
-        event_idx :
-            
+        file_name : string
+            path of an eventWise file with jets in
+        event_idx : int
+            zero index event number that to read jets from
+        jet_name: string
+            name of the jet for prefixes in the eventWise
+            (Default; "Pseudojet")
+        batch_start: int
+            inclusive jet to start reading
+        batch_end : int
+            exclusive jet to end on
 
         Returns
         -------
-
+        jets: list of PseudoJet
+            the read jets
         
         """
         int_columns = [c.replace('Pseudojet', jet_name) for c in cls.int_columns]
@@ -637,8 +696,7 @@ class PseudoJet:
         return jets
 
     def _calculate_roots(self):
-        """ """
-        #print('crot_psu', end='\r', flush=True)
+        """ Set the root_jetInputIdxs by looking for parentless pseudojets """
         self.root_jetInputIdxs = []
         # should only bee needed for reading from file self.currently_avalible == 0, "Assign parents before you calculate roots"
         pseudojet_ids = self.InputIdx
@@ -650,7 +708,14 @@ class PseudoJet:
                 self.root_jetInputIdxs.append(pid)
 
     def split(self):
-        """ """
+        """
+        Split this PseudoJet into as many unconnected jets as it contains
+        
+        Returns
+        -------
+        JetList : list of PseudoJet
+            the indervidual jets found in here
+        """
         assert self.currently_avalible == 0, "Need to assign_parents before splitting"
         if len(self) == 0:  # nothing else to do if the jet is empty
             return []
@@ -674,45 +739,39 @@ class PseudoJet:
         return self.JetList
     
     def _calculate_distances(self):
-        """ """
+        """ Calculate all distances between avalible pseudojets """
         # this is caluculating all the distances
         raise NotImplementedError
 
     def _recalculate_one(self, remove_index, replace_index):
         """
-        
+        Recalculate all the distances involving one pseudojet
 
         Parameters
         ----------
-        remove_index :
-            param replace_index:
-        replace_index :
-            
-
-        Returns
-        -------
-
+        remove_index : int
+            index of the jet that will be removed (moved to the back)
+            after joining
+        replace_index : int
+            index of the jet that will become the index of the combined jet
+            (current jet will be moved to the back)
         
         """
         raise NotImplementedError
 
     def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2):
         """
-        
+        Merge two pseudojets to form a new pseudojet, moving the 
+        exising pseudojets to the back of the ints/floats lists
 
         Parameters
         ----------
-        pseudojet_index1 :
-            param pseudojet_index2:
-        distance2 :
-            
-        pseudojet_index2 :
-            
-
-        Returns
-        -------
-
-        
+        pseudojet_index1 : int
+            index of the first input pseudojet
+        pseudojet_index2 : int
+            index of the second input pseudojet
+        distance2 : float
+            distance squared between them.
         """
         replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
         new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance2)
@@ -735,17 +794,14 @@ class PseudoJet:
 
     def _remove_pseudojet(self, pseudojet_index):
         """
-        
+        Remove a pseudojet from the currently_avalible and move it to the back
+        of the ints/floats lists.
 
         Parameters
         ----------
-        pseudojet_index :
-            
+        pseudojet_index : int
+            index to remove
 
-        Returns
-        -------
-
-        
         """
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
@@ -761,45 +817,52 @@ class PseudoJet:
         
     def idx_from_inpIdx(self, jetInputIdx):
         """
-        
+        Given a JetInputIdx, which may be an idx of one of the jet inputs,
+        of an id ceated subsequently during clustering, find the idx
+        of the corrisponding row in the ints/floats
 
         Parameters
         ----------
-        jetInputIdx :
-            
+        jetInputIdx : int
+            id of type JetInputIdx
 
         Returns
         -------
-
-        
+        pseudojet_idx : int
+            the row number of this jetInputIdx
         """
-        ids = [p[self._InputIdx_col] for p in self._ints]
-        pseudojet_idx = next((idx for idx, inp_idx in enumerate(ids)
-                              if inp_idx == jetInputIdx),
-                             None)
-        if pseudojet_idx is not None:
+        col = self._InputIdx_col
+        try:
+            pseudojet_idx = next((idx for idx, row in enumerate(self._ints)
+                                  if row[col] == jetInputIdx))
             return pseudojet_idx
-        raise ValueError(f"No pseudojet with ID {jetInputIdx}")
+        except StopIteration:
+            raise ValueError(f"No pseudojet with ID {jetInputIdx}")
 
     def get_decendants(self, lastOnly=True, jetInputIdx=None, pseudojet_idx=None):
         """
-        
+        Get all decendants of a chosen particle within the structure of the jet.
 
         Parameters
         ----------
-        lastOnly :
-            Default value = True)
-        jetInputIdx :
-            Default value = None)
-        pseudojet_idx :
-            Default value = None)
+        lastOnly : bool
+            Only return the end point decendants
+            (Default value = True)
+        jetInputIdx : int
+            jetInputIdx used to identify the starting particle
+            if not given pseudojet_idx required
+            (Default value = None)
+        pseudojet_idx : int
+            Internal index to identify the particle
+            if not given jetInputIdx required
+            (Default value = None)
 
         Returns
         -------
-
+        decendants : list of ints
+            decendants identified by jetInputIdx
         
         """
-        #print('gdec_psu', end='\r', flush=True)
         if jetInputIdx is None and pseudojet_idx is None:
             raise TypeError("Need to specify a pseudojet")
         elif pseudojet_idx is None:
@@ -841,7 +904,14 @@ class PseudoJet:
         return decendents
 
     def local_obs_idx(self):
-        """ """
+        """
+        Local indices of the pseudojets corrisponding to inputs (which would be observabel)
+        
+        Returns
+        -------
+        idx_are_obs : list of ints
+            local idx of the observable pseudojets
+        """
         idx_are_obs = [i for i in range(len(self)) if
                        (self._ints[i][self._Child1_col] < 0 and
                        self._ints[i][self._Child2_col] < 0)]
@@ -849,23 +919,24 @@ class PseudoJet:
 
     def _combine(self, pseudojet_index1, pseudojet_index2, distance2):
         """
-        
+        Caluclate the floats and ints created by combining two pseudojets.
 
         Parameters
         ----------
-        pseudojet_index1 :
-            param pseudojet_index2:
-        distance2 :
-            
-        pseudojet_index2 :
-            
+        pseudojet_index1 : int
+            index of the first pseudojet to input
+        pseudojet_index2 : int
+            index of the second pseudojet to input
+        distance2 : float
+            distanc esquared between the pseudojets
 
         Returns
         -------
-
-        
+        ints : list of ints
+            int columns of the combined pseudojet, order as per the column attributes
+        floats : list of floats
+            float columns of the combined pseudojet, order as per the column attributes
         """
-        #print('comb_psu', end='\r', flush=True)
         new_id = max([ints[self._InputIdx_col] for ints in self._ints]) + 1
         self._ints[pseudojet_index1][self._Parent_col] = new_id
         self._ints[pseudojet_index2][self._Parent_col] = new_id
@@ -905,9 +976,11 @@ class PseudoJet:
         return ints, floats
 
     def __len__(self):
+        """ consider the length to be equal to the number of pseudojets """
         return len(self._ints)
 
     def __eq__(self, other):
+        """ consider pseudojets to eb equal if their ints and flaots are equal """
         if len(self) != len(other):
             return False 
         ints_eq = self._ints == other._ints
@@ -916,12 +989,40 @@ class PseudoJet:
 
 
 class Traditional(PseudoJet):
-    """ """
+    """ Jet clustering in the style of kt/anti-kt/cambridge-acchen """
     param_list = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'Invarient': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        """
+        Class constructor
+
+        Parameters
+        ----------
+        eventWise : EventWise
+            data file for inputs
+        selected_index : int
+            event number to use, can already be set in the eventWise
+            (Default; None)
+        jet_name : string
+            name to prefix the jet properties with when saving
+            (Default; "PseudoJet")
+        from_PseudoRapidity : bool
+            Use pseudorapidity instead or rapidity
+            (Default; False)
+        int_floats : tuple of 2d array likes
+            Predefined int and float tables.
+            If not given they will be constructed from the eventWise.
+            (Default; None)
+        dict_jet_params : dict (optional)
+            Settings for jet clustering. If not given defaults are used.
+        root_jetInputIdxs : list of ints (optional)
+            List of the indices of the roots of each jet.
+        assign : bool (optional)
+            Should the jets eb clustered immediatly?
+            (Default; False)
+        """
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self.ExpofPTPosition = 'input'
         if dict_jet_params is not None:
@@ -929,7 +1030,7 @@ class Traditional(PseudoJet):
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
-        """ """
+        """ Calculate all distances between avalible pseudojets """
         # this is caluculating all the distances
         self._distances2 = np.full((self.currently_avalible, self.currently_avalible), np.inf)
         # for speed, make local variables
@@ -950,18 +1051,16 @@ class Traditional(PseudoJet):
 
     def _recalculate_one(self, remove_index, replace_index):
         """
-        
+        Recalculate all the distances involving one pseudojet
 
         Parameters
         ----------
-        remove_index :
-            param replace_index:
-        replace_index :
-            
-
-        Returns
-        -------
-
+        remove_index : int
+            index of the jet that will be removed (moved to the back)
+            after joining
+        replace_index : int
+            index of the jet that will become the index of the combined jet
+            (current jet will be moved to the back)
         
         """
         # delete the larger index keep the smaller index
@@ -984,22 +1083,29 @@ class Traditional(PseudoJet):
     @classmethod
     def read_fastjet(cls, arg, eventWise, jet_name="FastJet", do_checks=False):
         """
-        
+        Read the outputs of the fastjet program into a PseudoJet
 
         Parameters
         ----------
-        arg :
-            param eventWise:
-        jet_name :
-            Default value = "FastJet")
-        do_checks :
-            Default value = False)
-        eventWise :
+        arg : string or list of strings
+            if the argument is a sngle string it is the path
+            to a directory in which text fiels containing output are stored
+            If the argument is a list of strings it is the byte output of the
+            fastjet program
+        eventWise : EventWise
+            data file to assign these jets to
+        jet_name : string
+            Name of the jet to be prefixed in the eventWise
+            (Default value = "FastJet")
+        do_checks : bool
+            If checks ont he form of the fastjet output should be done (slow)
+            (Default value = False)
             
 
         Returns
         -------
-
+        new_pseudojet : PseudoJet
+            the peseudojets read from the program
         
         """
         #  fastjet format
@@ -1141,7 +1247,7 @@ class Traditional(PseudoJet):
 
 
 class Spectral(PseudoJet):
-    """ """
+    """ Clustering algorithm that embeds the jet inputs into spectral space to cluster """
     # list the params with default values
     param_list = {'DeltaR': .2, 'NumEigenvectors': np.inf,
             'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
@@ -1158,6 +1264,34 @@ class Spectral(PseudoJet):
                        'Invarient': ['angular', 'normed', 'Luclus', 'invarient'],
                        'StoppingCondition': ['standard', 'beamparticle']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        """
+        Class constructor
+
+        Parameters
+        ----------
+        eventWise : EventWise
+            data file for inputs
+        selected_index : int
+            event number to use, can already be set in the eventWise
+            (Default; None)
+        jet_name : string
+            name to prefix the jet properties with when saving
+            (Default; "PseudoJet")
+        from_PseudoRapidity : bool
+            Use pseudorapidity instead or rapidity
+            (Default; False)
+        int_floats : tuple of 2d array likes
+            Predefined int and float tables.
+            If not given they will be constructed from the eventWise.
+            (Default; None)
+        dict_jet_params : dict (optional)
+            Settings for jet clustering. If not given defaults are used.
+        root_jetInputIdxs : list of ints (optional)
+            List of the indices of the roots of each jet.
+        assign : bool (optional)
+            Should the jets eb clustered immediatly?
+            (Default; False)
+        """
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
         self._define_calculate_affinity()
         self.eigenvalues = []  # create a list to track the eigenvalues
@@ -1172,7 +1306,7 @@ class Spectral(PseudoJet):
             self.assign_parents()
 
     def _calculate_distances(self):
-        """ """
+        """ Calculate all distances between avalible pseudojets """
         # if there is a beam particle need to get the distance to the beam particle too
         n_distances = self.currently_avalible + self.beam_particle
         if n_distances < 2:
@@ -1219,7 +1353,10 @@ class Spectral(PseudoJet):
         np.fill_diagonal(self._affinity, 0.)  # the self._affinity may have problems on the diagonal
     
     def _calculate_eigenspace(self):
-        """ """
+        """
+        Calculate the embedding of the currently_avalible pseudojets in eignspace
+        Also find the distances in eigenspace and the eigenvalues.
+        """
         if np.sum(np.abs(self._affinity), initial=0) == 0.:
             # everything is seperated
             self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
@@ -1290,7 +1427,7 @@ class Spectral(PseudoJet):
             np.fill_diagonal(self._distances2, self.DeltaR**2)
 
     def _define_calculate_affinity(self):
-        """ """
+        """ Define functions to caluclate affinity from real distance """
         if self.AffinityCutoff is not None:
             cutoff_type = self.AffinityCutoff[0]
             cutoff_param = self.AffinityCutoff[1]
@@ -1298,16 +1435,17 @@ class Spectral(PseudoJet):
                 if self.AffinityType == 'exponent':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = np.exp(-(distances2**0.5))
@@ -1316,16 +1454,17 @@ class Spectral(PseudoJet):
                 elif self.AffinityType == 'exponent2':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = np.exp(-(distances2))
@@ -1334,16 +1473,17 @@ class Spectral(PseudoJet):
                 elif self.AffinityType == 'linear':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = -distances2**0.5
@@ -1353,16 +1493,17 @@ class Spectral(PseudoJet):
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = distances2**-0.5
@@ -1375,16 +1516,17 @@ class Spectral(PseudoJet):
                 if self.AffinityType == 'exponent':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = np.exp(-(distances2**0.5))
@@ -1393,16 +1535,17 @@ class Spectral(PseudoJet):
                 elif self.AffinityType == 'exponent2':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = np.exp(-(distances2))
@@ -1411,16 +1554,17 @@ class Spectral(PseudoJet):
                 elif self.AffinityType == 'linear':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = -distances2**0.5
@@ -1430,16 +1574,17 @@ class Spectral(PseudoJet):
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
                         """
-                        
+                        Given physical distance squared, find an affinity.
 
                         Parameters
                         ----------
-                        distances2 :
-                            
+                        distances2 : array like of floats
+                            the distances squared
 
                         Returns
                         -------
-
+                        affinity : array like of floats
+                            the affinities 
                         
                         """
                         affinity = distances2**-0.5
@@ -1453,16 +1598,17 @@ class Spectral(PseudoJet):
             if self.AffinityType == 'exponent':
                 def calculate_affinity(distances2):
                     """
-                    
+                    Given physical distance squared, find an affinity.
 
                     Parameters
                     ----------
-                    distances2 :
-                        
+                    distances2 : array like of floats
+                        the distances squared
 
                     Returns
                     -------
-
+                    affinity : array like of floats
+                        the affinities 
                     
                     """
                     affinity = np.exp(-(distances2**0.5))
@@ -1470,16 +1616,17 @@ class Spectral(PseudoJet):
             elif self.AffinityType == 'exponent2':
                 def calculate_affinity(distances2):
                     """
-                    
+                    Given physical distance squared, find an affinity.
 
                     Parameters
                     ----------
-                    distances2 :
-                        
+                    distances2 : array like of floats
+                        the distances squared
 
                     Returns
                     -------
-
+                    affinity : array like of floats
+                        the affinities 
                     
                     """
                     affinity = np.exp(-(distances2))
@@ -1487,16 +1634,17 @@ class Spectral(PseudoJet):
             elif self.AffinityType == 'linear':
                 def calculate_affinity(distances2):
                     """
-                    
+                    Given physical distance squared, find an affinity.
 
                     Parameters
                     ----------
-                    distances2 :
-                        
+                    distances2 : array like of floats
+                        the distances squared
 
                     Returns
                     -------
-
+                    affinity : array like of floats
+                        the affinities 
                     
                     """
                     affinity = -distances2**0.5
@@ -1505,16 +1653,17 @@ class Spectral(PseudoJet):
             elif self.AffinityType == 'inverse':
                 def calculate_affinity(distances2):
                     """
-                    
+                    Given physical distance squared, find an affinity.
 
                     Parameters
                     ----------
-                    distances2 :
-                        
+                    distances2 : array like of floats
+                        the distances squared
 
                     Returns
                     -------
-
+                    affinity : array like of floats
+                        the affinities 
                     
                     """
                     affinity = distances2**-0.5
@@ -1526,21 +1675,18 @@ class Spectral(PseudoJet):
 
     def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2):
         """
-        
+        Merge two pseudojets to form a new pseudojet, moving the 
+        exising pseudojets to the back of the ints/floats lists
+        Also remove the redundant rows from the embedding space
 
         Parameters
         ----------
-        pseudojet_index1 :
-            param pseudojet_index2:
-        distance2 :
-            
-        pseudojet_index2 :
-            
-
-        Returns
-        -------
-
-        
+        pseudojet_index1 : int
+            index of the first input pseudojet
+        pseudojet_index2 : int
+            index of the second input pseudojet
+        distance2 : float
+            distance squared between them.
         """
         replace_index, remove_index = sorted([pseudojet_index1, pseudojet_index2])
         new_pseudojet_ints, new_pseudojet_floats = self._combine(remove_index, replace_index, distance2)
@@ -1569,17 +1715,15 @@ class Spectral(PseudoJet):
 
     def _remove_pseudojet(self, pseudojet_index):
         """
-        
+        Remove a pseudojet from the currently_avalible and move it to the back
+        of the ints/floats lists.
+        Also remove the redundant rows from the embedding space
 
         Parameters
         ----------
-        pseudojet_index :
-            
+        pseudojet_index : int
+            index to remove
 
-        Returns
-        -------
-
-        
         """
         # move the first pseudojet to the back without replacement
         pseudojet_ints = self._ints.pop(pseudojet_index)
@@ -1599,18 +1743,17 @@ class Spectral(PseudoJet):
         
     def _recalculate_one(self, remove_index, replace_index):
         """
-        
+        Recalculate all the distances involving one pseudojet
+        Also update the embedding space
 
         Parameters
         ----------
-        remove_index :
-            param replace_index:
-        replace_index :
-            
-
-        Returns
-        -------
-
+        remove_index : int
+            index of the jet that will be removed (moved to the back)
+            after joining
+        replace_index : int
+            index of the jet that will become the index of the combined jet
+            (current jet will be moved to the back)
         
         """
         # delete the larger index keep the smaller index
@@ -1660,7 +1803,14 @@ class Spectral(PseudoJet):
         self._distances2[replace_index] = new_distances2
 
     def _step_assign_parents(self):
-        """ """
+        """
+        Take a single step to join pseudojets
+        
+        Returns
+        -------
+        removed : int
+            index of the pseudojet that is now at the back
+        """
         beam_index = self.currently_avalible
         # now find the smallest distance
         row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
@@ -1684,7 +1834,7 @@ class Spectral(PseudoJet):
 
 
 class Splitting(Spectral):
-    """ """
+    """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     param_list = {'NumEigenvectors': np.inf,
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
@@ -1699,6 +1849,34 @@ class Splitting(Spectral):
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        """
+        Class constructor
+
+        Parameters
+        ----------
+        eventWise : EventWise
+            data file for inputs
+        selected_index : int
+            event number to use, can already be set in the eventWise
+            (Default; None)
+        jet_name : string
+            name to prefix the jet properties with when saving
+            (Default; "PseudoJet")
+        from_PseudoRapidity : bool
+            Use pseudorapidity instead or rapidity
+            (Default; False)
+        int_floats : tuple of 2d array likes
+            Predefined int and float tables.
+            If not given they will be constructed from the eventWise.
+            (Default; None)
+        dict_jet_params : dict (optional)
+            Settings for jet clustering. If not given defaults are used.
+        root_jetInputIdxs : list of ints (optional)
+            List of the indices of the roots of each jet.
+        assign : bool (optional)
+            Should the jets eb clustered immediatly?
+            (Default; False)
+        """
         self.StoppingCondition = 'standard'  # this is a property used by Spectral Jets
         self.DeltaR = 1.  # thsi si required for defining the unused beam distances in _define_physical_distance
         if dict_jet_params is not None:
@@ -1706,7 +1884,7 @@ class Splitting(Spectral):
         super().__init__(eventWise, **kwargs)
 
     def _calculate_distances(self):
-        """ """
+        """ Calculate all distances between avalible pseudojets """
         n_distances = self.currently_avalible
         # this clusterign mechanism doesn't actually use distances,
         # but other functions expect thier presence
@@ -1744,7 +1922,9 @@ class Splitting(Spectral):
         np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
 
     def _calculate_eigenspace(self):
-        """ """
+        """
+        Calculate the embedding of the currently_avalible pseudojets in eignspace
+        """
         if np.sum(np.abs(self._affinity)) == 0.:
             # everything is seperated
             self.root_jetInputIdxs += [row[self._InputIdx_col] for row in
@@ -1786,33 +1966,19 @@ class Splitting(Spectral):
 
     def _recalculate_one(self, remove_index, replace_index):
         """
-        
-
-        Parameters
-        ----------
-        remove_index :
-            
-        replace_index :
-            
-
-        Returns
-        -------
-
+        Redundant function in this method, present for interface consistancy.
         """
         pass  # do nothing on a single merge
 
     def _merge_complete_jets(self, list_input_indices):
         """
-        
+        Merge multple pseudojets to form many new pseudojets, moving the 
+        formed pseudojets to the back of the ints/floats lists
 
         Parameters
         ----------
-        list_input_indices :
-            
-
-        Returns
-        -------
-
+        list_input_indices : list of list of int
+            indices of the pseudojets to merge, sorted by pseudojet to be formed
         """
         array_input_indices = awkward.fromiter(list_input_indices)
         for input_indices in array_input_indices:
@@ -1826,15 +1992,13 @@ class Splitting(Spectral):
 
     def _merge_complete_jet(self, input_indices):
         """
-        
+        Merge multple pseudojets to form a new pseudojet, moving the 
+        formed pseudojet to the back of the ints/floats lists
 
         Parameters
         ----------
-        input_indices :
-            
-
-        Returns
-        -------
+        input_indices : list of list of int
+            indices of the pseudojets to merge
 
         """
         # for now just merge in pairs
@@ -1846,16 +2010,25 @@ class Splitting(Spectral):
 
     def _step_assign_parents(self, eigenvector_num=0):
         """
-        
+        Take a single step to join pseudojets
 
         Parameters
         ----------
-        eigenvector_num :
+        eigenvector_num : int
+            The eigenvector to use while taking this step
              (Default value = 0)
 
         Returns
         -------
-
+        order : list of ints
+            The order the particles take when ordred by the eigenvector
+        outcomes : array of floats
+            The score for splitting at each step in the order
+        flip_point : int
+            The point at which the inside of the cluster becomes the end of the list
+            rather than the begining
+        splits : list of ints
+            the outcomes at which the group should eb divided into seperate groups
         """
         # get the order of elements
         order = np.argsort(self._eigenspace[:, eigenvector_num])
@@ -1910,20 +2083,21 @@ class Splitting(Spectral):
 
     def plt_assign_parents(self, save_prefix=None, eigenvector_num=0, steps_required=np.inf):
         """
-        
+        Join pseudojets until all avalible psseudojets are taken.
+        Also plot the process 
 
         Parameters
         ----------
-        save_prefix :
+        save_prefix : string
+            If the plots should be saved to file use this vaiable to supply the start
+            of the save path. If None the plot is shown on the screen
              (Default value = None)
-        eigenvector_num :
+        eigenvector_num : int
+            The eigenvector to use for clustering.
              (Default value = 0)
-        steps_required :
+        steps_required : int
+            Max number of iterations to plot
              (Default value = np.inf)
-
-        Returns
-        -------
-
         """
         step_no = 0
         while self.currently_avalible:
@@ -1984,7 +2158,7 @@ class Splitting(Spectral):
             ax1.scatter(np.arange(previously_avalible), filled_outcomes,
                         c=ordered_pts, **colour_args)
             ax1.scatter(np.where(ordered_b_mask)[0], filled_outcomes[ordered_b_mask],
-                        c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
+                        c=np.zeros((1, 4)), edgecolors=TRUTH_COLOUR, marker='o')
             for split in splits[1:-1]:
                 split += 0.5  # splits happen at test points and start at 0
                 ax1.vlines(split, 0, max_out, colors=split_colour)
@@ -2006,7 +2180,7 @@ class Splitting(Spectral):
             points = ax3.scatter(range(previously_avalible), prior_eigenvector[order],
                                  c=ordered_pts, **colour_args, label=eigenvector_num)
             ax3.scatter(np.where(ordered_b_mask)[0], prior_eigenvector[order][ordered_b_mask],
-                        c=np.zeros((1, 4)), edgecolors=truth_colour, marker='o')
+                        c=np.zeros((1, 4)), edgecolors=TRUTH_COLOUR, marker='o')
             ax3.legend()
             min_eig, max_eig = np.min(prior_eigenvectors), np.max(prior_eigenvector)
             for split in splits[1:-1]:
@@ -2069,21 +2243,21 @@ class Splitting(Spectral):
 
 
 class SpectralMean(Spectral):
-    """ """
+    """ A slightly simplified varient of Spectral where new positions in the embedding space
+    are simply geometric means"""
     def _recalculate_one(self, remove_index, replace_index):
         """
-        
+        Recalculate all the distances involving one pseudojet
+        Also update the embedding space
 
         Parameters
         ----------
-        remove_index :
-            param replace_index:
-        replace_index :
-            
-
-        Returns
-        -------
-
+        remove_index : int
+            index of the jet that will be removed (moved to the back)
+            after joining
+        replace_index : int
+            index of the jet that will become the index of the combined jet
+            (current jet will be moved to the back)
         
         """
         # delete the larger index keep the smaller index
@@ -2113,21 +2287,21 @@ class SpectralMean(Spectral):
 
 
 class SpectralFull(Spectral):
-    """ """
+    """ A computationally exspensive varient of Spectral where the whole embedding space
+    is recalculated at every step """
     def _recalculate_one(self, remove_index, replace_index):
         """
-        
+        Recalculate all the distances involving one pseudojet
+        Also update the embedding space
 
         Parameters
         ----------
-        remove_index :
-            param replace_index:
-        replace_index :
-            
-
-        Returns
-        -------
-
+        remove_index : int
+            index of the jet that will be removed (moved to the back)
+            after joining
+        replace_index : int
+            index of the jet that will become the index of the combined jet
+            (current jet will be moved to the back)
         
         """
         self._calculate_eigenspace()
@@ -2135,19 +2309,20 @@ class SpectralFull(Spectral):
 
 def filter_obs(eventWise, existing_idx_selection):
     """
-    
+    Filter particle in an eventWise data structure to select only the observable particles
+    those being the ones that left a trace in the detector.
 
     Parameters
     ----------
-    eventWise :
-        param existing_idx_selection:
-    existing_idx_selection :
-        
+    eventWise : EventWise
+        data structure
+    existing_idx_selection : list of ints
+        any preexisting selection results
 
     Returns
     -------
-
-    
+    new_selection : list of ints
+        the indices of the selected particles
     """
     assert eventWise.selected_index is not None
     has_track = eventWise.Particle_Track[existing_idx_selection.tolist()] >= 0
@@ -2159,19 +2334,20 @@ def filter_obs(eventWise, existing_idx_selection):
 
 def filter_ends(eventWise, existing_idx_selection):
     """
-    
+    Filter particle in an eventWise data structure to select only the particles
+    that have not decayed in the end state.
 
     Parameters
     ----------
-    eventWise :
-        param existing_idx_selection:
-    existing_idx_selection :
-        
+    eventWise : EventWise
+        data structure
+    existing_idx_selection : list of ints
+        any preexisting selection results
 
     Returns
     -------
-
-    
+    new_selection : list of ints
+        the indices of the selected particles
     """
     assert eventWise.selected_index is not None
     is_end = [len(c) == 0 for c in 
@@ -2182,23 +2358,26 @@ def filter_ends(eventWise, existing_idx_selection):
 
 def filter_pt_eta(eventWise, existing_idx_selection, min_pt=.5, max_eta=2.5):
     """
-    
+    Filter particle in an eventWise data structure that have enough pt
+    and a small enough barrel angle.
 
     Parameters
     ----------
-    eventWise :
-        param existing_idx_selection:
-    min_pt :
-        Default value = .5)
-    max_eta :
-        Default value = 2.5)
-    existing_idx_selection :
-        
+    eventWise : EventWise
+        data structure
+    existing_idx_selection : list of ints
+        any preexisting selection results
+    min_pt : float
+        smallest pt permissable in a particle
+        (Default value = .5)
+    max_eta : float
+        larges abs value of pseudorapidity in a particle
+        (Default value = 2.5)
 
     Returns
     -------
-
-    
+    new_selection : list of ints
+        the indices of the selected particles
     """
     assert eventWise.selected_index is not None
     # filter PT
@@ -2216,25 +2395,22 @@ def filter_pt_eta(eventWise, existing_idx_selection, min_pt=.5, max_eta=2.5):
 
 def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], batch_length=1000):
     """
-    
+    Add to the eventWise a set of particles prefixed by JetInputs
+    which pass all criteria required to be used in jet clustering.
 
     Parameters
     ----------
-    eventWise :
-        param filter_functions: (Default value = [filter_obs)
-    filter_pt_eta :
-        param batch_length: (Default value = 1000)
-    filter_functions :
-        (Default value = [filter_obs)
-    filter_pt_eta] :
-        
-    batch_length :
+    eventWise : EventWise
+        data structure
+    filter_functions : list of callabels
+        callabels with the same signature as filter_pt_eta
+        that should reduce down the list of list of particle indices
+        to those that are sutable as jet inputs
+        (Default value = [filter_obs, filter_pt_eta])
+    batch_length : int
+        how many particles to checks
         (Default value = 1000)
 
-    Returns
-    -------
-
-    
     """
     # decide on run range
     eventWise.selected_index = None
@@ -2272,24 +2448,24 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
         mask.append(awkward.fromiter(mask_here))
     mask = awkward.fromiter(mask)
     eventWise.selected_index = None
-    try:
-        for name, source_name in zip(columns, sources):
-            contents[name] += list(getattr(eventWise, source_name)[start_point:end_point][mask])
-        contents = {k:awkward.fromiter(v) for k, v in contents.items()}
-        eventWise.append(**contents)
-    except Exception as e:
-        return contents, mask, columns, sources, e
+    for name, source_name in zip(columns, sources):
+        contents[name] += list(getattr(eventWise, source_name)[start_point:end_point][mask])
+    contents = {k:awkward.fromiter(v) for k, v in contents.items()}
+    eventWise.append(**contents)
 
 
 def produce_summary(eventWise, to_file=True):
     """
-    
+    Create a csv of the jet inputs for one event.
+    Can be used to sent to other programs or collaborators.
 
     Parameters
     ----------
-    eventWise :
-        param to_file: (Default value = True)
-    to_file :
+    eventWise : EventWise
+        file containing data
+    to_file : bool
+        should this be written straight to disk
+        instead of returing as a string
         (Default value = True)
 
     Returns
@@ -2319,24 +2495,28 @@ def produce_summary(eventWise, to_file=True):
 
 def run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, jet_name="FastJet", use_pipe=True):
     """
-    
+    Run fastjet on one event. Data not written to eventWise.
 
     Parameters
     ----------
-    eventWise :
-        param DeltaR:
-    ExpofPTMultiplier :
-        param jet_name: (Default value = "FastJet")
-    use_pipe :
-        Default value = True)
-    DeltaR :
-        
-    jet_name :
+    eventWise : EventWise
+        Input data file
+    DeltaR: float
+        stoppign parameter for clustering
+    ExpofPTMultiplier : int
+        should be -1, 0, or 1 depending if anti-kt, cambridge aachen or
+        kt clustering is required
+    jet_name: string
+        Prefix name for the jet in eventWise
         (Default value = "FastJet")
+    use_pipe : bool
+        Should the data be piped to fastjet, rather than reading and writing from disk?
+        (Default value = True)
 
     Returns
     -------
-
+    fastjets : Traditional
+        Traditional jet objects created
     
     """
     assert eventWise.selected_index is not None
@@ -2365,23 +2545,28 @@ def run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, jet_name="FastJet", use_pi
 def _run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_tagger/applyFastJet", tries=0):
     """
     Run applyfastjet, sending the provided input lines to stdin
+    Helper function for run_FastJet
 
     Parameters
     ----------
     input_lines : list of byte array
         contents of the input as byte arrays
-    DeltaR :
-        param algorithm_num:
-    program_path :
-        Default value = "./tree_tagger/applyFastJet")
-    tries :
-        Default value = 0)
-    algorithm_num :
+    DeltaR : float
+        stopping parameter for clustering
+    algorithm_num : int
+        number indicating the algorithm to use
+    program_path : string
+        path to call the program at
+        (Default value = "./tree_tagger/applyFastJet")
+    tries : int
+        number of tries with this input
+        (Default value = 0)
         
 
     Returns
     -------
-
+    output_lines : list of bytes
+        returned from fastjet
     
     """
     # input liens should eb one long byte string
@@ -2415,26 +2600,32 @@ def _run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_t
 
 def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={}, jet_name=None, batch_length=100, silent=False):
     """
-    
+    Apply a clustering algorithm to many events.
 
     Parameters
     ----------
-    eventWise :
-        param cluster_algorithm:
-    cluster_parameters :
-        Default value = {})
-    jet_name :
-        Default value = None)
-    batch_length :
-        Default value = 100)
-    silent :
-        Default value = False)
-    cluster_algorithm :
-        
+    eventWise : EventWise
+        data file with inputs, results are also written here
+    cluster_algorithm: callable
+        function or class that will create the jets
+    cluster_parameters : dict
+        dictionary of input parameters for clustering settings
+        (Default value = {})
+    jet_name : string
+        Prefix name for the jet in eventWise
+        (Default value = None)
+    batch_length : int
+        numebr of events to process
+        (Default value = 100)
+    silent : bool
+        should print statments indicating progrss be suppressed?
+        useful for running in parallel
+        (Default value = False)
 
     Returns
     -------
-
+    : bool
+        All events in the eventWise have been clustered
     
     """
     check_hyperparameters(cluster_algorithm, cluster_parameters)
@@ -2504,17 +2695,15 @@ for name in cluster_classes:
 
 def check_hyperparameters(cluster_class, params):
     """
-    
+    Check the clustering parameters chosen are valid for the clustering class to be used.
+    Raises an error if there is a problem.
 
     Parameters
     ----------
-    cluster_class :
-        
-    params :
-        
-
-    Returns
-    -------
+    cluster_class : class
+        clusteirng class defining requirements
+    params : dict
+        parameters to be checked
 
     """
     if isinstance(cluster_class, str):
@@ -2561,20 +2750,22 @@ def check_hyperparameters(cluster_class, params):
 
 def get_jet_params(eventWise, jet_name, add_defaults=False):
     """
-    
+    Given an eventwise in which a jet was written return it's settings.
 
     Parameters
     ----------
-    eventWise :
-        param jet_name:
-    add_defaults :
-        Default value = False)
-    jet_name :
-        
+    eventWise : EventWise
+        data structure with jets
+    jet_name : string
+        Prefix name of jet we are interested in
+    add_defaults : bool
+        should class default be put inplace on unspecified settings?
+        (Default value = False)
 
     Returns
     -------
-
+    columns : dict
+        dictionary with keys being parameter names and values being parameter values
     
     """
     prefix = jet_name + "_"
@@ -2596,15 +2787,17 @@ def get_jet_params(eventWise, jet_name, add_defaults=False):
 
 def get_jet_names(eventWise):
     """
-    
+    Given and eventwise get the Prefix names of all jets inside it.
 
     Parameters
     ----------
-    eventWise :
-        
+    eventWise : EventWise
+        data structure with jets
 
     Returns
     -------
+    possibles : list of strings
+        names of jets inside this eventWise
 
     """
     # grab an ending fromt he pseudojet int columns
@@ -2618,27 +2811,22 @@ def get_jet_names(eventWise):
 
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     """
-    
+    Given an axis and the locaton of a body and it's legs plot a 'spider'
 
     Parameters
     ----------
-    ax :
-        param colour:
-    body :
-        param body_size:
-    leg_ends :
-        param leg_size:
-    colour :
-        
-    body_size :
-        
-    leg_size :
-        
-
-    Returns
-    -------
-
-    
+    ax : pyplot axis
+        where to plot the spider
+    body : list like of floats
+        [x, y] coordinates of the spider's body
+    body_size : float
+        how large to maek the body
+    legs : list like of floats
+        [x, y] coordinates of the spider's legs
+    legs_size : float
+        how thick to maek the legs
+    colour : matplotlib colour specifier
+        colour of the spider
     """
     leg_size = np.clip(np.sqrt(leg_size), 0.2, None)
     for end, size in zip(leg_ends, leg_size):
@@ -2649,32 +2837,31 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
         x_cross, sign = PlottingTools.find_crossing_point(*line[0], *line[1])
         if x_cross is not None:
             ax.plot([line[0, 0],  x_cross], [line[0, 1], sign*np.pi], 
-                     c=colour, linewidth=size, alpha=jet_alpha)
+                     c=colour, linewidth=size, alpha=JET_ALPHA)
             ax.plot([line[1, 0],  x_cross], [line[1, 1], -sign*np.pi], 
-                     c=colour, linewidth=size, alpha=jet_alpha)
+                     c=colour, linewidth=size, alpha=JET_ALPHA)
                      
         else:
             ax.plot(line[:, 0], line[:, 1],
-                     c=colour, linewidth=size, alpha=jet_alpha)
+                     c=colour, linewidth=size, alpha=JET_ALPHA)
     ax.scatter(leg_ends[:, 0], leg_ends[:, 1], c=colour, s=leg_size)
     #ax.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size+1)
     #ax.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size)
 
 def plot_tags(eventWise, b_decendants=True, ax=None):
     """
-    
+    Plot the location of taggin particles and their decendants
 
     Parameters
     ----------
-    eventWise :
-        
-    b_decendants :
+    eventWise : EventWise
+        data file with informaton about tags
+    b_decendants : bool
+        show location of decendants
          (Default value = True)
-    ax :
+    ax : pyplot axis
+        axis to plot on
          (Default value = None)
-
-    Returns
-    -------
 
     """
     assert eventWise.selected_index is not None
@@ -2682,7 +2869,7 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
         ax = plt.gca()
     tag_phis = eventWise.Phi[eventWise.TagIndex]
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
-    ax.scatter(tag_rapidity, tag_phis, marker='d', c=truth_colour)
+    ax.scatter(tag_rapidity, tag_phis, marker='d', c=TRUTH_COLOUR)
     if b_decendants:
         b_decendants = np.fromiter(FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx),
                                    dtype=int)
@@ -2690,36 +2877,37 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
                                dtype=bool)
         ax.scatter(eventWise.Rapidity[b_decendants[included].tolist()],
                    eventWise.Phi[b_decendants[included].tolist()],
-                   c=[(0., 0., 0., 0.),], edgecolors=truth_colour,
-                   linewidths=truth_linewidth, s=truth_size, marker='o')
+                   c=[(0., 0., 0., 0.),], edgecolors=TRUTH_COLOUR,
+                   linewidths=TRUTH_LINEWIDTH, s=TRUTH_SIZE, marker='o')
         # plot the others invisibly so as to set the rapidity axis with them
         ax.scatter(eventWise.Rapidity[b_decendants[~included]],
                    eventWise.Phi[b_decendants[~included]],
-                   c='black', alpha=0.,#truth_colour,
-                   s=truth_linewidth, marker='x')
+                   c='black', alpha=0.,#TRUTH_COLOUR,
+                   s=TRUTH_LINEWIDTH, marker='x')
 
 
 def plot_cluster(pseudojet, colours, ax=None, spiders=True, pt_text=False, circles=False):
     """
-    
+    Plot the results of a jet clustering algorithm in real space
 
     Parameters
     ----------
-    pseudojet :
-        
-    colours :
-        
-    ax :
+    pseudojet : PseudoJet
+        the clusters to plot
+    colours : list of matplotlib colour objects
+        a colour for each jet, or a single string discribing the colour for all jets
+    ax : pytplot axis
+        axis to plot on
          (Default value = None)
-    spiders :
+    spiders : bool
+        should the gathing of the jets from the inputs be plotted as a spider?
          (Default value = True)
-    pt_text :
+    pt_text : bool
+        Should the pt of th ejet be written by it's center?
          (Default value = False)
-    circles :
+    circles : bool
+        Should a circle be drawn round the center with the stoping parameter?
          (Default value = False)
-
-    Returns
-    -------
 
     """
     if ax is None:
@@ -2748,30 +2936,29 @@ def plot_cluster(pseudojet, colours, ax=None, spiders=True, pt_text=False, circl
 
 def plot_eigenspace(eventWise, event_n, spectral_jet_params, eigendim1, eigendim2, ax=None, spiders=True, spectral_class=SpectralFull):
     """
-    
+    Plot the clustering of a spectral jet in the eigenspace embedding
 
     Parameters
     ----------
-    eventWise :
-        
-    event_n :
-        
-    spectral_jet_params :
-        
-    eigendim1 :
-        
-    eigendim2 :
-        
-    ax :
+    eventWise : EventWise
+        data structure from whcih to cluster jets
+    event_n : int
+        the event number in which to cluster jets
+    spectral_jet_params : dict
+        dictionary of jet inputs for Spectral
+    eigendim1 : int
+        index of the first eigendimension to plot
+    eigendim2 : int
+        index of the second eigendimension to plot
+    ax : pyplot axis
+        axis to plot on
          (Default value = None)
-    spiders :
+    spiders : bool
+        draw th ejet clustering with spiders?
          (Default value = True)
-    spectral_class :
+    spectral_class : class
+        Spectral class used to cluster
          (Default value = SpectralFull)
-
-    Returns
-    -------
-
     """
     eventWise.selected_index = event_n
     if ax is None:
@@ -2806,42 +2993,40 @@ def plot_eigenspace(eventWise, event_n, spectral_jet_params, eigendim1, eigendim
             legs = np.vstack((leg_xs, leg_ys)).T
             leg_energies = energies[leg_idxs]
             root_pos = np.mean(legs, axis=0)
-            plot_spider(ax, spectral_colour, root_pos, pjet.Energy, legs, leg_energies)
+            plot_spider(ax, SPECTRAL_COLOUR, root_pos, pjet.Energy, legs, leg_energies)
     else:
         input_x = eigenspace[:, eigendim1]
         input_y = eigenspace[:, eigendim2]
         input_energies = np.array(pseudojet_spectral._floats)[:, pseudojet_spectral._Energy_col]
-        ax.scatter(input_x, input_y, s=input_energies, c=spectral_colour)
+        ax.scatter(input_x, input_y, s=input_energies, c=SPECTRAL_COLOUR)
     # on top of this plot the truth
     ax.scatter(eigenspace[is_decendant, eigendim1], eigenspace[is_decendant, eigendim2],
-               c=(0., 0., 0., 0.), edgecolors=truth_colour,
-               linewidths=truth_linewidth, s=truth_size, marker='o')
+               c=(0., 0., 0., 0.), edgecolors=TRUTH_COLOUR,
+               linewidths=TRUTH_LINEWIDTH, s=TRUTH_SIZE, marker='o')
     ax.set_xlabel(f"Eigenvector {eigendim1}")
     ax.set_ylabel(f"Eigenvector {eigendim2}")
 
 
 def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, ax=None, comparitor_class=SpectralFull):
     """
-    
+    Plot the full situation in realspace after clustering
 
     Parameters
     ----------
-    eventWise :
-        param event_n:
-    fast_jet_params :
-        param comparitor_jet_params:
-    comparitor_class :
-        Default value = SpectralFull)
-    event_n :
-        
-    comparitor_jet_params :
-        
-    ax :
+    eventWise : EventWise
+        data structure wiht input data for clustering
+    event_n: int
+        index of the event to cluster
+    fast_jet_params : dict
+        Input parameters for traditional clustering
+    comparitor_jet_params: dict
+        Input parameters for spectral clustering
+    ax : pyplot axis
+        axis on which to plot
          (Default value = None)
-
-    Returns
-    -------
-
+    comparitor_class : class
+        Spectral class used for clustering
+        Default value = SpectralFull)
     
     """
     if ax is None:
@@ -2860,11 +3045,11 @@ def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, a
     pseudojet_traditional = run_FastJet(eventWise, **fast_jet_params)
     # plot the pseudojets
     # traditional_colours = [colours(i) for i in np.linspace(0, 0.4, len(pjets_traditional))]
-    plot_cluster(pseudojet_traditional, fast_colour, ax=ax, pt_text=False)
+    plot_cluster(pseudojet_traditional, FAST_COLOUR, ax=ax, pt_text=False)
     pseudojet_comparitor = comparitor_class(eventWise, assign=False, **comparitor_jet_params)
     # plot the pseudojets
     #comparitor_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_comparitor))]
-    plot_cluster(pseudojet_comparitor, spectral_colour, ax=ax, pt_text=False)
+    plot_cluster(pseudojet_comparitor, SPECTRAL_COLOUR, ax=ax, pt_text=False)
     plot_tags(eventWise, ax=ax)
     ax.set_title("Jets")
     ax.set_xlabel("rapidity")
@@ -2874,24 +3059,22 @@ def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, a
 
 def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class):
     """
-    
+    Grid of plots discribing the state of the eigenspace embedding,
+    plus the real space state and the parameters of the jet
 
     Parameters
     ----------
-    eventWise :
-        
-    event_num :
-        
-    fast_jet_params :
-        
-    spectral_jet_params :
-        
-    c_class :
-        
-
-    Returns
-    -------
-
+    eventWise : EventWise
+        data structure wiht input data for clustering
+    event_num: int
+        index of the event to cluster
+    fast_jet_params : dict
+        Input parameters for traditional clustering
+    spectral_jet_params: dict
+        Input parameters for spectral clustering
+    c_class : class
+        Spectral class used for clustering
+        Default value = SpectralFull)
     """
     num_eig = spectral_jet_params['NumEigenvectors']
     unit_size=5
@@ -2903,14 +3086,14 @@ def eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_clas
     # add details in the spare axis
     if n_cols > 1:
         PlottingTools.discribe_jet(properties_dict=fast_jet_params, ax=axarry[0, 1])
-        axarry[0, 1].plot([], [], c=spectral_colour, alpha=jet_alpha, label=spectral_jet_params['jet_name'])
-        axarry[0, 1].plot([], [], c=fast_colour, alpha=jet_alpha, label=fast_jet_params['jet_name'])
-        axarry[0, 1].scatter([], [], marker='d', c=truth_colour, label="Tags")
+        axarry[0, 1].plot([], [], c=SPECTRAL_COLOUR, alpha=JET_ALPHA, label=spectral_jet_params['jet_name'])
+        axarry[0, 1].plot([], [], c=FAST_COLOUR, alpha=JET_ALPHA, label=fast_jet_params['jet_name'])
+        axarry[0, 1].scatter([], [], marker='d', c=TRUTH_COLOUR, label="Tags")
         axarry[0, 1].scatter([], [], label="b decendant",
-                             c=(0., 0., 0., 0.), edgecolors=truth_colour,
-                             linewidths=truth_linewidth, s=truth_size, marker='o')
+                             c=(0., 0., 0., 0.), edgecolors=TRUTH_COLOUR,
+                             linewidths=TRUTH_LINEWIDTH, s=TRUTH_SIZE, marker='o')
         #axarry[0, 1].scatter([], [], label="unseen b decendant",
-        #                     c=truth_colour, s=truth_linewidth, marker='x')
+        #                     c=TRUTH_COLOUR, s=TRUTH_LINEWIDTH, marker='x')
         axarry[0, 1].legend()
     if n_cols > 2:
         PlottingTools.discribe_jet(properties_dict=spectral_jet_params, ax=axarry[0, 2])
