@@ -1821,7 +1821,7 @@ def check_even_length(eventWise, interactive=True, raise_error=False, ignore_pre
     if ignore_prefixes is None:
         ignore_prefixes = []
     column_lengths = {name: len(getattr(eventWise, name)) for name in eventWise.columns}
-    max_len = np.max(list(column_lengths.values()))
+    max_len = np.max(list(column_lengths.values()), initial=0)
     if interactive and not InputTools.yesNo_question(
             f"Max length is {max_len}, require this length? "):
         max_len = InputTools.get_literal("What should the length be? ")
@@ -1853,6 +1853,7 @@ def check_even_length(eventWise, interactive=True, raise_error=False, ignore_pre
                         "Do you want to apply this choice to all future columns? ")
             else:
                 remove = True
+                prefix_to_remove.append(prefix)
         if remove:
             eventWise.remove(name)
 
@@ -1884,6 +1885,10 @@ def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_pre
     eventWise.selected_index = None
     if ignore_prefixes is None:
         ignore_prefixes = []
+    else:
+        for i in range(len(ignore_prefixes)):
+            if ignore_prefixes[i] and not ignore_prefixes[i].endswith('_'):
+                ignore_prefixes[i] += '_'
     energy_prefixes = [name[:-len('Energy')] for name in eventWise.columns
                        if name.endswith('Energy')]
     ask_apply_same_choice = 0
@@ -1891,11 +1896,10 @@ def check_no_tachions(eventWise, interactive=True, raise_error=False, ignore_pre
         if prefix in ignore_prefixes:
             continue
         try:
-            join = '_' if prefix else ''
-            energy = getattr(eventWise, prefix + join + "Energy")
-            px = getattr(eventWise, prefix + join + "Px")
-            py = getattr(eventWise, prefix + join + "Py")
-            pz = getattr(eventWise, prefix + join + "Pz")
+            energy = getattr(eventWise, prefix + "Energy")
+            px = getattr(eventWise, prefix + "Px")
+            py = getattr(eventWise, prefix + "Py")
+            pz = getattr(eventWise, prefix + "Pz")
             while hasattr(energy[0], '__iter__'):
                 energy = energy.flatten()
                 px = px.flatten()

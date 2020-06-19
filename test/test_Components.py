@@ -1011,4 +1011,87 @@ def test_fix_nonexistent_columns():
         assert len(blank_ew.columns) == 2
         assert generic_equality_comp(blank_ew.A, contents["A"])
         assert generic_equality_comp(blank_ew.B, contents["B"])
-    
+
+
+def test_even_length():
+    with TempTestDir("tst") as dir_name:
+        save_name = "blank.awkd"
+        blank_ew = Components.EventWise(dir_name, save_name)
+        # should have no effect on a blank eventWise
+        Components.check_even_length(blank_ew, False, True)
+        assert len(blank_ew.columns) == 0
+        assert len(blank_ew.hyperparameter_columns) == 0
+        # should not remove anything from a valid eventWise
+        contents = {"Thing_A": AwkdArrays.jet_ints, "Thing_B": AwkdArrays.jet_floats}
+        blank_ew.append(**contents)
+        Components.check_even_length(blank_ew, False, True)
+        assert generic_equality_comp(blank_ew.Thing_A, contents["Thing_A"])
+        assert generic_equality_comp(blank_ew.Thing_B, contents["Thing_B"])
+        # should throw errors with one column the wrong length
+        wrong_content = {"Wrong_A": AwkdArrays.jet_ints[:1], "Wrong_B": AwkdArrays.jet_floats}
+        blank_ew.append(**wrong_content)
+        with pytest.raises(ValueError):
+            Components.check_even_length(blank_ew, False, True)
+        # should not raise an error if told to ignore the prefix
+        Components.check_even_length(blank_ew, False, True, ["Wrong"])
+        # should remove the prefix if not in interactive mode and not throwing errors
+        Components.check_even_length(blank_ew, False, False)
+        assert len(blank_ew.columns) == 2, f"Expected [Thing_A, Thing_B], found {blank_ew.columns}"
+        assert generic_equality_comp(blank_ew.Thing_A, contents["Thing_A"])
+        assert generic_equality_comp(blank_ew.Thing_B, contents["Thing_B"])
+
+def test_check_no_tachions():
+    energies = awkward.fromiter([[1., 0., 10.]])
+    px = awkward.fromiter([[0.5, 0., 7.]])
+    py = awkward.fromiter([[-0.5, 0., np.sqrt(100. - 7**2)]])
+    pz = awkward.fromiter([[0., 0., 0.]])
+    bad_pz = awkward.fromiter([[-1, 0, 1]])
+    with TempTestDir("tst") as dir_name:
+        save_name = "blank.awkd"
+        blank_ew = Components.EventWise(dir_name, save_name)
+        # should have no effect on a blank eventWise
+        Components.check_no_tachions(blank_ew, False, True)
+        assert len(blank_ew.columns) == 0
+        assert len(blank_ew.hyperparameter_columns) == 0
+        # should not remove anything from a valid eventWise
+        contents = {"Thing_Energy": energies, "Thing_Px": px,
+                "Thing_Py": py, "Thing_Pz": pz}
+        blank_ew.append(**contents)
+        Components.check_no_tachions(blank_ew, False, True)
+        assert generic_equality_comp(blank_ew.Thing_Energy, energies)
+        assert generic_equality_comp(blank_ew.Thing_Px, px)
+        assert generic_equality_comp(blank_ew.Thing_Py, py)
+        assert generic_equality_comp(blank_ew.Thing_Pz, pz)
+        # should throw errors with one column the wrong length
+        blank_ew.append(Thing_Pz = bad_pz)
+        with pytest.raises(ValueError):
+            Components.check_no_tachions(blank_ew, False, True)
+        # should not raise an error if told to ignore the prefix
+        Components.check_no_tachions(blank_ew, False, True, ["Thing"])
+        # should remove the prefix if not in interactive mode and not throwing errors
+        Components.check_no_tachions(blank_ew, False, False)
+        assert len(blank_ew.columns) == 0
+
+
+def test_find_eventWise_in_dir():
+    with TempTestDir("tst") as dir_name:
+        # splitting a blank ew should result in only Nones
+        save_name = "test.awkd"
+        ew = Components.EventWise(dir_name, save_name)
+        # try with 10 events
+        n_events = 10
+        content_1 = awkward.fromiter(np.arange(n_events))
+        content_2 = awkward.fromiter(np.random.rand(n_events))
+        content_3 = awkward.fromiter([np.random.rand(np.random.randint(5)) for _ in range(n_events)])
+        content_4 = awkward.fromiter([[awkward.fromiter(np.random.rand(np.random.randint(5)))
+                                       for _ in range(np.random.randint(5))]
+                                      for _ in range(n_events)])
+        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
+        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
+        paths = [name for name in paths if name is not None]
+        subdir_name = os.path.join(dir_name, "test_dog")
+        found = Components.find_eventWise_in_dir(subdir_name)
+        assert len(found) == len(paths), f"expected {paths}, found {found}"
+        for ew in found:
+            assert os.path.join(ew.dir_name, ew.save_name) in paths
+
