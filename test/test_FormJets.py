@@ -176,7 +176,7 @@ class SimpleClusterSamples:
             floats2 = floats2[:, :-1]
         else:
             floats2[:, -1] *= distance_modifier
-        tst.assert_allclose(floats1, floats2, atol=0.0001, err_msg="Floats don't match")
+        tst.assert_allclose(floats1, floats2, atol=0.0005, err_msg="Floats don't match")
 
 
 def set_JetInputs(eventWise, floats):
@@ -188,7 +188,7 @@ def set_JetInputs(eventWise, floats):
     eventWise.append(**contents)
 
 
-def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
+def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
     # for the randomly places components, accept some error for floating point
     n_random_tries = 100
     n_acceptable_fails = 5
@@ -296,7 +296,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
             if len(end_ints) == len(expected_end['ints']):
                 SimpleClusterSamples.match_ints_floats(end_ints, end_floats,
                                                        expected_end['ints'], expected_end['floats'],
-                                                       compare_distance=True)
+                                                       compare_distance=False)
             else:
                 st()
                 fails += 1
@@ -304,7 +304,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=True):
                 if fails > n_acceptable_fails:
                     assert False, f"{fails} out of {i} incorrect clusters from homejet"
 
-
+# running the whole cluster process from start to finish to see if we get what is expected
 def test_Traditional():
     with TempTestDir("pseudojet") as dir_name:
         # there are two ways to construct a pseudojet
@@ -349,10 +349,7 @@ def test_Traditional():
         found_summaries = np.array([test_jet.PT, test_jet.Rapidity, test_jet.Phi, test_jet.Energy,
                                     test_jet.Px, test_jet.Py, test_jet.Pz, test_jet.JoinDistance,
                                     test_jet.Pseudorapidity, test_jet.Theta])
-        try:
-            tst.assert_allclose(expected_summaries, found_summaries)
-        except:
-            st()
+        tst.assert_allclose(expected_summaries, found_summaries)
         test_inp = SimpleClusterSamples.one_inp
         test_jet = FormJets.Traditional(empty_ew, DeltaR=1., ExpofPTMultiplier=-1., ints_floats=(test_inp['ints'], test_inp['floats']))
         test_jet.assign_parents()
@@ -366,6 +363,128 @@ def test_Traditional():
                                         jet.Pseudorapidity, jet.Theta])
             tst.assert_allclose(expected_summaries, found_summaries)
 
+# setup and test indervidual methods inside the jet classes
+def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, **kwargs):
+    with TempTestDir("tst") as dir_name:
+        ew = Components.EventWise(dir_name, "tmp.awkd")
+        set_JetInputs(ew, floats)
+        ew.selected_index = 0
+    jets = jet_class(ew, dict_jet_params=jet_params, assign=False, **kwargs)
+    return jets
+
+
+def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
+    if additional_jet_params is None:
+        additional_jet_params = {}
+    physical_distance_measures = ["angular", "invarient", "normed", "Luclus"]
+    exp_of_pt_pos = ["input", "eigenspace"]
+    exponents = [-1, -0.5, 0, 0.5, 1]
+    deltaR = [0, 0.5, 1]
+    #          pt  rap phi e  linear.... join_dist
+    floats1 = [1., 0., 0., 2., np.nan, np.nan, np.nan, -1]
+    SimpleClusterSamples.fill_linear(floats1)
+    floats2 = [1., 0., 1., 2., np.nan, np.nan, np.nan, -1]
+    SimpleClusterSamples.fill_linear(floats2)
+    floats3 = [0.1, 1., 0., 2., np.nan, np.nan, np.nan, -1]
+    SimpleClusterSamples.fill_linear(floats3)
+    all_floats = [floats1, floats2, floats3]
+    for measure in physical_distance_measures:
+        for pos in exp_of_pt_pos:
+            for exp in exponents:
+                for dr in deltaR:
+                    jet_params = {"PhyDistance": measure, "ExpofPTPosition": pos,
+                                  "ExpofPTMultiplier": exp, "DeltaR": dr,
+                                  **additional_jet_params}
+                    for floatsA in all_floats:
+                        for floatsB in all_floats:
+                            floats = np.array([floatsA, floatsB])
+                            jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
+                            # run the tests
+                            for internal_test in internal_tests:
+                                internal_test(jets, jet_params)
+
+
+# PseudoJet ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def internal_physical_distance(jets, param_dict):
+    assert len(jets) == 2
+    # extract quantities
+    float_array = np.array(jets._floats)
+    energies = float_array[:, jets._Energy_col]
+    momentums = float_array[:, [jets._Px_col, jets._Py_col, jets._Pz_col]]
+    pts = float_array[:, jets._PT_col]
+    phis = float_array[:, jets._Phi_col]
+    rapidities = float_array[:, jets._Rapidity_col]
+    # prepare calculations
+    invarient_mass2 = np.sum(energies)**2 - np.sum(np.sum(momentums, axis=0)**2)
+    exponent = 2*param_dict['ExpofPTMultiplier']
+    # get the pt factor
+    if param_dict['ExpofPTPosition'] == 'input':
+        if param_dict['PhyDistance'] == 'Luclus':
+            pt_factor = np.product(pts)**exponent*invarient_mass2**(-0.5*exponent)/np.sum(pts)**exponent
+        else:
+            pt_factor = np.min(pts**exponent) * invarient_mass2**(-0.5*exponent)
+    else:
+        pt_factor = 1.
+    # get the distanc ebetween the particels
+    if param_dict['PhyDistance'] in ['invarient', 'normed']:
+        invar = energies[0]*energies[1] - np.sum(momentums[0]*momentums[1])
+        if param_dict['PhyDistance'] == 'invarient':
+            distance2 = pt_factor*invar/invarient_mass2
+        else:
+            distance2 = pt_factor*invar/np.product(energies)
+    else:
+        angular_change2 = Components.angular_distance(*phis)**2 + (rapidities[0] - rapidities[1])**2
+        distance2 = pt_factor*angular_change2
+    # get the beam distance
+    if param_dict['PhyDistance'] == 'Luclus' or param_dict['ExpofPTPosition'] != 'input':
+        pt_factor = 1.
+    else:
+        pt_factor = pts**exponent * invarient_mass2**(-0.5*exponent)
+    beam_distance2 = param_dict['DeltaR']**2 * pt_factor
+    found_distance2 = jets.physical_distance2(*jets._floats)
+    try:
+        tst.assert_allclose(distance2, found_distance2, err_msg=f"distance between particles with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
+    except Exception as e:
+        st()
+    found_beam2 = [jets.beam_distance2(jets._floats[0]), jets.beam_distance2(jets._floats[1])]
+    try:
+        tst.assert_allclose(beam_distance2, found_beam2, err_msg=f"distance to beam with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
+    except Exception as e:
+        st()
+
+
+def internal_currently_avalible():
+    pass
+
+
+def internal_getattr():
+    pass
+
+def internal_P():
+    pass
+
+
+def internal_Theta():
+    pass
+
+
+def internal_writeEvent():
+    pass
+
+
+
+def test_Pseudojet_internal():
+    # testing Pseudojet functions, but creating Spectral jets
+    # as Pseudojet should not be directly created and Traditional lack support for all options
+    apply_internal(FormJets.Spectral, internal_physical_distance)
+    
+# Traditional ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Spectral ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# SpectralFull ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def test_filter_obs():
     with TempTestDir("filter_obs") as dir_name:
@@ -498,7 +617,8 @@ def test_create_JetInputs():
             ji_name = "JetInputs_" + name
             idx = columns.index(name)
             assert hasattr(ew, ji_name)
-            tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx]])
+            tst.assert_allclose(getattr(ew, ji_name).tolist(), [floats.T[idx]],
+                                err_msg=f"In two_oposite {name} not matching")
         ew.remove_prefix("JetInputs")
         FormJets.create_jetInputs(ew, filter_functions=[return_second])
         for name in columns_unchanged:
@@ -514,7 +634,7 @@ def test_create_JetInputs():
         FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=0)
         for name in columns_unchanged:
             ji_name = "JetInputs_" + name
-            assert not hasattr(ew, ji_name)
+            assert len(getattr(ew, ji_name)) == 0
         FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=1)
         for name in columns_unchanged:
             ji_name = "JetInputs_" + name

@@ -7,7 +7,7 @@ import scipy.spatial
 import awkward
 from matplotlib import pyplot as plt
 import matplotlib
-# from ipdb import set_trace as st
+from ipdb import set_trace as st
 import numpy as np
 from tree_tagger import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
 
@@ -120,7 +120,7 @@ class PseudoJet:
             # as we go note the root notes of the pseudojets
             self.root_jetInputIdxs = []
         # define the physical distance measure
-        # this requires that the class has had the attribute self.Invarient
+        # this requires that the class has had the attribute self.PhyDistance
         # set which should be done by the class that inherits
         # from this one before calling this constructor
         self._define_physical_distance()
@@ -196,18 +196,23 @@ class PseudoJet:
         # caluclate invarint mass here!
         leaves = np.where(self.Child1 == -1)[0]
         sum_energies = sum(self._floats[row][self._Energy_col] for row in leaves)
-        sum_pt = sum(self._floats[row][pt_col] for row in leaves)
+        sum_px = sum(self._floats[row][self._Px_col] for row in leaves)
+        sum_py = sum(self._floats[row][self._Py_col] for row in leaves)
         sum_pz = sum(self._floats[row][self._Pz_col] for row in leaves)
-        invarient_mass2 = sum_energies**2 - sum_pt**2 - sum_pz**2
-        if invarient_mass2 == 0:  # massless events are a weird specal case
-            invarient_mass = 1.  # give them mass 1. to avoid nan issues.
-        elif invarient_mass2 > 0:
+        invarient_mass2 = sum_energies**2 - sum_px**2 - sum_py**2 - sum_pz**2
+        if invarient_mass2 > 0:
             invarient_mass = np.sqrt(invarient_mass2)
+        elif invarient_mass2 > -1e-10:  # massless events are a weird specal case
+            invarient_mass = 1.  # give them mass 1. to avoid nan issues.
         else:
-            raise ValueError("Invarient mass of event is tachyonic")
+            written_sum = "e**2 - px**2 - py**2 - pz**2 =\n" +\
+                    f"{sum_energies}**2 - {sum_px}**2 - {sum_py}**2 - {sum_pz}**2" +\
+                    f"={invarient_mass2}"
+            raise ValueError(f"PhyDistance mass of event is tachyonic\n{written_sum}")
         # set up a few more variables
         exponent_now = self.ExpofPTPosition == 'input'
         exponent = self.ExpofPTMultiplier * 2
+        inv_invar_exp = invarient_mass**-exponent
         deltaR2 = self.DeltaR**2
         # same for everything but Luclus
         if exponent_now:
@@ -227,7 +232,7 @@ class PseudoJet:
                     the distance squared to the beam
 
                 """
-                return deltaR2 * row[pt_col]**exponent * invarient_mass**-exponent
+                return deltaR2 * row[pt_col]**exponent * inv_invar_exp
         else:
             def beam_distance2(row):
                 """
@@ -245,7 +250,7 @@ class PseudoJet:
 
                 """
                 return deltaR2
-        if self.Invarient == "Luclus":
+        if self.PhyDistance == "Luclus":
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
             def physical_distance2(row, column):
@@ -268,7 +273,7 @@ class PseudoJet:
                 angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
                 distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
                 if exponent_now:
-                    distance2 *= (invarient_mass**-exponent)*(row[pt_col]**exponent)*\
+                    distance2 *= inv_invar_exp*(row[pt_col]**exponent)*\
                                  (column[pt_col]**exponent) *\
                                  (row[pt_col] + column[pt_col])**-exponent
                 return distance2
@@ -289,11 +294,12 @@ class PseudoJet:
 
                 """
                 return deltaR2
-        elif self.Invarient == 'invarient':
+        elif self.PhyDistance == 'invarient':
             px_col = self._Px_col
             py_col = self._Py_col
             pz_col = self._Pz_col
             e_col = self._Energy_col
+            inv_invar2 = invarient_mass**-2
             def physical_distance2(row, column):
                 """
                 Calculate the physical distance between 2 particles.
@@ -311,15 +317,21 @@ class PseudoJet:
                     the distance squared between the two particles
 
                 """
+                # this is proper length, but it may be -ve..... so should be using invarient mass?
+                #distance2 = ((row[e_col] - column[e_col])**2
+                #             - (row[px_col] - column[px_col])**2
+                #             - (row[py_col] - column[py_col])**2
+                #             - (row[pz_col] - column[pz_col])**2)
+                # invarient mass
                 distance2 = (row[e_col]*column[e_col]
                              - row[px_col]*column[px_col]
                              - row[py_col]*column[py_col]
-                             - row[pz_col]*column[pz_col])
+                             - row[pz_col]*column[pz_col])*inv_invar2
                 if exponent_now:
                     distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) *\
-                                 invarient_mass**-exponent
+                                 inv_invar_exp
                 return distance2
-        elif self.Invarient == 'normed':
+        elif self.PhyDistance == 'normed':
             px_col = self._Px_col
             py_col = self._Py_col
             pz_col = self._Pz_col
@@ -350,9 +362,9 @@ class PseudoJet:
                 distance2 = 1. - np.sum(row_3vec*column_3vec)/energies
                 if exponent_now:
                     distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) *\
-                                 invarient_mass**-exponent
+                                 inv_invar_exp
                 return distance2
-        elif self.Invarient == 'angular':
+        elif self.PhyDistance == 'angular':
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
             def physical_distance2(row, column):
@@ -376,10 +388,10 @@ class PseudoJet:
                 distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
                 if exponent_now:
                     distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) *\
-                                 invarient_mass**-exponent
+                                 inv_invar_exp
                 return distance2
         else:
-            raise ValueError(f"Don't recognise {self.Invarient} as an Invarient")
+            raise ValueError(f"Don't recognise {self.PhyDistance} as an Invarient")
         self.physical_distance2 = physical_distance2
         self.beam_distance2 = beam_distance2
 
@@ -387,6 +399,7 @@ class PseudoJet:
         """
         Using the default parameters and the chosen parameters set the attributes
         of the Pseudojet to contain the parameters used for clustering.
+        Harmless to call multiple times.
 
         Parameters
         ----------
@@ -1000,10 +1013,10 @@ class PseudoJet:
 
 class Traditional(PseudoJet):
     """ Jet clustering in the style of kt/anti-kt/cambridge-acchen """
-    param_list = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'Invarient': 'angular'}
+    param_list = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'PhyDistance': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
         Class constructor
@@ -1034,6 +1047,12 @@ class Traditional(PseudoJet):
             (Default; False)
         """
         self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
+        # check for nonsense in the kwargs or dict_jet_params
+        pos = kwargs.get('ExpofPTPosition', 'input')
+        if dict_jet_params is not None:
+            pos = dict_jet_params.get('ExpofPTPosition', pos)
+        assert pos == 'input'  # don't just silently swallow nonsense
+        # then set the right thing anyway
         self.ExpofPTPosition = 'input'
         if dict_jet_params is not None:
             kwargs['dict_jet_params'] = dict_jet_params
@@ -1268,7 +1287,7 @@ class Spectral(PseudoJet):
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent', 'AffinityCutoff': None,
                   'Laplacien': 'unnormalised',
-                  'Invarient': 'angular', 'StoppingCondition': 'standard'}
+                  'PhyDistance': 'angular', 'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
                        'ExpofPTPosition': ['input', 'eigenspace'],
@@ -1276,7 +1295,7 @@ class Spectral(PseudoJet):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
-                       'Invarient': ['angular', 'normed', 'Luclus', 'invarient'],
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
                        'StoppingCondition': ['standard', 'beamparticle']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
@@ -1336,13 +1355,13 @@ class Spectral(PseudoJet):
         rap_col = self._Rapidity_col
         phi_col = self._Phi_col
         # future calculatins will depend on the starting positions
-        starting_position = np.array([self._floats[row][:] for row
+        self._starting_position = np.array([self._floats[row][:] for row
                                       in range(self.currently_avalible)])
         if self.beam_particle:
             # the beam particles dosn't have a real location,
             # but to preserve the dimensions of future calculations, add it in
-            starting_position = np.vstack((self._starting_position,
-                                           np.ones(len(self.float_columns))))
+            self._starting_position = np.vstack((self._starting_position,
+                                                 np.ones(len(self.float_columns))))
             # it is added to the end so as to maintain the indices
         for row in range(self.currently_avalible):
             for column in range(self.currently_avalible):
@@ -1358,7 +1377,7 @@ class Spectral(PseudoJet):
                 physical_distances2[row, column] = distance2
         if self.beam_particle:
             # the last row and column should give the distance of each particle to the beam
-            physical_distances2[-1, :] = [self.beam_distance2(row) for row in starting_position]
+            physical_distances2[-1, :] = [self.beam_distance2(row) for row in self._starting_position]
             physical_distances2[:, -1] = physical_distances2[-1, :]
         np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
@@ -1862,7 +1881,7 @@ class Splitting(Spectral):
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent', 'AffinityCutoff': None,
                   'Laplacien': 'unnormalised',
-                  'Invarient': 'angular'}
+                  'PhyDistance': 'angular'}
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
@@ -1870,7 +1889,7 @@ class Splitting(Spectral):
                        'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
-                       'Invarient': ['angular', 'normed', 'Luclus', 'invarient']}
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
         Class constructor
@@ -2477,7 +2496,7 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
         mask_here = np.full_like(eventWise.PT, False, dtype=bool)
         mask_here[idx_selection] = True
         mask.append(awkward.fromiter(mask_here))
-    mask = awkward.fromiter(mask)
+    mask = awkward.fromiter(mask).astype(bool)
     eventWise.selected_index = None
     for name, source_name in zip(columns, sources):
         contents[name] += list(getattr(eventWise, source_name)[start_point:end_point][mask])
@@ -3155,7 +3174,7 @@ if __name__ == '__main__':
     #                           AffinityCutoff=None,
     #                           #AffinityCutoff=('knn', 4),
     #                           StoppingCondition='standard',
-    #                           Invarient='Luclus',
+    #                           PhyDistance='Luclus',
     #                           jet_name="SpectralFull")
 
     #c_class = SpectralFull
@@ -3165,7 +3184,7 @@ if __name__ == '__main__':
                                Laplacien='symmetric',
                                AffinityType='exponent',
                                AffinityCutoff=('distance', 1),
-                               Invarient='invarient',
+                               PhyDistance='invarient',
                                jet_name="Splitting")
 
     c_class = Splitting

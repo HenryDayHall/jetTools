@@ -59,7 +59,7 @@ def fix_eventWise(eventWise, variable, fixing_function):
 #while all_ew:
 #    ew = all_ew.pop()
 #    print(ew.save_name)
-#    fix_eventWise(ew, "Invarient", fix)
+#    fix_eventWise(ew, "PhyDistance", fix)
 #    del ew
 #    
 
@@ -88,21 +88,21 @@ def fix_records(records, variable, fixing_function):
         records.content[row_n][idx] = fixing_function(records.content[row_n][idx])
     records.write()
 
-#fix_records("scans.csv", "Invarient", fix)
+#fix_records("scans.csv", "PhyDistance", fix)
 
 old_records = CompareClusters.Records("scans.csvbk")
 old_ids = old_records.jet_ids
-old_col = old_records.indices['Invarient']
+old_col = old_records.indices['PhyDistance']
 
 new_records = CompareClusters.Records("scans.csv")
 new_ids = new_records.jet_ids
-new_col = new_records.indices['Invarient']
+new_col = new_records.indices['PhyDistance']
 
 all_ew = Components.find_eventWise_in_dir("megaIgnore")
 while all_ew:
     ew = all_ew.pop()
     print(ew.save_name)
-    invarient_cols = [c for c in ew.hyperparameter_columns if c.endswith('Invarient')]
+    invarient_cols = [c for c in ew.hyperparameter_columns if c.endswith('PhyDistance')]
     if not invarient_cols:
         continue
     to_append = {}

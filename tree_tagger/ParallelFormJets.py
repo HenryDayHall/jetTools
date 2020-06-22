@@ -372,14 +372,14 @@ def scan_spectralfull(eventWise_path, end_time):
         initial_DeltaR    =  np.array([])
         initial_Exponent  =  np.array([])
         initial_Cutoff =  np.array([])
-        initial_Invarient =  np.array([])
+        initial_PhyDistance =  np.array([])
         initial_NEigen=  np.array([])
     else:
         initial_jet_class = initial_typed[:, records.indices['jet_class']]
         initial_DeltaR    = initial_typed[:, records.indices['DeltaR']]
         initial_Exponent  = initial_typed[:, records.indices['ExpofPTMultiplier']]
         initial_Cutoff = initial_typed[:, records.indices['AffinityCutoff']]
-        initial_Invarient = initial_typed[:, records.indices['Invarient']]
+        initial_PhyDistance = initial_typed[:, records.indices['Invarient']]
         initial_NEigen= initial_typed[:, records.indices['NumEigenvectors']].astype(int)
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
@@ -406,7 +406,7 @@ def scan_spectralfull(eventWise_path, end_time):
                             co_mask.append(False)
                     co_indices = dr_indices[co_mask]
                 for invar in invarient:
-                    invar_indices = co_indices[initial_Invarient[co_indices] == invar]
+                    invar_indices = co_indices[initial_PhyDistance[co_indices] == invar]
                     for eig in numeigenvectors:
                         eig_indices = invar_indices[initial_NEigen[invar_indices] == eig]
                         if (not os.path.exists('continue')) or os.path.exists('stopscan'):
@@ -421,7 +421,7 @@ def scan_spectralfull(eventWise_path, end_time):
                                           Laplacien='symmetric',
                                           AffinityType='exponent2',
                                           AffinityCutoff=cutoff,
-                                          Invarient=invar,
+                                          PhyDistance=invar,
                                           StoppingConditon='standard')
                         if jet_class not in initial_jet_class[eig_indices]:
                             print(jet_params)
@@ -461,7 +461,7 @@ def scan_spectralmean(eventWise_path, end_time):
         initial_Exponent  =  np.array([])
         initial_Position  =  np.array([])
         initial_Cutoff =  np.array([])
-        initial_Invarient =  np.array([])
+        initial_PhyDistance =  np.array([])
         initial_NEigen=  np.array([])
     else:
         initial_jet_class = initial_typed[:, records.indices['jet_class']]
@@ -469,7 +469,7 @@ def scan_spectralmean(eventWise_path, end_time):
         initial_Exponent  = initial_typed[:, records.indices['ExpofPTMultiplier']]
         initial_Position  = initial_typed[:, records.indices['ExpofPTPosition']]
         initial_Cutoff = initial_typed[:, records.indices['AffinityCutoff']]
-        initial_Invarient = initial_typed[:, records.indices['Invarient']]
+        initial_PhyDistance = initial_typed[:, records.indices['Invarient']]
         initial_NEigen= initial_typed[:, records.indices['NumEigenvectors']].astype(int)
     eventWise = Components.EventWise.from_file(eventWise_path)
     cols = [c for c in eventWise.columns]
@@ -496,7 +496,7 @@ def scan_spectralmean(eventWise_path, end_time):
                             co_mask.append(False)
                     co_indices = dr_indices[co_mask]
                 for invar in invarient:
-                    invar_indices = co_indices[initial_Invarient[co_indices] == invar]
+                    invar_indices = co_indices[initial_PhyDistance[co_indices] == invar]
                     for eig in numeigenvectors:
                         eig_indices = invar_indices[initial_NEigen[invar_indices] == eig]
                         if (not os.path.exists('continue')) or os.path.exists('stopscan'):
@@ -511,7 +511,7 @@ def scan_spectralmean(eventWise_path, end_time):
                                           Laplacien='symmetric',
                                           AffinityType='exponent2',
                                           AffinityCutoff=cutoff,
-                                          Invarient=invar,
+                                          PhyDistance=invar,
                                           StoppingConditon='beamparticle')
                         if jet_class not in initial_jet_class[eig_indices]:
                             print(jet_params)
@@ -667,14 +667,14 @@ def random_parameters(jet_class=None):
             params['AffinityCutoff'] = (cutofftype, np.random.randint(1, 6))
         elif cutofftype == 'distance':
             params['AffinityCutoff'] = (cutofftype, np.random.uniform(0., 10.))
-        invarients = permitted['Invarient']
-        params['Invarient'] = np.random.choice(invarients)
+        invarients = permitted['PhyDistance']
+        params['PhyDistance'] = np.random.choice(invarients)
     elif 'Home' == jet_class:
         permitted = FormJets.Traditional.permited_values
         params['DeltaR'] = np.random.uniform(0., 1.5)
         params['ExpofPTMultiplier'] = np.random.uniform(-1., 1.)
-        invarients = permitted['Invarient']
-        params['Invarient'] = np.random.choice(invarients)
+        invarients = permitted['PhyDistance']
+        params['PhyDistance'] = np.random.choice(invarients)
     else:
         raise NotImplementedError
     return jet_class, params

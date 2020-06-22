@@ -688,7 +688,7 @@ def parameter_comparison(records, c_name="percentfound", cuts=True):
         data_dict[str(i)] = np.array([str(x)[:max_len] for x in array[:, i]])
         data_name[str(i)] = name # somr of the names have probem characters in them
         name_data[name] = str(i) # need to be able to invert this
-    use_names = ["jet_class", "DeltaR", "Invarient", "ExponentMultiplier",
+    use_names = ["jet_class", "DeltaR", "PhyDistance", "ExponentMultiplier",
                  "TagAngle", "AffinityCutoff", "Laplacien",
                  "NumEigenvectors", "AffinityType", "WithLaplacienScaling"]
     hover = bokeh.models.HoverTool(tooltips=[(data_name[i], "@" + i) for i in data_dict
