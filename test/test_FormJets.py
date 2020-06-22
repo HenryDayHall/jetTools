@@ -1,4 +1,5 @@
 from numpy import testing as tst
+import pytest
 import warnings
 import os
 from ipdb import set_trace as st
@@ -398,10 +399,17 @@ def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
                     for floatsA in all_floats:
                         for floatsB in all_floats:
                             floats = np.array([floatsA, floatsB])
-                            jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
+                            try:
+                                jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
+                            except AssertionError:
+                                # maybe truying to make an invalid parameter combination
+                                break
                             # run the tests
                             for internal_test in internal_tests:
                                 internal_test(jets, jet_params)
+                        else:
+                            continue
+                        break  # if the first loop is broken break the outer one too
 
 
 # PseudoJet ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -454,33 +462,223 @@ def internal_physical_distance(jets, param_dict):
         st()
 
 
-def internal_currently_avalible():
-    pass
+def internal_currently_avalible(jets, param_dict):
+    avalible = np.sum(jets.Parent == -1)
+    jets._calculate_currently_avalible()
+    assert avalible == jets.currently_avalible
 
 
-def internal_getattr():
-    pass
+def internal_getattr(jets, param_dict):
+    # check an int column
+    parents = np.array(jets._ints)[:, jets._Parent_col]
+    tst.assert_allclose(parents, jets.Parent)
+    # check the float columns
+    roots = jets.Parent == -1
+    float_array = np.array(jets._floats)[roots]
+    energy = float_array[:, jets._Energy_col]
+    momentum = float_array[:, [jets._Px_col, jets._Py_col, jets._Pz_col]]
+    # calculate teh angular components
+    expected = []
+    for e, p in zip(energy, momentum):
+        row = [None, None, None, e, *p]
+        SimpleClusterSamples.fill_angular(row, change_energy=False)
+        expected.append(row)
+    found = np.array([jets.PT, jets.Rapidity, jets.Phi, jets.Energy,
+                      jets.Px, jets.Py, jets.Pz]).T
+    tst.assert_allclose(found, expected)
+    # also test P and Theta
+    birr = np.sqrt(np.sum(momentum**2, axis=1))
+    tst.assert_allclose(jets.P, birr)
+    expected = np.array(expected)
+    theta = Components.ptpz_to_theta(expected[:, 0], momentum[:, 2])
+    tst.assert_allclose(jets.Theta, theta)
 
-def internal_P():
-    pass
 
-
-def internal_Theta():
-    pass
-
-
-def internal_writeEvent():
-    pass
-
+def internal_combine(jets, param_dict):
+    i0, i1 = len(jets)-2, len(jets) -1
+    int_array = np.array(jets._ints)[[i0, i1]]
+    float_array = np.array(jets._floats)[[i0, i1]]
+    combined_floats = np.sum(float_array, axis=0)
+    SimpleClusterSamples.fill_angular(combined_floats, change_energy=False)
+    distance2 = 1
+    combined_floats[-1] = distance2
+    combined_ints = [max(jets.InputIdx) + 1, -1, i0, i1, max(jets.Rank) + 1]
+    found_ints, found_floats = jets._combine(i0, i1, distance2)
+    SimpleClusterSamples.match_ints_floats([combined_ints], [combined_floats],
+                                           [found_ints], [found_floats])
 
 
 def test_Pseudojet_internal():
     # testing Pseudojet functions, but creating Spectral jets
     # as Pseudojet should not be directly created and Traditional lack support for all options
-    apply_internal(FormJets.Spectral, internal_physical_distance)
+    apply_internal(FormJets.Spectral,
+                   internal_physical_distance,
+                   internal_currently_avalible,
+                   internal_getattr,
+                   internal_combine)
     
+
+def test_calculate_roots():
+    ints = np.zeros((4, 5), dtype=int)
+    floats = np.zeros((4, 8))
+    jets = make_simple_jets(floats, {}, FormJets.Spectral)
+    ints[:, jets._InputIdx_col] = list(range(4))
+    ints[:, jets._Parent_col] = (1, -1, 5, 1)
+    jets._ints = ints.tolist()
+    jets.currently_avalible = 0  # need to set to 0 in order to calculate roots
+    jets._calculate_roots()
+    tst.assert_allclose(jets.root_jetInputIdxs, [1, 2])
+
+
+def test_merge_remove_pseudojets():
+    n_rows = 4
+    ints = np.zeros((n_rows, 5), dtype=int) -1
+    floats = np.random.random((n_rows, 8))
+    # set distance to 0
+    floats[:, -1] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Spectral)
+    ints[:, jets._InputIdx_col] = list(range(4))
+    ints[:, jets._Parent_col] = (1, -1, -1, 1)
+    ints[1, jets._Child1_col] = 0
+    ints[1, jets._Child2_col] = 3
+    jets._ints = ints.tolist()
+    #  start by merging rows  1 and 2
+    i0, i1 = 1, 2
+    distance2 = 1
+    new_ints, new_floats = jets._combine(i0, i1, distance2)
+    ints[[i0,i1], jets._Parent_col] = new_ints[jets._InputIdx_col]
+    jets._merge_pseudojets(i0, i1, distance2)
+    # it is expected that the lower index with contain the new jet
+    SimpleClusterSamples.match_ints_floats([jets._ints[i0]], [jets._floats[i0]],
+                                           [new_ints], [new_floats])
+    # the old ones should now be at the end
+    SimpleClusterSamples.match_ints_floats(jets._ints[-2:], jets._floats[-2:],
+                                           ints[[i0,i1]], floats[[i0, i1]])
+    assert len(jets) == len(ints) + 1
+
+
+def test_idx_from_inpIdx():
+    n_rows = 4
+    ints = np.zeros((n_rows, 5), dtype=int) -1
+    floats = np.zeros((n_rows, 8))
+    jets = make_simple_jets(floats, {}, FormJets.Spectral)
+    input_idx = [0, 5, 3, 1]
+    ints[:, jets._InputIdx_col] = input_idx
+    jets._ints = ints.tolist()
+    for i, inpidx in enumerate(input_idx):
+        assert i == jets.idx_from_inpIdx(inpidx)
+    with pytest.raises(ValueError):
+        jets.idx_from_inpIdx(7)
+
+
+def test_get_decendants():
+    n_rows = 4
+    ints = np.zeros((n_rows, 5), dtype=int) -1
+    floats = np.zeros((n_rows, 8))
+    jets = make_simple_jets(floats, {}, FormJets.Spectral)
+    ints[:, jets._InputIdx_col] = [3,2,1,0]
+    ints[:, jets._Parent_col] = (1, -1, -1, 1)
+    ints[1, jets._Child1_col] = 0
+    ints[1, jets._Child2_col] = 3
+    jets._ints = ints.tolist()
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=False, jetInputIdx=2)),
+                        [0, 2, 3])
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=True, jetInputIdx=2)),
+                        [0, 3])
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=True, jetInputIdx=1)),
+                        [1])
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=False, jetInputIdx=0)),
+                        [0])
+
+
+def test_local_obs_idx():
+    n_rows = 4
+    ints = np.zeros((n_rows, 5), dtype=int) -1
+    floats = np.zeros((n_rows, 8))
+    jets = make_simple_jets(floats, {}, FormJets.Spectral)
+    ints[:, jets._InputIdx_col] = [3,2,1,0]
+    ints[:, jets._Parent_col] = (1, -1, -1, 1)
+    ints[1, jets._Child1_col] = 0
+    ints[1, jets._Child2_col] = 3
+    jets._ints = ints.tolist()
+    tst.assert_allclose(sorted(jets.local_obs_idx()), [0, 2, 3])
+
 # Traditional ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def internal_recalculate_one(jets, param_dict):
+    int_array = np.array(jets._ints)
+    float_array = np.array(jets._floats)
+    # duplicate the floats and ints
+    int_array[:, jets._InputIdx_col] += len(jets)
+    jets._ints += int_array.tolist()
+    jets._floats += float_array.tolist()
+    jets._calculate_currently_avalible()
+    # calculate the distances
+    jets._calculate_distances()
+    start_distances = np.copy(jets._distances2)
+    # now mess with one float rows
+    change = 1
+    float_array[change, jets._Energy_col] += 3.
+    float_array[change, [jets._Px_col, jets._Py_col]] += 1.
+    SimpleClusterSamples.fill_angular(float_array[change])
+    jets._floats[change] = float_array[change].tolist()
+    # recalculate another distance
+    # expectation is that floats in the replace row have changed
+    # but this can be used to check if the right distances are being altered
+    replace, remove = 2, 3  # it is important that the remove axis is the last
+    jets.currently_avalible -= 1
+    jets._recalculate_one(remove, replace)
+    start_distances = np.delete(start_distances, remove, axis=0)
+    start_distances = np.delete(start_distances, remove, axis=1)
+    # now all start_distances that don't intersect with change should eb the same
+    should_change = np.full_like(start_distances, False, dtype=bool)
+    should_change[:, change] = True
+    should_change[change, :] = True
+    upper_triangle = np.triu_indices(len(should_change), -1)
+    # we don't need the upper triangle to change per say, but it can to o detriment change
+    should_change[upper_triangle] = True
+    tst.assert_allclose(start_distances[~should_change], jets._distances2[~should_change])
+    with pytest.raises(AssertionError):
+        tst.assert_allclose(start_distances[should_change], jets._distances2[should_change])
+
+
+def test_Traditional_internal():
+    # testing Pseudojet functions, but creating Spectral jets
+    # as Pseudojet should not be directly created and Traditional lack support for all options
+    apply_internal(FormJets.Traditional, internal_recalculate_one)
+    
 # Spectral ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# wait until spectral to test this becuase the cutoff is the most complex parameter
+def test_write_event():
+    with TempTestDir("tst") as dir_name:
+        jet_params = {'DeltaR': 0.4, 'ExpofPTPosition': 'input', 'AffinityCutoff': ('knn', 3)}
+        ints = SimpleClusterSamples.close_join['ints']
+        floats = SimpleClusterSamples.close_join['floats']
+        ew = Components.EventWise(dir_name, "tmp.awkd")
+        set_JetInputs(ew, floats)
+        ew.selected_index = 0
+        jets = FormJets.Spectral(ew, dict_jet_params=jet_params, assign=False)
+        jets._ints = ints.tolist()
+        FormJets.Spectral.write_event([jets])
+        # check what got written is correct
+        jet_name = jets.jet_name
+        jet_columns = [name.split('_', 1)[1] for name in ew.columns
+                       if name.startswith(jet_name)]
+        for col in jet_columns:
+            found = getattr(ew, jet_name + '_' + col)
+            is_int = isinstance(next(found), int)
+            col_num = getattr(jets, '_'+col+'_col')
+            expected = ints[:, col_num] if is_int else floats[:, col_num]
+            tst.assert_allclose(found, expected, err_msg=f'Missmatch in {col}, is_int={is_int}')
+        for key in jet_params:
+            found = getattr(ew, jet_name+'_'+key)
+            assert found == jet_params[key], \
+                    f"{key}; Found {found}, expected {jet_params[key]}"
+    
+
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SpectralFull ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

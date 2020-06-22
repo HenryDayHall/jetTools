@@ -69,7 +69,9 @@ class PseudoJet:
         self.jet_parameters = {}
         dict_jet_params = kwargs.get('dict_jet_params', {})
         for key in dict_jet_params:  # create the formatting of a eventWise column
-            formatted_key = key.replace(' ', '').capitalize()
+            formatted_key = key.replace(' ', '')
+            # if letters after the first one are uppercase leave them up!
+            formatted_key = formatted_key[0].capitalize() + formatted_key[1:]
             self.jet_parameters[formatted_key] = dict_jet_params[key]
         self.int_columns = [c.replace('Pseudojet', self.jet_name) for c in self.int_columns]
         self.float_columns = [c.replace('Pseudojet', self.jet_name) for c in self.float_columns]
@@ -500,17 +502,27 @@ class PseudoJet:
 
     @property
     def P(self):
-        """ Total momentum of the jets """
+        """ Total momentum of each jet """
         if len(self) == 0:
             return np.nan
-        return np.linalg.norm([self.Px, self.Py, self.Pz])
+        roots = self.Parent == -1
+        if len(roots) == 1:
+            birr = np.linalg.norm([self.Px, self.Py, self.Pz], axis=0)
+        else:
+            birr = np.linalg.norm([self.Px[roots], self.Py[roots], self.Pz[roots]],
+                                  axis=0)
+        return birr
 
     @property
     def Theta(self):
         """ Theta of the jets"""
         if len(self) == 0:
             return np.nan
-        theta = Components.ptpz_to_theta(self.PT, self.Pz)
+        roots = self.Parent == -1
+        if len(roots) == 1:
+            theta = Components.ptpz_to_theta(self.PT, self.Pz)
+        else:
+            theta = Components.ptpz_to_theta(self.PT[roots], self.Pz[roots])
         return theta
 
     @classmethod
@@ -559,10 +571,10 @@ class PseudoJet:
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
             for col_num, name in enumerate(jet.int_columns):
-                arrays[name][event_index].append(ints[:, col_num])
+                arrays[name.replace('PseudoJet', jet_name)][event_index].append(ints[:, col_num])
             floats = awkward.fromiter(jet._floats)
             for col_num, name in enumerate(jet.float_columns):
-                arrays[name][event_index].append(floats[:, col_num])
+                arrays[name.replace('PseudoJet', jet_name)][event_index].append(floats[:, col_num])
         return arrays
 
     def create_param_dict(self):
