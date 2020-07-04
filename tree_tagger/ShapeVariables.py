@@ -6,7 +6,7 @@ from ipdb import set_trace as st
 from tree_tagger.stefano_shapes import shape as stefano
 from tree_tagger import TrueTag, Constants, PlottingTools
 import awkward
-from matplotlib import pyplot as plt 
+from matplotlib import pyplot as plt
 
 
 def python_shape(energies, pxs, pys, pzs):
@@ -56,7 +56,7 @@ def python_shape(energies, pxs, pys, pzs):
         thrust_axis = [sin_theta*np.cos(theta_phi[1]),
                        sin_theta*np.sin(theta_phi[1]),
                        np.cos(theta_phi[0])]
-        return -np.sum(np.abs(momentums*thrust_axis))
+        return -np.sum(np.abs(np.dot(momentums, thrust_axis)))
     theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
     best_theta_phi = scipy.optimize.minimize(to_minimise, np.zeros(2),
                                              bounds=theta_phi_bounds).x
@@ -81,7 +81,7 @@ def python_shape(energies, pxs, pys, pzs):
 
         """
         transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
-        return -np.sum(np.abs(momentums[:, :2]*transverse_thrust_axis))
+        return -np.sum(np.abs(np.dot(momentums[:, :2], transverse_thrust_axis)))
     phi_bounds = (-np.pi, np.pi)
     best_phi = scipy.optimize.minimize_scalar(to_minimise_transverse, bounds=phi_bounds,
                                               method='Bounded').x

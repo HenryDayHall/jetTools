@@ -1727,7 +1727,7 @@ class Spectral(PseudoJet):
         """
         Merge two pseudojets to form a new pseudojet, moving the
         exising pseudojets to the back of the ints/floats lists
-        Also remove the redundant rows from the embedding space
+        The embedding space is changed in _recalculate_one
 
         Parameters
         ----------
@@ -1757,12 +1757,6 @@ class Spectral(PseudoJet):
         self.currently_avalible -= 1
         # now recalculate for the new pseudojet
         self._recalculate_one(remove_index, replace_index)
-        # remove from the affinity and eiegnspace
-        self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
-        self._affinity = np.delete(self._affinity, remove_index, axis=0)
-        self._affinity = np.delete(self._affinity, remove_index, axis=1)
-        self._distances2 = np.delete(self._distances2, remove_index, axis=0)
-        self._distances2 = np.delete(self._distances2, remove_index, axis=1)
 
     def _remove_pseudojet(self, pseudojet_index):
         """
@@ -1795,7 +1789,7 @@ class Spectral(PseudoJet):
     def _recalculate_one(self, remove_index, replace_index):
         """
         Recalculate all the distances involving one pseudojet
-        Also update the embedding space
+        Also update the embedding space, removing
 
         Parameters
         ----------

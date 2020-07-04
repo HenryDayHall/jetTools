@@ -183,7 +183,10 @@ class SimpleClusterSamples:
 def set_JetInputs(eventWise, floats):
     columns = [name.replace("Pseudojet", "JetInputs") for name in FormJets.PseudoJet.float_columns
                if "Distance" not in name]
-    contents = {name: awkward.fromiter([floats[:, i]]) for i, name in enumerate(columns)}
+    if len(floats):
+        contents = {name: awkward.fromiter([floats[:, i]]) for i, name in enumerate(columns)}
+    else:
+        contents = {name: awkward.fromiter([[]]) for i, name in enumerate(columns)}
     columns.append("JetInputs_SourceIdx")
     contents["JetInputs_SourceIdx"] = awkward.fromiter([np.arange(len(floats))])
     eventWise.append(**contents)
@@ -389,6 +392,9 @@ def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
     floats3 = [0.1, 1., 0., 2., np.nan, np.nan, np.nan, -1]
     SimpleClusterSamples.fill_linear(floats3)
     all_floats = [floats1, floats2, floats3]
+    # some tests should still work with one or zero float lines
+    one_tests = [test for test in internal_tests if test.valid_one]
+    zero_tests = [test for test in internal_tests if test.valid_zero]
     for measure in physical_distance_measures:
         for pos in exp_of_pt_pos:
             for exp in exponents:
@@ -396,26 +402,34 @@ def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
                     jet_params = {"PhyDistance": measure, "ExpofPTPosition": pos,
                                   "ExpofPTMultiplier": exp, "DeltaR": dr,
                                   **additional_jet_params}
+                    # run tests with no inputs
+                    try:
+                        jets = make_simple_jets(np.array([]).reshape((0, 0)),
+                                                jet_params, jet_class=jet_class)
+                    except AssertionError:
+                        # maybe truying to make an invalid parameter combination
+                        continue
+                    else:
+                        for internal_test in zero_tests:
+                            internal_test(jets, jet_params)
                     for floatsA in all_floats:
+                        # run tests with one input
+                        jets = make_simple_jets(np.array([floatsA]), jet_params, jet_class=jet_class)
+                        for internal_test in one_tests:
+                            internal_test(jets, jet_params)
                         for floatsB in all_floats:
+                            # run tests with two inputs
                             floats = np.array([floatsA, floatsB])
-                            try:
-                                jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
-                            except AssertionError:
-                                # maybe truying to make an invalid parameter combination
-                                break
+                            jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
                             # run the tests
                             for internal_test in internal_tests:
                                 internal_test(jets, jet_params)
-                        else:
-                            continue
-                        break  # if the first loop is broken break the outer one too
+                    
 
 
 # PseudoJet ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def internal_physical_distance(jets, param_dict):
-    assert len(jets) == 2
     # extract quantities
     float_array = np.array(jets._floats)
     energies = float_array[:, jets._Energy_col]
@@ -460,38 +474,55 @@ def internal_physical_distance(jets, param_dict):
         tst.assert_allclose(beam_distance2, found_beam2, err_msg=f"distance to beam with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
     except Exception as e:
         st()
+internal_physical_distance.valid_one = False
+internal_physical_distance.valid_zero = False
 
 
 def internal_currently_avalible(jets, param_dict):
     avalible = np.sum(jets.Parent == -1)
     jets._calculate_currently_avalible()
     assert avalible == jets.currently_avalible
+internal_currently_avalible.valid_one = True
+internal_currently_avalible.valid_zero = True
 
 
 def internal_getattr(jets, param_dict):
     # check an int column
-    parents = np.array(jets._ints)[:, jets._Parent_col]
+    int_array = np.array(jets._ints)
+    try:
+        parents = int_array[:, jets._Parent_col]
+    except IndexError:
+        parents = []
     tst.assert_allclose(parents, jets.Parent)
     # check the float columns
     roots = jets.Parent == -1
     float_array = np.array(jets._floats)[roots]
-    energy = float_array[:, jets._Energy_col]
-    momentum = float_array[:, [jets._Px_col, jets._Py_col, jets._Pz_col]]
-    # calculate teh angular components
-    expected = []
-    for e, p in zip(energy, momentum):
-        row = [None, None, None, e, *p]
-        SimpleClusterSamples.fill_angular(row, change_energy=False)
-        expected.append(row)
+    try:
+        energy = float_array[:, jets._Energy_col]
+        momentum = float_array[:, [jets._Px_col, jets._Py_col, jets._Pz_col]]
+    except IndexError:
+        energy = momentum = []
     found = np.array([jets.PT, jets.Rapidity, jets.Phi, jets.Energy,
-                      jets.Px, jets.Py, jets.Pz]).T
-    tst.assert_allclose(found, expected)
-    # also test P and Theta
-    birr = np.sqrt(np.sum(momentum**2, axis=1))
-    tst.assert_allclose(jets.P, birr)
-    expected = np.array(expected)
-    theta = Components.ptpz_to_theta(expected[:, 0], momentum[:, 2])
-    tst.assert_allclose(jets.Theta, theta)
+                      jets.Px, jets.Py, jets.Pz]).T.reshape((-1, 7))
+    if len(energy):
+        # calculate teh angular components
+        expected = []
+        for e, p in zip(energy, momentum):
+            row = [None, None, None, e, *p]
+            SimpleClusterSamples.fill_angular(row, change_energy=False)
+            expected.append(row)
+        tst.assert_allclose(found, expected)
+        # also test P and Theta
+        birr = np.sqrt(np.sum(momentum**2, axis=1))
+        tst.assert_allclose(jets.P, birr)
+        expected = np.array(expected)
+        theta = Components.ptpz_to_theta(expected[:, 0], momentum[:, 2])
+        tst.assert_allclose(jets.Theta, theta)
+    else:
+        assert np.all(np.isnan(found))
+        assert np.all(np.isnan([jets.Theta, jets.P]))
+internal_getattr.valid_one = True
+internal_getattr.valid_zero = True
 
 
 def internal_combine(jets, param_dict):
@@ -506,6 +537,8 @@ def internal_combine(jets, param_dict):
     found_ints, found_floats = jets._combine(i0, i1, distance2)
     SimpleClusterSamples.match_ints_floats([combined_ints], [combined_floats],
                                            [found_ints], [found_floats])
+internal_combine.valid_one = False
+internal_combine.valid_zero = False
 
 
 def test_Pseudojet_internal():
@@ -528,35 +561,6 @@ def test_calculate_roots():
     jets.currently_avalible = 0  # need to set to 0 in order to calculate roots
     jets._calculate_roots()
     tst.assert_allclose(jets.root_jetInputIdxs, [1, 2])
-
-
-def test_merge_remove_pseudojets():
-    n_rows = 4
-    ints = np.zeros((n_rows, 5), dtype=int) -1
-    floats = np.random.random((n_rows, 8))
-    # set distance to 0
-    floats[:, -1] = 0.
-    for row in floats:
-        SimpleClusterSamples.fill_angular(row)
-    jets = make_simple_jets(floats, {}, FormJets.Spectral)
-    ints[:, jets._InputIdx_col] = list(range(4))
-    ints[:, jets._Parent_col] = (1, -1, -1, 1)
-    ints[1, jets._Child1_col] = 0
-    ints[1, jets._Child2_col] = 3
-    jets._ints = ints.tolist()
-    #  start by merging rows  1 and 2
-    i0, i1 = 1, 2
-    distance2 = 1
-    new_ints, new_floats = jets._combine(i0, i1, distance2)
-    ints[[i0,i1], jets._Parent_col] = new_ints[jets._InputIdx_col]
-    jets._merge_pseudojets(i0, i1, distance2)
-    # it is expected that the lower index with contain the new jet
-    SimpleClusterSamples.match_ints_floats([jets._ints[i0]], [jets._floats[i0]],
-                                           [new_ints], [new_floats])
-    # the old ones should now be at the end
-    SimpleClusterSamples.match_ints_floats(jets._ints[-2:], jets._floats[-2:],
-                                           ints[[i0,i1]], floats[[i0, i1]])
-    assert len(jets) == len(ints) + 1
 
 
 def test_idx_from_inpIdx():
@@ -642,6 +646,8 @@ def internal_recalculate_one(jets, param_dict):
     tst.assert_allclose(start_distances[~should_change], jets._distances2[~should_change])
     with pytest.raises(AssertionError):
         tst.assert_allclose(start_distances[should_change], jets._distances2[should_change])
+internal_recalculate_one.valid_one = False
+internal_recalculate_one.valid_zero = False
 
 
 def test_Traditional_internal():
@@ -677,8 +683,145 @@ def test_write_event():
             found = getattr(ew, jet_name+'_'+key)
             assert found == jet_params[key], \
                     f"{key}; Found {found}, expected {jet_params[key]}"
-    
 
+
+def test_calculate_eigenspace():
+    n_rows = 4
+    ints = np.zeros((n_rows, 5), dtype=int) -1
+    for i in range(5):
+        floats = np.random.random((n_rows, 8))
+        # set distance to 0
+        floats[:, -1] = 0.
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row)
+        for ltype in ('unnormalised', 'symmetric'):
+            jets = make_simple_jets(floats, {'Laplacien': ltype}, FormJets.Spectral)
+            # check that the eigenvectors and the eigenvalues have the correct relationship
+            # with the laplacien
+            affinities = jets._affinity
+            diagonal = np.diag(np.sum(affinities, axis=0))
+            laplacien = diagonal - affinities
+            if ltype == 'symmetric':
+                alt_diag = np.diag(np.diag(diagonal)**(-0.5))
+                laplacien = np.matmul(alt_diag, np.matmul(laplacien, alt_diag))
+            for eigenvalue, eigenvector in zip(jets.eigenvalues[0], jets._eigenspace.T):
+                lhs = np.matmul(laplacien, eigenvector.reshape((-1, 1))).flatten()
+                rhs = eigenvalue*eigenvector
+                tst.assert_allclose(lhs, rhs)
+
+
+def test_merge_remove_pseudojets():
+    n_rows = 4
+    ints = np.zeros((n_rows, 5), dtype=int) -1
+    floats = np.random.random((n_rows, 8))
+    # set distance to 0
+    floats[:, -1] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Spectral)
+    ints[:, jets._InputIdx_col] = list(range(4))
+    ints[:, jets._Parent_col] = (1, -1, -1, 1)
+    ints[1, jets._Child1_col] = 0
+    ints[1, jets._Child2_col] = 3
+    jets._ints = ints.tolist()
+    # save teh eigen space and distances befor the merge
+    old_eigenspace = np.copy(jets._eigenspace)
+    old_distance = np.copy(jets._distances2)
+    #  start by merging rows  1 and 2
+    i0, i1 = 1, 2
+    distance2 = 1
+    new_ints, new_floats = jets._combine(i0, i1, distance2)
+    ints[[i0,i1], jets._Parent_col] = new_ints[jets._InputIdx_col]
+    jets._merge_pseudojets(i0, i1, distance2)
+    # it is expected that the lower index with contain the new jet
+    SimpleClusterSamples.match_ints_floats([jets._ints[i0]], [jets._floats[i0]],
+                                           [new_ints], [new_floats])
+    # the old ones should now be at the end
+    SimpleClusterSamples.match_ints_floats(jets._ints[-2:], jets._floats[-2:],
+                                           ints[[i0,i1]], floats[[i0, i1]])
+    assert len(jets) == len(ints) + 1
+    # the recalculated eigenspace position is out of scope for this test
+    # that will be tested in _combine
+    # but the others should be shifted by the removed index
+    # check the top left
+    tst.assert_allclose(old_distance[0, 0], jets._distances2[0, 0])
+    # check the bottom right
+    tst.assert_allclose(old_distance[3:, 3:], jets._distances2[2:, 2:])
+    # check the top right
+    tst.assert_allclose(old_distance[0, 3:], jets._distances2[0, 2:])
+    # check the bottom left
+    tst.assert_allclose(old_distance[3:, 0], jets._distances2[2:, 0])
+    # the first row of the eigenspac should eb unchanged
+    tst.assert_allclose(old_eigenspace[0], jets._eigenspace[0])
+    # and all after the second
+    tst.assert_allclose(old_eigenspace[3:], jets._eigenspace[2:])
+
+
+def internal_calculate_affinity(jets, param_dict):
+    distances2 = np.array([[jets.physical_distance2(row, col) for col in jets._floats]
+                           for row in jets._floats])
+    if len(distances2) < 1:
+        tst.assert_allclose(jets._affinity, np.array([[]]))
+        return
+    if param_dict['StoppingCondition'] == 'beamparticle':
+        # if there is a beam particles the last row should eb beam distances
+        # but only if something exists
+        beam_row = np.fromiter((jets.beam_distance2(row) for row in jets._floats), dtype=float).reshape((1, -1))
+        distances2 = np.concatenate((distances2, beam_row))
+        beam_row = np.concatenate((beam_row.T, [[0]]))
+        distances2 = np.concatenate((distances2, beam_row), axis=1)
+    if len(distances2) < 2:
+        tst.assert_allclose(jets._affinity, np.array([[]]))
+        return
+    np.fill_diagonal(distances2, 0)
+    distances = np.sqrt(distances2)  # now distances will be physical distances
+    expected = np.zeros_like(distances)
+    mask = distances != 0
+    if param_dict['AffinityType'] == 'linear':
+        expected = max(distances) - distances
+    elif param_dict['AffinityType'] == 'inverse':
+        expected[mask] = 1/distances[mask]
+    elif param_dict['AffinityType'] == 'exponent':
+        expected = np.exp(-distances)
+    elif param_dict['AffinityType'] == 'exponent2':
+        expected = np.exp(-distances2)
+    else:
+        raise KeyError
+    # apply the cut off
+    if param_dict['AffinityCutoff'] is not None:
+        to_keep = param_dict['AffinityCutoff'][1]
+        if param_dict['AffinityCutoff'][0] == 'knn':
+            # want to keep the largest affinities and the smallest ones have the lowest numbers
+            to_keep = len(expected) - to_keep
+            order = np.argsort(expected, axis=1)
+            expected[order < to_keep] = 0
+        elif param_dict['AffinityCutoff'][0] == 'distance':
+            expected[expected < to_keep] == 0
+        else:
+            raise KeyError
+    if len(expected) == 0:
+        expected = expected.reshape((1, 0))
+    np.fill_diagonal(expected, 0)
+    tst.assert_allclose(jets._affinity, expected, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
+internal_calculate_affinity.valid_one = True
+internal_calculate_affinity.valid_zero = True
+
+
+def test_calculate_distances():
+    # check results have correct form
+    pass
+
+
+def test_step_assign_parents():
+    # check results have correct form
+    pass
+
+def test_Spectral_internal():
+    # testing Pseudojet functions, but creating Spectral jets
+    # as Pseudojet should not be directly created and Traditional lack support for all options
+    apply_internal(FormJets.Spectral, internal_calculate_affinity, additional_jet_params={'StoppingCondition': 'standard'})
+    apply_internal(FormJets.Spectral, internal_calculate_affinity, additional_jet_params={'StoppingCondition': 'beamparticle'})
+    
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SpectralFull ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
