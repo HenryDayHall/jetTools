@@ -424,7 +424,6 @@ def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
                             # run the tests
                             for internal_test in internal_tests:
                                 internal_test(jets, jet_params)
-                    
 
 
 # PseudoJet ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -685,9 +684,10 @@ def test_write_event():
                     f"{key}; Found {found}, expected {jet_params[key]}"
 
 
-def test_calculate_eigenspace():
+def test_calculate_eigenspace_distances():
     n_rows = 4
     ints = np.zeros((n_rows, 5), dtype=int) -1
+    dr = 0.8
     for i in range(5):
         floats = np.random.random((n_rows, 8))
         # set distance to 0
@@ -695,9 +695,25 @@ def test_calculate_eigenspace():
         for row in floats:
             SimpleClusterSamples.fill_angular(row)
         for ltype in ('unnormalised', 'symmetric'):
-            jets = make_simple_jets(floats, {'Laplacien': ltype}, FormJets.Spectral)
+            for exp_mul, exp_pos in [(-1, 'input'), (-1, 'eigenspace'), (0, 'eigenspace'), (.5, 'eigenspace')]:
+                jets = make_simple_jets(floats, {'Laplacien': ltype,
+                                                 'ExpofPTPosition': exp_pos,
+                                                 'ExpofPTMultiplier': exp_mul,
+                                                 'DeltaR': dr}, FormJets.Spectral)
+                # check that distance obtained from this is correct
+                distances2 = np.array([[np.sum((row-col)**2) for row in jets._eigenspace]
+                                      for col in jets._eigenspace])
+                if exp_pos == 'eigenspace':
+                    pts = np.fromiter((row[jets._PT_col] for row in jets._floats), dtype=float)
+                    factors = np.array([[min(pt1**(2*exp_mul), pt2**(2*exp_mul)) for pt1 in pts]
+                                        for pt2 in pts])
+                    distances2 *= factors
+                np.fill_diagonal(distances2, dr**2)
+                tst.assert_allclose(jets._distances2, distances2)
             # check that the eigenvectors and the eigenvalues have the correct relationship
             # with the laplacien
+            # this only needs to be done once for each laplacien type,
+            # hence we do it outside the loop.
             affinities = jets._affinity
             diagonal = np.diag(np.sum(affinities, axis=0))
             laplacien = diagonal - affinities
@@ -807,14 +823,38 @@ internal_calculate_affinity.valid_one = True
 internal_calculate_affinity.valid_zero = True
 
 
-def test_calculate_distances():
-    # check results have correct form
-    pass
-
-
 def test_step_assign_parents():
     # check results have correct form
-    pass
+    n_rows = 8
+    for _ in range(10):
+        floats = np.random.random((n_rows, 8))
+        # set distance to 0
+        floats[:, -1] = 0.
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row)
+        jets = make_simple_jets(floats, {}, FormJets.Spectral)
+        assert jets.currently_avalible == n_rows
+        assert len(jets._ints) == n_rows
+        assert len(jets._floats) == n_rows
+        jets._step_assign_parents()
+        assert jets.currently_avalible == n_rows - 1
+        # two possibilities, a jet was removed or a jet was merged
+        if len(jets.root_jetInputIdxs) == 0:
+            # merging
+            assert len(jets._ints)  == n_rows + 1
+            assert len(jets._floats) == n_rows + 1
+            parents = jets.Parent
+            assert len(set(parents)) == 2
+            new_jet_idx = jets.idx_from_inpIdx(max(parents))
+            assert parents[jets.idx_from_inpIdx(jets.Child1[new_jet_idx])] == max(parents)
+            assert parents[jets.idx_from_inpIdx(jets.Child2[new_jet_idx])] == max(parents)
+        else:
+            # removed
+            assert len(jets.root_jetInputIdxs) == 1
+            assert jets.root_jetInputIdxs[0] in jets.InputIdx
+            assert len(jets._ints)  == n_rows
+            assert len(jets._floats) == n_rows
+
 
 def test_Spectral_internal():
     # testing Pseudojet functions, but creating Spectral jets
@@ -823,8 +863,111 @@ def test_Spectral_internal():
     apply_internal(FormJets.Spectral, internal_calculate_affinity, additional_jet_params={'StoppingCondition': 'beamparticle'})
     
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# TODO when this has stabalised make distance and eigenspace tests
+#def internal_Splitting_calculate_distances():
+#    pass  # TODO
+
+
+#def internal_Splitting_calculate_eigenspace():
+#    pass  # TODO
+
+
+#def internal_Splitting_step_assign_parents():
+#    pass  # TODO
+
+
+def test_merge_complete_jet():
+    n_rows = 8
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Splitting)
+    ints = np.array(jets._ints)
+    assert jets.currently_avalible == n_rows
+    assert len(jets._ints) == n_rows
+    assert len(jets._floats) == n_rows
+    merge_idxs = [4,2,1]
+    unmerged = [i for i in range(n_rows) if i not in merge_idxs]
+    merge_input_idxs = [jets.idx_from_inpIdx(i) for i in merge_idxs]
+    jets._merge_complete_jet(merge_input_idxs)
+    # check that things that shouldn't move didnt
+    new_ints = np.array(jets._ints[:jets.currently_avalible])
+    new_floats = np.array(jets._floats[:jets.currently_avalible])
+    SimpleClusterSamples.match_ints_floats(ints[unmerged], floats[unmerged], new_ints, new_floats,
+                                           compare_distance=False)
+    # check that the cluster was formed
+    assert jets.currently_avalible == n_rows - len(merge_idxs)
+    assert len(jets.root_jetInputIdxs) == 1
+    # the children of the root should be only and all the merged items
+    children = jets.get_decendants(True, jetInputIdx=jets.root_jetInputIdxs[0])
+    assert set(children) == set(merge_input_idxs)
+
+
+def test_merge_complete_jets():
+    n_rows = 10
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Splitting)
+    ints = np.array(jets._ints)
+    assert jets.currently_avalible == n_rows
+    assert len(jets._ints) == n_rows
+    assert len(jets._floats) == n_rows
+    merge_idxs = np.array([[4,2,1], [3,6,7]])
+    merge_input_idxs = [[jets.idx_from_inpIdx(i) for i in jet]
+                        for jet in merge_idxs]
+    merge_sets = [set(jet) for jet in merge_input_idxs]
+    jets._merge_complete_jets(merge_input_idxs)
+    # check that the cluster was formed
+    assert jets.currently_avalible == n_rows - len(merge_idxs.flatten())
+    assert len(jets.root_jetInputIdxs) == len(merge_idxs)
+    for root in jets.root_jetInputIdxs:
+        # the children of the root should be only and all the merged items
+        children = jets.get_decendants(True, jetInputIdx=root)
+        assert set(children) in merge_sets
+
+#def test_Splitting_internal():
+#    apply_internal(FormJets.Splitting,
+#                   internal_Splitting_calculate_distances,
+#                   internal_Splitting_calculate_eigenspace,
+#                   internal_Splitting_step_assign_parents)
+
 # SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def test_SM_recalculate_one():
+    n_rows = 10
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    deltaR=0.4
+    jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
+    replace, remove = 0, 1
+    expected_position = (jets._eigenspace[remove] + jets._eigenspace[replace])/2
+    jets._recalculate_one(remove, replace)
+    tst.assert_allclose(expected_position, jets._eigenspace[replace])
+    # now caculate all distances
+    distances2 = np.array([[np.sum((row-col)**2) for col in jets._eigenspace]
+                           for row in jets._eigenspace])
+    np.fill_diagonal(distances2, deltaR**2)
+    tst.assert_allclose(jets._distances2, distances2)
+    
+
 # SpectralFull ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def test_SF_recalculate_one():
+    n_rows = 10
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    deltaR=0.4
+    jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
+    replace, remove = 0, 1
+    jets._recalculate_one(remove, replace)
+    # now check that the eigenspace and the distances have shrunk,
+    # as the eigenspace itself is already tested that should be fine
+    assert len(jets._distances2) == n_rows-1
+    assert len(jets._eigenspace) == n_rows-1
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def test_filter_obs():

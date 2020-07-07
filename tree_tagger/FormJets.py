@@ -2025,17 +2025,12 @@ class Splitting(Spectral):
         Parameters
         ----------
         list_input_indices : list of list of int
-            indices of the pseudojets to merge, sorted by pseudojet to be formed
+            input indices idntifying the pseudojets to merge, sorted by pseudojet to be formed
         """
         array_input_indices = awkward.fromiter(list_input_indices)
         for input_indices in array_input_indices:
             self._merge_complete_jet(input_indices)
-            # now fix the remaining indices to merge
-            for idx in sorted(input_indices, reverse=True):
-                # going through each index that was removed,
-                # shift everythign infront of it back by one
-                mask = array_input_indices > idx
-                array_input_indices[mask] = array_input_indices[mask] -1
+            # no need to move the other indices, they are inputidxs, they are not order sensative
 
     def _merge_complete_jet(self, input_indices):
         """
@@ -2045,13 +2040,13 @@ class Splitting(Spectral):
         Parameters
         ----------
         input_indices : list of list of int
-            indices of the pseudojets to merge
+            input indices identifying the pseudojets to merge
 
         """
         # for now just merge in pairs
-        input_indices = sorted(input_indices)
-        replace = input_indices[0]
-        for remove in input_indices[:0:-1]:
+        local_indices = sorted([self.idx_from_inpIdx(i) for i in input_indices])
+        replace = local_indices[0]
+        for remove in local_indices[:0:-1]:
             self._merge_pseudojets(replace, remove, 0)
         self._remove_pseudojet(replace)
 
@@ -2125,7 +2120,9 @@ class Splitting(Spectral):
         splits = [i+1 for i, value in enumerate(outcomes[1:-1])
                   if outcomes[i] > value and outcomes[i+2] > value]
         splits = [0] + splits + [self.currently_avalible]
-        self._merge_complete_jets([order[start:end] for start, end in zip(splits, splits[1:])])
+        input_idxs = self.InputIdx
+        self._merge_complete_jets([input_idxs[order[start:end]] for start, end
+                                   in zip(splits, splits[1:])])
         self._calculate_eigenspace()  # now the eigenspace needs recalculating
         return order, outcomes, flip_point, splits
 
@@ -2339,6 +2336,7 @@ class SpectralMean(Spectral):
         else:
             new_distances2[replace_index] = self.DeltaR**2
         self._distances2[replace_index] = new_distances2
+        self._distances2[:, replace_index] = new_distances2
 
 
 class SpectralFull(Spectral):
