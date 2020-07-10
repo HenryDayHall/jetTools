@@ -1427,18 +1427,22 @@ class Spectral(PseudoJet):
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
-            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
-            eigenvalues = eigenvalues[1:]
-            eigenvectors = eigenvectors[:, 1:]
-        except Exception as e:
-            # display whatever caused this
-            print(f"Exception while processing event {self.eventwise.selected_index}")
-            print(f"With jet params; {self.jet_parameters}")
-            print(e)
-            self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
-                                      self._ints[:self.currently_avalible]]
-            self.currently_avalible = 0
-            return
+            try:
+                eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+                eigenvalues = eigenvalues[1:]
+                eigenvectors = eigenvectors[:, 1:]
+            except Exception as e:  # sometimes this still fails, not sure when/why
+                # display whatever caused this
+                print(f"Exception while processing event {self.eventWise.selected_index}")
+                print(f"With jet params; {self.jet_parameters}")
+                print(e)
+                st()
+                self.currently_avalible = len(self._floats)
+                self._calculate_distances()
+                self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
+                                          self._ints[:self.currently_avalible]]
+                self.currently_avalible = 0
+                return
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
@@ -1482,6 +1486,9 @@ class Spectral(PseudoJet):
             cutoff_type = self.AffinityCutoff[0]
             cutoff_param = self.AffinityCutoff[1]
             if cutoff_type == 'knn':
+                # add one to the number of neighbours to account for the 
+                # diagonal
+                cutoff_param += 1
                 if self.AffinityType == 'exponent':
                     def calculate_affinity(distances2):
                         """
@@ -1499,7 +1506,7 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = np.exp(-(distances2**0.5))
-                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
+                        affinity[np.argsort(distances2, axis=0) > cutoff_param] = 0
                         return affinity
                 elif self.AffinityType == 'exponent2':
                     def calculate_affinity(distances2):
@@ -1518,7 +1525,7 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = np.exp(-(distances2))
-                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
+                        affinity[np.argsort(distances2, axis=0) > cutoff_param] = 0
                         return affinity
                 elif self.AffinityType == 'linear':
                     def calculate_affinity(distances2):
@@ -1537,8 +1544,10 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = -distances2**0.5
-                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
+                        # if you don't shift first then if there is only
+                        # one non zero connection everything ends up as zero
                         affinity -= np.min(affinity)
+                        affinity[np.argsort(distances2, axis=0) > cutoff_param] = 0
                         return affinity
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
@@ -1557,7 +1566,13 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = distances2**-0.5
-                        affinity[np.argsort(distances2, axis=0) < cutoff_param] = 0
+                        affinity[np.argsort(distances2, axis=0) > cutoff_param] = 0
+                        np.fill_diagonal(affinity, 0)
+                        if np.inf in affinity:
+                            # unlikely but possible, due to overlapping points
+                            # divide by 2*num items to prevent infinite laplaciens
+                            mask = np.isinf(affinity)
+                            affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                         return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1618,8 +1633,10 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = -distances2**0.5
-                        affinity[distances2 > cutoff_param2] = 0
+                        # if you don't shift first then is there is only one
+                        # unsevered connection everythign ends up as zero
                         affinity -= np.min(affinity)
+                        affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
@@ -1639,6 +1656,12 @@ class Spectral(PseudoJet):
                         """
                         affinity = distances2**-0.5
                         affinity[distances2 > cutoff_param2] = 0
+                        np.fill_diagonal(affinity, 0)
+                        if np.inf in affinity:
+                            # unlikely but possible, due to overlapping points
+                            # divide by 2*num items to prevent infinite laplaciens
+                            mask = np.isinf(affinity)
+                            affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                         return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1717,6 +1740,12 @@ class Spectral(PseudoJet):
 
                     """
                     affinity = distances2**-0.5
+                    np.fill_diagonal(affinity, 0)
+                    if np.inf in affinity:
+                        # unlikely but possible, due to overlapping points
+                        # divide by 2*num items to prevent infinite laplaciens
+                        mask = np.isinf(affinity)
+                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                     return affinity
             else:
                 raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1789,7 +1818,8 @@ class Spectral(PseudoJet):
     def _recalculate_one(self, remove_index, replace_index):
         """
         Recalculate all the distances involving one pseudojet
-        Also update the embedding space, removing
+        Also update the embedding space, removing from distances2 and eigenspace
+        the outdted index.
 
         Parameters
         ----------
@@ -1803,9 +1833,6 @@ class Spectral(PseudoJet):
         """
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
-        # delete the first row and column of the merge
-        self._distances2 = np.delete(self._distances2, (remove_index), axis=0)
-        self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # calculate the physical distance of the new point from all original points
         # floats and ints will have been updated already in _mearge_pseudojets
         new_position = self._floats[replace_index]
@@ -1819,7 +1846,7 @@ class Spectral(PseudoJet):
             new_distances2 = np.append(new_distances2, self.beam_distance2(new_position))
         # from this get a new line of the laplacien
         new_laplacien = -self.calculate_affinity(new_distances2)
-        new_laplacien[replace_index] = 0.
+        new_laplacien[replace_index] = 0.  # need to blank this before summing the laplacien
         new_laplacien[replace_index] = -np.sum(new_laplacien)
         if self.Laplacien == 'symmetric':
             self.alt_diag = np.delete(self.alt_diag, remove_index)
@@ -1846,6 +1873,10 @@ class Spectral(PseudoJet):
             new_distances2[replace_index] = np.inf
         else:
             new_distances2[replace_index] = self.DeltaR**2
+        # delete the first row and column of the merge
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=0)
+        self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
+        # replace the secone
         self._distances2[replace_index] = new_distances2
 
     def _step_assign_parents(self):
@@ -1932,6 +1963,7 @@ class Splitting(Spectral):
             kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
 
+    # TODO, make tests for this, when your done making changes
     def _calculate_distances(self):
         """ Calculate all distances between avalible pseudojets """
         n_distances = self.currently_avalible
@@ -1967,6 +1999,7 @@ class Splitting(Spectral):
         # a graph laplacien can be calculated
         np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
 
+    # TODO, make tests for this, when your done making changes
     def _calculate_eigenspace(self):
         """
         Calculate the embedding of the currently_avalible pseudojets in eignspace
@@ -2050,6 +2083,7 @@ class Splitting(Spectral):
             self._merge_pseudojets(replace, remove, 0)
         self._remove_pseudojet(replace)
 
+    # TODO, make tests for this, when your done making changes
     def _step_assign_parents(self, eigenvector_num=0):
         """
         Take a single step to join pseudojets
@@ -2312,6 +2346,7 @@ class SpectralMean(Spectral):
             (current jet will be moved to the back)
 
         """
+        # floats and ints are already updated
         # delete the larger index keep the smaller index
         assert remove_index > replace_index
         # delete the first row and column of the merge
@@ -2319,7 +2354,7 @@ class SpectralMean(Spectral):
         self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # and make its position in eigenspace
         new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
-        # CHanged -> simply delete the eigenspace line
+        # Changed -> simply delete the eigenspace line
         self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
@@ -2327,9 +2362,11 @@ class SpectralMean(Spectral):
         if self.ExpofPTPosition == 'eigenspace':
             exponent = 2 * self.ExpofPTMultiplier
             pt_here = self._floats[replace_index][self._PT_col]**exponent
-            pt_factor = np.fromiter((min(row[self._PT_col]**exponent, pt_here)
-                                     for row in self._floats[:self.currently_avalible]),
+            pt_factor = np.fromiter((row[self._PT_col] for row in
+                                     self._floats[:self.currently_avalible]),
                                     dtype=float)
+            pt_factor **= exponent
+            np.clip(pt_factor, None, pt_here, out=pt_factor)
             new_distances2[:self.currently_avalible] *= pt_factor
         if self.beam_particle:
             new_distances2[replace_index] = np.inf
@@ -2357,6 +2394,7 @@ class SpectralFull(Spectral):
             (current jet will be moved to the back)
 
         """
+        self._calculate_distances()  # to get a new affinity
         self._calculate_eigenspace()
 
 

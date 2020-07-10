@@ -9,6 +9,8 @@ from tools import TempTestDir
 from test_Components import AwkdArrays
 import awkward
 
+# Consider adding tests for jets created with pseudorapidity instead of rapidity.
+# if you ever use that functionality again....
 
 class SimpleClusterSamples:
     config_1 = {'DeltaR': 1., 'ExpofPTMultiplier': 0}
@@ -125,7 +127,10 @@ class SimpleClusterSamples:
         else:
             energy = floats[3]
         floats[0] = np.linalg.norm([px, py], 2)
-        floats[1] = 0.5*np.log((energy + pz)/(energy - pz))
+        if energy == pz and px == 0 and py == 0:
+            floats[1] = np.Inf
+        else:
+            floats[1] = 0.5*np.log((energy + pz)/(energy - pz))
         floats[2] = np.arctan2(py, px)
         floats[3] = energy
 
@@ -308,6 +313,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
                 if fails > n_acceptable_fails:
                     assert False, f"{fails} out of {i} incorrect clusters from homejet"
 
+
 # running the whole cluster process from start to finish to see if we get what is expected
 def test_Traditional():
     with TempTestDir("pseudojet") as dir_name:
@@ -367,13 +373,16 @@ def test_Traditional():
                                         jet.Pseudorapidity, jet.Theta])
             tst.assert_allclose(expected_summaries, found_summaries)
 
+
 # setup and test indervidual methods inside the jet classes
 def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, **kwargs):
     with TempTestDir("tst") as dir_name:
         ew = Components.EventWise(dir_name, "tmp.awkd")
         set_JetInputs(ew, floats)
         ew.selected_index = 0
-    jets = jet_class(ew, dict_jet_params=jet_params, assign=False, **kwargs)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        jets = jet_class(ew, dict_jet_params=jet_params, assign=False, **kwargs)
     return jets
 
 
@@ -477,6 +486,13 @@ internal_physical_distance.valid_one = False
 internal_physical_distance.valid_zero = False
 
 
+def test_physical_distance():
+    # check that an invalid event mass raises and error
+    floats = np.ones((4, 8))
+    with pytest.raises(ValueError):
+        jets = make_simple_jets(floats, {}, FormJets.Spectral)
+
+
 def internal_currently_avalible(jets, param_dict):
     avalible = np.sum(jets.Parent == -1)
     jets._calculate_currently_avalible()
@@ -501,6 +517,8 @@ def internal_getattr(jets, param_dict):
         momentum = float_array[:, [jets._Px_col, jets._Py_col, jets._Pz_col]]
     except IndexError:
         energy = momentum = []
+    with pytest.raises(AttributeError):
+        jets.Bloggle  # check nonsenes attributes return attribute errors
     found = np.array([jets.PT, jets.Rapidity, jets.Phi, jets.Energy,
                       jets.Px, jets.Py, jets.Pz]).T.reshape((-1, 7))
     if len(energy):
@@ -594,6 +612,18 @@ def test_get_decendants():
                         [1])
     tst.assert_allclose(sorted(jets.get_decendants(lastOnly=False, jetInputIdx=0)),
                         [0])
+    # calling it without any index should raise a TypeError
+    with pytest.raises(TypeError):
+        jets.get_decendants()
+    # should be equally possible to call it with local indices
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=False, pseudojet_idx=1)),
+                        [0, 2, 3])
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=True, pseudojet_idx=1)),
+                        [0, 3])
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=True, pseudojet_idx=2)),
+                        [1])
+    tst.assert_allclose(sorted(jets.get_decendants(lastOnly=False, pseudojet_idx=3)),
+                        [0])
 
 
 def test_local_obs_idx():
@@ -682,6 +712,22 @@ def test_write_event():
             found = getattr(ew, jet_name+'_'+key)
             assert found == jet_params[key], \
                     f"{key}; Found {found}, expected {jet_params[key]}"
+        # then check params should return true as well
+        assert jets.check_params(ew)
+        # try changing one of the parameters in the jet
+        jet_params['DeltaR'] += 1
+        jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
+        assert not jets.check_params(ew)
+        jet_params['DeltaR'] -= 1
+        jet_params['AffinityCutoff'] = None
+        jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
+        assert not jets.check_params(ew)
+        # the chekc should return false if the eventWise has diferent parameters listed
+        jet_params['AffinityCutoff'] = ('knn', 3)
+        ew.remove(jet_name + '_AffinityCutoff')
+        jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
+        assert not jets.check_params(ew)
+        
 
 
 def test_calculate_eigenspace_distances():
@@ -774,6 +820,19 @@ def test_merge_remove_pseudojets():
 
 
 def internal_calculate_affinity(jets, param_dict):
+    # not neded right now as no ties
+    # this function does not deal with tie breaking
+    # which is reansomable, since ties are artificial
+    # so "shake" all the point in the jet
+    #small_distance = 0.01
+    #floats = np.array(jets._floats)
+    #floats += small_distance*np.random.random(floats.shape)
+    #[SimpleClusterSamples.fill_angular(row, False) for row in floats]
+    #jets._floats = floats.tolist()
+    ## then recalculate the distances
+    #jets.currently_avalible = len(floats)
+    #jets._calculate_distances()
+    # and procede with a comparison calculation
     distances2 = np.array([[jets.physical_distance2(row, col) for col in jets._floats]
                            for row in jets._floats])
     if len(distances2) < 1:
@@ -792,11 +851,12 @@ def internal_calculate_affinity(jets, param_dict):
     np.fill_diagonal(distances2, 0)
     distances = np.sqrt(distances2)  # now distances will be physical distances
     expected = np.zeros_like(distances)
-    mask = distances != 0
     if param_dict['AffinityType'] == 'linear':
-        expected = max(distances) - distances
+        expected = np.max(distances) - distances
     elif param_dict['AffinityType'] == 'inverse':
-        expected[mask] = 1/distances[mask]
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            expected = 1/distances
     elif param_dict['AffinityType'] == 'exponent':
         expected = np.exp(-distances)
     elif param_dict['AffinityType'] == 'exponent2':
@@ -807,18 +867,25 @@ def internal_calculate_affinity(jets, param_dict):
     if param_dict['AffinityCutoff'] is not None:
         to_keep = param_dict['AffinityCutoff'][1]
         if param_dict['AffinityCutoff'][0] == 'knn':
-            # want to keep the largest affinities and the smallest ones have the lowest numbers
-            to_keep = len(expected) - to_keep
-            order = np.argsort(expected, axis=1)
-            expected[order < to_keep] = 0
+            np.fill_diagonal(expected, 0)
+            order = np.argsort(distances, axis=1)
+            # plus on for the diagonal
+            expected[order > to_keep + 1] = 0
         elif param_dict['AffinityCutoff'][0] == 'distance':
-            expected[expected < to_keep] == 0
+            expected[distances > to_keep] = 0
         else:
             raise KeyError
     if len(expected) == 0:
         expected = expected.reshape((1, 0))
     np.fill_diagonal(expected, 0)
-    tst.assert_allclose(jets._affinity, expected, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
+    if np.inf in expected:  # fix internal approximations
+        jets._affinity[jets._affinity > 10^100] = np.inf
+    try:
+        tst.assert_allclose(jets._affinity, expected, atol=0.0001, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
+    except:
+        st()
+        jets2 = make_simple_jets(np.array(jets._floats), param_dict, type(jets))
+    expected
 internal_calculate_affinity.valid_one = True
 internal_calculate_affinity.valid_zero = True
 
@@ -859,8 +926,58 @@ def test_step_assign_parents():
 def test_Spectral_internal():
     # testing Pseudojet functions, but creating Spectral jets
     # as Pseudojet should not be directly created and Traditional lack support for all options
-    apply_internal(FormJets.Spectral, internal_calculate_affinity, additional_jet_params={'StoppingCondition': 'standard'})
-    apply_internal(FormJets.Spectral, internal_calculate_affinity, additional_jet_params={'StoppingCondition': 'beamparticle'})
+    for affinity in ['linear', 'exponent', 'exponent2', 'inverse']:
+        for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+            additional_jet_params = dict(StoppingCondition='standard',
+                                         AffinityType=affinity,
+                                         AffinityCutoff=affinity_cutoff)
+            apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                           additional_jet_params=additional_jet_params)
+            additional_jet_params['StoppingCondition'] = 'beamparticle'
+            apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                           additional_jet_params=additional_jet_params)
+    
+
+def test_SP_recalculate_one():
+    # short of repeating the calculation
+    # can only really check the form
+    # and that points move
+    n_rows = 10
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    deltaR=0.4
+    jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.Spectral)
+    replace, remove = 0, 1
+    old_eigenspace = np.delete(jets._eigenspace, remove, axis=0)
+    jets._merge_pseudojets(remove, replace, 0)
+    # check form
+    assert jets._eigenspace.shape == (n_rows-1, n_rows-1)
+    assert jets._distances2.shape == (n_rows-1, n_rows-1)
+    # check they moved
+    assert not np.allclose(jets._eigenspace, old_eigenspace)
+    # again, with a symmetric laplacien
+    jets = make_simple_jets(floats, {'deltar':0.4,
+                                     'laplacien':'symmetric'}, FormJets.Spectral)
+    replace, remove = 0, 1
+    old_eigenspace = np.delete(jets._eigenspace, remove, axis=0)
+    jets._merge_pseudojets(remove, replace, 0)
+    # check form
+    assert jets._eigenspace.shape == (n_rows-1, n_rows-1)
+    assert jets._distances2.shape == (n_rows-1, n_rows-1)
+    # check they moved
+    assert not np.allclose(jets._eigenspace, old_eigenspace)
+    # again with a beam particle
+    jets = make_simple_jets(floats, {'DeltaR':0.4,
+                                     'StoppingCondition': "beamparticle"}, FormJets.Spectral)
+    replace, remove = 0, 1
+    old_eigenspace = np.delete(jets._eigenspace, remove, axis=0)
+    jets._merge_pseudojets(remove, replace, 0)
+    # check form
+    assert jets._eigenspace.shape == (n_rows, n_rows)
+    assert jets._distances2.shape == (n_rows, n_rows)
+    # check they moved
+    assert not np.allclose(jets._eigenspace, old_eigenspace)
     
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # TODO when this has stabalised make distance and eigenspace tests
@@ -933,23 +1050,67 @@ def test_merge_complete_jets():
 #                   internal_Splitting_step_assign_parents)
 
 # SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+# TODO intermitant fails
 def test_SM_recalculate_one():
-    n_rows = 10
-    floats = np.random.random((n_rows, 8))
-    for row in floats:
-        SimpleClusterSamples.fill_angular(row)
-    deltaR=0.4
-    jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
-    replace, remove = 0, 1
-    expected_position = (jets._eigenspace[remove] + jets._eigenspace[replace])/2
-    jets._recalculate_one(remove, replace)
-    tst.assert_allclose(expected_position, jets._eigenspace[replace])
-    # now caculate all distances
-    distances2 = np.array([[np.sum((row-col)**2) for col in jets._eigenspace]
-                           for row in jets._eigenspace])
-    np.fill_diagonal(distances2, deltaR**2)
-    tst.assert_allclose(jets._distances2, distances2)
+    n_columns = 8
+    float_variations = []
+    # try with all zeros
+    float_variations.append(np.zeros((2, n_columns)))
+    # try some set pieces
+    floats = SimpleClusterSamples.two_degenerate['floats']
+    float_variations.append(floats)
+    floats = SimpleClusterSamples.two_close['floats']
+    float_variations.append(floats)
+    floats = SimpleClusterSamples.two_oposite['floats']
+    float_variations.append(floats)
+    for i in range(20):
+        floats = np.random.random((10, n_columns))
+        float_variations.append(floats)
+
+    for floats in float_variations:
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row, True)
+        deltaR=0.4
+        jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
+        err_msg = "Problem when recalculating with floats;\n"
+        err_msg += "E, Px, Py, Pz\n"
+        for row in floats:
+            err_msg += f"{row[jets._Energy_col]}, {row[jets._Px_col]}, {row[jets._Py_col]}"
+            err_msg += f", {row[jets._Pz_col]}\n"
+        replace, remove = 0, 1
+        expected_position = (jets._eigenspace[remove] + jets._eigenspace[replace])/2
+        jets._merge_pseudojets(remove, replace, 0)
+        tst.assert_allclose(expected_position, jets._eigenspace[replace], err_msg=err_msg+"Eigenspace wrong")
+        # now caculate all distances
+        distances2 = np.array([[np.sum((row-col)**2) for col in jets._eigenspace]
+                               for row in jets._eigenspace])
+        np.fill_diagonal(distances2, deltaR**2)
+        tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
+        # try with a pt in the eigenspace
+        exp_mul = 0.5
+        jets = make_simple_jets(floats, {'DeltaR':0.4,
+                                         'ExpofPTPosition':'eigenspace',
+                                         'ExpofPTMultiplier': exp_mul}, FormJets.SpectralMean)
+        # grap the pt before the combination
+        pt_list = floats[1:, jets._PT_col]**(2*exp_mul)
+        combined_PT2 = (floats[remove, jets._Px_col] + floats[replace, jets._Px_col])**2 +\
+                       (floats[remove, jets._Py_col] + floats[replace, jets._Py_col])**2
+        pt_list[0] = combined_PT2**exp_mul
+        expected_position = (jets._eigenspace[remove] + jets._eigenspace[replace])/2
+        jets._merge_pseudojets(remove, replace, 0)
+        tst.assert_allclose(expected_position, jets._eigenspace[replace], err_msg=err_msg+"Eigenspace wrong")
+        # now caculate all distances
+        distances2 = np.array([[min(pta, ptb)*np.sum((row-col)**2) for col, pta in zip(jets._eigenspace, pt_list)]
+                               for row, ptb in zip(jets._eigenspace, pt_list)])
+        np.fill_diagonal(distances2, deltaR**2)
+        tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
+        # try with a beam particle
+        exp_mul = 0.5
+        jets = make_simple_jets(floats, {'DeltaR':0.4,
+                                         'StoppingCondition':'beamparticle'}, FormJets.SpectralMean)
+        expected_position = (jets._eigenspace[remove] + jets._eigenspace[replace])/2
+        jets._merge_pseudojets(remove, replace, 0)
+        tst.assert_allclose(expected_position, jets._eigenspace[replace], err_msg=err_msg+"Eigenspace wrong")
     
 
 # SpectralFull ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -960,15 +1121,21 @@ def test_SF_recalculate_one():
     for row in floats:
         SimpleClusterSamples.fill_angular(row)
     deltaR=0.4
-    jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
+    jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralFull)
     replace, remove = 0, 1
-    jets._recalculate_one(remove, replace)
+    assert len(jets._distances2) == n_rows
+    assert len(jets._eigenspace) == n_rows
+    jets._merge_pseudojets(remove, replace, 0)
     # now check that the eigenspace and the distances have shrunk,
     # as the eigenspace itself is already tested that should be fine
     assert len(jets._distances2) == n_rows-1
     assert len(jets._eigenspace) == n_rows-1
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#TODO
+def test_cluster_edge_cases():
+    pass
 
 def test_filter_obs():
     with TempTestDir("filter_obs") as dir_name:
@@ -1178,8 +1345,9 @@ def test_produce_summary():
         input_idx = [4, 5, 6, 3]
         tst.assert_allclose(content[:, 0], np.arange(num_tracks))
         tst.assert_allclose(content[:, 1:], jet_inputs[:, input_idx])
-        
 
+
+#TODO get working
 #def test_run_FastJet():
 #    # ignoring warnings here
 #    with warnings.catch_warnings():
@@ -1200,4 +1368,24 @@ def test_produce_summary():
 #                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=True)
 #            clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
 #
+#
 
+#TODO
+def test_cluster_multiapply():
+    pass
+
+
+def test_check_hyperparameters():
+    pass
+
+
+def test_get_jet_params():
+    pass
+
+
+def test_get_jet_names():
+    pass
+
+
+def test_check_plots_run():
+    pass
