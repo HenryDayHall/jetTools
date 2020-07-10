@@ -1,0 +1,65 @@
+Columns of interest
+~~~~~~
+Name                         Origin        Structure     Description
+~~~~~~
+Event_n                      constructed   per_event     event number in hepmc file
+N_vertices_in_event          hepmc         per_event     number of vertices in this event
+Barcode_beam_particle1       hepmc         per_event     particle barcode from a beam particle
+Barcode_beam_particle2       hepmc         per_event
+Momentum                     hepmc         per_event     units of momentum
+Length                       hepmc         per_event     units of length
+Cross_section_pb             hepmc         per_event     cross section for this process
+Cross_section_error_pb       hepmc         per_event     cross section error
+~~~~~~
+Vertex_barcode               hepmc         per_vertex    barcode (id number) for this vertex
+X                            hepmc         per_vertex    x coordinate for this vertex
+Y                            hepmc         per_vertex    y coordinate for this vertex
+Z                            hepmc         per_vertex    z coordinate for this vertex
+Ctau                         hepmc         per_vertex    lifetime coordinate for this vertex
+~~~~~~
+Particle_barcode             hepmc         per_particle  barcode (id number) for this particle
+MCPID                        hepmc         per_particle  monty carlo particle id 
+Px                           hepmc         per_particle  Particle momentum in x dir
+Py                           hepmc         per_particle  Particle momentum in y dir
+Pz                           hepmc         per_particle  Particle momentum in z dir
+Energy                       hepmc         per_particle  Particle energy
+Generated_mass               hepmc         per_particle  Particle (generated?) mass
+Status_code                  hepmc         per_particle  monty carlo status code ("did it decay")
+End_vertex_barcode           hepmc         per_particle  Vertex the particle ends at
+Start_vertex_barcode         constructed   per_particle  Vertex the particle starts from
+N_flow_codes                 hepmc         per_particle  Something about colour flow
+Flow_codes                   hepmc         per_particle  Something about colour flow
+Antiflow_codes               hepmc         per_particle  Something about colour flow
+Parents                      constructed   per_particle  Parent particles (caution, not invariant, dosn't include siblings)
+Children                     constructed   per_particle  Child particles (caution, not invarient, doesn't include siblings)
+Is_root                      constructed   per_particle  Did the particle originate from the beam
+Is_leaf                      constructed   per_particle  Does the particle exist in the final state
+PT                           constructed   per_particle  PT of the particle
+Rapidity                     constructed   per_particle  Rapidity of the particle
+Theta                        constructed   per_particle  Theta of the particle
+PseudoRapidity               constructed   per_particle  Pseudorapidity of the particle
+Phi                          constructed   per_particle  Phi of the particle
+~~~~~~
+JetInputs_SourceIdx          constructed   per_jetinput  Index in the complete list of particles for this event
+JetInputs_Energy             constructed   per_jetinput  Energy to be used by jet clustering
+JetInputs_Px                 constructed   per_jetinput  Px to be used by jet clustering
+JetInputs_Py                 constructed   per_jetinput  Py to be used by jet clustering
+JetInputs_Pz                 constructed   per_jetinput  Pz to be used by jet clustering
+~~~~~~
+FastJet_size                 constructed   per_jet       Number of particles in the jet
+FastJet_DeltaRs              constructed   per_jet       DeltaR parameter used to construct the jet
+FastJet_ExponentMulti        constructed   per_jet       -1 = antikt, 1= kt, 0 = cambridge aachen
+FastJet_RootInputIdx         constructed   per_jet       InputIdx of the pseudojet that remains after clustering
+~~~~~~
+FastJet_PT                   constructed   per_pseudojet PT of this pseudojet
+FastJet_Rapidity             constructed   per_pseudojet Rapidity of this pseudojet
+FastJet_Phi                  constructed   per_pseudojet Phi of this pseudojet
+FastJet_Energy               constructed   per_pseudojet Energy of this pseudojet
+FastJet_Px                   constructed   per_pseudojet Px of this pseudojet
+FastJet_Py                   constructed   per_pseudojet Py of this pseudojet
+FastJet_Pz                   constructed   per_pseudojet Pz of this pseudojet
+FastJet_InputIdx             constructed   per_pseudojet Id assigned to pseudojet, if this pseudojet is not a combined object this corresponds to the index of the JetInput used to create it
+FastJet_Parent               constructed   per_pseudojet Parent of this pseudojet as a InputIdx, -1 if no parent
+FastJet_Child1               constructed   per_pseudojet Child1 of this pseudojet as a InputIdx, -1 if no child
+FastJet_Child2               constructed   per_pseudojet Child2 of this pseudojet as a InputIdx, -1 if no child
+FastJet_Rank                 constructed   per_pseudojet rank of this pseudojet
