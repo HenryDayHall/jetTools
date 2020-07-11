@@ -11,9 +11,10 @@ def interactive():
         # press c-enter when you're done
     except:
         pass
+    print("...")
 
 print("~~ Example of reading a hepmc file ~~")
-hepmc_path = "~/h1bBatch2.hepmc"
+hepmc_path = "/data/h1bBatch2.hepmc"
 if os.path.exists(hepmc_path):
     print(f"Found a file to read in at {hepmc_path}")
 else:
@@ -30,7 +31,7 @@ print(" > required_size = 10")
 required_size = 10
 print(" > eventWise = ReadHepmc.Hepmc(*os.path.split(hepmc_path), start=0, stop=required_size)")
 eventWise = ReadHepmc.Hepmc(*os.path.split(hepmc_path), start=0, stop=required_size)
-print("If the chosen stop point is beyond the end of the hepmc (or equal no np.inf) "
+print("If the chosen stop point is beyond the end of the hepmc (or equal to np.inf) "
       "then the whole file is read. "
       "The awkward array is wrapped in a cutsom object called an EventWise. "
       "If the hepmc file is very large it may be necessary to read it in chunks. "
@@ -94,7 +95,7 @@ print(".root files produced by delphes can also be read into eventWise objects, 
       "however, the code included in jetTools makes assumptions about the "
       "structure of the root file that corrispond to a root file written by delphes. "
       "This code also fixes various idiosyncrasies of delphes root files.")
-root_path = "~/h1bBatch2.root"
+root_path = "/data/h1bBatch2.root"
 if os.path.exists(root_path):
     print(f"Found a file to read in at {root_path}")
 else:
