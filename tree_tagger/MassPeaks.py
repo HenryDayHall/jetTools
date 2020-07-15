@@ -2,7 +2,6 @@ import numpy as np
 import itertools
 from matplotlib import pyplot as plt
 import scipy.spatial
-#import debug
 from ipdb import set_trace as st
 from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTag
 

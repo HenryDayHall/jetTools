@@ -7,7 +7,6 @@ import os
 import numpy as np
 import multiprocessing
 from ipdb import set_trace as st
-import debug
 
 
 def make_jet_name(jet_class, jet_id):

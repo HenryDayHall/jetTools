@@ -32,7 +32,8 @@ def shape(energies, pxs, pys, pzs, my_dir='./'):
     momentums = np.vstack((pxs, pys, pzs, energies)).T
     # check for tachyons, probably edit this out at some point
     s = energies**2 - np.sum(momentums[:, :3]**2, axis=1)
-    if np.any(s <= 0):
+    tollerance = -0.001
+    if np.any(s <= tollerance):
         raise ValueError(f"Tachyons in {momentums}, s={s}")
     s = np.sum(s)
     #s = np.sum(energies**2) - np.sum(pxs**2 + pys**2 + pzs**2)

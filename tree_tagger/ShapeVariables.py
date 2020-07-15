@@ -58,12 +58,15 @@ def python_shape(energies, pxs, pys, pzs):
                        np.cos(theta_phi[0])]
         return -np.sum(np.abs(np.dot(momentums, thrust_axis)))
     theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
-    best_theta_phi = scipy.optimize.minimize(to_minimise, np.zeros(2),
+    best_theta_phi = scipy.optimize.minimize(to_minimise, np.zeros(2), method="trust-constr",
                                              bounds=theta_phi_bounds).x
     sin_theta = np.sin(best_theta_phi[0])
     thrust_axis = [sin_theta*np.cos(best_theta_phi[1]),
                    sin_theta*np.sin(best_theta_phi[1]),
                    np.cos(best_theta_phi[0])]
+    shapes['thrustVector[1]'] = thrust_axis[0]
+    shapes['thrustVector[2]'] = thrust_axis[1]
+    shapes['thrustVector[3]'] = thrust_axis[2]
     momentum_dot_thrust = np.dot(momentums, thrust_axis)
     shapes['Thrust'] = np.sum(np.abs(momentum_dot_thrust))/sum_birr
     # transverse Thrust
@@ -83,7 +86,7 @@ def python_shape(energies, pxs, pys, pzs):
         transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
         return -np.sum(np.abs(np.dot(momentums[:, :2], transverse_thrust_axis)))
     phi_bounds = (-np.pi, np.pi)
-    best_phi = scipy.optimize.minimize_scalar(to_minimise_transverse, bounds=phi_bounds,
+    best_phi = scipy.optimize.minimize_scalar(to_minimise_transverse, bounds=phi_bounds, 
                                               method='Bounded').x
     transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
     momentum_dot_Tthrust = np.dot(momentums[:, :2], transverse_thrust_axis)
@@ -186,7 +189,7 @@ def python_shape(energies, pxs, pys, pzs):
                              np.cos(theta_phi[0])]
         return -np.sum(np.abs(momentums*acoplanarity_axis))
     theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
-    best_theta_phi = scipy.optimize.minimize(to_minimise_aco, np.zeros(2),
+    best_theta_phi = scipy.optimize.minimize(to_minimise_aco, np.zeros(2), method="trust-constr",
                                              bounds=theta_phi_bounds).x
     sin_theta = np.sin(best_theta_phi[0])
     acoplanarity_axis = [sin_theta*np.cos(best_theta_phi[1]),

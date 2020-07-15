@@ -61,6 +61,10 @@ c serve per il thrust (tmm, tw asse di thrust).
         rtrak(i,4)=p6(i)
       end do
       call PXTTH3(4,3,ptrak,thrust,tmm,IERR)
+c  Pritingin like this gets through to python dict
+      print *, "thrustVector[1] ", tmm(1)
+      print *, "thrustVector[2] ", tmm(2)
+      print *, "thrustVector[3] ", tmm(3)
       do i=1,3
         tv4(i)=tmm(i)
       end do

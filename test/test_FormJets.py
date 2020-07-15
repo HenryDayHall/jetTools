@@ -8,6 +8,7 @@ from tree_tagger import Components, FormJets
 from tools import TempTestDir
 from test_Components import AwkdArrays
 import awkward
+import itertools
 
 # Consider adding tests for jets created with pseudorapidity instead of rapidity.
 # if you ever use that functionality again....
@@ -76,7 +77,7 @@ class SimpleClusterSamples:
     def phi_split(cls, config, phi2):
         rapidity = 0.
         pt = 1.
-        energy = 1.
+        energy = 1.1
         phi1 = 0.
         two = {'ints': np.array([[0, -1, -1, -1, -1],
                                  [1, -1, -1, -1, -1]]),
@@ -375,14 +376,14 @@ def test_Traditional():
 
 
 # setup and test indervidual methods inside the jet classes
-def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, **kwargs):
+def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, assign=False, **kwargs):
     with TempTestDir("tst") as dir_name:
         ew = Components.EventWise(dir_name, "tmp.awkd")
         set_JetInputs(ew, floats)
         ew.selected_index = 0
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        jets = jet_class(ew, dict_jet_params=jet_params, assign=False, **kwargs)
+        jets = jet_class(ew, dict_jet_params=jet_params, assign=assign, **kwargs)
     return jets
 
 
@@ -732,7 +733,6 @@ def test_write_event():
 
 def test_calculate_eigenspace_distances():
     n_rows = 4
-    ints = np.zeros((n_rows, 5), dtype=int) -1
     dr = 0.8
     for i in range(5):
         floats = np.random.random((n_rows, 8))
@@ -1050,7 +1050,6 @@ def test_merge_complete_jets():
 #                   internal_Splitting_step_assign_parents)
 
 # SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# TODO intermitant fails
 def test_SM_recalculate_one():
     n_columns = 8
     float_variations = []
@@ -1133,9 +1132,30 @@ def test_SF_recalculate_one():
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-#TODO
 def test_cluster_edge_cases():
-    pass
+    # go through a subset of clustering combinations checking that two particles
+    # that are placed on top of eachother are combined always
+    spectral_classes = (FormJets.Spectral, FormJets.SpectralMean, FormJets.SpectralFull)
+    deltaR = (0.1, 1.)
+    num_eig = (1, 3, np.inf)
+    exp_pos = ('input', 'eigenspace')
+    exp_mul = (-1, 0, 1)
+    affinity_type = ('linear', 'exponent')  # skip exponent2 and inverse
+    # also skip affinity cutoffs
+    laplacien = ('unnormalised', 'symmetric')
+    dist = ('angular', 'invarient', 'Luclus')
+    stopping = ('beamparticle', 'standard')
+    param_order = ['DeltaR', 'NumEigenvectors', 'ExpofPTPosition', 'ExpofPTMultiplier',
+                  'AffinityType', 'Laplacien', 'PhyDistance', 'StoppingCondition']
+    to_combine = (spectral_classes, deltaR, num_eig, exp_pos, exp_mul, affinity_type,
+                  laplacien, dist, stopping)
+    for combination in itertools.product(*to_combine):
+        jet_class = combination[0]
+        jet_params = {name: value for name, value in zip(param_order, combination[1:])}
+        # the degenrate pair
+        jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
+                               jet_params, jet_class=jet_class, assign=True)
+
 
 def test_filter_obs():
     with TempTestDir("filter_obs") as dir_name:
@@ -1347,45 +1367,149 @@ def test_produce_summary():
         tst.assert_allclose(content[:, 1:], jet_inputs[:, input_idx])
 
 
-#TODO get working
-#def test_run_FastJet():
-#    # ignoring warnings here
-#    with warnings.catch_warnings():
-#        warnings.simplefilter('ignore')
-#        with TempTestDir("fastjet") as dir_name:
-#            empty_name = "empty.awkd"
-#            empty_path = os.path.join(dir_name, empty_name)
-#            empty_ew = Components.EventWise(dir_name, empty_name)
-#            # can run fast jets via summary files or the pipe
-#            def make_jets3(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
-#                set_JetInputs(eventWise, floats)
-#                eventWise.selected_index = 0
-#                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=False)
-#            clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
-#            def make_jets4(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
-#                set_JetInputs(eventWise, floats)
-#                eventWise.selected_index = 0
-#                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=True)
-#            clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
-#
-#
+def test_run_FastJet():
+    # ignoring warnings here
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        with TempTestDir("fastjet") as dir_name:
+            empty_name = "empty.awkd"
+            empty_path = os.path.join(dir_name, empty_name)
+            empty_ew = Components.EventWise(dir_name, empty_name)
+            # can run fast jets via summary files or the pipe
+            def make_jets3(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
+                set_JetInputs(eventWise, floats)
+                eventWise.selected_index = 0
+                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=False)
+            clustering_algorithm(empty_ew, make_jets3, compare_distance=False)
+            def make_jets4(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
+                set_JetInputs(eventWise, floats)
+                eventWise.selected_index = 0
+                return FormJets.run_FastJet(eventWise, DeltaR, ExpofPTMultiplier, use_pipe=True)
+            clustering_algorithm(empty_ew, make_jets4, compare_distance=False)
 
-#TODO
+
 def test_cluster_multiapply():
-    pass
+    # event 1
+    jet_class = FormJets.SpectralMean
+    jet_params = {}
+    for i in range(5):
+        n_rows = 4
+        floats1 = np.random.random((n_rows, 8))
+        # set distance to 0
+        floats1[:, -1] = 0.
+        for row in floats1:
+            SimpleClusterSamples.fill_angular(row)
+        # event 2
+        n_rows = 5
+        floats2 = np.random.random((n_rows, 8))
+        # set distance to 0
+        floats2[:, -1] = 0.
+        for row in floats2:
+            SimpleClusterSamples.fill_angular(row)
+        # try with the first only
+        with TempTestDir("tst") as dir_name:
+            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            set_JetInputs(eventWise, floats1)
+            eventWise.selected_index = 0
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            jets = jet_class(eventWise, dict_jet_params=jet_params, assign=True)
+            end_int1 = np.array(jets._ints)
+            end_float1 = np.array(jets._floats)
+        # try with the second only
+        with TempTestDir("tst") as dir_name:
+            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            set_JetInputs(eventWise, floats2)
+            eventWise.selected_index = 0
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            jets = jet_class(eventWise, dict_jet_params=jet_params, assign=True)
+            end_int2 = np.array(jets._ints)
+            end_float2 = np.array(jets._floats)
+        # do both together with multiapply
+        columns = [name.replace("Pseudojet", "JetInputs") for name in FormJets.PseudoJet.float_columns
+                   if "Distance" not in name]
+        contents = {name: awkward.fromiter([floats1[:, i], floats2[:, i]])
+                    for i, name in enumerate(columns)}
+        columns.append("JetInputs_SourceIdx")
+        contents["JetInputs_SourceIdx"] = awkward.fromiter([np.arange(len(floats1)),
+                                                            np.arange(len(floats2))])
+        with TempTestDir("tst") as dir_name:
+            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise.append(**contents)
+            jet_name = "TestJet"
+            finished = FormJets.cluster_multiapply(eventWise, jet_class, jet_params,
+                                                   jet_name, silent=True)
+            assert finished, "Multiapply did not finish the two clusters"
+            file_name = os.path.join(dir_name, "tmp.awkd")
+            jets1 = jet_class.multi_from_file(file_name, 0, jet_name)
+            multi_ints1 = np.vstack([jet._ints for jet in jets1])
+            multi_floats1 = np.vstack([jet._floats for jet in jets1])
+            SimpleClusterSamples.match_ints_floats(end_int1, end_float1, multi_ints1, multi_floats1)
+            jets2 = jet_class.multi_from_file(file_name, 1, jet_name)
+            multi_ints2 = np.vstack([jet._ints for jet in jets2])
+            multi_floats2 = np.vstack([jet._floats for jet in jets2])
+            SimpleClusterSamples.match_ints_floats(end_int2, end_float2, multi_ints2, multi_floats2)
 
 
 def test_check_hyperparameters():
-    pass
+    params1 = {'DeltaR': .2, 'NumEigenvectors': np.inf,
+               'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
+               'AffinityType': 'exponent', 'AffinityCutoff': None,
+               'Laplacien': 'unnormalised',
+               'PhyDistance': 'angular', 'StoppingCondition': 'standard'}
+    FormJets.check_hyperparameters(FormJets.Spectral, params1)
+    params1['DeltaR'] = -1
+    with pytest.raises(ValueError):
+        FormJets.check_hyperparameters(FormJets.Spectral, params1)
+    # Traditional should not have all these params
+    params1['DeltaR'] = 1
+    with pytest.raises(ValueError):
+        FormJets.check_hyperparameters(FormJets.Traditional, params1)
+    params1['NumEigenvectors'] = 3
+    params1['AffinityCutoff'] = ('knn', 3)
+    FormJets.check_hyperparameters(FormJets.Spectral, params1)
+    del params1['NumEigenvectors']
+    FormJets.check_hyperparameters(FormJets.Spectral, params1)
 
 
-def test_get_jet_params():
-    pass
+
+def test_get_jet_names_params():
+    jet_class = FormJets.SpectralMean
+    jet_paramsA = {'DeltaR': 0.4, 'AffinityCutoff': ('distance', 2.3), 
+                   'ExpofPTPosition': 'input'}
+    floats = np.random.random((3, 8))
+    # set distance to 0
+    floats[:, -1] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    # need to keep the eventwise file around
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        set_JetInputs(eventWise, floats)
+        eventWise.selected_index = 0
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            jets = jet_class(eventWise, dict_jet_params=jet_paramsA, assign=True)
+            jets = jets.split()
+            jets[0].write_event(jets, jet_name="AAJet", event_index=0, eventWise=eventWise)
+            jet_paramsB = {k: v for k, v in jet_paramsA.items()}
+            jet_paramsB['AffinityCutoff'] = None
+            eventWise.selected_index = 0
+            jets = jet_class(eventWise, dict_jet_params=jet_paramsB, assign=True)
+            jets = jets.split()
+            jets[0].write_event(jets, jet_name="BBJet", event_index=0)
+        jet_names = FormJets.get_jet_names(eventWise)
+        assert "AAJet" in jet_names
+        assert "BBJet" in jet_names
+        assert len(jet_names) == 2
+        found_paramsA = FormJets.get_jet_params(eventWise, "AAJet", add_defaults=True)
+        for name in jet_paramsA:
+            assert found_paramsA[name] == jet_paramsA[name]
+        found_paramsB = FormJets.get_jet_params(eventWise, "BBJet", add_defaults=False)
+        for name in jet_paramsB:
+            assert found_paramsB[name] == jet_paramsB[name]
 
 
-def test_get_jet_names():
-    pass
-
-
-def test_check_plots_run():
-    pass
+#def test_check_plots_run():
+#    pass

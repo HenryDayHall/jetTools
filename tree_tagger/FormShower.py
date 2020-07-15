@@ -1,7 +1,6 @@
 """ Tools to turn clusters of particles into showers """
 import os
 from ipdb import set_trace as st
-#import debug
 import networkx
 from tree_tagger import PDGNames, DrawTrees, Components
 import itertools

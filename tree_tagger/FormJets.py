@@ -397,7 +397,7 @@ class PseudoJet:
         self.physical_distance2 = physical_distance2
         self.beam_distance2 = beam_distance2
 
-    def _set_hyperparams(self, param_list, dict_jet_params, kwargs):
+    def _set_hyperparams(self, default_params, dict_jet_params, kwargs):
         """
         Using the default parameters and the chosen parameters set the attributes
         of the Pseudojet to contain the parameters used for clustering.
@@ -405,7 +405,7 @@ class PseudoJet:
 
         Parameters
         ----------
-        param_list : dict of params
+        default_params : dict of params
             dictionary of default settings, to be applied
             when parameters are not set elsewhere
             key is parameter name, value is parameter value
@@ -419,7 +419,7 @@ class PseudoJet:
         if dict_jet_params is None:
             dict_jet_params = {}
         stripped_params = {name.split("_")[-1]:name for name in dict_jet_params}
-        for name in param_list:
+        for name in default_params:
             if name in stripped_params:
                 assert name not in kwargs
                 setattr(self, name, dict_jet_params[stripped_params[name]])
@@ -428,8 +428,8 @@ class PseudoJet:
                 dict_jet_params[name] = kwargs[name]
                 del kwargs[name]
             else:
-                setattr(self, name, param_list[name])
-                dict_jet_params[name] = param_list[name]
+                setattr(self, name, default_params[name])
+                dict_jet_params[name] = default_params[name]
         kwargs['dict_jet_params'] = dict_jet_params
 
     def _set_column_numbers(self):
@@ -437,7 +437,6 @@ class PseudoJet:
         Using the list of column names make the index of each
         column accesable as an attribute with the form self._col_<Varname>
         """
-        #print('coln_psu', end='\r', flush=True)
         prefix_len = len(self.jet_name) + 1
         # int columns
         self._int_contents = {}
@@ -587,13 +586,13 @@ class PseudoJet:
             keys are name sof parameters and values are parameter values
         """
         # add any default values
-        defaults = {name:value for name, value in self.param_list.items()
+        defaults = {name:value for name, value in self.default_params.items()
                     if name not in self.jet_parameters}
         params = {**self.jet_parameters, **defaults}
         return params
 
     @classmethod
-    def write_event(cls, pseudojets, jet_name="Pseudojet", event_index=None, eventWise=None):
+    def write_event(cls, pseudojets, jet_name=None, event_index=None, eventWise=None):
         """
         Save a jets from a single event
 
@@ -612,17 +611,19 @@ class PseudoJet:
             If not given, the eventWise of the first pseudojet will be used
             (Default value = None)
         """
+        if jet_name is None:
+            jet_name = pseudojets[0].jet_name
         if eventWise is None:
             eventWise = pseudojets[0].eventWise
         # only need to check the parameters of one jet (adds the hyperparameters)
-        pseudojets[0].check_params(eventWise)
+        pseudojets[0].check_params(eventWise, jet_name)
         if event_index is None:
             event_index = eventWise.selected_index
         arrays = cls.create_updated_dict(pseudojets, jet_name, event_index, eventWise)
         arrays = {name: awkward.fromiter(arrays[name]) for name in arrays}
         eventWise.append(**arrays)
 
-    def check_params(self, eventWise):
+    def check_params(self, eventWise, jet_name=None):
         """
         If the eventWise contains params, verify they are the same as in this Pseudojet.
         If no parameters are found in the eventWise add them.
@@ -638,8 +639,10 @@ class PseudoJet:
             The parameters in the eventWise match those of this jet.
 
         """
+        if jet_name is None:
+            jet_name = self.jet_name
         my_params = self.create_param_dict()
-        written_params = get_jet_params(eventWise, self.jet_name)
+        written_params = get_jet_params(eventWise, jet_name)
         if written_params:  # if written params exist check they match the jets params
             # returning false imediatly if not
             if set(written_params.keys()) != set(my_params.keys()):
@@ -653,7 +656,7 @@ class PseudoJet:
                     if written_params[name] != my_params[name]:
                         return False
         else:  # save the jets params
-            new_hyper = {self.jet_name + '_' + name: my_params[name] for name in my_params}
+            new_hyper = {jet_name + '_' + name: my_params[name] for name in my_params}
             eventWise.append_hyperparameters(**new_hyper)
         # if we get here everything went well
         return True
@@ -1025,7 +1028,7 @@ class PseudoJet:
 
 class Traditional(PseudoJet):
     """ Jet clustering in the style of kt/anti-kt/cambridge-acchen """
-    param_list = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'PhyDistance': 'angular'}
+    default_params = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'PhyDistance': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient']}
@@ -1058,7 +1061,7 @@ class Traditional(PseudoJet):
             Should the jets eb clustered immediatly?
             (Default; False)
         """
-        self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
+        self._set_hyperparams(self.default_params, dict_jet_params, kwargs)
         # check for nonsense in the kwargs or dict_jet_params
         pos = kwargs.get('ExpofPTPosition', 'input')
         if dict_jet_params is not None:
@@ -1295,7 +1298,7 @@ class Traditional(PseudoJet):
 class Spectral(PseudoJet):
     """ Clustering algorithm that embeds the jet inputs into spectral space to cluster """
     # list the params with default values
-    param_list = {'DeltaR': .2, 'NumEigenvectors': np.inf,
+    default_params = {'DeltaR': .2, 'NumEigenvectors': np.inf,
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent', 'AffinityCutoff': None,
                   'Laplacien': 'unnormalised',
@@ -1305,7 +1308,7 @@ class Spectral(PseudoJet):
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
+                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
                        'StoppingCondition': ['standard', 'beamparticle']}
@@ -1338,7 +1341,7 @@ class Spectral(PseudoJet):
             Should the jets eb clustered immediatly?
             (Default; False)
         """
-        self._set_hyperparams(self.param_list, dict_jet_params, kwargs)
+        self._set_hyperparams(self.default_params, dict_jet_params, kwargs)
         self._define_calculate_affinity()
         self.eigenvalues = []  # create a list to track the eigenvalues
         self.beam_particle = self.StoppingCondition == 'beamparticle'
@@ -1527,7 +1530,7 @@ class Spectral(PseudoJet):
                         affinity = np.exp(-(distances2))
                         affinity[np.argsort(distances2, axis=0) > cutoff_param] = 0
                         return affinity
-                elif self.AffinityType == 'linear':
+                elif self.AffinityType == 'linear':  # this actually makes for relative distances
                     def calculate_affinity(distances2):
                         """
                         Given physical distance squared, find an affinity.
@@ -1567,12 +1570,8 @@ class Spectral(PseudoJet):
                         """
                         affinity = distances2**-0.5
                         affinity[np.argsort(distances2, axis=0) > cutoff_param] = 0
-                        np.fill_diagonal(affinity, 0)
-                        if np.inf in affinity:
-                            # unlikely but possible, due to overlapping points
-                            # divide by 2*num items to prevent infinite laplaciens
-                            mask = np.isinf(affinity)
-                            affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
+                        mask = np.isinf(affinity)
+                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                         return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1656,12 +1655,8 @@ class Spectral(PseudoJet):
                         """
                         affinity = distances2**-0.5
                         affinity[distances2 > cutoff_param2] = 0
-                        np.fill_diagonal(affinity, 0)
-                        if np.inf in affinity:
-                            # unlikely but possible, due to overlapping points
-                            # divide by 2*num items to prevent infinite laplaciens
-                            mask = np.isinf(affinity)
-                            affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
+                        mask = np.isinf(affinity)
+                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                         return affinity
                 else:
                     raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1740,12 +1735,9 @@ class Spectral(PseudoJet):
 
                     """
                     affinity = distances2**-0.5
-                    np.fill_diagonal(affinity, 0)
-                    if np.inf in affinity:
-                        # unlikely but possible, due to overlapping points
-                        # divide by 2*num items to prevent infinite laplaciens
-                        mask = np.isinf(affinity)
-                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
+                    # this is prone to infinities from various sources
+                    mask = np.isinf(affinity)
+                    affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                     return affinity
             else:
                 raise ValueError(f"affinity type {self.AffinityType} unknown")
@@ -1914,7 +1906,7 @@ class Spectral(PseudoJet):
 class Splitting(Spectral):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
-    param_list = {'NumEigenvectors': np.inf,
+    default_params = {'NumEigenvectors': np.inf,
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent', 'AffinityCutoff': None,
                   'Laplacien': 'unnormalised',
@@ -1923,7 +1915,7 @@ class Splitting(Spectral):
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCuttoff': [None, ('knn', Constants.numeric_classes['nn']),
+                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient']}
@@ -2790,7 +2782,7 @@ for name in cluster_classes:
 def check_hyperparameters(cluster_class, params):
     """
     Check the clustering parameters chosen are valid for the clustering class to be used.
-    Raises an error if there is a problem.
+    Raises a ValueError if there is a problem.
 
     Parameters
     ----------
@@ -2803,6 +2795,10 @@ def check_hyperparameters(cluster_class, params):
     if isinstance(cluster_class, str):
         cluster_class = cluster_classes[cluster_class]
     permitted = cluster_class.permited_values
+    # check all the given params are the in permitted
+    if not set(params.keys()).issubset(permitted.keys()):
+        unwanted_keys = [name for name in params.keys() if name not in permitted]
+        raise ValueError(f"Some parameters not permited for {cluster_class.__name__}; {unwanted_keys}")
     error_str = f"In {cluster_class.__name__} {{}} is not a permitted value for {{}}. Permitted value are {{}}"
     for name, opts in permitted.items():
         try:
@@ -2820,6 +2816,11 @@ def check_hyperparameters(cluster_class, params):
         except (ValueError, TypeError):
             pass
         if name == 'AffinityCutoff':
+            if value in opts:  # ture for None
+                continue
+            else:
+                # done this way to prevent any alteration to the original opts
+                opts = [opt for opt in opts if opt is not None]
             primary, secondary = value
             try:
                 secondary_options = next(s for p, s in opts if p == primary)
@@ -2868,11 +2869,11 @@ def get_jet_params(eventWise, jet_name, add_defaults=False):
                if name.startswith(prefix)}
     if add_defaults:
         if jet_name.startswith("SpectralMean"):
-            defaults = SpectralMean.param_list
+            defaults = SpectralMean.default_params
         elif jet_name.startswith("Spectral"):
-            defaults = Spectral.param_list
+            defaults = Spectral.default_params
         else:
-            defaults = Traditional.param_list
+            defaults = Traditional.default_params
         not_found = {name: defaults[name] for name in defaults
                      if name not in columns}
         columns = {**columns, **not_found}
@@ -2894,12 +2895,11 @@ def get_jet_names(eventWise):
         names of jets inside this eventWise
 
     """
-    # grab an ending fromt he pseudojet int columns
-    ending = next(PseudoJet.int_columns).split('_', 1)[1]
+    # grab an ending from the pseudojet int columns
+    ending = '_' + PseudoJet.int_columns[0].split('_', 1)[1]
     possibles = [name.split('_', 1)[0] for name in eventWise.columns if name.endswith(ending)]
-    # the beggining could be any of the multiapply inputs
     # with the word Jet put on the end
-    possibles = [name  for name in possibles if name.split('Jet', 1)[0] in multiapply_input]
+    possibles = [name for name in possibles if name.endswith('Jet')]
     return possibles
 
 
