@@ -1,4 +1,5 @@
 ![Travis (.org)](https://img.shields.io/travis/HenryDayHall/jetTools)
+![Codecov](https://img.shields.io/codecov/c/gh/HenryDayHall/jetTools)
 # Tools for jet physics
 
 This repo contains tools for doing jet physics.
