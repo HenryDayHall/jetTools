@@ -929,19 +929,61 @@ def test_step_assign_parents():
             assert len(jets._floats) == n_rows
 
 
-def test_Spectral_internal():
+def test_Spectral_internal_linear():
     # testing Pseudojet functions, but creating Spectral jets
     # as Pseudojet should not be directly created and Traditional lack support for all options
-    for affinity in ['linear', 'exponent', 'exponent2', 'inverse']:
-        for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
-            additional_jet_params = dict(StoppingCondition='standard',
-                                         AffinityType=affinity,
-                                         AffinityCutoff=affinity_cutoff)
-            apply_internal(FormJets.Spectral, internal_calculate_affinity,
-                           additional_jet_params=additional_jet_params)
-            additional_jet_params['StoppingCondition'] = 'beamparticle'
-            apply_internal(FormJets.Spectral, internal_calculate_affinity,
-                           additional_jet_params=additional_jet_params)
+    affinity = 'linear'
+    for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        additional_jet_params = dict(StoppingCondition='standard',
+                                     AffinityType=affinity,
+                                     AffinityCutoff=affinity_cutoff)
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+        additional_jet_params['StoppingCondition'] = 'beamparticle'
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+    
+def test_Spectral_internal_exponent():
+    # testing Pseudojet functions, but creating Spectral jets
+    # as Pseudojet should not be directly created and Traditional lack support for all options
+    affinity  = 'exponent'
+    for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        additional_jet_params = dict(StoppingCondition='standard',
+                                     AffinityType=affinity,
+                                     AffinityCutoff=affinity_cutoff)
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+        additional_jet_params['StoppingCondition'] = 'beamparticle'
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+    
+def test_Spectral_internal_exponent2():
+    # testing Pseudojet functions, but creating Spectral jets
+    # as Pseudojet should not be directly created and Traditional lack support for all options
+    affinity = 'exponent2'
+    for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        additional_jet_params = dict(StoppingCondition='standard',
+                                     AffinityType=affinity,
+                                     AffinityCutoff=affinity_cutoff)
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+        additional_jet_params['StoppingCondition'] = 'beamparticle'
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+    
+def test_Spectral_internal_inverse():
+    # testing Pseudojet functions, but creating Spectral jets
+    # as Pseudojet should not be directly created and Traditional lack support for all options
+    affinity = 'inverse'
+    for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        additional_jet_params = dict(StoppingCondition='standard',
+                                     AffinityType=affinity,
+                                     AffinityCutoff=affinity_cutoff)
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
+        additional_jet_params['StoppingCondition'] = 'beamparticle'
+        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+                       additional_jet_params=additional_jet_params)
     
 
 def test_SP_recalculate_one():
