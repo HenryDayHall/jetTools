@@ -1,7 +1,4 @@
 language: python
-before_install:
-  - sudo apt update
-  - sudo apt install megacmd
 python:
   - "3.6"
   - "3.7"
