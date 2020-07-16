@@ -2679,11 +2679,11 @@ def _run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_t
             #st()
             raise RuntimeError("Subrocess problems")
         # recursive call
-        output_lines = run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path, tries)
+        output_lines = _run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path, tries)
     return output_lines
 
 
-def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={},
+def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
                        jet_name=None, batch_length=100, silent=False):
     """
     Apply a clustering algorithm to many events.
@@ -2694,7 +2694,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={},
         data file with inputs, results are also written here
     cluster_algorithm: callable
         function or class that will create the jets
-    cluster_parameters : dict
+    dict_jet_params : dict
         dictionary of input parameters for clustering settings
         (Default value = {})
     jet_name : string
@@ -2714,24 +2714,23 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={},
         All events in the eventWise have been clustered
 
     """
-    check_hyperparameters(cluster_algorithm, cluster_parameters)
-    if jet_name is None and 'jet_name' in cluster_parameters:
-        jet_name = cluster_parameters['jet_name']
-    elif jet_name is None:
-        for name, algorithm in cluster_classes.items():
+    check_hyperparameters(cluster_algorithm, dict_jet_params)
+    if jet_name is None:
+        for name, algorithm in multiapply_input.items():
             if algorithm == cluster_algorithm:
                 jet_name = name
                 break
-    cluster_parameters["jet_name"] = jet_name  # enforce consistancy
+    additional_parameters = {}
+    additional_parameters["jet_name"] = jet_name
     if cluster_algorithm == run_FastJet:
         # make sure fast jet uses the pipe
-        cluster_parameters["use_pipe"] = True
+        additional_parameters["use_pipe"] = True
         jet_class = Traditional
     else:
         # often the cluster algorithm is the jet class
         jet_class = cluster_algorithm
         # make sure the assignment is done on creation
-        cluster_parameters["assign"] = True
+        additional_parameters["assign"] = True
     eventWise.selected_index = None
     dir_name = eventWise.dir_name
     n_events = len(eventWise.JetInputs_Energy)
@@ -2747,7 +2746,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={},
     # updated_dict will be replaced in the first batch
     updated_dict = None
     checked = False
-    has_eigenvalues = 'NumEigenvectors' in cluster_parameters
+    has_eigenvalues = 'NumEigenvectors' in dict_jet_params
     if has_eigenvalues:
         eigenvalues = []
     for event_n in range(start_point, end_point):
@@ -2756,7 +2755,8 @@ def cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters={},
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
-        jets = cluster_algorithm(eventWise, **cluster_parameters)
+        jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
+                                 **additional_parameters)
         if has_eigenvalues:
             eigenvalues.append(awkward.fromiter(jets.eigenvalues))
         jets = jets.split()
