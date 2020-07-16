@@ -1350,6 +1350,9 @@ class Spectral(PseudoJet):
         if dict_jet_params is not None:
             kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
+        # make a version of the number of eigenvalues that
+        # is garenteed to be finitie
+        self._NumEigenvectors = int(np.nan_to_num(self.NumEigenvectors))
         self._calculate_eigenspace()  # we need to make the eigenspace first
         if assign:
             self.assign_parents()
@@ -1426,7 +1429,7 @@ class Spectral(PseudoJet):
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = \
-                    scipy.linalg.eigh(laplacien, eigvals=(1, self.NumEigenvectors+1))
+                    scipy.linalg.eigh(laplacien, eigvals=(1, self._NumEigenvectors+1))
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
@@ -2016,7 +2019,7 @@ class Splitting(Spectral):
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien,
-                                                          eigvals=(1, self.NumEigenvectors))
+                                                          eigvals=(1, self._NumEigenvectors))
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found

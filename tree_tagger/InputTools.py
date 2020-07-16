@@ -28,20 +28,19 @@ class PreSelections:
         if file_name is not None:
             with open(file_name, 'r') as in_file:
                 str_lines = in_file.readlines()
-                try:
-                    self.questions = str_lines[0].split(self._sep)
-                    self.consistant_length = [int(q) for q in str_lines[1].split(self._sep)]
-                    # answers may contain numpy arrays,
-                    self.answers = []
-                    for answer in str_lines[2].split(self._sep):
-                        try:
-                            answer = ast.literal_eval(answer)
-                        except SyntaxError:
+                self.questions = [q.replace('\n', '') for q in str_lines[0].split(self._sep)]
+                self.consistant_length = [int(q) for q in str_lines[1].split(self._sep)]
+                # answers may contain numpy arrays,
+                for answer in str_lines[2].split(self._sep):
+                    if answer.endswith('\n'):
+                        answer = answer[:-1]
+                    answer = answer.strip()
+                    try:
+                        answer = ast.literal_eval(answer)
+                    except (SyntaxError, ValueError):
+                        if ' ' in answer:
                             answer = [ast.literal_eval(a) for a in answer[1:-1].split()]
-                        answers.append(answer)
-                except:
-                    st()
-                    str_lines
+                    self.answers.append(answer)
             assert len(self.questions) == len(self.consistant_length)
             assert len(self.questions) == len(self.answers)
 
