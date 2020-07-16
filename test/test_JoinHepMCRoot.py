@@ -7,19 +7,19 @@ from ipdb import set_trace as st
 
 def test_marry():
     # get a root file
-    root_file = os.path.join(data_dir, "h1bBatch2.root")
+    root_file = os.path.join(data_dir, "mini.root")
     dir_name, save_name = os.path.split(root_file)
     components = ["Particle", "Track", "Tower"]
     rootreadout = Components.RootReadout(dir_name, save_name, components)
     # decide how many events
-    n_events = min(len(rootreadout.Energy), 100)
+    n_events = min(len(rootreadout.Energy), 4)
 
     with TempTestDir("marry") as dir_name:
         # create a cut down verson of the root file
         contents = {name: getattr(rootreadout, name)[:n_events] for name in rootreadout.columns}
         columns = list(contents.keys())
         restricted = Components.EventWise(dir_name, "restricted.awkd", columns=columns, contents=contents)
-        hepmc_file = os.path.join(data_dir, "h1bBatch2.hepmc")
+        hepmc_file = os.path.join(data_dir, "mini.hepmc")
         hepmc_dir_name, hepmc_save_name = os.path.split(hepmc_file)
         hepmc = ReadHepmc.Hepmc(hepmc_dir_name, hepmc_save_name, 0, n_events)
         JoinHepMCRoot.marry(hepmc, restricted)

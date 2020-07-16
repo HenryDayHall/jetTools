@@ -6,9 +6,9 @@ import os
 import awkward
 import pickle
 
-data_dir = "./base_data"
+data_dir = "./mini_data"
 if not os.path.exists(data_dir):
-    data_dir = "../base_data"
+    data_dir = "../mini_data"
 
 
 def generic_equality_comp(x, y):

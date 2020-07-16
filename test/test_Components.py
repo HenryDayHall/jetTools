@@ -930,7 +930,7 @@ def test_add_PT():
 
 
 def test_RootReadout():
-    root_file = os.path.join(data_dir, "h1bBatch2.root")
+    root_file = os.path.join(data_dir, "mini.root")
     dir_name, save_name = os.path.split(root_file)
     components = ["Particle", "Track", "Tower"]
     rr = Components.RootReadout(dir_name, save_name, components)
