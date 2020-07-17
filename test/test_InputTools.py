@@ -186,11 +186,42 @@ def test_select_values():
 
 
 def test_PreSelections():
+    # manually clear the last sugestions
+    InputTools.last_selections = InputTools.PreSelections()
     messages1 = ["Blarfle", "good dog", "bork bork", "clip clop"]
-    messages2 = ["Blarfle", "good cat", "bork bork!"]
     constant_lenghts = [-1, 5, 9, -1]
-    functions = [InputTools.get_file_name, InputTools.list_complete, InputTools.select_values,
-                 InputTools.select_value]
-    complete_from = ["woof"]
+    functions = [InputTools.get_file_name, 
+                 lambda msg, clen: InputTools.list_complete(msg, [], clen),
+                 lambda msg, clen: InputTools.select_values(msg, ['bog', 'fog'], [2, 3],
+                                                            consistant_length=clen),
+                 lambda msg, clen: InputTools.select_value(msg, 1, consistant_length=clen)]
     inputs = ["fog.meow", "boop", '3, 4', '5']
     expected = ["fog.meow", "boop", [3., 4.], 5.]
+    for i, func in enumerate(functions):
+        with replace_stdin(io.StringIO(inputs[i])):
+            func(messages1[i], constant_lenghts[i])
+    # this should have filled the last_selections
+    for i, message in enumerate(messages1):
+        # there may be stuff printed besides the message
+        assert message in InputTools.last_selections.questions[i]
+        assert constant_lenghts[i] == InputTools.last_selections.consistant_length[i]
+        try:
+            assert expected[i] == InputTools.last_selections.answers[i]
+        except ValueError:
+            tst.assert_allclose(expected[i], InputTools.last_selections.answers[i])
+    # write and read
+    with TempTestDir("tst") as dir_name:
+        file_name = os.path.join(dir_name, "last_sel.dat")
+        InputTools.last_selections.write(file_name)
+        InputTools.pre_selections = InputTools.PreSelections(file_name)
+    messages2 = ["Blarfle", "good cat", "bork bork!"]
+    for i, msg in enumerate(messages2):
+        found = functions[i](msg, constant_lenghts[i])
+        try:
+            assert expected[i] == found
+        except ValueError:
+            tst.assert_allclose(expected[i], found)
+
+    
+
+

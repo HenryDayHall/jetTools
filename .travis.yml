@@ -6,5 +6,6 @@ python:
   - "3.6"
   - "3.7"
   - "3.8"
-script: coverage run -m pytest
+# must turn off warnings becuase otherwise the travis log file gets too long
+script: coverage run -m pytest -p no:warnings
 after_success: bash <(curl -s https://codecov.io/bash)

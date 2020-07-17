@@ -105,6 +105,8 @@ class PreSelections:
         -------
 
         """
+        # remove any new lines from the message
+        message = message.replace(os.linesep, '').replace('\n', '')
         self.questions.append(message)
         self.consistant_length.append(consistant_length)
         self.answers.append(response)
