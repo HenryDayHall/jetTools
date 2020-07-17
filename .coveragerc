@@ -23,3 +23,6 @@ exclude_lines =
     if __name__ == .__main__.:
 	def main
 
+    # don't bother with plotting methods - it should be clear if these are not working
+    def plot_
+

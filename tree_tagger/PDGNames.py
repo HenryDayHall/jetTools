@@ -84,7 +84,7 @@ class Identities:
         return particle
 
     def __str__(self):
-        print("(Particle attributes from Monte Carlo PID)")
+        return "(Particle attributes from Monte Carlo PID)"
 
 
 class IDConverter(Identities):
