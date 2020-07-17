@@ -6,6 +6,8 @@ import os
 import io
 from tree_tagger import InputTools
 import unittest.mock
+from ipdb import set_trace as st
+import numpy.testing as tst
 
 
 @contextmanager
@@ -83,23 +85,68 @@ def test_get_dir_name():
 
 
 def test_list_complete():
-    pass
+    select_from = ['aaa', 'abb', 'bbb']
+    # chcek get list complete allows arbitary input
+    arbitary = "jflsafhdkas ;lasjdf"
+    with replace_stdin(io.StringIO(arbitary)):
+        found = InputTools.list_complete("Msg ", select_from)
+    assert found.strip() == arbitary
+    # tab completing 
+    complete = 'b\t'
+    with replace_stdin(io.StringIO(complete)):
+        with unittest.mock.patch('tree_tagger.InputTools.tab_complete',
+                                 new=fake_tab_complete):
+            found = InputTools.list_complete("Msg ", select_from)
+    expected = select_from[-1]
+    assert found.strip() == expected, f"Found {found} from {complete}, expected {expected}"
+
 
 
 def test_yesNo_question():
-    pass
+    truthies = ['y', 'yes', '1', 'true', 'Y', 'YES']
+    for inp in truthies:
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.yesNo_question("Msg ")
+        assert found
+    falsies = ['n', 'no', '0', 'false', 'N', 'No']
+    for inp in falsies:
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.yesNo_question("Msg ")
+        assert not found
 
 
 def test_get_literal():
-    pass
+    inputs = ['1', '1.', 'True', '[1,2, 3]', '(3,4)']
+    expecteds = [1, 1., True, [1,2, 3], (3,4)]
+    for inp, exp in zip(inputs, expecteds):
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.get_literal("Msg ")
+        assert type(found) == type(exp)
+        tst.assert_allclose(found, exp)
+    inputs = ['1', '1.', 'True', '[1,2, 3]', '(3,4)']
+    expecteds = [1., 1, 1, (1,2, 3), [3,4]]
+    converters = [float, int, int, tuple, list]
+    for inp, exp, conv in zip(inputs, expecteds, converters):
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.get_literal("Msg ", conv)
+        assert type(found) == type(exp)
+        tst.assert_allclose(found, exp)
 
 
 def test_print_strlist():
-    pass
+    InputTools.print_strlist(['foo', 3, True])
 
 
 def test_get_time():
-    pass
+    hours = 1
+    mins = 1
+    seconds = 1
+    expected = hours*60**2 + mins*60 + seconds
+    to_input = f'{hours}\n{mins}\n{seconds}'
+    with replace_stdin(io.StringIO(to_input)):
+        found = InputTools.get_time("Msg ")
+    assert found == expected
+
 
 
 def test_select_values():

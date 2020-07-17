@@ -376,11 +376,15 @@ def list_complete(message, possibilities, consistant_length=-1):
         -------
 
         """
-        line = readline.get_line_buffer()
-        if not line:
+        #line = readline.get_line_buffer()
+        #if not line:
+        #    return [c + " " for c in possibilities][state]
+        #else:
+        #    return [c + " " for c in possibilities if c.startswith(line)][state]
+        if not text:
             return [c + " " for c in possibilities][state]
         else:
-            return [c + " " for c in possibilities if c.startswith(line)][state]
+            return [c + " " for c in possibilities if c.startswith(text)][state]
     selection = tab_complete(list_completer, message, previous_choice)
     set_previous("list_complete", message, selection)
     last_selections.append(message, selection, consistant_length)
