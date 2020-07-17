@@ -504,10 +504,15 @@ def print_strlist(my_list):
     -------
 
     """
-    rows, _ = os.popen('stty size', 'r').read().split()
-    rows = int(rows)
+    try:
+        cols, _ = os.popen('stty size', 'r').read().split()
+    except ValueError:  # sometimes fails
+        import shutil
+        fall_back = (80, 20)
+        cols, _ = shutil.get_terminal_size(fall_back)
+    cols = int(cols)
     entry_width = max([len(key)+1 for key in my_list])
-    per_row = rows//entry_width + 1
+    per_row = cols//entry_width + 1
     for i, entry in enumerate(my_list):
         print(entry.ljust(entry_width), end='')
         if i%per_row == 0 and i>0:
@@ -620,11 +625,15 @@ def select_value(pretty_name, default, value_class=np.float, consistant_length=-
     prepared_response = pre_selections[message]
     if prepared_response is not None:
         return prepared_response
-    inp = input(message)
+    inp = input(message).strip()
     if inp == '':
         chosen = default
     else:
-        chosen = value_class(inp)
+        try:
+            chosen = value_class(inp)
+        except ValueError:
+            chosen = value_class(ast.literal_eval(inp))
     print("{} = {}".format(pretty_name, str(chosen)))
     last_selections.append(message, chosen, consistant_length)
     return chosen
+
