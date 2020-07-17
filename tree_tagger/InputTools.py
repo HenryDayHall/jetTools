@@ -586,14 +586,17 @@ def select_values(pretty_name, column_names, defaults, value_class=np.float, con
     prepared_response = pre_selections[message]
     if prepared_response is not None:
         return prepared_response
-    inp = input(message)
+    inp = input(message).strip()
     if inp == '':
         chosen = defaults
     else:
         split_inp = inp.replace(',', ' ').split()
         if column_names is None:
             n_columns = len(split_inp)
-        chosen = np.array([value_class(i) for i in split_inp[:n_columns]])
+        try:
+            chosen = np.array([value_class(i) for i in split_inp[:n_columns]])
+        except ValueError:
+            chosen = np.array([value_class(ast.literal_eval(i)) for i in split_inp[:n_columns]])
     print("{} = [{}]".format(pretty_name, ', '.join([str(c) for c in chosen])))
     last_selections.append(message, chosen, consistant_length)
     return chosen

@@ -186,4 +186,11 @@ def test_select_values():
 
 
 def test_PreSelections():
-    pass
+    messages1 = ["Blarfle", "good dog", "bork bork", "clip clop"]
+    messages2 = ["Blarfle", "good cat", "bork bork!"]
+    constant_lenghts = [-1, 5, 9, -1]
+    functions = [InputTools.get_file_name, InputTools.list_complete, InputTools.select_values,
+                 InputTools.select_value]
+    complete_from = ["woof"]
+    inputs = ["fog.meow", "boop", '3, 4', '5']
+    expected = ["fog.meow", "boop", [3., 4.], 5.]
