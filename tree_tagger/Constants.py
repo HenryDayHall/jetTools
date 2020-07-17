@@ -45,7 +45,7 @@ def is_numeric_class(param, permitted):
                 return False
             if int_value != param:
                 return False
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             return False
     elif permitted == 'positive definite number':
         try:
