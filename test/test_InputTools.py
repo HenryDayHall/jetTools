@@ -134,7 +134,7 @@ def test_get_literal():
 
 
 def test_print_strlist():
-    InputTools.print_strlist(['foo', 3, True])
+    InputTools.print_strlist(['foo', '3', 'dog'])
 
 
 def test_get_time():
@@ -148,13 +148,41 @@ def test_get_time():
     assert found == expected
 
 
+def test_select_value():
+    default = 4.
+    inputs = ['1', '1.', '-2', ' ']
+    expecteds = [1., 1., -2., default]
+    for inp, exp in zip(inputs, expecteds):
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.select_value("dog ", default)
+        assert type(found) == type(exp)
+        assert found == exp
+    inputs = ['1', '1.', ' ']
+    expecteds = [1., 1, default]
+    converters = [float, int, int]
+    for inp, exp, conv in zip(inputs, expecteds, converters):
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.select_value("dog ", default, conv)
+        assert type(found) == type(exp)
+        assert found == exp
+
 
 def test_select_values():
-    pass
-
-
-def test_select_value():
-    pass
+    default = [4., 12.]
+    inputs = ['1 4', '1., 10', '-2', ' ']
+    expecteds = [[1., 4.], [1., 10.], [-2.], default]
+    for inp, exp in zip(inputs, expecteds):
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.select_values("friends", ["dog ", "frog"], default)
+        assert isinstance(found[0], type(exp[0]))
+        tst.assert_allclose(found, exp)
+    inputs = ['1 4', '1.3, 10.2', '-2']
+    expecteds = [[1., 4.], [1, 10], [-2]]
+    converters = [float, int, int]
+    for inp, exp, conv in zip(inputs, expecteds, converters):
+        with replace_stdin(io.StringIO(inp)):
+            found = InputTools.select_values("animals", ["dog ", "frog"], default, conv)
+        tst.assert_allclose(found, exp)
 
 
 def test_PreSelections():
