@@ -126,8 +126,21 @@ class Shower:
         self.amalgam = True
         total_particle_idxs = len(set(self.particle_idxs).union(set(other_shower.particle_idxs)))
         next_free_sIndex = len(self.particle_idxs)
-        self.particle_idxs.resize(total_particle_idxs)
-        self.labels.resize(total_particle_idxs)
+        # prep the existing column
+        new_idxs = np.empty(total_particle_idxs, dtype=int)
+        new_idxs[:len(self.particle_idxs)] = self.particle_idxs
+        self.particle_idxs = new_idxs
+        new_labels = np.empty(total_particle_idxs, dtype=str)
+        new_labels[:len(self.labels)] = self.labels
+        self.labels = new_labels
+        try:
+            self.parents = self.parents.tolist()
+        except AttributeError:
+            pass
+        try:
+            self.children = self.children.tolist()
+        except AttributeError:
+            pass
         for oIndex, oID in enumerate(other_shower.particle_idxs):
             if oID in self.particle_idxs:  #check for agreement
                 sIndex = list(self.particle_idxs).index(oID)
@@ -162,7 +175,7 @@ class Shower:
         
         """
         root_idxs = get_roots(self.particle_idxs, self.parents)
-        if not self.amalgam:
+        if not self.amalgam and len(self.particle_idxs):
             assert len(root_idxs) == 1, "There should only be one root to a shower"
         self.root_idxs = root_idxs
         list_idxs = list(self.particle_idxs)
@@ -187,7 +200,6 @@ class Shower:
 
         
         """
-        #TODO not working.
         # put the first rank in
         current_rank = self.root_local_idxs  
         rank_n = 0
@@ -210,8 +222,10 @@ class Shower:
             ranks[current_rank] = rank_n
             has_decendants = len(current_rank) > 0
         assert -1 not in ranks
+        rank_n -= 1  # will have incremented it one time too many
         # finally, promote all end state particles to the highest rank
-        ranks[self.ends] = rank_n
+        ends = self.ends
+        ranks[[i in ends for i in self.particle_idxs]] = rank_n
         self.ranks = ranks
         return ranks
 
@@ -246,14 +260,14 @@ class Shower:
             if not np.all([m in self.particle_idxs for m in parents_here]):
                 outside_idxs.append(idx)
         return outside_idxs
-
+    
     @property
     def ends(self):
-        """ """
+        """ global idxs not local """
         _ends = []
         for i, children_here in enumerate(self.children):
             if np.all([child is None for child in children_here]):
-                _ends.append(i)
+                _ends.append(self.particle_idxs[i])
         return _ends
 
     @property
@@ -286,7 +300,7 @@ def upper_layers(eventWise, n_layers=5, capture_pids=[]):
     particle_idxs = set(get_roots(list(range(n_particles)), eventWise.Parents))
     current_layer = [*particle_idxs]  # copy it into a new layer
     locations_to_capture = {i for i, pid in enumerate(eventWise.MCPID) if pid in capture_pids}
-    layer_reached = 0
+    layer_reached = 1
     while locations_to_capture or layer_reached < n_layers:
         children = set(eventWise.Children[current_layer].flatten())
         locations_to_capture.difference_update(children)
@@ -428,81 +442,6 @@ def make_tree(particle_idxs, parents, children, labels):
     label_dict = {i:l for i, l in zip(particle_idxs, labels)}
     networkx.relabel_nodes(graph, label_dict)
     return graph
-
-
-# don't use - hits recursion limit
-def recursive_grab(seed_id, particle_idxs, relatives):
-    """
-    Not a good idea in python
-
-    Parameters
-    ----------
-    seedID : int
-        root particle ID
-    particle_idxs : numpy array of ints
-        particle_idxs of all particles considered
-    relatives : 2D numpy array of ints
-        particle_idxs of relatives of all particles in the ID list
-    seed_id :
-        
-
-    Returns
-    -------
-
-    
-    """
-    try:
-        index = np.where(particle_idxs == seed_id)[0][0]
-    except IndexError:
-        print(f"could not find seed_id {seed_id}")
-        return []
-    all_indices = [index]
-    our_rels = relatives[index]
-    for relative in our_rels[our_rels is not None]:
-        all_indices += recursive_grab(relative, particle_idxs, relatives)
-    return all_indices
-
-
-def x_event_shared_ends(eventWise, all_roots, shared_counts):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        param all_roots:
-    shared_counts :
-        
-    all_roots :
-        
-
-    Returns
-    -------
-
-    
-    """
-    n_roots = len(all_roots)
-    showers = get_showers(eventWise)
-    roots = [int(eventWise.MCPID[shower.root_idxs[0]]) for shower in showers]
-    new_roots = [root for root in roots if root not in all_roots]
-    for root in set(new_roots):
-        print(f"New root {root}")
-        all_roots.append(root)
-        for i in range(n_roots):
-            shared_counts[i].append(0)
-        n_roots += 1
-        shared_counts.append([0 for _ in range(n_roots)])
-    ends = [shower.particle_idxs[shower.ends].tolist() for shower in showers]
-    for i, shower in enumerate(ends):
-        root1_idx = all_roots.index(roots[i])
-        for end in shower:
-            # only look in the forward driection to avoid double counting
-            for j, other_shower in enumerate(ends[i+1:]):
-                root2_idx = all_roots.index(roots[j])
-                if end in other_shower:
-                    shared_counts[root1_idx][root2_idx] += 1
-                    shared_counts[root2_idx][root1_idx] += 1
-    return all_roots, shared_counts
 
 
 def event_shared_ends(eventWise, all_roots, shared_counts, exclude_pids=True):

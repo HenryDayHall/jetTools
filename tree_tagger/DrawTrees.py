@@ -63,7 +63,7 @@ class DotGraph:
                 if parent in shower.particle_idxs:
                     self.addEdge(parent, this_id)
         # add the labels
-        shower_leaf_particle_idxs = shower.particle_idxs[shower.ends]
+        shower_leaf_particle_idxs = shower.ends
         # set up a legened
         legened_id = 0
         internal_particle = "darkolivegreen1"
@@ -75,6 +75,9 @@ class DotGraph:
         outside_particle = "gold"
         self.addLegendNode(legened_id, "Connected to other shower", colour=outside_particle)
         legened_id += 1
+        # if there are no objects then we only have a legened
+        if len(shower) == 0:
+            return
         # add the shower particles in
         for this_id, label in zip(shower.particle_idxs, shower.labels):
             colour = internal_particle
@@ -304,7 +307,7 @@ def main():
             chosen_showers.append(shower)
             print(f"Shower roots {shower.root_idxs}")
             max_children = max([len(d) for d in shower.children])
-            end_ids = [shower.particle_idxs[e] for e in shower.ends]
+            end_ids = shower.ends
             print(f"Drawing shower {i}, has {max_children} max children. Daughters to particles ratio = {max_children/len(shower.children)}")
             # pick the jet with largest overlap
             largest_overlap = 0
