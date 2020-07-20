@@ -1,5 +1,4 @@
 Now
-tree_tagger/FormShower.py
 tree_tagger/DrawTrees.py
 tree_tagger/TrueTag.py
 tree_tagger/JetQuality.py
