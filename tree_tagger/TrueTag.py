@@ -55,7 +55,11 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
                                in jet_raps]
                               for tag_i in tag_idx])
     dist2 = np.square(phi_distance) + np.square(rap_distance)
-    closest = np.argmin(dist2, axis=1)
+    try:
+        closest = np.argmin(dist2, axis=1)
+    except np.AxisError:
+        assert len(dist2) == 0
+        return dist2.reshape((0, 0))
     if valid_jets is not None:
         # revert to true indices
         closest = valid_jets[closest]
@@ -90,10 +94,11 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
 
     
     """
+    assert eventWise.selected_index is not None
     # if no tag pids given, anything that contains a b
     if tag_pids is None:
         tag_pids = np.array([-5])
-    elif tag_pids == 'hadrons':
+    elif isinstance(tag_pids, str) and tag_pids == 'hadrons':
         tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     if include_antiparticles:
         tag_pids = np.concatenate((tag_pids, -tag_pids))
@@ -109,11 +114,7 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     tag_idx = []
     # now if there have decendants in the tag list favour the decendant
     convergent_roots = 0
-    i = 0
     while len(possible_tag) > 0:
-        i+=1
-        if i > 1000:
-            st()
         possible = possible_tag.pop()
         eligable_children = [child for child in eventWise.Children[possible]
                              if eventWise.MCPID[child] in tag_pids]
