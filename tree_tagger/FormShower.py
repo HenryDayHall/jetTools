@@ -1,7 +1,6 @@
 """ Tools to turn clusters of particles into showers """
 import os
 from ipdb import set_trace as st
-import networkx
 from tree_tagger import PDGNames, DrawTrees, Components
 import itertools
 from matplotlib import pyplot as plt
@@ -315,6 +314,32 @@ def upper_layers(eventWise, n_layers=5, capture_pids=[]):
     return shower
 
 
+def get_roots(particle_ids, parents):
+    """
+    From a list of particle particle_idxs and a list of parent particle_idxs determin root particles
+    
+    A root particle is one whos parents are both from outside the particle list.
+
+    Parameters
+    ----------
+    particle_ids : numpy array of ints
+        The unique id of each particle
+    parents : 2D numpy array of ints
+        Each row contains the particle_idxs of two parents of each particle in particle_idxs
+        These can be none
+
+    Returns
+    -------
+
+    
+    """
+    roots = []
+    for gid, parents_here in zip(particle_ids, parents):
+        if not np.any([m in particle_ids for m in parents_here]):
+            roots.append(gid)
+    return roots
+
+
 def get_showers(eventWise, exclude_pids=True):
     """
     From each root split the decendants into showers
@@ -354,7 +379,6 @@ def get_showers(eventWise, exclude_pids=True):
     # at start all particles are allocated to a diferent shower
     showers = []
     root_gids = get_roots(particle_idxs, parent_ids)
-    #print(f"Found {len(root_gids)} root_gids")
     list_particle_idxs = list(particle_idxs)
     for i, root_gid in enumerate(root_gids):
         root_idx = list_particle_idxs.index(root_gid)
@@ -370,7 +394,6 @@ def get_showers(eventWise, exclude_pids=True):
             next_gen = list(set(next_gen))
             next_gen = [i for i in next_gen if i not in shower_indices]
             shower_indices += next_gen
-            # print(f"Indices in shower = {len(shower_indices)}", flush = True)
             to_follow = next_gen
         assert len(set(shower_indices)) == len(shower_indices)
         new_shower = Shower(particle_idxs[shower_indices],
@@ -381,80 +404,16 @@ def get_showers(eventWise, exclude_pids=True):
     return showers
 
 
-def get_roots(particle_ids, parents):
-    """
-    From a list of particle particle_idxs and a list of parent particle_idxs determin root particles
-    
-    A root particle is one whos parents are both from outside the particle list.
-
-    Parameters
-    ----------
-    particle_ids : numpy array of ints
-        The unique id of each particle
-    parents : 2D numpy array of ints
-        Each row contains the particle_idxs of two parents of each particle in particle_idxs
-        These can be none
-
-    Returns
-    -------
-
-    
-    """
-    roots = []
-    for gid, parents_here in zip(particle_ids, parents):
-        if not np.any([m in particle_ids for m in parents_here]):
-            roots.append(gid)
-    return roots
-
-
-# ignore not working
-def make_tree(particle_idxs, parents, children, labels):
-    """
-    It's possible this is working better than I think it is ...
-    Just the data was screwy
-    Anyway it has been supassed by dot files.
-
-    Parameters
-    ----------
-    particle_idxs : numpy array of ints
-        The unique id of each particle
-    parents : 2D numpy array of ints
-        Each row contains the particle_idxs of two parents of each particle in particle_idxs
-        These can be none
-    children : 2D numpy array of ints
-        Each row contains the particle_idxs of two children of each particle in particle_idxs
-        These can be none
-    labels : numpy array of ints
-        the MC PDG ID of each particle in particle_idxs
-
-    Returns
-    -------
-
-    
-    """
-    graph =  networkx.Graph()
-    graph.add_nodes_from(particle_idxs)
-    for this_id, this_parents, this_children in zip(particle_idxs, parents, children):
-        parent_edges = [(par_id, this_id) for par_id in this_parents if par_id in particle_idxs]
-        graph.add_edges_from(parent_edges)
-        child_edges = [(this_id, chi_id) for chi_id in this_children if chi_id in particle_idxs]
-        graph.add_edges_from(child_edges)
-    label_dict = {i:l for i, l in zip(particle_idxs, labels)}
-    networkx.relabel_nodes(graph, label_dict)
-    return graph
-
-
-def event_shared_ends(eventWise, all_roots, shared_counts, exclude_pids=True):
+def event_shared_ends(eventWise, all_root_pids, shared_counts, exclude_pids=True):
     """
     
 
     Parameters
     ----------
     eventWise :
-        param all_roots:
     shared_counts :
         param exclude_pids:  (Default value = True)
-    all_roots :
+    all_root_pids :
         
     exclude_pids :
         (Default value = True)
@@ -468,40 +427,41 @@ def event_shared_ends(eventWise, all_roots, shared_counts, exclude_pids=True):
         exclude_pids = [2212, 25, 35]
     elif exclude_pids is None:
         exclude_pids = []
-    n_roots = len(all_roots)
+    n_roots = len(all_root_pids)
     leaf_idxs = np.where(eventWise.Is_leaf)[0]
     # chase the leaves tii a root is found
     for leaf in leaf_idxs:
         to_check = [leaf]
-        found = []
+        found = set()
         while to_check:
             idx = to_check.pop()
             parents = eventWise.Parents[idx]
             if len(parents) == 0:
-                found.append(idx)
+                found.add(idx)
             else:
                 for pidx in parents:
                     if eventWise.MCPID[pidx] in exclude_pids:
-                        found.append(idx)
+                        found.add(idx)
                     else:
                         to_check.append(pidx)
-        if len(found) > 1:
-            roots = [int(eventWise.MCPID[idx]) for idx in found]
-            new_roots = [root for root in set(roots) if root not in all_roots]
-            for root in new_roots:
+        if len(found) > 0:
+            found = list(found)
+            root_pids = {int(eventWise.MCPID[idx]) for idx in found}
+            new_root_pids = [root for root in root_pids if root not in all_root_pids]
+            for root in new_root_pids:
                 print(f"New root {root}")
-                all_roots.append(root)
+                all_root_pids.append(root)
                 for i in range(n_roots):
                     shared_counts[i].append(0)
                 n_roots += 1
                 shared_counts.append([0 for _ in range(n_roots)])
-            for i, root1 in enumerate(roots):
-                root1_idx = all_roots.index(root1)
-                for root2 in roots[i+1:]:
-                    root2_idx = all_roots.index(root2)
+            for i, root1 in enumerate(found):
+                root1_idx = all_root_pids.index(eventWise.MCPID[root1])
+                for root2 in found[i+1:]:
+                    root2_idx = all_root_pids.index(eventWise.MCPID[root2])
                     shared_counts[root1_idx][root2_idx] += 1
                     shared_counts[root2_idx][root1_idx] += 1
-    return all_roots, shared_counts
+    return all_root_pids, shared_counts
 
 
 def shared_ends(eventWise):
