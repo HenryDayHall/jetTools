@@ -242,7 +242,6 @@ def test_add_ctags():
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         FormShower.append_b_idxs(eventWise)
-        st()
         TrueTag.add_ctags(eventWise, jet_name)
         # the first event is empty
         eventWise.selected_index = 0
@@ -253,7 +252,31 @@ def test_add_ctags():
         tst.assert_allclose(eventWise.Jet_CTags.tolist(), expected)
 
 
-# TODO
-#def test_tags_to_quarks():
-#    pass
+def test_tags_to_quarks():
+    params = {}
+    params['Phi'] = [awkward.fromiter([])]
+    params['Rapidity'] = [awkward.fromiter([])]
+    params['Children'] = [awkward.fromiter([])]
+    params['Parents'] = [awkward.fromiter([])]
+    params['MCPID'] = [awkward.fromiter([])]
+    # event 1
+    params['Phi'] +=      [awkward.fromiter([4., 0., -np.pi, -1.,  np.pi, 2., 1., 1., 1., 1., 1.])]
+    params['Rapidity'] += [awkward.fromiter([0., 0., -2.,     10., 2.,    0., 1., 1., 1., 1., 1.])]
+    params['Children'] += [awkward.fromiter([[], [3], [7],  [5], [],  [4],  [2, 7, 8, 9], [],    [], [], [4]])]
+    params['Parents'] +=  [awkward.fromiter([[], [],  [6],  [1], [5, 10], [3], [],           [2, 6],[6],[6],[]])]
+    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,    3,   2,  1,  -5,           -1,     7,  11, 5])]
+    # the positivity will be                 0   1       1    1       0   1       1          1   1    1   0 
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        eventWise.selected_index = 0
+        found = TrueTag.tags_to_quarks(eventWise, [])
+        assert len(found) == 0
+        eventWise.selected_index = 1
+        # the tag from 3 has only one b parent, number 1 with -5
+        # the tag from 4 has b parents in 1 and 10, however 10 is closer than 1
+        # the tag from 7 has b parents in 2 and 6, however 6 has other b quark children
+        found = TrueTag.tags_to_quarks(eventWise, [3, 4, 7])
+        tst.assert_allclose(found, [1, 10, 2])
+
 
