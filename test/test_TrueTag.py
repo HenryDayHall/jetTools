@@ -1,7 +1,7 @@
 """ A module to test the TrueTag module """
 from ipdb import set_trace as st
 import numpy as np
-from tree_tagger import Components, FormJets, TrueTag
+from tree_tagger import Components, FormJets, TrueTag, FormShower
 import awkward
 from tools import TempTestDir
 import numpy.testing as tst
@@ -199,16 +199,61 @@ def test_add_tags_particles():
         assert jet_name + "_4Tags" not in eventWise.columns
 
 
+def test_percent_pos():
+    # try with an empty events
+    found = TrueTag.percent_pos([], [], [])
+    assert len(found) == 0
+    # try with one positive and then one negative
+    found = TrueTag.percent_pos([0], np.array([-1]), [0])
+    tst.assert_allclose(found, [1])
+    found = TrueTag.percent_pos([0], np.array([-1]), [], np.array([1]))
+    tst.assert_allclose(found, [0])
+    # test a weigted combination
+    found = TrueTag.percent_pos([1, 0, 2], np.array([0, -1, 0]), [1], np.array([0.5, 1., 1.]))
+    tst.assert_allclose(found, [1, 0.5/1.5, 0])
+    # test generating the weights
+    found = TrueTag.percent_pos([1, 0, 2], np.array([0, -1, 0]), [1])
+    tst.assert_allclose(found, [1, 0.5, 0])
 
 
 def test_add_ctags():
-    pass
+    params = {}
+    jet_name = "Jet"
+    # event 0
+    params['Jet_InputIdx'] = [awkward.fromiter([])]
+    params['Jet_Parent'] = [awkward.fromiter([])]
+    params['Jet_Energy'] = [awkward.fromiter([])]
+    params['Children'] = [awkward.fromiter([])]
+    params['Parents'] = [awkward.fromiter([])]
+    params['MCPID'] = [awkward.fromiter([])]
+    params['PT'] = [awkward.fromiter([])]
+    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    # event 1
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(11))]
+    params['Jet_InputIdx'] += [awkward.fromiter([[0, 101, 2], [102, 4, 5]])]
+    params['Jet_Parent'] += [awkward.fromiter([[101, -1, 101], [-1, 102, 102]])]
+    params['Jet_Energy'] += [awkward.fromiter([[3., 1., 2.], [7., 2., 1.]])]
+    params['Children'] += [awkward.fromiter([[], [3], [], [5], [], [],     [2, 7, 8, 9], [], [], [], []])]
+    params['Parents'] +=  [awkward.fromiter([[], [],     [6], [1],    [], [3], [],       [6],[6],[6],[]])]
+    params['PT'] +=       [awkward.fromiter([3,  1,      2,   1,      2,  1,      3,         1,  2,   1, 2])]
+    params['MCPID'] +=    [awkward.fromiter([4, -5,      5,   3,      2,  1,     -5,        -1,  7,  11, 12])]
+    # the positivity will be                 0   1       1    1       0   1       1          1   1    1   0 
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        FormShower.append_b_idxs(eventWise)
+        st()
+        TrueTag.add_ctags(eventWise, jet_name)
+        # the first event is empty
+        eventWise.selected_index = 0
+        assert len(eventWise.Jet_CTags) == 0
+        # the second event has two jets
+        eventWise.selected_index = 1
+        expected = [[0, 2/5, 1], [1/3, 0, 1]]
+        tst.assert_allclose(eventWise.Jet_CTags.tolist(), expected)
 
 
-def test_tags_to_quarks():
-    pass
-
-
-def test_percent_pos():
-    pass
+# TODO
+#def test_tags_to_quarks():
+#    pass
 
