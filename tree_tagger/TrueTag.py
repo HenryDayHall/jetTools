@@ -288,6 +288,46 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
         return hyperparameter_content, content
 
 
+def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
+    """
+    
+
+    Parameters
+    ----------
+    jet_idxs :
+        
+    parent_idxs :
+        
+    pos_idxs :
+        
+    weights :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
+    if weights is None:
+        weights = np.ones_like(jet_idxs)
+    percents = np.zeros_like(jet_idxs, dtype=float)
+    # first gen contain the pos idxs
+    percents += [i in pos_idxs for i in jet_idxs]
+    this_gen = np.fromiter((i not in parent_idxs for i in jet_idxs), bool)
+    next_gen = np.empty_like(jet_idxs, dtype=bool)
+    # make jets a list becuase we will index it
+    jet_idxs = list(jet_idxs)
+    while np.any(this_gen):
+        next_gen[:] = False
+        in_next_gen = set(parent_idxs[this_gen])
+        in_next_gen.discard(-1)
+        for nidx in in_next_gen:
+            local_idx = jet_idxs.index(nidx)
+            next_gen[local_idx] = True
+            children = parent_idxs == nidx
+            percents[local_idx] = np.sum(percents[children]*weights[children])/np.sum(weights[children])
+        this_gen[:] = next_gen
+    return percents
+
 
 def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
     """
@@ -490,46 +530,5 @@ def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
                     quark_distances[num][0] = 0. # set this distance to 0
     assert np.all([isinstance(q, int) for q in quark_parents])
     return quark_parents
-
-
-def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
-    """
-    
-
-    Parameters
-    ----------
-    jet_idxs :
-        
-    parent_idxs :
-        
-    pos_idxs :
-        
-    weights :
-         (Default value = None)
-
-    Returns
-    -------
-
-    """
-    if weights is None:
-        weights = np.ones_like(jet_idxs)
-    percents = np.zeros_like(jet_idxs, dtype=float)
-    # first gen contain the pos idxs
-    percents += [i in pos_idxs for i in jet_idxs]
-    this_gen = np.fromiter((i not in parent_idxs for i in jet_idxs), bool)
-    next_gen = np.empty_like(jet_idxs, dtype=bool)
-    # make jets a list becuase we will index it
-    jet_idxs = list(jet_idxs)
-    while np.any(this_gen):
-        next_gen[:] = False
-        in_next_gen = set(parent_idxs[this_gen])
-        in_next_gen.discard(-1)
-        for nidx in in_next_gen:
-            local_idx = jet_idxs.index(nidx)
-            next_gen[local_idx] = True
-            children = parent_idxs == nidx
-            percents[local_idx] = np.sum(percents[children]*weights[children])/np.sum(weights[children])
-        this_gen[:] = next_gen
-    return percents
 
 
