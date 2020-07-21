@@ -12,24 +12,33 @@ import scipy.stats
 
 def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     """
-    each tag will be assigned to a jet
+    In a given event each tag is allocated to a jet. 
+    Each tag may only be allocated up to once, jets may recive multiple tags.
+    If no valid jet is found inside the max_angle the tag will not be allocated.
+    Unallocated tags are returned as -1.
 
     Parameters
     ----------
-    eventWise :
-        param jet_name:
-    tag_idx :
-        param max_angle2:
-    valid_jets :
-        Default value = None)
-    jet_name :
-        
-    max_angle2 :
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    tag_idx : iterable of ints
+        the idx of the tag particles as found in the EventWise
+    valid_jets : array like of ints
+        The idx of the jets that can be tagged, as found in the eventWise
+        If None then all jets are valid
+        (Default value = None)
+    jet_name : str
+        The prefix of the jet vairables in the eventWise
+    max_angle2 : float
+        the maximium angle that a tag may be alloated to squared
+        (a deltaR mesurment)
         
 
     Returns
     -------
-
+    closest : numpy array of ints
+        The indices of the closest jet to each tag,
+        -1 if no sutable jet found
     
     """
     root_name = jet_name + "_RootInputIdx"
@@ -71,27 +80,31 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
 
 def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True):
     """
-    tag jets based on particles emmited by the hard scattering
-        follows taggable partilces to last tagable decendant
+    Identify tag particles emmited by the hard scattering
+    follows taggable partilces to last tagable decendant
 
     Parameters
     ----------
-    eventWise :
-        param hard_interaction_pids: (Default value = [25)
-    35 :
-        param tag_pids: (Default value = None)
-    include_antiparticles :
-        Default value = True)
-    hard_interaction_pids :
-        (Default value = [25)
-    35] :
-        
-    tag_pids :
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    hard_interaction_pids : list of ints
+        These, along with the roots of the shower, are
+        starting poitns for looking for tag particle chains
+        (Default value = [25, 35])
+    tag_pids : array like of ints, or the string 'hadrons'
+        All the mcpids that should be considered to be part of a tag particle chain.
+        If None, then just b-quarks are considered (5).
+        If "hadrons" then all b-hadrons are considered.
         (Default value = None)
+    include_antiparticles : bool
+        If true, include the negative of any tag_pid,
+        that is, also considere antiparticles to be tags
+        (Default value = True)
 
     Returns
     -------
-
+    tag_idx : iterable of ints
+        the idx of the tag particles as found in the EventWise
     
     """
     assert eventWise.selected_index is not None
@@ -132,18 +145,17 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
 
 def add_tag_particles(eventWise, silent=False):
     """
-    
+    Appends the indices of the tag particles, found using tag_particle_indices
+    to the eventWise.
+    Operates inplace.
 
     Parameters
     ----------
-    eventWise :
-        param silent:  (Default value = False)
-    silent :
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    silent : bool
+        Should the progress be printed?
         (Default value = False)
-
-    Returns
-    -------
-
     
     """
     eventWise.selected_index = None
@@ -174,32 +186,49 @@ def add_tag_particles(eventWise, silent=False):
 
 def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True, overwrite=False):
     """
-    
+    Calculate and allocate the tags in the traditional way, using add_tag_particles. 
 
     Parameters
     ----------
-    eventWise :
-        param jet_name:
-    max_angle :
-        param batch_length: (Default value = 100)
-    jet_pt_cut :
-        Default value = None)
-    min_tracks :
-        Default value = None)
-    silent :
-        Default value = False)
-    append :
-        Default value = True)
-    overwrite :
-        Default value = True)
-    jet_name :
-        
-    batch_length :
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    jet_name : str
+        The prefix of the jet vairables in the eventWise
+    max_angle : float
+        the maximium angle that a tag may be alloated to a jet
+        (a deltaR mesurment)
+        If None then max_angle is drawn from Constants.py
+        (Default value = None)
+    batch_length: int
+        max number of events to process
         (Default value = 100)
+    jet_pt_cut : float
+        Minimum pt value for a jet to be considered for tagging.
+        If None, then no mimumum is applied.
+        If not none then value is included in parameter name in eventWise.
+        (Default value = None)
+    min_tracks : int
+        the minimum number of track for a jet to eb considered for tagging.
+        If None then max_angle is drawn from Constants.py
+        (Default value = None)
+    silent : bool
+        Should the progress be printed?
+        (Default value = False)
+    append : bool
+        Should the results be appended to the eventWise?
+        (Default value = True)
+    overwrite : bool
+        Should existing results be abandoned?
+        (Default value = True)
+        
 
     Returns
     -------
-
+    (if not appending)
+    hyperparameter_content : dict
+        hyperparameter values for eventWise
+    content: dict of awkward arrays
+        content for eventWise
     
     """
     if min_tracks is None:
@@ -290,21 +319,29 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
 
 def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
     """
-    
+    The jet is regarded as a tree, the leaves of which are the input particles.
+    Input particles may either be from a b-decendant (positive) or not (negative)
+    All particle in the tree may be assigned a weight (else all weights are considred 1)
+    Percentage positivity is propagated down the nodes of the tree to the root
+    with the incoming values being moderated by the wieghts of their nodes.
 
     Parameters
     ----------
-    jet_idxs :
-        
-    parent_idxs :
-        
-    pos_idxs :
-        
-    weights :
+    jet_idxs : array like of ints
+        integers that identify the jet constituents
+    parent_idxs : array like of ints
+        integers that identify the parent of each jet constituent
+    pos_idxs : array like of ints
+        integers that identify the leaf components considred positive
+    weights : array like of floats
+        weights for each jet constituent
          (Default value = None)
 
     Returns
     -------
+    percents : array like of floats
+        the percent positivity of each consituent
+        in the same order as jet_idxs was given
 
     """
     if weights is None:
@@ -331,23 +368,29 @@ def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
 
 def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
     """
-    
+    Add the tags as calculated by ctags 
 
     Parameters
     ----------
-    eventWise :
-        param jet_name:
-    append :
-        Default value = True)
-    jet_name :
-        
-    batch_length :
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    jet_name : str
+        The prefix of the jet vairables in the eventWise
+    batch_length: int
+        max number of events to process
         (Default value = 100)
-    silent :
-         (Default value = False)
+    silent : bool
+        Should the progress be printed?
+        (Default value = False)
+    append : bool
+        Should the results be appended to the eventWise?
+        (Default value = True)
 
     Returns
     -------
+    (if append is false)
+    content: dict of awkward arrays
+        content for eventWise
 
     
     """
@@ -450,21 +493,22 @@ if display:  # have to comment out to run without display
 
 def tags_to_quarks(eventWise, tag_idxs, quark_pdgids=[-5, 5]):
     """
-    
+    Find the quark that is most strongly assocated with each tag particle.
 
     Parameters
     ----------
-    eventWise :
-        
-    tag_idxs :
-        
-    quark_pdgids :
-         (Default value = [-5)
-    5] :
-        
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    tag_idx : iterable of ints
+        the idx of the tag particles as found in the EventWise
+    quark_pdgids : iterable of ints
+        list of mcpids considred to be quarks
+         (Default value = [-5, 5])
 
     Returns
     -------
+    quark_parents : numpy array of ints
+        the idx of the quark parents as found in the EventWise
 
     """
     assert eventWise.selected_index is not None
