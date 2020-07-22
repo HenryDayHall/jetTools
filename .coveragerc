@@ -1,5 +1,53 @@
 # .coveragerc to control coverage.py
 [run]
+# a listing of all the code that is in use right now
+include =
+    */tree_tagger/Components.py
+    */tree_tagger/Constants.py
+    */tree_tagger/DrawTrees.py
+    */tree_tagger/FormJets.py
+    */tree_tagger/FormShower.py
+    */tree_tagger/FormVertices.py
+    */tree_tagger/InputTools.py
+    */tree_tagger/JetQuality.py
+    */tree_tagger/JoinHepMCRoot.py
+    */tree_tagger/MassPeaks.py
+    */tree_tagger/PDGNames.py
+    */tree_tagger/ReadHepmc.py
+    */tree_tagger/ShapeVariables.py
+    */tree_tagger/TrueTag.py
+    */tree_tagger/CompareClusters.py
+    */tree_tagger/ParallelFormJets.py
+    */tree_tagger/PlottingTools.py
+# things that should be added to this list soon
+#    */tree_tagger/RescaleJets.py
+#    */tree_tagger/Preprocessing.py
+#    */tree_tagger/Datasets.py
+#    */tree_tagger/TreeWalker.py
+#    */tree_tagger/CustomeDataloader.py
+#    */tree_tagger/CustomSampler.py
+#    */tree_tagger/CustomScheduler.py
+#    */tree_tagger/RunEvaluation.py
+#    */tree_tagger/RunLauncher.py
+#    */tree_tagger/RunTools.py
+#    */tree_tagger/TrainingTools.py
+#    */tree_tagger/OverlapPlotting.py
+#    */tree_tagger/SingleFormJets.py
+# sometime
+#    */tree_tagger/AffinityMeasures.py
+#    */tree_tagger/AreaMeasures.py
+#    */tree_tagger/CheckData.py
+#    */tree_tagger/CompareTrees.py
+#    */tree_tagger/DrawBarrel.py
+#    */tree_tagger/FormInvarVertices.py
+#    */tree_tagger/JetBDT.py
+#    */tree_tagger/LinkingEvaluation.py
+#    */tree_tagger/LinkingFramework.py
+#    */tree_tagger/LinkingLauncher.py
+#    */tree_tagger/LinkingNN.py
+#    */tree_tagger/optimise_BDT.py
+#    */tree_tagger/RecursiveNN.py
+#    */tree_tagger/SelectEvent.py
 omit =
 	# don't check coverage of tests
 	*/test/*
