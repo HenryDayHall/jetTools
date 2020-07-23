@@ -245,23 +245,25 @@ def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
     return pair_masses
 
 
-def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, show=True):
+def all_jet_masses(eventWise, jet_name, jet_pt_cut=None):
     """
+    Calculate the mass of the combination of all tagged jets in each event.
     
-
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_pt_cut :
-         (Default value = None)
-    show :
-         (Default value = True)
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
 
     Returns
     -------
+    all_masses : list of floats
+        masses of the all the jets in each event
 
     """
     eventWise.selected_index = None
@@ -271,11 +273,9 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, show=True):
         if event_n % 100 == 0:
             print(f"{100*event_n/n_events}%", end='\r')
         eventWise.selected_index = event_n
-        tagged_jets = [i for i, t in getattr(eventWise, jet_name + "_Tags") if len(t)]
+        tagged_jets = np.where([len(t) for t in getattr(eventWise, jet_name + "_Tags")])[0]
         tagged_jets = filter(eventWise, jet_name, tagged_jets, track_cut=2, min_jet_PT=jet_pt_cut)
-        if not tagged_jets:
-            continue
-        all_masses.append(jet_mass(eventWise, jet_name, tagged_jets))
+        all_masses.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
     return all_masses
 
 
