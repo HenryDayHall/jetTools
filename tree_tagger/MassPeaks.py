@@ -8,23 +8,30 @@ from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTa
 
 def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
     """
-    
+    Return a subset of a list of jet indices, in a particular event,
+    that match the required criteria
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_idxs :
-        
-    track_cut :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_idxs : array like of int
+        the indices of the jets in this event to be considered
+    track_cut : int
+        required minimum number of tracks for the jet to be selected
+        if None the value s taken from Constants.py
          (Default value = None)
-    min_jet_PT :
+    min_jet_PT : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
          (Default value = None)
 
     Returns
     -------
+    valid : array like of ints
+        the subset of jet_idxs that pass criteria
 
     """
     if track_cut is None:
@@ -43,19 +50,24 @@ def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
 
 def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
     """
-    
+    Find the indices required to put only the valid jets into
+    accending order as determined by some parameter.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    ranking_variable :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    ranking_variable : str
+        The name of the variable by which or order
+        Should exist per consitiuent in the jet
          (Default value = "PT")
 
     Returns
     -------
+    jet_idxs : array like of int
+        the ordered indices of the jets in this event to be considered
 
     """
     assert eventWise.selected_index is not None
@@ -68,21 +80,23 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
     return tagged_idxs[order]
 
 
-def jet_mass(eventWise, jet_name, jet_idxs):
+def combined_jet_mass(eventWise, jet_name, jet_idxs):
     """
-    calcualte the invarient masses of jets
+    calcualte the invarient mass of a combination of jets
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_idxs :
-        
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_idxs : array like of int
+        the indices of the jets in this event to be considered
 
     Returns
     -------
+    mass : float
+        mass of the specified jets
 
     """
     assert eventWise.selected_index is not None
@@ -120,21 +134,54 @@ def cluster_mass(eventWise, particle_idxs):
     return np.sqrt(e**2 - px**2 - py**2 - pz**2)
 
 
+def inverse_condensed_indices(idx, n):
+    """ Get the indices of the input points from a scipy distance vector
+
+    Parameters
+    ----------
+    idx : int
+        poition in the flat distance vector
+    n : int
+        number of points that made the distance vector
+
+    Returns
+    -------
+    : int
+     the first index this point originated from
+    : int
+     the second index this point originated from
+    """
+    k = 0
+    for i in range(n):
+        for j in range(i+1, n):
+            if k == idx:
+                return (i, j)
+            k +=1
+    else:
+        return None
+
+
 def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
     """
+    In a single event greedly pair the jets that are tagged and
+    have the smallest angular distances.
     
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_pt_cut :
-        
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
 
     Returns
     -------
+    pairs : list of tuples of ints
+        each item in the list is a tuple containing two ints
+        each int refering to a jet index in the eventWise
 
     """
     assert eventWise.selected_index is not None
@@ -144,7 +191,7 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
     if num_tags < 2:
         return []
     elif num_tags == 2:
-        return [tuple(tagged_idxs)]
+        return [tagged_idxs]
     else:
         input_name = jet_name + '_InputIdx'
         root_name = jet_name + '_RootInputIdx'
@@ -153,28 +200,34 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
         points = np.vstack((phi, rapidity)).T
         distances = scipy.spatial.distance.pdist(points)
         closest = np.argmin(distances)
-        pairs = [(closest//num_tags, closest%num_tags)]
+        pairs = [inverse_condensed_indices(closest, num_tags)]
         if num_tags == 4:
             pairs.append(tuple(set(range(num_tags)) - set(pairs[0])))
-        pairs = [(tagged_idxs[p[0]], tagged_idxs[p[1]]) for p in pairs]
+        pairs = [[tagged_idxs[p[0]], tagged_idxs[p[1]]] for p in pairs]
         return pairs
 
 
 def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
     """
+    In all events greedly pair the jets that are tagged and
+    have the smallest angular distances.
+    Find the masses of the combination and make a list.
     
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_pt_cut :
-        
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
 
     Returns
     -------
+    pair_masses : list of floats
+        masses of the pairs
 
     """
     eventWise.selected_index = None
@@ -185,11 +238,10 @@ def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
             print(f"{100*event_n/n_events}%", end='\r')
         eventWise.selected_index = event_n
         pairs = smallest_angle_parings(eventWise, jet_name, jet_pt_cut)
-        pairs = np.array(pairs).flatten()
         if len(pairs) == 0:
             continue
-        masses = jet_mass(eventWise, jet_name, pairs)
-        pair_masses += (masses[::2] + masses[1::2]).tolist()
+        for pair in pairs:
+            pair_masses.append(combined_jet_mass(eventWise, jet_name, pair))
     return pair_masses
 
 
@@ -294,10 +346,10 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
         n_jets = len(sorted_idx)
         if n_jets == 0:
             continue
-        all_masses.append(jet_mass(eventWise, jet_name, sorted_idx))
+        all_masses.append(combined_jet_mass(eventWise, jet_name, sorted_idx))
         for i, pair in enumerate(pairs):
             if max(pair) < n_jets:
-                pair_masses[i].append(jet_mass(eventWise, jet_name, sorted_idx[pair]))
+                pair_masses[i].append(combined_jet_mass(eventWise, jet_name, sorted_idx[pair]))
     return all_masses, pairs, pair_masses
 
 

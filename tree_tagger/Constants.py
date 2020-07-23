@@ -25,17 +25,22 @@ numeric_classes = {'nn': 'natrual number', 'pdn': 'positive definite number', 'r
 
 def is_numeric_class(param, permitted):
     """
-    
+    Check if the given value fits the critera of the
+    selected numeric class.
 
     Parameters
     ----------
-    param :
+    param : object
+        python object to be tested
         
-    permitted :
-        
+    permitted : str
+        name of the numeric class, as given in
+        the values of numeric_classes
 
     Returns
     -------
+    : bool
+        does the param fit the critera of permitted
 
     """
     if permitted == 'natrual number':

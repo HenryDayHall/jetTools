@@ -21,10 +21,6 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
     batch_length : int
         Max number of events to process in this call
         (Default value = np.inf)
-
-    Returns
-    -------
-
     
     """
     # set up names for saving

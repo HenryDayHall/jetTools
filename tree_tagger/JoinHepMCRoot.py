@@ -7,18 +7,25 @@ import awkward
 
 def marry(hepmc, root_particles):
     """
-    
+    Combine the information in a hepmc file and a root file
+    in one eventWise, to have richer information about the particles
 
     Parameters
     ----------
-    hepmc :
-        param root_particles:
-    root_particles :
-        
+    hepmc : str or EventWise
+        if a str should be the path to the hepmc file on disk
+        if an EventWise should be a dataset with the
+        hepmc event data
+    root_particles : str or EventWise
+        if a str should be the path to the root file on disk
+        if an EventWise should be a dataset with the
+        root event data
 
     Returns
     -------
-
+    new_eventWise : EventWise
+        dataset containing matched data from teh root file and
+        the hepmc file.
     
     """
     if isinstance(root_particles, str):
