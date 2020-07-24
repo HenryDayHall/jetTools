@@ -56,8 +56,6 @@ def test_get_file_name():
 
 
 
-
-
 def test_get_dir_name():
     with TempTestDir("tst") as dir_name:
         dir1 = "meow"

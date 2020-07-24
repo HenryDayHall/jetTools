@@ -12,7 +12,7 @@
 #    tree_tagger/InputTools.py       #    y           y
 #    tree_tagger/JetQuality.py       #    n           n   now
 #    tree_tagger/JoinHepMCRoot.py    #    y           y
-#    tree_tagger/MassPeaks.py        #    n           n   now
+#    tree_tagger/MassPeaks.py        #    y           y 
 #    tree_tagger/PDGNames.py         #    y           n
 #    tree_tagger/ReadHepmc.py        #    y           n
 #    tree_tagger/ShapeVariables.py   #    n           n

@@ -8,23 +8,29 @@ from ipdb import set_trace as st
 def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
                   jet_pt_cut=None, max_tag_angle=None):
     """
-    
+    Get mass predictions for this jet.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    mass_function :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    mass_function : str or callable
+        function that predicts a particle masses from the events
          (Default value = 'highest pt pair')
-    jet_pt_cut :
-         (Default value = None)
-    max_tag_angle :
-         (Default value = None)
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
 
     Returns
     -------
+    masses : numpy array of floats
+        the sorted list of particle mass predictions
 
     """
     if max_tag_angle is None:
@@ -44,25 +50,36 @@ def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
 def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt pair',
                   jet_pt_cut=None, max_tag_angle=None):
     """
-    
+    The width of the smallest reconstruced mass windows that contains
+    the specifed fraction of generated massive objects.
+    This is divided by total generated objects.
+    See page 5 of 0810.1304
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    fraction :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    fraction : float
+        number between 0 and 1 to specify number of mass
+        reconstruction that should fall in window
          (Default value = 0.15)
-    mass_function :
+    mass_function : str or callable
+        function that predicts a particle masses from the events
          (Default value = 'highest pt pair')
-    jet_pt_cut :
-         (Default value = None)
-    max_tag_angle :
-         (Default value = None)
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
 
     Returns
     -------
+    best_width : float
+        the width of the required window
 
     """
     eventWise.selected_index = None
@@ -72,38 +89,53 @@ def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt 
     if len(masses) < 2:
         msg = f"Not enough masses from {n_events} events"
         raise RuntimeError(msg)
+    if target_counts < 2:
+        msg = f"Number of masses is {len(masses)}, and this is insufficient for a window of {fraction}"
+        raise RuntimeError(msg)
     if target_counts > len(masses):
         msg = f"Cannot acheve a fraction of {fraction} with {len(masses)} masses from {n_events} events"
         raise RuntimeError(msg)
-    widths = masses[target_counts:] - masses[:-target_counts]
-    best_width = np.min(widths)
+    widths = masses[target_counts-1:] - masses[:1-target_counts]
+    best_width = np.min(widths)/n_events
     return best_width
 
 
-def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_function='highest pt pair',
-                     jet_pt_cut=None, max_tag_angle=None):
+def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125.,
+                     mass_function='highest pt pair',
+                     jet_pt_cut=None, max_tag_angle=0.8):
     """
-    
+    A window proportional to the root of the mass of the object to be reconstructed
+    is slid across the data. The maximum fraction of masses captured by the
+    window divided by total generated objects is calculated and its inverse is returned.
+    See page 6 of 0810.1304
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    mass_of_obj :
-        
-    multiplier :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    mass_of_obj : float
+        The mass of the object to be reconstructed
+    multiplier : float
+        Value in sqrt(GeV) to multiply the root of the mass be to
+        find th ewidth of the window to be used
          (Default value = 125.)
-    mass_function :
+    mass_function : str or callable
+        function that predicts a particle masses from the events
          (Default value = 'highest pt pair')
-    jet_pt_cut :
-         (Default value = None)
-    max_tag_angle :
-         (Default value = None)
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
 
     Returns
     -------
+    fraction : float
+        maximum fraction of events found in window
 
     """
     eventWise.selected_index = None
@@ -122,45 +154,57 @@ def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125., mass_fun
 def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multiplier=125.,
                           mass_function='highest pt pair', jet_pt_cut=None, max_tag_angle=None):
     """
-    slightly faster to do both together
+    Equivalent to calling quality_width and quality_fraction.
+    slightly faster to do both together - also don't raise exceptions
+    for edge cases, just make a logical patch.
+    The number of masses required by quality_width is confined between 2 and total masses.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    mass_of_obj :
-        
-    fraction :
-         (Default value = 0.15)
-    multiplier :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    mass_of_obj : float
+        The mass of the object to be reconstructed
+    multiplier : float
+        Value in sqrt(GeV) to multiply the root of the mass be to
+        find th ewidth of the window to be used
          (Default value = 125.)
-    mass_function :
+    mass_function : str or callable
+        function that predicts a particle masses from the events
          (Default value = 'highest pt pair')
-    jet_pt_cut :
-         (Default value = None)
-    max_tag_angle :
-         (Default value = None)
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
 
     Returns
     -------
+    best_width : float
+        the width of the required window
+    fraction : float
+        maximum fraction of events found in window
 
     """
     if max_tag_angle is None:
         max_tag_angle = Constants.max_tagangle
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
-    masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut, max_tag_angle=max_tag_angle)
+    masses = sorted_masses(eventWise, jet_name, mass_function, jet_pt_cut,
+                           max_tag_angle=max_tag_angle)
     if len(masses) < 2:
         msg = f"Not enough masses from {n_events} events"
         raise RuntimeError(msg)
     # width
     target_counts = int(np.ceil(fraction*n_events))
-    if target_counts > len(masses):
-        target_counts = len(masses)
+    # in thsi one autofix instead of raising exceptions
+    target_counts = np.clip(target_counts, 2, len(masses))
     widths = masses[target_counts-1:] - masses[:1-target_counts]
-    best_width = np.min(widths)
+    best_width = np.min(widths)/n_events
     # fraction
     window = multiplier*mass_of_obj
     ends = np.searchsorted(masses, masses+window)
