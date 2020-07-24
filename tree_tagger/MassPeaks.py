@@ -48,7 +48,7 @@ def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
     return jet_idxs[valid]
 
 
-def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
+def order_tagged_jets(eventWise, jet_name, ranking_variable="PT", jet_pt_cut=None, track_cut=None):
     """
     Find the indices required to put only the valid jets into
     accending order as determined by some parameter.
@@ -63,6 +63,14 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
         The name of the variable by which or order
         Should exist per consitiuent in the jet
          (Default value = "PT")
+    track_cut : int
+        required minimum number of tracks for the jet to be used
+        if None the value s taken from Constants.py
+         (Default value = None)
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be used
+        if None the value s taken from Constants.py
+         (Default value = None)
 
     Returns
     -------
@@ -72,7 +80,7 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT"):
     """
     assert eventWise.selected_index is not None
     tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_Tags')])[0]
-    tagged_idxs = filter(eventWise, jet_name, tagged_idxs)
+    tagged_idxs = filter(eventWise, jet_name, tagged_idxs, track_cut, jet_pt_cut)
     input_name = jet_name + '_InputIdx'
     root_name = jet_name + '_RootInputIdx'
     ranking_values = eventWise.match_indices(jet_name+'_'+ranking_variable, root_name, input_name).flatten()
@@ -281,21 +289,21 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None):
 
 def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
     """
-    
+    Make a plot of masses of all the tagged jets grouped by smallest angle.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_pt_cut :
-        
-    show :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    show : bool
+        Should it call plt.show()?
          (Default value = True)
-
-    Returns
-    -------
 
     """
     pair_masses = all_smallest_angles(eventWise, jet_name, jet_pt_cut)
@@ -308,23 +316,39 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
         plt.show()
 
 
-def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
+def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_cut=None):
     """
-    
+    Gather all possible pairings of jets by PT order.
+    Highest PT first.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_pt_cut :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    track_cut : int
+        required minimum number of tracks for the jet to be used
+        if None the value s taken from Constants.py
          (Default value = None)
-    max_tag_angle :
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
          (Default value = 0.8)
 
     Returns
     -------
+    all_masses : list of floats
+        the masses of all the tagged jets in each event.
+    pairs : list of list of ints
+        the indices refering to the combinations chosen
+    pair_masses : list of list of floats
+        the masses of the combinations chosen.
+        Inner list may not have the same length as the number of events
+        beuase for some event not all pairings are possble.
 
     """
     eventWise.selected_index = None
@@ -341,8 +365,9 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
         if event_n % 100 == 0:
             print(f"{100*event_n/n_events}%", end='\r')
         eventWise.selected_index = event_n
-        sorted_idx = order_tagged_jets(eventWise, jet_name)
-        sorted_idx = filter(eventWise, jet_name, sorted_idx, track_cut=2, min_jet_PT=jet_pt_cut)
+        sorted_idx = order_tagged_jets(eventWise, jet_name, "PT", jet_pt_cut, track_cut)
+        # this is accending order, we need decending
+        sorted_idx = sorted_idx[::-1]
         n_jets = len(sorted_idx)
         if n_jets == 0:
             continue
@@ -353,26 +378,24 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8):
     return all_masses, pairs, pair_masses
 
 
-def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True, max_tag_angle=None):
+def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True, max_tag_angle=0.8):
     """
-    
+    Plot all possible pairings of jets by PT order.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_pt_cut :
-         (Default value = None)
-    show :
-         (Default value = True)
-    max_tag_angle :
-         (Default value = None)
-
-    Returns
-    -------
-
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
+    
     """
     all_masses, pairs, pair_masses = all_PT_pairs(eventWise, jet_name, jet_pt_cut, max_tag_angle=max_tag_angle)
     eventWise.selected_index = None
@@ -405,19 +428,26 @@ def plot_PT_pairs(eventWise, jet_name, jet_pt_cut=None, show=True, max_tag_angle
     return all_masses, pair_masses
 
 
-def all_doubleTagged_jets(eventWise, jet_name):
+def all_doubleTagged_jets(eventWise, jet_name, jet_pt_cut=None):
     """
-    
+    Calculate the masses of all jets that have been allocated exactly 2 tags.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
         
 
     Returns
     -------
+    masses : list of floats
+        the masses of all jets with 2 tags
 
     """
     eventWise.selected_index = None
@@ -428,28 +458,27 @@ def all_doubleTagged_jets(eventWise, jet_name):
             print(f"{100*event_n/n_events}%", end='\r')
         eventWise.selected_index = event_n
         tagged_idxs = np.where([len(t) == 2 for t in getattr(eventWise, jet_name + '_Tags')])[0]
-        tagged_idxs = filter(eventWise, jet_name, tagged_idxs)
+        tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
         if len(tagged_idxs) == 0:
             continue
-        masses += jet_mass(eventWise, jet_name, tagged_idxs).tolist()
+        for idx in tagged_idxs:
+            masses.append(combined_jet_mass(eventWise, jet_name, idx))
     return masses
 
 
 def plot_doubleTagged_jets(eventWise, jet_name, show=True):
     """
-    
+    Plot the masses of all jets that have been allocated exactly 2 tags.
 
     Parameters
     ----------
-    eventWise :
-        
-    jet_name :
-        
-    show :
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    show : bool
+        should this call plt.show()
          (Default value = True)
-
-    Returns
-    -------
 
     """
     eventWise.selected_index = None
@@ -465,18 +494,25 @@ def plot_doubleTagged_jets(eventWise, jet_name, show=True):
 
 def descendants_masses(eventWise, use_jetInputs=True):
     """
-    from the JetInputs, plot all tracks that originate from a light higgs,
-    and all tracks that originate from the heavy higgs
+    From the JetInputs, calculate the masses of all particles
+    that originate from a light higgs,
+    and all particles that originate from the heavy higgs.
+    Effectivly shows the mass that would eb obtained by perfect clustering.
 
     Parameters
     ----------
-    eventWise :
-        
-    use_jetInputs :
+    eventWise : EventWise
+        dataset containing the jets
+    use_jetInputs : bool
+        should only the particle in JetInputs be considered
          (Default value = True)
 
     Returns
     -------
+    heavy_descendants_mass : list of float
+        list of masses decendent from the heavy higgs
+    light_descendants_mass : list of float
+        list of masses decendent from the light higgs
 
     """
     eventWise.selected_index = None

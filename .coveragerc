@@ -2,24 +2,24 @@
 [run]
 # a listing of all the code that is in use right now
 #                                   finished   docstring
-include =
-    */tree_tagger/Components.py       #    y           y
-    */tree_tagger/Constants.py        #    y           y
-    */tree_tagger/DrawTrees.py        #    p           n
-    */tree_tagger/FormJets.py         #    p           y
-    */tree_tagger/FormShower.py       #    y           n
-    */tree_tagger/FormVertices.py     #    n           n
-    */tree_tagger/InputTools.py       #    y           y
-    */tree_tagger/JetQuality.py       #    n           n   now
-    */tree_tagger/JoinHepMCRoot.py    #    y           y
-    */tree_tagger/MassPeaks.py        #    n           n   now
-    */tree_tagger/PDGNames.py         #    y           n
-    */tree_tagger/ReadHepmc.py        #    y           n
-    */tree_tagger/ShapeVariables.py   #    n           n
-    */tree_tagger/TrueTag.py          #    y           y
-    */tree_tagger/CompareClusters.py  #    n           n   now
-    */tree_tagger/ParallelFormJets.py #    n           n   now
-    */tree_tagger/PlottingTools.py    #    n           n
+#include =
+#    tree_tagger/Components.py       #    y           y
+#    tree_tagger/Constants.py        #    y           y
+#    tree_tagger/DrawTrees.py        #    p           n
+#    tree_tagger/FormJets.py         #    p           y
+#    tree_tagger/FormShower.py       #    y           n
+#    tree_tagger/FormVertices.py     #    n           n
+#    tree_tagger/InputTools.py       #    y           y
+#    tree_tagger/JetQuality.py       #    n           n   now
+#    tree_tagger/JoinHepMCRoot.py    #    y           y
+#    tree_tagger/MassPeaks.py        #    n           n   now
+#    tree_tagger/PDGNames.py         #    y           n
+#    tree_tagger/ReadHepmc.py        #    y           n
+#    tree_tagger/ShapeVariables.py   #    n           n
+#    tree_tagger/TrueTag.py          #    y           y
+#    tree_tagger/CompareClusters.py  #    n           n   now
+#    tree_tagger/ParallelFormJets.py #    n           n   now
+#    tree_tagger/PlottingTools.py    #    n           n
 # things that should be added to this list soon
 #    */tree_tagger/RescaleJets.py      #    n           n
 #    */tree_tagger/Preprocessing.py    #    n           n
@@ -53,6 +53,8 @@ omit =
 	# don't check coverage of tests
 	*/test/*
 	*/example.py
+    */.local/*
+    /usr/*
 
 [report]
 # Regexes for lines to exclude from consideration
