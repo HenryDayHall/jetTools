@@ -11,17 +11,20 @@ from ipdb import set_trace as st
 
 def make_jet_name(jet_class, jet_id):
     """
-    
+    Form a standardised jet name from the name of the
+    class and the id.
 
     Parameters
     ----------
-    jet_class :
-        
-    jet_id :
-        
+    jet_class : str
+        name of the jet class
+    jet_id : int
+        id of this clustering
 
     Returns
     -------
+    : str
+        standardised name
 
     """
     return jet_class + "Jet" + str(int(jet_id))
@@ -29,25 +32,8 @@ def make_jet_name(jet_class, jet_id):
 
 def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
     """
-    
-
-    Parameters
-    ----------
-    eventWise_path :
-        param run_condition:
-    cluster_algorithm :
-        param cluster_parameters:
-    batch_size :
-        
-    run_condition :
-        
-    cluster_parameters :
-        
-
-    Returns
-    -------
-
-    
+    Runs a worker, with profiling.
+    Same inputs as _worker, see _worker's docstring.
     """
     profiling_path = eventWise_path.replace('awkd', 'prof')
     cProfile.runctx("_worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size)", globals(), locals(), profiling_path)
@@ -55,24 +41,37 @@ def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters,
 
 def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
     """
-    
+    A worker to cluster jets in one process.
+    Not thread safe with respect to the eventWise file,
+    the eventWise file should be unique to this worker,
+    if multiple workers are needed the eventWise file needs to
+    be split ahead of time.
 
     Parameters
     ----------
-    eventWise_path :
-        param run_condition:
-    cluster_algorithm :
-        param cluster_parameters:
-    batch_size :
-        
-    run_condition :
-        
-    cluster_parameters :
-        
-
-    Returns
-    -------
-
+    eventWise_path : str
+        File path the the eventWise file that data
+        should be read and written to.
+    run_condition: str, int or float
+        If run condition is the string "continue"
+        the worker will continue clustering so long
+        as a file called continue is in the same directory.
+        If the run condition is a float or an int
+        then the cluster algorithm will continur for the
+        number of seconds equal to this number.
+    cluster_algorithm : str or callable
+        The algorithm to do the clustering.
+        If it's a string it is the algorithms name
+        in the module FormJets
+    cluster_parameters : dict
+        Dictionary of parameters to be given to the
+        clustering algorithm.
+    batch_size : int
+        Number of events to cluster in one jump,
+        higher numbers speed up the process,
+        but a batch is not interuptable,
+        so they also reduce the precision of the stopping
+        condition.
     
     """
     if isinstance(cluster_algorithm, str):
@@ -102,26 +101,35 @@ def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters
 
 def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     """
-    make n fragments, splitting of unfinished components as needed
+    Make n unfinished fragments, recombining
+    and splitting the unfinished components as needed.
+    Normally for multithreaded processing.
 
     Parameters
     ----------
-    eventWise_path :
-        param n_fragments:
-    jet_name :
-        
-    n_fragments :
-        
+    eventWise_path : str
+        path to the dataset to be split, can be 
+        an awkd file, or a directory containgin a number of awkd files
+    n_fragments : int
+        number of fragemtns required.
+    jet_name : str
+        prefix of the jet variables being wored on in the file
 
     Returns
     -------
-
-    
+    state : bool of list of str
+        is everything is finished returns True
+        else returns a list of paths to the unfinihed fragments
     """
     # if an awkd file is given, and a progress directory exists, change to that
     if eventWise_path.endswith('awkd') and os.path.exists(eventWise_path[:-5]+"_progress"):
         print("This awkd has already been split into progress")
         eventWise_path = eventWise_path[:-5]+"_progress"
+        # inside this directory, whatever is called progress1 is the thing we want
+        # becuase that is the unfinished part
+        unfinished_part = next(name for name in os.listdir(eventWise_path)
+                              if 'progress1' in name)
+        eventWise_path = os.path.join(eventWise_path, unfinished_part)
     # same logic to fragment
     if eventWise_path.endswith('awkd') and os.path.exists(eventWise_path[:-5]+"_fragment"):
         print("This awkd has already been split into fragments")
@@ -181,22 +189,32 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
                 print("Everthing is finished")
                 # there should nowbe finished fragments
                 if len(finished_fragments) > 1:
-                    finished_path = Components.EventWise.combine(eventWise_path, "Finished_" + jet_name,
+                    finished_path = Components.EventWise.combine(eventWise_path, "finished_" + jet_name,
                                                                  fragments=finished_fragments, del_fragments=True)
                 return True
-            # merge both collections
+            # merge both collections and move them back up a layer
+            eventWise_path = eventWise_path.rstrip(os.sep)
+            new_path = os.sep.join(eventWise_path.split(os.sep)[:-1])
             print("Creating collective finished and unfinished parts")
             if len(finished_fragments) > 0:
-                finished_path = Components.EventWise.combine(eventWise_path, "Finished_" + jet_name,
-                                                             fragments=finished_fragments, del_fragments=True)
-            unfinished_path = Components.EventWise.combine(eventWise_path, "temp", 
-                                                           fragments=unfinished_fragments, del_fragments=True)
-            eventWise_path = unfinished_path
+                finished = Components.EventWise.combine(eventWise_path, "finished_" + jet_name,
+                                                        fragments=finished_fragments, del_fragments=True)
+                os.rename(os.path.join(eventWise_path, finished.save_name),
+                          os.path.join(new_path, finished.save_name).replace('_joined', ''))
+            unfinished = Components.EventWise.combine(eventWise_path, "remaning_"+jet_name, 
+                                                      fragments=unfinished_fragments, del_fragments=True)
+            os.rename(os.path.join(eventWise_path, unfinished.save_name),
+                      os.path.join(new_path, unfinished.save_name).replace('_joined', ''))
+            unfinished.save_name = unfinished.save_name.replace("_joined", "")
+            # then remove the old directory
+            os.rmdir(eventWise_path)
+            eventWise_path = os.path.join(new_path, unfinished.save_name)
     # if this point is reached all the valid events are in one eventwise at eventWise_path 
     print(f"In possesion of one eventWise object at {eventWise_path}")
     eventWise = Components.EventWise.from_file(eventWise_path)
     # check if the jet is in the eventWise
     jet_components = [name for name in eventWise.columns if name.startswith(jet_name)]
+    unfinished_path = None
     if len(jet_components) > 0:
         print(f"eventWise at {eventWise_path} is partially completed, seperating completed component")
         finished_path, unfinished_path = eventWise.split_unfinished("JetInputs_Energy", jet_components)
@@ -206,6 +224,9 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         eventWise = Components.EventWise.from_file(unfinished_path)
     print("Fragmenting eventwise")
     all_paths = eventWise.fragment("JetInputs_Energy", n_fragments=n_fragments)
+    if unfinished_path is not None:
+        # get rid of the unfishied part becuase it exists in the fragments already
+        os.remove(unfinished_path)
     return all_paths
 
 
@@ -266,7 +287,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False, e
     args = [(path, run_condition, jet_class, jet_params, batch_size)
             for path in all_paths]
     for a in args:
-        job = multiprocessing.Process(target=worker, args=a)
+        job = multiprocessing.Process(target=_worker, args=a)
         job.start()
         job_list.append(job)
     for job in job_list:
@@ -306,11 +327,8 @@ def remove_partial(all_paths, jet_name):
     """
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
-        rewrite = False
-        for name in ew.columns:
-            if name.startswith(jet_name):
-                rewrite = True
-                ew.remove(name)
+        rewrite = any(name.startswith(jet_name) for name in ew.columns)
+        ew.remove_prefix(jet_name)
         if rewrite:
             ew.write()
 

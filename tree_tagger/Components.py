@@ -720,10 +720,15 @@ class EventWise:
         else:
             n_events = len(getattr(self, per_event_component))
         if not isinstance(unfinished_component, str):
-            # check they all have the same length
-            lengths = {len(getattr(self, name)) for name in unfinished_component}
-            assert len(lengths) == 1, "Error not all unfinished components have the same length"
-            point_reached = list(lengths)[0]
+            if not unfinished_component:
+                # there are no unfinished components
+                # the whole thing should be considered infinnished
+                point_reached = 0
+            else:
+                # check they all have the same length
+                lengths = {len(getattr(self, name)) for name in unfinished_component}
+                assert len(lengths) == 1, "Error not all unfinished components have the same length"
+                point_reached = list(lengths)[0]
         else:
             point_reached = len(getattr(self, unfinished_component))
         assert point_reached <= n_events

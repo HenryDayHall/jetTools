@@ -10,7 +10,7 @@
 #    tree_tagger/FormShower.py       #    y           n
 #    tree_tagger/FormVertices.py     #    n           n
 #    tree_tagger/InputTools.py       #    y           y
-#    tree_tagger/JetQuality.py       #    n           n   now
+#    tree_tagger/JetQuality.py       #    y           y
 #    tree_tagger/JoinHepMCRoot.py    #    y           y
 #    tree_tagger/MassPeaks.py        #    y           y 
 #    tree_tagger/PDGNames.py         #    y           n
