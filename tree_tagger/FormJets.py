@@ -1996,7 +1996,7 @@ class Splitting(Spectral):
         np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
 
     # TODO, make tests for this, when your done making changes
-    def _calculate_eigenspace(self, eigenvector_num=0):
+    def _calculate_eigenspace(self):
         """
         Calculate the embedding of the currently_avalible pseudojets in eignspace
         """
@@ -2040,7 +2040,7 @@ class Splitting(Spectral):
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = eigenvectors
         # an order will need to be derived from this
-        self._order = np.argsort(self._eigenspace[:, eigenvector_num])
+        self._order = np.argsort(self._eigenspace[:, -1])
         # in this order positions will get assigned to jets over time
         self._avaliable = list(range(self.currently_avalible))
         # _avaliable refrances the indices in order that have yet to be assigned
@@ -2092,27 +2092,9 @@ class Splitting(Spectral):
         self._remove_pseudojet(replace)
 
     # TODO, make tests for this, when your done making changes
-    def _step_assign_parents(self, eigenvector_num=0):
+    def _step_assign_parents(self):
         """
         Take a single step to join pseudojets
-
-        Parameters
-        ----------
-        eigenvector_num : int
-            The eigenvector to use while taking this step
-             (Default value = 0)
-
-        Returns
-        -------
-        order : list of ints
-            The order the particles take when ordred by the eigenvector
-        outcomes : array of floats
-            The score for splitting at each step in the order
-        flip_point : int
-            The point at which the inside of the cluster becomes the end of the list
-            rather than the begining
-        splits : list of ints
-            the outcomes at which the group should eb divided into seperate groups
         """
         # flip point is the element from which the 'inside' group is the trailing elements
         flip_point = None  # index of the flip point
@@ -2157,10 +2139,12 @@ class Splitting(Spectral):
         # to go from the indices of the scores, to the index to split on
         # add 1
         scores_here = self._scores[self._avaliable[:-1]]
-        minima = np.argmin(scores_here) + 1
         # there are a number of critera to be met in order to consider making a jet here
         make_jet = n_trials > 1
-        make_jet *= not np.all(np.isnan(self._scores[self._avaliable[:-1]]))
+        try:
+            minima = np.nanargmin(scores_here) + 1
+        except ValueError:  # all nan
+            make_jet = False
         make_jet *= scores_here[minima-1] < self.MaxCutScore
         if not make_jet:
             # everything that's left is BG
@@ -2185,7 +2169,7 @@ class Splitting(Spectral):
             # if we finished, then merge the jets
             self._merge_complete_jets()
 
-    def plt_assign_parents(self, save_prefix=None, eigenvector_num=0, steps_required=np.inf):
+    def plt_assign_parents(self, save_prefix=None):
         """
         Join pseudojets until all avalible psseudojets are taken.
         Also plot the process
@@ -2206,7 +2190,8 @@ class Splitting(Spectral):
         step_no = 0
         # precalculate some quantities, becuase the step will change them
         previously_avalible = self.currently_avalible
-        eigenvector = self._eigenspace[:, eigenvector_num]
+        eigenspace = np.copy(self._eigenspace)
+        eigenvalues = np.copy(self.eigenvalues)
         # work out which points are b decendants
         b_decendants = np.fromiter(FormShower.descendant_idxs(self.eventWise,
                                                               *self.eventWise.BQuarkIdx),
@@ -2223,10 +2208,10 @@ class Splitting(Spectral):
         phi = np.array([self._floats[row][self._Phi_col] for row
                         in range(self.currently_avalible)])
         while self.currently_avalible:
-            if eigenvector_num >= self._eigenspace.shape[1]:
+            if self._NumEigenvectors > self._eigenspace.shape[1]:
                 return # cant get this eigenvector
             # take a step
-            self._step_assign_parents(eigenvector_num)
+            self._step_assign_parents()
         n_trials = len(self._scores)
         # use the split that minimises the outcome
         fig = plt.figure(figsize=(10, 7))
@@ -2284,20 +2269,20 @@ class Splitting(Spectral):
                      rotation='vertical', c=split_colour)
         ax3.set_xlabel("Eigenvector element")
         # plot all the other eigenvector values in grey
-        for i in range(self._eigenspace.shape[1]):
-            if i == eigenvector_num:
+        for i in range(eigenspace.shape[1]):
+            if i == self._NumEigenvectors-1:
                 continue
             alpha = 1/(i+2)
             shape = ['v', 's', '*', 'D', 'P', 'X'][i%6]
-            ax3.scatter(range(previously_avalible), self._eigenspace[self._order, i],
+            ax3.scatter(range(previously_avalible), eigenspace[self._order, i],
                         c='black', alpha=alpha, marker=shape, label=i)
         # plot the focal ones in colour
-        points = ax3.scatter(range(previously_avalible), eigenvector[self._order],
-                             c=ordered_pts, **colour_args, label=eigenvector_num)
-        ax3.scatter(np.where(ordered_b_mask)[0], eigenvector[self._order][ordered_b_mask],
+        points = ax3.scatter(range(previously_avalible), eigenspace[self._order, -1],
+                             c=ordered_pts, **colour_args, label=self._NumEigenvectors)
+        ax3.scatter(np.where(ordered_b_mask)[0], eigenspace[self._order, -1][ordered_b_mask],
                     c=np.zeros((1, 4)), edgecolors=TRUTH_COLOUR, marker='o')
         ax3.legend()
-        min_eig, max_eig = np.min(self._eigenspace), np.max(self._eigenspace)
+        min_eig, max_eig = np.min(eigenspace), np.max(eigenspace)
         for split in splits[:-1]:
             split += 0.5
             ax3.vlines(split, min_eig, max_eig, colors=split_colour)
@@ -2338,8 +2323,9 @@ class Splitting(Spectral):
                              arrowprops={'arrowstyle':arrow_style, 'color':colour})
         plot_tags(self.eventWise, ax=ax2)
         # discribe the jet and stick the colour bar on ax 0
+        str_eigenvalues = ', '.join([f'{val:.3e}' for val in eigenvalues[0]])
         PlottingTools.discribe_jet(properties_dict=self.jet_parameters, ax=ax0,
-                                   additional_text= f"Eigenvector {eigenvector_num}")
+                                   additional_text=f"Eigenvalues {str_eigenvalues}")
         colorbar = plt.colorbar(points, ax=ax0)
         colorbar.set_label("Particle $p_T$")
         fig.tight_layout()
@@ -2347,7 +2333,7 @@ class Splitting(Spectral):
             plt.show()
         else:
             fig_name = f"images/splitting/{save_prefix}_{self.Laplacien}" +\
-                       f"_ev{eigenvector_num}.png"
+                       f"_ev{self.NumEigenvectors}.png"
             plt.savefig(fig_name)
         plt.close('all')
 
@@ -3254,7 +3240,7 @@ if __name__ == '__main__':
     #c_class = SpectralFull
     spectral_jet_params = dict(ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
-                               NumEigenvectors=1,
+                               NumEigenvectors=3,
                                MaxCutScore=0.5,
                                Laplacien='symmetric',
                                AffinityType='exponent2',
@@ -3265,24 +3251,25 @@ if __name__ == '__main__':
     check_hyperparameters(c_class, spectral_jet_params)
     eventWise.selected_index = event_num
     jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-    jets.plt_assign_parents(save_prefix=None, eigenvector_num=0)
+    jets.plt_assign_parents(save_prefix=None)
     plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
     plt.show()
-    for event_num in range(30):
-        try:
-            eventWise.selected_index = event_num
-            jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-            jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=0)
-            #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-            #jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=1, steps_required=1)
-            #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-            #jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=2, steps_required=1)
-            plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
-            name = f"images/splitting/evt{event_num}_compCAp8.png"
-            plt.savefig(name)
-        except Exception as e:
-            print(f" problems in event {event_num}")
-            print(e)
-        plt.close('all')
+    #for event_num in range(30):
+    #    try:
+    #        eventWise.selected_index = event_num
+    #        dict_jet_params['NumEigenvectors'] = 0
+    #        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+    #        jets.plt_assign_parents(save_prefix=f"evt{event_num}")
+    #        #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+    #        #jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=1, steps_required=1)
+    #        #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+    #        #jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=2, steps_required=1)
+    #        plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
+    #        name = f"images/splitting/evt{event_num}_compCAp8.png"
+    #        plt.savefig(name)
+    #    except Exception as e:
+    #        print(f" problems in event {event_num}")
+    #        print(e)
+    #    plt.close('all')
     #eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class)
 
