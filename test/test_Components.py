@@ -540,17 +540,17 @@ def test_combine():
                                        for _ in range(np.random.randint(5))]
                                       for _ in range(n_events)])
         hyper = AwkdArrays.one_one
-        ew.append(c1=content_1, c2=content_2, c3=content_3, c4=content_4)
+        ew.append(Event_n=content_1, c2=content_2, c3=content_3, c4=content_4)
         ew.append_hyperparameters(Hyper=hyper)
-        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "c1", "dog")
+        paths = ew.split([0, 5, 7, 7], [5, 7, 7, 10], "Event_n", "dog")
         # delete the original
         os.remove(os.path.join(dir_name, save_name))
         subdir_name = os.path.split(paths[0])[0]
         # combine the fragments
         recombined = Components.EventWise.combine(subdir_name, "test", del_fragments=False, check_for_dups=False)
-        # tere in no order garentee, so get the new order from c1
-        order = np.argsort(recombined.c1)
-        tst.assert_allclose(recombined.c1[order], content_1)
+        # tere in no order garentee, so get the new order from Event_n
+        order = np.argsort(recombined.Event_n)
+        tst.assert_allclose(recombined.Event_n[order], content_1)
         tst.assert_allclose(recombined.c2[order], content_2)
         tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
         for i in range(n_events):
@@ -569,8 +569,8 @@ def test_combine():
         recombined = Components.EventWise.combine(subdir_name, "test", check_for_dups=True, del_fragments=True)
         assert len(recombined.Dup) == 2
         # check for dups should not otehrwise change the content
-        order = np.argsort(recombined.c1)
-        tst.assert_allclose(recombined.c1[order], content_1)
+        order = np.argsort(recombined.Event_n)
+        tst.assert_allclose(recombined.Event_n[order], content_1)
         tst.assert_allclose(recombined.c2[order], content_2)
         tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
         for i in range(n_events):

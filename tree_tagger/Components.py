@@ -902,6 +902,7 @@ class EventWise:
         Join multiple eventWise objects so that all events are contaiend in a single eventWise.
         Inverts the split funciton.
         Writes to disk.
+        If coulmns don't have event length requires Event_n to sort them
 
         Parameters
         ----------
@@ -936,17 +937,18 @@ class EventWise:
                          if name.startswith(save_base)
                          and name.endswith(".awkd")]
         columns = []
-        hyperparameter_columns = []
+        hyperparameter_columns = set()
         contents = {}
         pickle_strs = {}  # when checking for dups
-        for fragment in fragments:
+        for fragment_n, fragment in enumerate(fragments):
             path = os.path.join(dir_name, fragment)
             content_here = awkward.load(path)
-            found_hcols = list(content_here.get("hyperparameter_column_order", []))
+            # check hyperparameters match and add as needed
+            found_hcols = set(content_here.get("hyperparameter_column_order", []))
             if hyperparameter_columns and found_hcols:  # check they are the same here
                 for name in found_hcols:
                     if name not in hyperparameter_columns:
-                        hyperparameter_columns.append(name)
+                        hyperparameter_columns.add(name)
                         contents[name] = content_here[name]
                     error_msg = f"Missmatch in hyperparameter {name}"
                     try:
@@ -954,32 +956,56 @@ class EventWise:
                                                    err_msg=error_msg)
                     except TypeError:
                         assert content_here[name] == contents[name], error_msg
-            elif found_hcols:
+            elif found_hcols:  # add here
                 hyperparameter_columns = found_hcols
                 for name in found_hcols:
                     contents[name] = content_here[name]
-            for key in content_here:
-                if key in hyperparameter_columns:
-                    continue
-                if key not in contents: # start a new list
-                    contents[key] = []
-                if check_for_dups:
-                    # then add iff not a duplicate of the existign data
-                    if key not in pickle_strs:
-                        pickle_strs[key] = pickle.dumps(content_here[key])
-                        contents[key] += list(content_here[key])
-                    elif pickle.dumps(content_here[key]) != pickle_strs[key]:
-                        contents[key] += list(content_here[key])
-
-                else:
-                    contents[key] += list(content_here[key])
-            column_here = list(contents['column_order'])
-            for name in column_here:
+            # update columns
+            for name in content_here['column_order']:
                 if name not in columns:
                     columns.append(name)
-        for key in contents.keys():
+                    # add padding
+                    contents[name] = [[] for _ in range(fragment_n)]
+            # then go through the contents adding what is foud, but do not flatten
+            for key in columns:
+                if key not in content_here:
+                    contents[key].append([]) # placeholder
+                elif check_for_dups:
+                    if key not in pickle_strs:
+                        pickle_strs[key] = pickle.dumps(content_here[key])
+                        contents[key].append(content_here[key])
+                    elif pickle_strs[key] != pickle.dumps(content_here[key]):
+                        contents[key].append(content_here[key])
+                    else:  # need to add a placeholder
+                        contents[key].append([])
+                else:
+                    contents[key].append(content_here[key])
+            # anythign else should be the sma ein all instances,
+            # or only be found once
+            for key in content_here:
+                if key in hyperparameter_columns or key in columns:
+                    continue  # already been delt with
+                if key not in contents:
+                    contents[key] = content_here[key]
+                    pickle_strs[key] = pickle.dumps(content_here[key])
+                else:
+                    pickle_strs[key] == pickle.dumps(content_here[key]), f"What is {key}?"
+        # make all non hyperparameters into awkward arrays
+        for key in contents:
             if key not in hyperparameter_columns:
                 contents[key] = awkward.fromiter(contents[key])
+        # if it's possible to order the contents correctly, do so
+        if "Event_n" in contents:
+            # assume that each fragment contains a continuous set of events
+            start_point = [numbering[0] for numbering in contents["Event_n"]]
+            order = np.argsort(start_point)
+            for key in columns:
+                contents[key] = contents[key][order].flatten()
+        else:
+            for key in columns:
+                contents[key] = contents[key].flatten()
+            lengths = {len(contents[key]) for key in columns}
+            assert len(lengths) == 1, "Columns with differing length, but no Event_n"
         new_eventWise = cls(dir_name, save_base+"_joined.awkd", columns=columns, contents=contents, hyperparameter_columns=hyperparameter_columns)
         new_eventWise.write()
         if del_fragments:

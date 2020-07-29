@@ -136,7 +136,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         eventWise_path = eventWise_path[:-5]+"_fragment"
     if not eventWise_path.endswith('.awkd'):  # this is probably a dir name
         if '.' in eventWise_path:
-            raise ValueError(f"eventWise_path {eventWise_path} is neither a directory name not the path to an eventWise")
+            raise FileNotFoundError(f"eventWise_path {eventWise_path} is neither a directory name not the path to an eventWise")
         # remove a joined component if it exists
         in_eventWise_path = os.listdir(eventWise_path)
         # if it has alredy been joined erase that
@@ -160,7 +160,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         existing_fragments = [name for name in os.listdir(eventWise_path)
                               if name.endswith(".awkd")]
         if len(existing_fragments) == 0:
-            raise RuntimeError(f"Directory {eventWise_path} has no eventWise file in")
+            raise FileNotFoundError(f"Directory {eventWise_path} has no eventWise file in")
         elif len(existing_fragments) == 1:
             print("Path contains one eventWise")
             eventWise_path = os.path.join(eventWise_path, existing_fragments[0])
