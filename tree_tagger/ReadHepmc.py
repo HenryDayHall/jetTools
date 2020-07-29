@@ -359,9 +359,9 @@ def main():
     dir_name = "./megaIgnore"
     save_name = "billy_tag_3_pythia8_events.hepmc"
     #dir_name = "/home/henry/Documents/PhD/jetTagger/tree_tagger/megaIgnore"
-    #save_name = "billy_tag_3_pythia8_events.hepmc"
     print(f"Reading {save_name}")
-    eventWise = Hepmc(dir_name, save_name, 0, np.inf)
+    eventWise = Hepmc(dir_name, save_name, 0, 10000)
+    eventWise.save_name = "bases_5k.awkd"
     print(f"Writing {eventWise.save_name}")
     eventWise.write()
 

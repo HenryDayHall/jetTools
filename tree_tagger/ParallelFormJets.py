@@ -81,7 +81,7 @@ def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters
     print(eventWise.dir_name)
     i = 0
     finished = False
-    if run_condition is 'continue':
+    if run_condition == 'continue':
         while os.path.exists('continue') and not finished:
             print(f"batch {i}", flush=True)
             i+=1
@@ -230,7 +230,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     return all_paths
 
 
-def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False, end_time=None):
+def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_free=False, end_time=None):
     """
     
 
@@ -280,7 +280,6 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False, e
     wait_time = 30*60  # in seconds
     # note that the longest wait will be n_cores time this time
     print("Running on {} threads".format(n_threads))
-    jet_name = jet_params['jet_name']
     all_paths = make_n_working_fragments(eventWise_path, n_threads, jet_name)
     job_list = []
     # now each segment makes a worker
@@ -299,7 +298,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, leave_one_free=False, e
         for job in job_list:
             job.terminate()
             job.join()
-        remove_partial(all_paths, jet_params['jet_name'])
+        remove_partial(all_paths, jet_name)
         print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
         with open("problem_jet_params.log", 'a') as log_file:
             log_file.write(str(jet_params) + '\n')
@@ -443,8 +442,8 @@ def scan_spectralfull(eventWise_path, end_time):
                         if jet_class not in initial_jet_class[eig_indices]:
                             print(jet_params)
                             jet_id = records.append(jet_class, jet_params)
-                            jet_params["jet_name"] = make_jet_name(jet_class, jet_id)
-                            generate_pool(eventWise_path, jet_class, jet_params, True)
+                            jet_name = make_jet_name(jet_class, jet_id)
+                            generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
                         else:
                             print(f"Already done {jet_class}, {jet_params}")
     records.write()
@@ -533,8 +532,8 @@ def scan_spectralmean(eventWise_path, end_time):
                         if jet_class not in initial_jet_class[eig_indices]:
                             print(jet_params)
                             jet_id = records.append(jet_class, jet_params)
-                            jet_params["jet_name"] = make_jet_name(jet_name, jet_id)
-                            generate_pool(eventWise_path, jet_class, jet_params, True)
+                            jet_name = make_jet_name(jet_name, jet_id)
+                            generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
                         else:
                             print(f"Already done {jet_class}, {jet_params}")
     records.write()
@@ -568,8 +567,8 @@ def loops(eventWise_path):
             jet_class = "Home"
             jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
             jet_id = records.append(jet_class, jet_params)
-            jet_params["jet_name"] = make_jet_name(jet_class, jet_id)
-            generate_pool(eventWise_path, jet_class, jet_params, True)
+            jet_name = make_jet_name(jet_class, jet_id)
+            generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
     records.write()
     exponents = [-1, 0, 2]
     NumEigenvectors = [1, 3, 4, 6]
@@ -589,16 +588,16 @@ def loops(eventWise_path):
                                       AffinityType='exponent',
                                       AffinityCutoff=('distance', dis))
                     jet_id = records.append(jet_class, jet_params)
-                    jet_params["jet_name"] = make_jet_name(jet_class, jet_id)
-                    generate_pool(eventWise_path, jet_class, jet_params, True)
+                    jet_name = make_jet_name(jet_class, jet_id)
+                    generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
                 jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
                                   NumEigenvectors=n_eig,
                                   Laplacien='symmetric',
                                   AffinityType='exponent',
                                   AffinityCutoff=None)
                 jet_id = records.append(jet_class, jet_params)
-                jet_params["jet_name"] = make_jet_name(jet_class, jet_id)
-                generate_pool(eventWise_path, jet_class, jet_params, True)
+                jet_name = make_jet_name(jet_class, jet_id)
+                generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
     records.write()
 
 
@@ -636,8 +635,8 @@ def iterate(eventWise_path, jet_class):
             return
         print(f"Next best is {next_best}")
         jet_id = records.append(jet_class, next_best)
-        next_best["jet_name"] = make_jet_name(jet_class, jet_id)
-        generate_pool(eventWise_path, jet_class, next_best, True)
+        jet_name = make_jet_name(jet_class, jet_id)
+        generate_pool(eventWise_path, jet_class, next_best, jet_name, True)
         records.write()
         count += 1
 
@@ -729,8 +728,8 @@ def monte_carlo(eventWise_path, end_time, jet_class=None):
         jet_class, next_try = random_parameters(jet_class)
         print(f"Next try is {jet_class}; {next_try}")
         jet_id = records.append(jet_class, next_try)
-        next_try["jet_name"] = make_jet_name(jet_class, jet_id)
-        generate_pool(eventWise_path, jet_class, next_try, True, end_time=end_time)
+        jet_name = make_jet_name(jet_class, jet_id)
+        generate_pool(eventWise_path, jet_class, next_try, jet_name, True, end_time=end_time)
         records.write()
 
 

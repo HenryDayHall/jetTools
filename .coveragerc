@@ -76,4 +76,5 @@ exclude_lines =
 
     # don't bother with plotting methods - it should be clear if these are not working
     def plot_
+    def plt_
 

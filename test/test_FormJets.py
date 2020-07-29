@@ -734,7 +734,6 @@ def test_write_event():
         ew.remove(jet_name + '_AffinityCutoff')
         jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
         assert not jets.check_params(ew)
-        
 
 
 def test_calculate_eigenspace_distances():
@@ -1079,10 +1078,9 @@ def test_merge_complete_jets():
     assert len(jets._ints) == n_rows
     assert len(jets._floats) == n_rows
     merge_idxs = np.array([[4,2,1], [3,6,7]])
-    merge_input_idxs = [[jets.idx_from_inpIdx(i) for i in jet]
-                        for jet in merge_idxs]
-    merge_sets = [set(jet) for jet in merge_input_idxs]
-    jets._merge_complete_jets(merge_input_idxs)
+    merge_sets = [set(jet) for jet in merge_idxs]
+    jets._jets = merge_idxs
+    jets._merge_complete_jets()
     # check that the cluster was formed
     assert jets.currently_avalible == n_rows - len(merge_idxs.flatten())
     assert len(jets.root_jetInputIdxs) == len(merge_idxs)

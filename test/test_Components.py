@@ -485,7 +485,24 @@ def test_split_unfinished():
         ew0 = Components.EventWise.from_file(paths[0])
         assert len(ew0.c1) == n_events - n_unfinished
         idxs = slice(n_events-n_unfinished)
-        try:
+        tst.assert_allclose(ew0.c1, content_1[idxs])
+        tst.assert_allclose(ew0.c2, content_2[idxs])
+        tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
+        tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+        ew1 = Components.EventWise.from_file(paths[1])
+        assert len(ew1.c1) == n_unfinished
+        idxs = slice(n_events-n_unfinished, None)
+        tst.assert_allclose(ew1.c1, content_1[idxs])
+        tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
+        tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
+        # try saving in another dir
+        with TempTestDir(os.path.join(dir_name, "subdir")) as sub_dir:
+            # also try giveing the finished and unfinished components as list
+            paths = ew.split_unfinished(['c1'], ['c2'], dir_name=sub_dir)
+            # should work the same from here
+            ew0 = Components.EventWise.from_file(paths[0])
+            assert len(ew0.c1) == n_events - n_unfinished
+            idxs = slice(n_events-n_unfinished)
             tst.assert_allclose(ew0.c1, content_1[idxs])
             tst.assert_allclose(ew0.c2, content_2[idxs])
             tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
@@ -496,35 +513,6 @@ def test_split_unfinished():
             tst.assert_allclose(ew1.c1, content_1[idxs])
             tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
             tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
-        except AttributeError as e:
-            if len(content_4[idxs].flatten().flatten()) == 0:
-                pass  # this is that ctypes bug
-            else:
-                raise e
-        # try saving in another dir
-        with TempTestDir(os.path.join(dir_name, "subdir")) as sub_dir:
-            # also try giveing the finished and unfinished components as list
-            paths = ew.split_unfinished(['c1'], ['c2'], dir_name=sub_dir)
-            # should work the same from here
-            ew0 = Components.EventWise.from_file(paths[0])
-            try:
-                assert len(ew0.c1) == n_events - n_unfinished
-                idxs = slice(n_events-n_unfinished)
-                tst.assert_allclose(ew0.c1, content_1[idxs])
-                tst.assert_allclose(ew0.c2, content_2[idxs])
-                tst.assert_allclose(ew0.c3.flatten(), content_3[idxs].flatten())
-                tst.assert_allclose(ew0.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
-                ew1 = Components.EventWise.from_file(paths[1])
-                assert len(ew1.c1) == n_unfinished
-                idxs = slice(n_events-n_unfinished, None)
-                tst.assert_allclose(ew1.c1, content_1[idxs])
-                tst.assert_allclose(ew1.c3.flatten(), content_3[idxs].flatten())
-                tst.assert_allclose(ew1.c4.flatten().flatten(), content_4[idxs].flatten().flatten())
-            except AttributeError as e:
-                if len(content_4[idxs].flatten().flatten()) == 0:
-                    pass  # this is that ctypes bug
-                else:
-                    raise e
         # try with all events unfinished
         ew.append(c2=awkward.fromiter([]))
         paths = ew.split_unfinished('c1', 'c2')
@@ -559,24 +547,17 @@ def test_combine():
         os.remove(os.path.join(dir_name, save_name))
         subdir_name = os.path.split(paths[0])[0]
         # combine the fragments
-        try:
-            recombined = Components.EventWise.combine(subdir_name, "test", del_fragments=False, check_for_dups=False)
-        except AttributeError as e:
-            if len(content_4[idxs].flatten().flatten()) == 0:
-                pass  # this is that ctypes bug
-            else:
-                raise e
-        else:
-            # tere in no order garentee, so get the new order from c1
-            order = np.argsort(recombined.c1)
-            tst.assert_allclose(recombined.c1[order], content_1)
-            tst.assert_allclose(recombined.c2[order], content_2)
-            tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
-            for i in range(n_events):
-                tst.assert_allclose(recombined.c4[order[i]].flatten().flatten(), content_4[i].flatten().flatten())
-            assert generic_equality_comp(recombined.Hyper, AwkdArrays.one_one)
-            # delete the combination
-            os.remove(os.path.join(recombined.dir_name, recombined.save_name))
+        recombined = Components.EventWise.combine(subdir_name, "test", del_fragments=False, check_for_dups=False)
+        # tere in no order garentee, so get the new order from c1
+        order = np.argsort(recombined.c1)
+        tst.assert_allclose(recombined.c1[order], content_1)
+        tst.assert_allclose(recombined.c2[order], content_2)
+        tst.assert_allclose(recombined.c3[order].flatten(), content_3.flatten())
+        for i in range(n_events):
+            tst.assert_allclose(recombined.c4[order[i]].flatten().flatten(), content_4[i].flatten().flatten())
+        assert generic_equality_comp(recombined.Hyper, AwkdArrays.one_one)
+        # delete the combination
+        os.remove(os.path.join(recombined.dir_name, recombined.save_name))
         # check if check_for_dups prevents adding the same column multiple times
         dup = awkward.fromiter([7, 8])
         for path in paths:
