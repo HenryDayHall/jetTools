@@ -557,7 +557,9 @@ class EventWise:
             else:
                 raise KeyError(f"Don't have a column called {col_name}")
             if not isinstance(self._column_contents, dict):
-                self._column_contents = self._column_contents.copy()
+                # it's not yet been loaded
+                # gotta load it or we cannot delete elements
+                self._column_contents = dict(self._column_contents)
             del self._column_contents[col_name]
             if col_name in self._loaded_contents:
                 del self._loaded_contents[col_name]

@@ -248,7 +248,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
         Dictionary of parameters to be given to the
         clustering algorithm.
     jet_name : str
-        prefix of the jet variables being wored on in the file
+        prefix of the jet variables being worked on in the file
     leave_one_free : bool
         should one core be left free so the computer remains responsive?
         (Default value = False)
@@ -322,20 +322,20 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
 # prevents stalled jets from causing issues
 def remove_partial(all_paths, jet_name):
     """
-    
+    Remove a jet from all specified paths, optimising for the case
+    where this jet may not exist in many of the jets.
 
     Parameters
     ----------
-    all_paths :
-        param jet_name:
-    jet_name :
-        
-
-    Returns
-    -------
-
+    all_paths : list of str
+        list of fiel name sof the eventWise datasets
+    jet_name : str
+        prefix of the jet variables being removed from the files
     
     """
+    if not jet_name.endswith('_'):
+        jet_name += '_'  # to ensure that two jets that start with the same string
+        # cannot be confused
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
         rewrite = any(name.startswith(jet_name) for name in ew.columns)
