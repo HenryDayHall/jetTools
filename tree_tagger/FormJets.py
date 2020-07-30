@@ -2338,6 +2338,371 @@ class Splitting(Spectral):
         plt.close('all')
 
 
+class Indicator(Spectral):
+    """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
+    # list the params with default values
+    default_params = {'NumEigenvectors': np.inf,
+                  'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
+                  'AffinityType': 'exponent', 'AffinityCutoff': None,
+                  'Laplacien': 'unnormalised',
+                  'PhyDistance': 'angular',
+                  'MaxCutScore': 0.2}
+    permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'ExpofPTPosition': ['input', 'eigenspace'],
+                       'ExpofPTMultiplier': Constants.numeric_classes['rn'],
+                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
+                                           ('distance', Constants.numeric_classes['pdn'])],
+                       'Laplacien': ['unnormalised', 'symmetric'],
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
+                       'MaxCutScore': Constants.numeric_classes['pdn']}
+    def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        """
+        Class constructor
+
+        Parameters
+        ----------
+        eventWise : EventWise
+            data file for inputs
+        selected_index : int
+            event number to use, can already be set in the eventWise
+            (Default; None)
+        jet_name : string
+            name to prefix the jet properties with when saving
+            (Default; "PseudoJet")
+        from_PseudoRapidity : bool
+            Use pseudorapidity instead or rapidity
+            (Default; False)
+        int_floats : tuple of 2d array likes
+            Predefined int and float tables.
+            If not given they will be constructed from the eventWise.
+            (Default; None)
+        dict_jet_params : dict (optional)
+            Settings for jet clustering. If not given defaults are used.
+        root_jetInputIdxs : list of ints (optional)
+            List of the indices of the roots of each jet.
+        assign : bool (optional)
+            Should the jets eb clustered immediatly?
+            (Default; False)
+        """
+        self.StoppingCondition = 'standard'  # this is a property used by Spectral Jets
+        self.DeltaR = 1.  # thsi si required for defining the unused beam distances in
+        # _define_physical_distance
+        if dict_jet_params is not None:
+            kwargs['dict_jet_params'] = dict_jet_params
+        super().__init__(eventWise, **kwargs)
+
+    # TODO, make tests for this, when your done making changes
+    def _calculate_distances(self):
+        """ Calculate all distances between avalible pseudojets """
+        n_distances = self.currently_avalible
+        # this clusterign mechanism doesn't actually use distances,
+        # but other functions expect thier presence
+        self._distances2 = np.empty((n_distances, n_distances))
+        if n_distances < 2:
+            self._affinity = np.empty((0, 0))
+            return
+        # to start with create a 'normal' distance measure
+        # this can be based on any of the three algorithms
+        physical_distances2 = np.zeros((n_distances, n_distances))
+        # for speed, make local variables
+        pt_col = self._PT_col
+        rap_col = self._Rapidity_col
+        phi_col = self._Phi_col
+        for row in range(self.currently_avalible):
+            for column in range(self.currently_avalible):
+                if column < row:
+                    distance2 = physical_distances2[column, row]  # the matrix is symmetric
+                elif self._floats[row][pt_col] == 0:
+                    distance2 = 0  # soft radation might as well be at 0 distance
+                elif column == row:
+                    # not used
+                    continue
+                else:
+                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
+                physical_distances2[row, column] = distance2
+        np.fill_diagonal(physical_distances2, 0.)
+        # now we are in posessio of a standard distance matrix for all points,
+        # we can make an affinity calculation, which we will need
+        self._affinity = self.calculate_affinity(physical_distances2)
+        # a graph laplacien can be calculated
+        np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
+
+    # TODO, make tests for this, when your done making changes
+    def _calculate_eigenspace(self):
+        """
+        Calculate the embedding of the currently_avalible pseudojets in eignspace
+        """
+        if np.sum(np.abs(self._affinity)) == 0.:
+            # everything is seperated
+            self.root_jetInputIdxs += [row[self._InputIdx_col] for row in
+                                       self._ints[:self.currently_avalible]]
+            self.currently_avalible = 0
+            return
+        diagonal = np.diag(np.sum(self._affinity, axis=1))
+        if self.Laplacien == 'unnormalised':
+            laplacien = diagonal - self._affinity
+        elif self.Laplacien == 'symmetric':
+            laplacien = diagonal - self._affinity
+            self.alt_diag = np.diag(diagonal)**(-0.5)
+            self.alt_diag[np.diag(diagonal) == 0] = 0.
+            diag_alt_diag = np.diag(self.alt_diag)
+            laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
+        else:
+            raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
+        # get the eigenvectors (we know the smallest will be identity)
+        try:
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien,
+                                                          eigvals=(1, self._NumEigenvectors))
+        except (ValueError, TypeError):
+            # sometimes there are fewer eigenvalues avalible
+            # just take waht can be found
+            eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
+            eigenvalues = eigenvalues[1:]
+            eigenvectors = eigenvectors[:, 1:]
+        except Exception as e:
+            # display whatever caused this
+            print(f"Exception while processing event {self.eventwise.selected_index}")
+            print(f"With jet params; {self.jet_parameters}")
+            print(e)
+            self.root_jetInputIdxs += [row[self._InputIdx_col] for row in
+                                       self._ints[:self.currently_avalible]]
+            self.currently_avalible = 0
+            return
+        self.eigenvalues.append(eigenvalues.tolist())
+        # at the start the eigenspace positions are the eigenvectors
+        self._eigenspace = eigenvectors
+
+    def _recalculate_one(self, remove_index, replace_index):
+        """
+        Redundant function in this method, present for interface consistancy.
+        """
+        pass  # do nothing on a single merge
+
+    # TODO update the unit tests
+    def _merge_complete_jets(self):
+        """
+        Merge multple pseudojets to form many new pseudojets, moving the
+        formed pseudojets to the back of the ints/floats lists
+
+        Parameters
+        ----------
+        list_input_indices : list of list of int
+            input indices idntifying the pseudojets to merge, sorted by pseudojet to be formed
+        """
+        array_input_indices = awkward.fromiter(self._jets)
+        for input_indices in array_input_indices:
+            self._merge_complete_jet(input_indices)
+            # no need to move the other indices, they are inputidxs, they are not order sensative
+
+    def _merge_complete_jet(self, input_indices):
+        """
+        Merge multple pseudojets to form a new pseudojet, moving the
+        formed pseudojet to the back of the ints/floats lists
+
+        Parameters
+        ----------
+        input_indices : list of list of int
+            input indices identifying the pseudojets to merge
+
+        """
+        # for now just merge in pairs
+        local_indices = sorted([self.idx_from_inpIdx(i) for i in input_indices])
+        replace = local_indices[0]
+        for remove in local_indices[:0:-1]:
+            self._merge_pseudojets(replace, remove, 0)
+        self._remove_pseudojet(replace)
+
+    # TODO, make tests for this, when your done making changes
+    def _step_assign_parents(self):
+        """
+        Take a single step to join pseudojets
+        """
+        self._encoding = np.zeros_like(self._eigenspace, dtype=int)
+        required_jump = self.MaxCutScore + np.abs(self.eigenvalues)*10
+        change = self._eigenspace[1:] - self._eigenspace[:-1]
+        jumps = change > required_jump
+        self._encoding[1:] = np.cumsum(jumps, axis=0)
+        self._jets = [[]]
+        current_fingerprint = self._encoding[0]
+        for idx, fingerprint in zip(self.InputIdx, self._encoding[1:]):
+            if np.all(fingerprint == current_fingerprint):
+                self._jets[-1].append(idx)
+            else:
+                self._jets.append([idx])
+                current_fingerprint = fingerprint
+        self._merge_complete_jets()
+            
+
+    def plt_assign_parents(self, save_prefix=None):
+        """
+        Join pseudojets until all avalible psseudojets are taken.
+        Also plot the process
+
+        Parameters
+        ----------
+        save_prefix : string
+            If the plots should be saved to file use this vaiable to supply the start
+            of the save path. If None the plot is shown on the screen
+             (Default value = None)
+        eigenvector_num : int
+            The eigenvector to use for clustering.
+             (Default value = 0)
+        steps_required : int
+            Max number of iterations to plot
+             (Default value = np.inf)
+        """
+        step_no = 0
+        # precalculate some quantities, becuase the step will change them
+        previously_avalible = self.currently_avalible
+        eigenspace = np.copy(self._eigenspace)
+        eigenvalues = np.copy(self.eigenvalues)
+        # work out which points are b decendants
+        b_decendants = np.fromiter(FormShower.descendant_idxs(self.eventWise,
+                                                              *self.eventWise.BQuarkIdx),
+                                   dtype=int)
+        is_decendant = np.fromiter((idx in b_decendants for
+                                    idx in self.eventWise.JetInputs_SourceIdx),
+                                   dtype=bool)
+        b_mask = np.fromiter((is_decendant[idx] for
+                              idx in self.InputIdx[:self.currently_avalible]), dtype=bool)
+        pts = np.fromiter((row[self._PT_col] for
+                           row in self._floats[:self.currently_avalible]), dtype=float)
+        rap = np.array([self._floats[row][self._Rapidity_col] for row
+                        in range(self.currently_avalible)])
+        phi = np.array([self._floats[row][self._Phi_col] for row
+                        in range(self.currently_avalible)])
+        while self.currently_avalible:
+            if self._NumEigenvectors > self._eigenspace.shape[1]:
+                return # cant get this eigenvector
+            # take a step
+            self._step_assign_parents()
+        n_trials = len(self._scores)
+        # use the split that minimises the outcome
+        fig = plt.figure(figsize=(10, 7))
+        ax0 = plt.subplot(221)
+        ax1 = plt.subplot(222)
+        ax2 = plt.subplot(223)
+        ax3 = plt.subplot(224, sharex=ax1)
+        # some useful ranges for plotting
+        max_out = np.nanmax(self._scores)
+        #ax0, ax1, ax2, ax3 = ax_ar))
+        # ax1 and ax3 are the points in order
+        ax1.set_xlabel("Split position")
+        ax1.set_ylabel("Cut score")
+        ordered_pts = pts[self._order]
+        colour_args = {'vmax':np.max(pts), 'vmin':np.min(pts), 'cmap': 'plasma'}
+        # scatter plots show disagreement here between thsi and plot_tags
+        ordered_b_mask = b_mask[self._order]
+        # the -1 is for zero indexing, the -0.5 is for ebing between second to last and last
+        split_colour = np.array([1., 0., 0., 0.5])
+        flip_colour = np.array([0., 0., 1., 0.5])
+        ax1.scatter(np.linspace(0.5, previously_avalible-1-0.5, n_trials),
+                    self._scores, c='black', marker='|')
+        # problem may be that outccomes can be nan,
+        # create a list of particle psotions between the split conditions
+        # that is never nan
+        filled_outcomes = np.zeros(previously_avalible)
+        filled_outcomes[1:] = self._scores
+        filled_outcomes[:-1] += self._scores
+        filled_outcomes[1:-1] *= 0.5
+        for i, out in enumerate(filled_outcomes):
+            if np.isnan(out):
+                out = next(np.nanmean(self._scores[i-width:i+width]) for
+                           width in range(previously_avalible)
+                           if not np.all(np.isnan(self._scores[i-width:i+width])))
+                filled_outcomes[i] = out
+        ax1.scatter(np.arange(previously_avalible), filled_outcomes,
+                    c=ordered_pts, **colour_args)
+        ax1.scatter(np.where(ordered_b_mask)[0], filled_outcomes[ordered_b_mask],
+                    c=np.zeros((1, 4)), edgecolors=TRUTH_COLOUR, marker='o')
+        # plot the max cut score
+        ax1.hlines(self.MaxCutScore, 0, previously_avalible)
+        ax1.text(0, self.MaxCutScore*1.1, "Max cut score")
+        # work out where things got split
+        # the split is the location of the last element of each jet in the order
+        order_list = self._order.tolist()
+        splits = [order_list.index(jet[-1]) for jet in self._jets]
+        # if there are still avalible objects, add the last avalible object too
+        if self._avaliable:
+            splits.append(self._avaliable[-1])
+        splits = sorted(splits)
+        for split in splits[:-1]:
+            split += 0.5  # is 0 were in the splits we would eb cutting the 0th element
+            ax1.vlines(split, 0, max_out, colors=split_colour)
+            ax1.text(split+0.1, 0.5*max_out, "Split location",
+                     rotation='vertical', c=split_colour)
+        ax3.set_xlabel("Eigenvector element")
+        # plot all the other eigenvector values in grey
+        for i in range(eigenspace.shape[1]):
+            if i == self._NumEigenvectors-1:
+                continue
+            alpha = 1/(i+2)
+            shape = ['v', 's', '*', 'D', 'P', 'X'][i%6]
+            ax3.scatter(range(previously_avalible), eigenspace[self._order, i],
+                        c='black', alpha=alpha, marker=shape, label=i)
+        # plot the focal ones in colour
+        points = ax3.scatter(range(previously_avalible), eigenspace[self._order, -1],
+                             c=ordered_pts, **colour_args, label=self._NumEigenvectors)
+        ax3.scatter(np.where(ordered_b_mask)[0], eigenspace[self._order, -1][ordered_b_mask],
+                    c=np.zeros((1, 4)), edgecolors=TRUTH_COLOUR, marker='o')
+        ax3.legend()
+        min_eig, max_eig = np.min(eigenspace), np.max(eigenspace)
+        for split in splits[:-1]:
+            split += 0.5
+            ax3.vlines(split, min_eig, max_eig, colors=split_colour)
+            ax3.text(split+0.1, 0.5*(max_eig + min_eig), "Split location",
+                     rotation='vertical', c=split_colour)
+        # ax2 is the point sin the pt eta plain
+        ax2.set_xlabel("Rapidity")
+        ax2.set_ylabel("$\\phi$")
+        ax2.scatter(rap, phi, c=pts, **colour_args)
+        arrow_style = '<-'
+        jet_map = matplotlib.cm.get_cmap('jet')
+        colours = [jet_map(i/len(splits)) for i in range(len(splits))]
+        switch_colour = (0.5, 0.5, 0.5, 1.)
+        split_num = 0
+        for i in range(n_trials):
+            start_idx = self._order[i]
+            end_idx = self._order[i+1]
+            # split ends denote the last element of each jet
+            # when we have reached the trial number corrisponding to that
+            # element it is time to switch jets
+            # so if the first jet ends on particle 0, then the 
+            # first jet is a switch
+            switch = i >= splits[split_num]
+            if switch:
+                split_num += 1
+                colour = switch_colour
+            else:
+                colour = colours[split_num]
+            rap_cross, sign = PlottingTools.find_crossing_point(rap[start_idx], phi[start_idx],
+                                                                rap[end_idx], phi[end_idx])
+            if rap_cross is not None:
+                ax2.plot([rap[start_idx], rap_cross], [phi[start_idx], sign*np.pi],
+                         c=colour)
+                ax2.annotate('', (rap_cross, -sign*np.pi), (rap[end_idx], phi[end_idx]),
+                             arrowprops={'arrowstyle':arrow_style, 'color':colour})
+            else:
+                ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
+                             arrowprops={'arrowstyle':arrow_style, 'color':colour})
+        plot_tags(self.eventWise, ax=ax2)
+        # discribe the jet and stick the colour bar on ax 0
+        str_eigenvalues = ', '.join([f'{val:.3e}' for val in eigenvalues[0]])
+        PlottingTools.discribe_jet(properties_dict=self.jet_parameters, ax=ax0,
+                                   additional_text=f"Eigenvalues {str_eigenvalues}")
+        colorbar = plt.colorbar(points, ax=ax0)
+        colorbar.set_label("Particle $p_T$")
+        fig.tight_layout()
+        if save_prefix is None:
+            plt.show()
+        else:
+            fig_name = f"images/splitting/{save_prefix}_{self.Laplacien}" +\
+                       f"_ev{self.NumEigenvectors}.png"
+            plt.savefig(fig_name)
+        plt.close('all')
+
+
 class SpectralMean(Spectral):
     """ A slightly simplified varient of Spectral where new positions in the embedding space
     are simply geometric means"""

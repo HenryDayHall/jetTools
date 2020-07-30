@@ -39,7 +39,7 @@ def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters,
     cProfile.runctx("_worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size)", globals(), locals(), profiling_path)
 
 
-def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
+def _worker(eventWise_path, run_condition, jet_class, cluster_parameters, batch_size):
     """
     A worker to cluster jets in one process.
     Not thread safe with respect to the eventWise file,
@@ -59,7 +59,7 @@ def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters
         If the run condition is a float or an int
         then the cluster algorithm will continur for the
         number of seconds equal to this number.
-    cluster_algorithm : str or callable
+    jet_class : str or callable
         The algorithm to do the clustering.
         If it's a string it is the algorithms name
         in the module FormJets
@@ -74,9 +74,9 @@ def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters
         condition.
     
     """
-    if isinstance(cluster_algorithm, str):
+    if isinstance(jet_class, str):
         # functions in modules are attributes too :)
-        cluster_algorithm = getattr(FormJets, cluster_algorithm)
+        jet_class = getattr(FormJets, jet_class)
     eventWise = Components.EventWise.from_file(eventWise_path)
     print(eventWise.dir_name)
     i = 0
@@ -85,12 +85,12 @@ def _worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters
         while os.path.exists('continue') and not finished:
             print(f"batch {i}", flush=True)
             i+=1
-            finished = FormJets.cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters, batch_length=batch_size, silent=True)
+            finished = FormJets.cluster_multiapply(eventWise, jet_class, cluster_parameters, batch_length=batch_size, silent=True)
     elif isinstance(run_condition, (int, float)):
         while time.time() < run_condition and not finished:
             print(f"batch {i}", flush=True)
             i+=1
-            finished = FormJets.cluster_multiapply(eventWise, cluster_algorithm, cluster_parameters, batch_length=batch_size, silent=True)
+            finished = FormJets.cluster_multiapply(eventWise, jet_class, cluster_parameters, batch_length=batch_size, silent=True)
     else:
         raise ValueError(f"Dont recognise run_condition {run_condition}")
     if finished:
@@ -232,24 +232,36 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
 
 def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_free=False, end_time=None):
     """
-    
+    Split the input file and create a pool of workers each with their own process
+    to cluster the required jets on the split input file.
 
     Parameters
     ----------
-    eventWise_path :
-        param multiapply_function:
-    jet_params :
-        param leave_one_free: (Default value = False)
-    jet_class :
-        
-    leave_one_free :
+    eventWise_path : str
+        path to the dataset to be split, can be 
+        an awkd file, or a directory containgin a number of awkd files
+    jet_class : str or callable
+        The algorithm to do the clustering.
+        If it's a string it is the algorithms name
+        in the module FormJets
+    jet_params : dict
+        Dictionary of parameters to be given to the
+        clustering algorithm.
+    jet_name : str
+        prefix of the jet variables being wored on in the file
+    leave_one_free : bool
+        should one core be left free so the computer remains responsive?
         (Default value = False)
-    end_time :
+    end_time : int or float
+        max time to run the processes for
+        if None and no continue file exists
+        then the user will be asked to give a number
          (Default value = None)
 
     Returns
     -------
-
+    : bool
+        Did all the jobs run without stalling
     
     """
     # read from FormJets
