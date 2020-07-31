@@ -252,6 +252,46 @@ def test_add_ctags():
         tst.assert_allclose(eventWise.Jet_CTags.tolist(), expected)
 
 
+def test_add_ctags2():
+    params = {}
+    jet_name = "Jet"
+    # event 0
+    params['Jet_InputIdx'] = [awkward.fromiter([])]
+    params['Jet_Parent'] = [awkward.fromiter([])]
+    params['Jet_Energy'] = [awkward.fromiter([])]
+    params['Children'] = [awkward.fromiter([])]
+    params['Parents'] = [awkward.fromiter([])]
+    params['MCPID'] = [awkward.fromiter([])]
+    params['PT'] = [awkward.fromiter([])]
+    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    # event 1
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(11))]
+    params['Jet_InputIdx'] += [awkward.fromiter([[0, 101, 2], [102, 4, 5]])]
+    params['Jet_Parent'] += [awkward.fromiter([[101, -1, 101], [-1, 102, 102]])]
+    params['Jet_Energy'] += [awkward.fromiter([[3., 1., 2.], [7., 2., 1.]])]
+    params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
+    params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
+    params['PT'] +=       [awkward.fromiter([3,  1,   2,   1,   2,  1,    3,           1,  2,   1, 2])]
+    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
+    # the positivity will be                 0   1    0    1    0   1       0          0   0    0   0 
+    #                                        0   0    1    0    0   0       0          0   0    0   0 
+    #                                        0   0    0    0    0   0       0          0   0    0   0 
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        FormShower.append_b_idxs(eventWise)
+        TrueTag.add_ctags2(eventWise, jet_name)
+        # the first event is empty
+        eventWise.selected_index = 0
+        assert len(eventWise.Jet_CTags) == 0
+        # the second event has two jets
+        eventWise.selected_index = 1
+        expected0 = [[0, 0, 0], [1/3, 0, 1]]
+        expected1 = [[0, 2/5, 1], [0, 0, 0]]
+        tst.assert_allclose(eventWise.Jet_CTags.tolist()[0], expected0)
+        tst.assert_allclose(eventWise.Jet_CTags.tolist()[1], expected1)
+
+
 def test_tags_to_quarks():
     params = {}
     params['Phi'] = [awkward.fromiter([])]
