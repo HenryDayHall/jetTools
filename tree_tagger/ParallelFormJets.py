@@ -583,7 +583,7 @@ def random_parameters(jet_class=None):
         jet_class = np.random.choice(jet_classes)
     params = {}
     permitted_vals = getattr(FormJets, jet_class).permited_values
-    for key, selection in permitted_vals.item():
+    for key, selection in permitted_vals.items():
         if key == 'DeltaR':
             params[key] = np.random.uniform(0, 1.5)
         elif key == 'ExpofPTMultiplier':
