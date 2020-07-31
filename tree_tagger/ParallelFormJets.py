@@ -346,16 +346,18 @@ def remove_partial(all_paths, jet_name):
 
 def recombine_eventWise(eventWise_path):
     """
-    
+    Function to recombine processed fragments of an eventWise that has been split,
+    while avoiding accidentally combining with a proeviously combined component.
 
     Parameters
     ----------
-    eventWise_path :
-        
+    eventWise_path : str
+        path to the eventWise that was split previously
 
     Returns
     -------
-
+    new_eventWise : EventWise
+        the combined processed dataset
     
     """
     split_dir = eventWise_path[:-5]+"_fragment"
