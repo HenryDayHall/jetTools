@@ -1,4 +1,4 @@
-from tree_tagger import FormJets, Components, InputTools, CompareClusters
+from tree_tagger import FormJets, Components, InputTools
 import time
 import csv
 import cProfile
@@ -7,6 +7,34 @@ import os
 import numpy as np
 import multiprocessing
 from ipdb import set_trace as st
+import itertools
+
+
+def name_generator(jet_class, existing_names):
+    """
+    Returns a generator object that can make jet names that are not found in the existing names.
+
+    Parameters
+    ----------
+    jet_class : str
+        All generated names start with the jet class
+    existing_names : list of str
+        A list of names that are to be avoided
+
+    Yields
+    -------
+    : str
+        A name for a new jet
+    
+    """
+    used_ids = [int(''.join(filter(str.isdigit, name))) for name in existing_names
+                if name.startswith(jet_class)]
+    current_id = 0
+    while True:
+        current_id += 1
+        if current_id not in used_ids:
+            yield make_jet_name(jet_class, current_id)
+            used_ids.append(current_id)
 
 
 def make_jet_name(jet_class, jet_id):
@@ -30,16 +58,21 @@ def make_jet_name(jet_class, jet_id):
     return jet_class + "Jet" + str(int(jet_id))
 
 
-def worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size):
+def worker(*args, **kwargs):
     """
     Runs a worker, with profiling.
     Same inputs as _worker, see _worker's docstring.
     """
+    if args:
+        eventWise_path = args[0]
+    else:
+        eventWise_path = kwargs['eventWise_path']
     profiling_path = eventWise_path.replace('awkd', 'prof')
-    cProfile.runctx("_worker(eventWise_path, run_condition, cluster_algorithm, cluster_parameters, batch_size)", globals(), locals(), profiling_path)
+    cProfile.runctx("_worker(*args, **kwargs)", globals(), locals(), profiling_path)
 
 
-def _worker(eventWise_path, run_condition, jet_class, cluster_parameters, batch_size):
+def _worker(eventWise_path, run_condition, jet_class,
+            jet_name, cluster_parameters, batch_size):
     """
     A worker to cluster jets in one process.
     Not thread safe with respect to the eventWise file,
@@ -63,6 +96,8 @@ def _worker(eventWise_path, run_condition, jet_class, cluster_parameters, batch_
         The algorithm to do the clustering.
         If it's a string it is the algorithms name
         in the module FormJets
+    jet_name : str
+        prefix of the jet variables being worked on in the file
     cluster_parameters : dict
         Dictionary of parameters to be given to the
         clustering algorithm.
@@ -78,25 +113,29 @@ def _worker(eventWise_path, run_condition, jet_class, cluster_parameters, batch_
         # functions in modules are attributes too :)
         jet_class = getattr(FormJets, jet_class)
     eventWise = Components.EventWise.from_file(eventWise_path)
-    print(eventWise.dir_name)
+    #print(eventWise.dir_name)
     i = 0
     finished = False
     if run_condition == 'continue':
         while os.path.exists('continue') and not finished:
-            print(f"batch {i}", flush=True)
+            #print(f"batch {i}", flush=True)
             i+=1
-            finished = FormJets.cluster_multiapply(eventWise, jet_class, cluster_parameters, batch_length=batch_size, silent=True)
+            finished = FormJets.cluster_multiapply(eventWise, jet_class, cluster_parameters,
+                                                   jet_name=jet_name, batch_length=batch_size,
+                                                   silent=True)
     elif isinstance(run_condition, (int, float)):
         while time.time() < run_condition and not finished:
-            print(f"batch {i}", flush=True)
+            #print(f"batch {i}", flush=True)
             i+=1
-            finished = FormJets.cluster_multiapply(eventWise, jet_class, cluster_parameters, batch_length=batch_size, silent=True)
+            finished = FormJets.cluster_multiapply(eventWise, jet_class, cluster_parameters,
+                                                   jet_name=jet_name, batch_length=batch_size,
+                                                   silent=True)
     else:
         raise ValueError(f"Dont recognise run_condition {run_condition}")
-    if finished:
-        print(f"Finished {i} batches, dataset {eventWise_path} complete")
-    else:
-        print(f"Finished {i} batches, dataset {eventWise_path} incomplete")
+    #if finished:
+    #    print(f"Finished {i} batches, dataset {eventWise_path} complete")
+    #else:
+    #    print(f"Finished {i} batches, dataset {eventWise_path} incomplete")
 
 
 def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
@@ -295,7 +334,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
     all_paths = make_n_working_fragments(eventWise_path, n_threads, jet_name)
     job_list = []
     # now each segment makes a worker
-    args = [(path, run_condition, jet_class, jet_params, batch_size)
+    args = [(path, run_condition, jet_class, jet_name, jet_params, batch_size)
             for path in all_paths]
     for a in args:
         job = multiprocessing.Process(target=_worker, args=a)
@@ -317,7 +356,6 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
         return False
     print("All processes ended")
     return True
-
 
 # prevents stalled jets from causing issues
 def remove_partial(all_paths, jet_name):
@@ -375,284 +413,155 @@ def recombine_eventWise(eventWise_path):
     return new_eventWise
 
 
-def scan_spectralfull(eventWise_path, end_time):
+scan_SpectralFull = dict(DeltaR = np.linspace(0.05, 0.2, 4),
+                         ExpofPTMultiplier = np.linspace(0, 0.6, 4),
+                         AffinityCutoff = [('distance', 9), None],
+                         PhyDistance = ['Luclus', 'normed'],
+                         NumEigenvectors = [3, 5, 7])
+fix_SpectralFull = dict(ExpofPTPosition='eigenspace',
+                        Laplacien='symmetric',
+                        AffinityType='exponent2',
+                        StoppingConditon='standard')
+
+
+scan_SpectralMean = dict(ExpofPTPosition = ['input', 'eigenspace'],
+                         DeltaR = np.linspace(0.2, 0.6, 4),
+                         AffinityCutoff = [('distance', 2), None],
+                         PhyDistance = ['invarient', 'angular', 'Luclus'],
+                         NumEigenvectors = [2, 4, 6])
+fix_SpectralMean = dict(ExpofPTMultiplier=-0.2,
+                        Laplacien='symmetric',
+                        AffinityType='exponent2',
+                        StoppingConditon='beamparticle')
+
+
+def check_for_jet(eventWise, parameters, name_start=None, pottentials=None):
+    if pottentials is None:
+        pottentials = FormJets.get_jet_names(eventWise)
+        if name_start is not None:
+            pottentials = {name for name in pottentials if name.startswith(name_start)}
+    discreet_types = (bool, str, type(None))
+    discreet_parameters = [key for key, val in parameters.items()
+                           if isinstance(val, discreet_types)]
+    continuous_parameters = [key for key in parameters
+                             if key not in discreet_parameters]
+    while len(pottentials) > 1 and discreet_parameters:
+        key = discreet_parameters.pop()
+        values = [getattr(eventWise, name+'_'+key) for name in pottentials]
+        pottentials = [name for name, value in zip(pottentials, values)
+                       if isinstance(value, discreet_types) and value == parameters[key]]
+    while len(pottentials) > 1 and continuous_parameters:
+        required = parameters[key]
+        key = continuous_parameters.pop()
+        values = [getattr(eventWise, name+'_'+key) for name in pottentials]
+        if isinstance(required, tuple):
+            pottentials = [name for name, value in zip(pottentials, values)
+                           if isinstance(value, tuple) and 
+                           value[0] == required[0] and 
+                           np.isclose(value[1], required[1])]
+        else:
+            pottentials = [name for name, value in zip(pottentials, values)
+                           if np.isclose(value, required)]
+    return pottentials
+
+
+def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
-    
+    Scan over all combinations of a range of options.
 
     Parameters
     ----------
-    eventWise_path :
-        
-    end_time :
-        
+    eventWise_path : str
+        Path to the dataset used for input and writing outputs.
+    jet_class : str
+    end_time : int
+        time to stop scanning.
+    scan_parameters : dict
+    fix_parameters : dict
 
     Returns
     -------
-
+    time_remaining : float
+        estimate for how long it would take to finish this scan.
     
     """
-    record_path = "scans.csv"
-    records = CompareClusters.Records(record_path)
-    # prepare to check for existing entries
-    epsilon = 0.01
-    initial_typed = records.typed_array()
-    if len(initial_typed) == 0:
-        initial_typed = np.zeros((0, 30))
-        initial_jet_class = np.array([])
-        initial_DeltaR    =  np.array([])
-        initial_Exponent  =  np.array([])
-        initial_Cutoff =  np.array([])
-        initial_PhyDistance =  np.array([])
-        initial_NEigen=  np.array([])
+    start_time = time.time()
+    # get the current jets
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    existing_jets = [name for name in FormJets.get_jet_names(eventWise) if name.startswith(jet_class)]
+    name_gen = name_generator(jet_class, existing_jets)
+    # put the things to be iterated over into a fixed order
+    key_order = list(scan_parameters.keys())
+    ordered_values = [scan_parameters[key] for key in key_order]
+    num_combinations = np.product([len(vals) for vals in ordered_values])
+    print(f"This scan contains {num_combinations} combinations to test.")
+    if existing_jets:
+        complete = 100*num_combinations/len(existing_jets)
+        print(f"Assuming all existing jets are from this scan it is {complete:.1f}% complete")
+    finished = 0
+    if fix_parameters is None:
+        fix_parameters = {}
+    for i, combination in enumerate(itertools.product(ordered_values)):
+        print(f"{100*i/num_combinations}%", end='\r', flush=True)
+        # check if it's been done
+        parameters = {**dict(zip(key_order, combination)), **fix_parameters}
+        if check_for_jet(eventWise, parameters, pottentials=existing_jets):
+            print(f"Already done {jet_class}, {parameters}\n")
+        else:
+            jet_name = next(name_gen)
+            generate_pool(eventWise_path, jet_class, parameters, jet_name, True)
+            finished += 1
+        if time.time() > end_time:
+            break
+    time_elapsed = time.time() - start_time
+    print(f"Done {finished} in {time_elapsed/60:.1f} minutes")
+    if i >= num_combinations - 1:
+        print(f"Finished {num_combinations} parameter combinations")
     else:
-        initial_jet_class = initial_typed[:, records.indices['jet_class']]
-        initial_DeltaR    = initial_typed[:, records.indices['DeltaR']]
-        initial_Exponent  = initial_typed[:, records.indices['ExpofPTMultiplier']]
-        initial_Cutoff = initial_typed[:, records.indices['AffinityCutoff']]
-        initial_PhyDistance = initial_typed[:, records.indices['Invarient']]
-        initial_NEigen= initial_typed[:, records.indices['NumEigenvectors']].astype(int)
-    eventWise = Components.EventWise.from_file(eventWise_path)
-    cols = [c for c in eventWise.columns]
-    del eventWise
-    DeltaR = np.linspace(0.05, 0.2, 4)
-    exponents = np.linspace(0, 0.6, 4)
-    affinitycutoff = [('distance', 9), None]
-    invarient = ['Luclus', 'normed']
-    numeigenvectors = [3, 5, 7]
-    for exponent in exponents:
-        exp_indices = np.where(np.abs(initial_Exponent - exponent) < epsilon)[0]
-        for dR in DeltaR:
-            dr_indices = exp_indices[np.abs(initial_DeltaR[exp_indices] - dR) < epsilon]
-            for cutoff in affinitycutoff:
-                if cutoff is None:
-                    co_indices = dr_indices[initial_Cutoff[dr_indices] == cutoff]
-                else:
-                    co_mask = []
-                    for initial in initial_Cutoff[dr_indices]:
-                        if isinstance(initial, tuple):
-                            co_mask.append(initial[0] == cutoff[0] and
-                                           abs(initial[1] - cutoff[1]) < epsilon)
-                        else:
-                            co_mask.append(False)
-                    co_indices = dr_indices[co_mask]
-                for invar in invarient:
-                    invar_indices = co_indices[initial_PhyDistance[co_indices] == invar]
-                    for eig in numeigenvectors:
-                        eig_indices = invar_indices[initial_NEigen[invar_indices] == eig]
-                        if (not os.path.exists('continue')) or os.path.exists('stopscan'):
-                            return
-                        if time.time()>end_time:
-                            return
-                        jet_class = "SpectralFull"
-                        jet_params = dict(DeltaR=dR,
-                                          ExpofPTMultiplier=exponent,
-                                          ExpofPTPosition='eigenspace',
-                                          NumEigenvectors=eig,
-                                          Laplacien='symmetric',
-                                          AffinityType='exponent2',
-                                          AffinityCutoff=cutoff,
-                                          PhyDistance=invar,
-                                          StoppingConditon='standard')
-                        if jet_class not in initial_jet_class[eig_indices]:
-                            print(jet_params)
-                            jet_id = records.append(jet_class, jet_params)
-                            jet_name = make_jet_name(jet_class, jet_id)
-                            generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
-                        else:
-                            print(f"Already done {jet_class}, {jet_params}")
-    records.write()
+        per_combinations = time_elapsed/finished
+        remaining = num_combinations - i - 1
+        time_needed = (remaining*per_combinations)/60
+        print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
 
 
-def scan_spectralmean(eventWise_path, end_time):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise_path :
-        
-    end_time :
-        
-
-    Returns
-    -------
-
-    
-    """
-    record_path = "scans.csv"
-    records = CompareClusters.Records(record_path)
-    # prepare to check for existing entries
-    epsilon = 0.01
-    initial_typed = records.typed_array()
-    if len(initial_typed) == 0:
-        initial_typed = np.zeros((0, 30))
-        initial_jet_class = np.array([])
-        initial_DeltaR    =  np.array([])
-        initial_Exponent  =  np.array([])
-        initial_Position  =  np.array([])
-        initial_Cutoff =  np.array([])
-        initial_PhyDistance =  np.array([])
-        initial_NEigen=  np.array([])
-    else:
-        initial_jet_class = initial_typed[:, records.indices['jet_class']]
-        initial_DeltaR    = initial_typed[:, records.indices['DeltaR']]
-        initial_Exponent  = initial_typed[:, records.indices['ExpofPTMultiplier']]
-        initial_Position  = initial_typed[:, records.indices['ExpofPTPosition']]
-        initial_Cutoff = initial_typed[:, records.indices['AffinityCutoff']]
-        initial_PhyDistance = initial_typed[:, records.indices['Invarient']]
-        initial_NEigen= initial_typed[:, records.indices['NumEigenvectors']].astype(int)
-    eventWise = Components.EventWise.from_file(eventWise_path)
-    cols = [c for c in eventWise.columns]
-    del eventWise
-    position = ['input', 'eigenspace']
-    DeltaR = np.linspace(0.2, 0.6, 4)
-    affinitycutoff = [('distance', 2), None]
-    invarient = ['invarient', 'angular', 'Luclus']
-    numeigenvectors = [2, 4, 6]
-    for pos in position:
-        pos_indices = np.where(initial_Position==pos)[0]
-        for dR in DeltaR:
-            dr_indices = pos_indices[np.abs(initial_DeltaR[pos_indices] - dR) < epsilon]
-            for cutoff in affinitycutoff:
-                if cutoff is None:
-                    co_indices = dr_indices[initial_Cutoff[dr_indices] == cutoff]
-                else:
-                    co_mask = []
-                    for initial in initial_Cutoff[dr_indices]:
-                        if isinstance(initial, tuple):
-                            co_mask.append(initial[0] == cutoff[0] and
-                                           abs(initial[1] - cutoff[1]) < epsilon)
-                        else:
-                            co_mask.append(False)
-                    co_indices = dr_indices[co_mask]
-                for invar in invarient:
-                    invar_indices = co_indices[initial_PhyDistance[co_indices] == invar]
-                    for eig in numeigenvectors:
-                        eig_indices = invar_indices[initial_NEigen[invar_indices] == eig]
-                        if (not os.path.exists('continue')) or os.path.exists('stopscan'):
-                            return
-                        if time.time() > end_time:
-                            return
-                        jet_class = "SpectralFull"
-                        jet_params = dict(DeltaR=dR,
-                                          ExpofPTMultiplier=-0.2,
-                                          ExpofPTPosition=pos,
-                                          NumEigenvectors=eig,
-                                          Laplacien='symmetric',
-                                          AffinityType='exponent2',
-                                          AffinityCutoff=cutoff,
-                                          PhyDistance=invar,
-                                          StoppingConditon='beamparticle')
-                        if jet_class not in initial_jet_class[eig_indices]:
-                            print(jet_params)
-                            jet_id = records.append(jet_class, jet_params)
-                            jet_name = make_jet_name(jet_name, jet_id)
-                            generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
-                        else:
-                            print(f"Already done {jet_class}, {jet_params}")
-    records.write()
-
-
-def loops(eventWise_path):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise_path :
-        
-
-    Returns
-    -------
-
-    
-    """
-    record_path = "records.csv"
-    records = CompareClusters.Records(record_path)
-    eventWise = Components.EventWise.from_file(eventWise_path)
-    cols = [c for c in eventWise.columns]
-    del eventWise
-    DeltaR = np.linspace(2., 4., 15)
-    exponents = [-1, 0, 1]
-    for exponent in exponents:
-        for dR in DeltaR:
-            print(f"Exponent {exponent}")
-            print(f"DeltaR {dR}")
-            jet_class = "Home"
-            jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent)
-            jet_id = records.append(jet_class, jet_params)
-            jet_name = make_jet_name(jet_class, jet_id)
-            generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
-    records.write()
-    exponents = [-1, 0, 2]
-    NumEigenvectors = [1, 3, 4, 6]
-    distance = [3.5, 4.5, 5.5]
-    for exponent in exponents:
-        for dR in DeltaR:
-            for n_eig in NumEigenvectors:
-                for dis in distance:
-                    print(f"Exponent {exponent}")
-                    print(f"DeltaR {dR}")
-                    print(f"NumEigenvectors {n_eig}")
-                    print(f"Distance {dis}")
-                    jet_class = "SpectralAfter"
-                    jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-                                      NumEigenvectors=n_eig,
-                                      Laplacien='symmetric',
-                                      AffinityType='exponent',
-                                      AffinityCutoff=('distance', dis))
-                    jet_id = records.append(jet_class, jet_params)
-                    jet_name = make_jet_name(jet_class, jet_id)
-                    generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
-                jet_params = dict(DeltaR=dR, ExponentMultiplier=exponent,
-                                  NumEigenvectors=n_eig,
-                                  Laplacien='symmetric',
-                                  AffinityType='exponent',
-                                  AffinityCutoff=None)
-                jet_id = records.append(jet_class, jet_params)
-                jet_name = make_jet_name(jet_class, jet_id)
-                generate_pool(eventWise_path, jet_class, jet_params, jet_name, True)
-    records.write()
-
-
-def iterate(eventWise_path, jet_class):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise_path :
-        param jet_class:
-    jet_class :
-        
-
-    Returns
-    -------
-
-    
-    """
-    eventWise = Components.EventWise.from_file(eventWise_path)
-    record_path = "records.csv"
-    records = CompareClusters.Records(record_path)
-    print("Delete the continue file when you want to stop")
-    if not os.path.exists('continue'):
-        open('continue', 'a').close()
-    count = 0
-    while os.path.exists('continue'):
-        if count % 10 == 0:
-            print("Rescoring")
-            combined = recombine_eventWise(eventWise_path)
-            records.score(combined)
-        next_best = CompareClusters.parameter_step(records, jet_class)
-        if next_best is None:
-            print("Couldn't find new target, exiting")
-            return
-        print(f"Next best is {next_best}")
-        jet_id = records.append(jet_class, next_best)
-        jet_name = make_jet_name(jet_class, jet_id)
-        generate_pool(eventWise_path, jet_class, next_best, jet_name, True)
-        records.write()
-        count += 1
+#def iterate(eventWise_path, jet_class):
+#    """
+#    
+#
+#    Parameters
+#    ----------
+#    eventWise_path :
+#        param jet_class:
+#    jet_class :
+#        
+#
+#    Returns
+#    -------
+#
+#    
+#    """
+#    eventWise = Components.EventWise.from_file(eventWise_path)
+#    record_path = "records.csv"
+#    records = CompareClusters.Records(record_path)
+#    print("Delete the continue file when you want to stop")
+#    if not os.path.exists('continue'):
+#        open('continue', 'a').close()
+#    count = 0
+#    while os.path.exists('continue'):
+#        if count % 10 == 0:
+#            print("Rescoring")
+#            combined = recombine_eventWise(eventWise_path)
+#            records.score(combined)
+#        next_best = CompareClusters.parameter_step(records, jet_class)
+#        if next_best is None:
+#            print("Couldn't find new target, exiting")
+#            return
+#        print(f"Next best is {next_best}")
+#        jet_id = records.append(jet_class, next_best)
+#        jet_name = make_jet_name(jet_class, jet_id)
+#        generate_pool(eventWise_path, jet_class, next_best, jet_name, True)
+#        records.write()
+#        count += 1
 
 
 def random_parameters(jet_class=None):
@@ -670,43 +579,34 @@ def random_parameters(jet_class=None):
     
     """
     if jet_class is None:
-        jet_classes = ['SpectralMean', 'SpectralFull', 'Splitting', 'Home']
+        jet_classes = ['SpectralMean', 'SpectralFull', 'Splitting', 'Indicator', 'Home']
         jet_class = np.random.choice(jet_classes)
     params = {}
-    if 'Spectral' in jet_class or 'Splitting' in jet_class:
-        if 'Spectral' in jet_class:
-            permitted = FormJets.Spectral.permited_values
-            params['DeltaR'] = np.random.uniform(0., 1.5)
-            exppos = permitted['ExpofPTPosition']
-            params['ExpofPTPosition'] = np.random.choice(exppos)
-            stopcon = permitted['StoppingCondition']
-            params['StoppingCondition'] = np.random.choice(stopcon)
-        else:
-            permitted = FormJets.Splitting.permited_values
-        params['ExpofPTMultiplier'] = np.random.uniform(-1., 1.)
-        params['NumEigenvectors'] = np.random.randint(1, 10)
-        laplaciens = permitted['Laplacien']
-        params['Laplacien'] = np.random.choice(laplaciens)
-        affinites = permitted['AffinityType']
-        params['AffinityType'] = np.random.choice(affinites)
-        cutofftypes = [None, 'knn', 'distance']
-        cutofftype = np.random.choice(cutofftypes)
-        if cutofftype is None:
-            params['AffinityCutoff'] = cutofftype
-        elif cutofftype == 'knn':
-            params['AffinityCutoff'] = (cutofftype, np.random.randint(1, 6))
-        elif cutofftype == 'distance':
-            params['AffinityCutoff'] = (cutofftype, np.random.uniform(0., 10.))
-        invarients = permitted['PhyDistance']
-        params['PhyDistance'] = np.random.choice(invarients)
-    elif 'Home' == jet_class:
-        permitted = FormJets.Traditional.permited_values
-        params['DeltaR'] = np.random.uniform(0., 1.5)
-        params['ExpofPTMultiplier'] = np.random.uniform(-1., 1.)
-        invarients = permitted['PhyDistance']
-        params['PhyDistance'] = np.random.choice(invarients)
-    else:
-        raise NotImplementedError
+    permitted_vals = getattr(FormJets, jet_class).permited_values
+    for key, selection in permitted_vals.item():
+        if key == 'DeltaR':
+            params[key] = np.random.uniform(0, 1.5)
+        elif key == 'ExpofPTMultiplier':
+            params[key] = np.random.uniform(-1., 1.)
+        elif key == 'NumEigenvectors':
+            params[key] = np.random.randint(1, 10)
+        elif key == 'MaxCutScore':
+            params[key] = np.random.uniform(0.2, 1.)
+        elif key == 'BaseJump':
+            params[key] = np.random.uniform(0.01, 0.5)
+        elif key == 'JumpEigenFactor':
+            params[key] = np.random.uniform(0., 100)
+        elif key == 'AffinityCutoff':
+            cutofftypes = [None if x is None else x[0] for x in selection]
+            cutofftype = np.random.choice(cutofftypes)
+            if cutofftype is None:
+                params[key] = cutofftype
+            elif cutofftype == 'knn':
+                params[key] = (cutofftype, np.random.randint(1, 6))
+            elif cutofftype == 'distance':
+                params[key] = (cutofftype, np.random.uniform(0., 10.))
+        else:  # all the remaining ones are selected from lists
+            params[key] = np.random.choice(selection)
     return jet_class, params
 
 
@@ -728,10 +628,12 @@ def monte_carlo(eventWise_path, end_time, jet_class=None):
 
     
     """
+    if jet_class == '':
+        jet_class = None
     change_class = jet_class is None
     eventWise = Components.EventWise.from_file(eventWise_path)
-    record_path = "records.csv"
-    records = CompareClusters.Records(record_path)
+    existing_jets = FormJets.get_jet_names(eventWise)
+    name_gen = name_generator(jet_class, existing_jets)
     #print("Delete the continue file when you want to stop")
     #if not os.path.exists('continue'):
     #    open('continue', 'a').close()
@@ -741,30 +643,9 @@ def monte_carlo(eventWise_path, end_time, jet_class=None):
             jet_class = None
         jet_class, next_try = random_parameters(jet_class)
         print(f"Next try is {jet_class}; {next_try}")
-        jet_id = records.append(jet_class, next_try)
-        jet_name = make_jet_name(jet_class, jet_id)
+        jet_name = next(name_gen)
         generate_pool(eventWise_path, jet_class, next_try, jet_name, True, end_time=end_time)
-        records.write()
 
-
-def full_run_best(eventWise_path, records, jet_class=None):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise_path :
-        
-    records :
-        
-    jet_class :
-         (Default value = None)
-
-    Returns
-    -------
-
-    """
-    pass  # TODO
 
 if __name__ == '__main__':
     eventWise_path = InputTools.get_file_name("Where is the eventwise of collection fo eventWise? ", '.awkd')
@@ -777,13 +658,5 @@ if __name__ == '__main__':
     if InputTools.yesNo_question("Monte carlo? "):
         names = FormJets.cluster_classes
         jet_class = InputTools.list_complete("Jet class? ", names).strip()
-        if jet_class == '':
-            jet_class = None
         monte_carlo(eventWise_path, end_time, jet_class=jet_class)
-    elif InputTools.yesNo_question("SpectralFullScan? "):
-        scan_spectralfull(eventWise_path, end_time)
-    elif InputTools.yesNo_question("SpectralMeanScan? "):
-        scan_spectralmean(eventWise_path, end_time)
-    #loops(eventWise_path)
-    #iterate(eventWise_path, jet_class)
 

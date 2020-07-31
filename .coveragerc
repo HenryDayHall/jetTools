@@ -18,7 +18,7 @@
 #    tree_tagger/ShapeVariables.py   #    n           n
 #    tree_tagger/TrueTag.py          #    y           y
 #    tree_tagger/CompareClusters.py  #    n           n   now
-#    tree_tagger/ParallelFormJets.py #    n           n   now
+#    tree_tagger/ParallelFormJets.py #    p           y
 #    tree_tagger/PlottingTools.py    #    n           n
 # things that should be added to this list soon
 #    */tree_tagger/RescaleJets.py      #    n           n
