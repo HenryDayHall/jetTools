@@ -216,6 +216,28 @@ def test_percent_pos():
     tst.assert_allclose(found, [1, 0.5, 0])
 
 
+def test_get_root_rest_energies():
+    # an empty event should return empty
+    energy = awkward.fromiter([])
+    px = awkward.fromiter([])
+    py = awkward.fromiter([])
+    pz = awkward.fromiter([])
+    root_idxs = awkward.fromiter([])
+    #found = TrueTag.get_root_rest_energies(root_idxs, energy, px, py, pz)
+    #assert len(found) == 0
+    # and one trial event
+    energy = awkward.fromiter([[10., 10., 20.], [10., 10., 11.]])
+    px = awkward.fromiter([[1., 1., 2.], [1., 1., 1.]])
+    py = awkward.fromiter([[1., 2., 2.], [1., -1., 1.]])
+    pz = awkward.fromiter([[1., -1., 2.], [1., -1., 1.]])
+    root_idxs = awkward.fromiter([[2], [1]])
+    #masses2 = awkward.fromiter([[97, 94, 388], [97, 97, 118]])
+    expected = awkward.fromiter([np.sqrt([97 + 3, 94 + 10, 388]),
+                                 np.sqrt([97 + 8, 97, 118 + 8])])
+    found = TrueTag.get_root_rest_energies(root_idxs, energy, px, py, pz)
+    tst.assert_allclose(found.tolist(), expected.tolist())
+
+
 def test_add_ctags():
     params = {}
     jet_name = "Jet"

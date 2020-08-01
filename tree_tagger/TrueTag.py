@@ -366,9 +366,25 @@ def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
     return percents
 
 
+def get_root_rest_energies(root_idxs, energies, pxs, pys, pzs):
+    # not sure if this will work for a whole event.... 
+    if len(root_idxs.flatten()) == 0:
+        assert len(energies.flatten()) == 0
+        return energies
+    momentum = np.vstack((pxs, pys, pzs)).T
+    masses2 = energies**2 - pxs**2 - pys**2 - pzs**2
+    pxs = pxs - pxs[root_idxs].flatten()
+    pys = pys - pys[root_idxs].flatten()
+    pzs = pzs - pzs[root_idxs].flatten()
+    energies = np.sqrt(masses2 + pxs**2 + pys**2 + pzs**2)
+    return energies
+
+
 def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
     """
     Add the inheritance from each to the tagging particles
+    Represents the portion of the energy that has been derived from the true particles
+    in the rest frame of the root particle.
 
     Parameters
     ----------
@@ -417,6 +433,7 @@ def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break
+        # TODO move this into the root particle's rest frame
         eventWise.selected_index = event_n
         jets_idxs = getattr(eventWise, jet_name + "_InputIdx")
         parents_idxs = getattr(eventWise, jet_name + "_Parent")

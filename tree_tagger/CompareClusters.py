@@ -110,12 +110,15 @@ def calculate_fpr_tpr(eventWise, jet_name, jet_idxs, ctag):
     -------
 
     """
+    # ctag says what percentage of a jets mass is from true positives
     assert eventWise.selected_index is not None
     is_root = getattr(eventWise, jet_name+"_Parent")[jet_idxs] == -1
-    # consider the 4 jets with highest b_energy
-    # and at least 50% b energy to be b_jets
-    # not that ctag already includes jet energy as it's weighting
-    ctag = ctag[jet_idxs]
+    is_leaf = getattr(eventWise, jet_name+"_Child1")[jet_idxs] == -1
+    ctags = ctag[:, jet_idxs]  # each tag particle has a ctag
+    leaf_tags = ctags[:, is_leaf]
+    root_tags = ctags[:, is_root]
+    # to get the jet with the
+    # for a each tag particle, find the jet that got most of it
     b_idx = np.argsort(ctag[is_root])[-4:]
     b_idx = b_idx[ctag[is_root][b_idx].flatten() > 0.5]
     n_positives = np.sum(ctag.flatten())

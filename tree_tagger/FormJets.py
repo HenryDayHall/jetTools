@@ -1922,7 +1922,7 @@ class Indicator(Spectral):
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
                        'BaseJump': Constants.numeric_classes['pdn'],
-                       'JumpEigenFactor': Constants.numeric_classes['nn']}
+                       'JumpEigenFactor': Constants.numeric_classes['rn']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
         Class constructor
@@ -2328,9 +2328,9 @@ class Splitting(Indicator):
         make_jet = n_trials > 1
         try:
             minima = np.nanargmin(scores_here) + 1
+            make_jet *= scores_here[minima-1] < self.MaxCutScore
         except ValueError:  # all nan
             make_jet = False
-        make_jet *= scores_here[minima-1] < self.MaxCutScore
         if not make_jet:
             # everything that's left is BG
             # call it a jet for now
