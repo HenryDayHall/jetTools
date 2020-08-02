@@ -367,10 +367,33 @@ def percent_pos(jet_idxs, parent_idxs, pos_idxs, weights=None):
 
 
 def get_root_rest_energies(root_idxs, energies, pxs, pys, pzs):
-    # not sure if this will work for a whole event.... 
+    """
+    Find the energies (of anything really, but presumably jets) in the rest frame
+    of particles identified a root particles
+    
+    Parameters
+    ----------
+    root_idxs : array like of ints
+        indices identifying the root particles
+    energies : array like of floats
+        the energies of the particles
+    pxs : array like of floats
+        the momentum in the x direction of the particles
+    pys : array like of floats
+        the momentum in the y direction of the particles
+    pzs : array like of floats
+        the momentum in the z direction of the particles
+
+    Returns
+    -------
+    energies : array like of floats
+        the energies of the particles in the rest frame of the root
+    """
     if len(root_idxs.flatten()) == 0:
         assert len(energies.flatten()) == 0
         return energies
+    # if we are to use the roots as indices they must have this form
+    assert isinstance(root_idxs, awkward.array.jagged.JaggedArray)
     momentum = np.vstack((pxs, pys, pzs)).T
     masses2 = energies**2 - pxs**2 - pys**2 - pzs**2
     pxs = pxs - pxs[root_idxs].flatten()
@@ -433,11 +456,17 @@ def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break
-        # TODO move this into the root particle's rest frame
         eventWise.selected_index = event_n
         jets_idxs = getattr(eventWise, jet_name + "_InputIdx")
         parents_idxs = getattr(eventWise, jet_name + "_Parent")
+        roots_inputidxs = getattr(eventWise, jet_name + "_RootInputIdx")
+        roots = awkward.fromiter([np.where(jet == root[0])[0] for jet, root
+                                  in zip(jets_idxs, roots_inputidxs)])
         energies = getattr(eventWise, jet_name + "_Energy")
+        pxs = getattr(eventWise, jet_name + "_Px")
+        pys = getattr(eventWise, jet_name + "_Py")
+        pzs = getattr(eventWise, jet_name + "_Pz")
+        energies = get_root_rest_energies(roots, energies, pxs, pys, pzs)
         sourceidx = eventWise.JetInputs_SourceIdx.tolist()
         tags_here = []
         for b_idx in eventWise.BQuarkIdx:

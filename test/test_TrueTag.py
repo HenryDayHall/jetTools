@@ -237,7 +237,7 @@ def test_get_root_rest_energies():
     found = TrueTag.get_root_rest_energies(root_idxs, energy, px, py, pz)
     tst.assert_allclose(found.tolist(), expected.tolist())
 
-
+# needs updating becuase the energies are now done in the rest frame
 def test_add_ctags():
     params = {}
     jet_name = "Jet"
@@ -245,6 +245,10 @@ def test_add_ctags():
     params['Jet_InputIdx'] = [awkward.fromiter([])]
     params['Jet_Parent'] = [awkward.fromiter([])]
     params['Jet_Energy'] = [awkward.fromiter([])]
+    params['Jet_Px'] = [awkward.fromiter([])]
+    params['Jet_Py'] = [awkward.fromiter([])]
+    params['Jet_Pz'] = [awkward.fromiter([])]
+    params['Jet_RootInputIdx'] = [awkward.fromiter([])]
     params['Children'] = [awkward.fromiter([])]
     params['Parents'] = [awkward.fromiter([])]
     params['MCPID'] = [awkward.fromiter([])]
@@ -252,9 +256,15 @@ def test_add_ctags():
     params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
     # event 1
     params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(11))]
+    params['Jet_RootInputIdx'] += [awkward.fromiter([[101], [102]])]
     params['Jet_InputIdx'] += [awkward.fromiter([[0, 101, 2], [102, 4, 5]])]
     params['Jet_Parent'] += [awkward.fromiter([[101, -1, 101], [-1, 102, 102]])]
-    params['Jet_Energy'] += [awkward.fromiter([[3., 1., 2.], [7., 2., 1.]])]
+    params['Jet_Energy'] += [awkward.fromiter([[30., 10., 20.], [70., 20., 10.]])]
+    params['Jet_Px'] += [awkward.fromiter([[3., 0., 2.], [1., 2., -1.]])]
+    params['Jet_Py'] += [awkward.fromiter([[3., 0., 2.], [2., 2., 1.]])]
+    params['Jet_Pz'] += [awkward.fromiter([[3., 0., 2.], [0., 2., 2.]])]
+    # invarient_mass                      873  100  388   4859, 388, 94
+    # shifted energy                       30   10   20   70 sqrt(393) sqrt(103)
     params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
     params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
     params['PT'] +=       [awkward.fromiter([3,  1,   2,   1,   2,  1,    3,           1,  2,   1, 2])]
@@ -272,7 +282,7 @@ def test_add_ctags():
         assert len(eventWise.Jet_CTags) == 0
         # the second event has two jets
         eventWise.selected_index = 1
-        expected0 = [[0, 0, 0], [1/3, 0, 1]]
+        expected0 = [[0, 0, 0], [np.sqrt(103)/(np.sqrt(393) + np.sqrt(103)), 0, 1]]
         expected1 = [[0, 2/5, 1], [0, 0, 0]]
         tst.assert_allclose(eventWise.Jet_CTags.tolist()[0], expected0)
         tst.assert_allclose(eventWise.Jet_CTags.tolist()[1], expected1)
