@@ -1,4 +1,4 @@
-from tree_tagger import FormJets, Components, InputTools
+from tree_tagger import FormJets, Components, InputTools, CompareClusters
 import time
 import csv
 import cProfile
@@ -162,7 +162,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     """
     # if an awkd file is given, and a progress directory exists, change to that
     if eventWise_path.endswith('awkd') and os.path.exists(eventWise_path[:-5]+"_progress"):
-        print("This awkd has already been split into progress")
+        #print("This awkd has already been split into progress")
         eventWise_path = eventWise_path[:-5]+"_progress"
         # inside this directory, whatever is called progress1 is the thing we want
         # becuase that is the unfinished part
@@ -171,7 +171,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         eventWise_path = os.path.join(eventWise_path, unfinished_part)
     # same logic to fragment
     if eventWise_path.endswith('awkd') and os.path.exists(eventWise_path[:-5]+"_fragment"):
-        print("This awkd has already been split into fragments")
+        #print("This awkd has already been split into fragments")
         eventWise_path = eventWise_path[:-5]+"_fragment"
     if not eventWise_path.endswith('.awkd'):  # this is probably a dir name
         if '.' in eventWise_path:
@@ -185,14 +185,14 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
             print("Removed previous joined component")
         except (StopIteration, OSError) as e:
             pass
-        print(f"{eventWise_path} appears to be directory")
+        #print(f"{eventWise_path} appears to be directory")
         # if it's a directory look for subdirectories whos name starts with the directory name
         # these indicate existing splits
         leaf_dir = os.path.split(eventWise_path)[-1]
         sub_dir = [name for name in os.listdir(eventWise_path)
                    if name.startswith(leaf_dir) and os.path.isdir(os.path.join(eventWise_path, name))]
         while sub_dir:
-            print(f"Entering {sub_dir[0]}")
+            #print(f"Entering {sub_dir[0]}")
             eventWise_path = os.path.join(sub_dir[0])
             sub_dir = [name for name in os.listdir(eventWise_path)
                        if name.startswith(sub_dir[0]) and os.path.isdir(os.path.join(eventWise_path, name))]
@@ -201,10 +201,10 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         if len(existing_fragments) == 0:
             raise FileNotFoundError(f"Directory {eventWise_path} has no eventWise file in")
         elif len(existing_fragments) == 1:
-            print("Path contains one eventWise")
+            #print("Path contains one eventWise")
             eventWise_path = os.path.join(eventWise_path, existing_fragments[0])
         elif len(existing_fragments) == n_fragments:
-            print("Path already contains correct number of eventWise. (may be semicomplete)")
+            #print("Path already contains correct number of eventWise. (may be semicomplete)")
             # the correct number of fragments already exists
             all_paths = [os.path.join(eventWise_path, fragment) for fragment in existing_fragments]
             return all_paths
@@ -234,7 +234,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
             # merge both collections and move them back up a layer
             eventWise_path = eventWise_path.rstrip(os.sep)
             new_path = os.sep.join(eventWise_path.split(os.sep)[:-1])
-            print("Creating collective finished and unfinished parts")
+            #print("Creating collective finished and unfinished parts")
             if len(finished_fragments) > 0:
                 finished = Components.EventWise.combine(eventWise_path, "finished_" + jet_name,
                                                         fragments=finished_fragments, del_fragments=True)
@@ -249,7 +249,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
             os.rmdir(eventWise_path)
             eventWise_path = os.path.join(new_path, unfinished.save_name)
     # if this point is reached all the valid events are in one eventwise at eventWise_path 
-    print(f"In possesion of one eventWise object at {eventWise_path}")
+    #print(f"In possesion of one eventWise object at {eventWise_path}")
     eventWise = Components.EventWise.from_file(eventWise_path)
     # check if the jet is in the eventWise
     jet_components = [name for name in eventWise.columns if name.startswith(jet_name)]
@@ -261,7 +261,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
             print("Everything is finished")
             return True
         eventWise = Components.EventWise.from_file(unfinished_path)
-    print("Fragmenting eventwise")
+    #print("Fragmenting eventwise")
     all_paths = eventWise.fragment("JetInputs_Energy", n_fragments=n_fragments)
     if unfinished_path is not None:
         # get rid of the unfishied part becuase it exists in the fragments already
@@ -269,7 +269,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
     return all_paths
 
 
-def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_free=False, end_time=None):
+def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_free=True, end_time=None):
     """
     Split the input file and create a pool of workers each with their own process
     to cluster the required jets on the split input file.
@@ -434,35 +434,9 @@ fix_SpectralMean = dict(ExpofPTMultiplier=-0.2,
                         AffinityType='exponent2',
                         StoppingConditon='beamparticle')
 
-
-def check_for_jet(eventWise, parameters, name_start=None, pottentials=None):
-    if pottentials is None:
-        pottentials = FormJets.get_jet_names(eventWise)
-        if name_start is not None:
-            pottentials = {name for name in pottentials if name.startswith(name_start)}
-    discreet_types = (bool, str, type(None))
-    discreet_parameters = [key for key, val in parameters.items()
-                           if isinstance(val, discreet_types)]
-    continuous_parameters = [key for key in parameters
-                             if key not in discreet_parameters]
-    while len(pottentials) > 1 and discreet_parameters:
-        key = discreet_parameters.pop()
-        values = [getattr(eventWise, name+'_'+key) for name in pottentials]
-        pottentials = [name for name, value in zip(pottentials, values)
-                       if isinstance(value, discreet_types) and value == parameters[key]]
-    while len(pottentials) > 1 and continuous_parameters:
-        required = parameters[key]
-        key = continuous_parameters.pop()
-        values = [getattr(eventWise, name+'_'+key) for name in pottentials]
-        if isinstance(required, tuple):
-            pottentials = [name for name, value in zip(pottentials, values)
-                           if isinstance(value, tuple) and 
-                           value[0] == required[0] and 
-                           np.isclose(value[1], required[1])]
-        else:
-            pottentials = [name for name, value in zip(pottentials, values)
-                           if np.isclose(value, required)]
-    return pottentials
+scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
+                        ExpofPTMultiplier=np.linspace(-1, 1, 5),
+                        PhyDistance=['invarient', 'angular', 'Luclus'])
 
 
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
@@ -501,11 +475,11 @@ def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=No
     finished = 0
     if fix_parameters is None:
         fix_parameters = {}
-    for i, combination in enumerate(itertools.product(ordered_values)):
+    for i, combination in enumerate(itertools.product(*ordered_values)):
         print(f"{100*i/num_combinations}%", end='\r', flush=True)
         # check if it's been done
         parameters = {**dict(zip(key_order, combination)), **fix_parameters}
-        if check_for_jet(eventWise, parameters, pottentials=existing_jets):
+        if FormJets.check_for_jet(eventWise, parameters, pottentials=existing_jets):
             print(f"Already done {jet_class}, {parameters}\n")
         else:
             jet_name = next(name_gen)
@@ -523,6 +497,47 @@ def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=No
         time_needed = (remaining*per_combinations)/60
         print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
 
+
+def parameter_step(eventWise, jet_class, ignore_parameteres=None, current_best=None):
+    """
+    Select a varient of the best jet in class that has not yet been tried
+
+    Parameters
+    ----------
+    records :
+        param jet_class:
+    ignore_parameteres :
+        Default value = None)
+    jet_class :
+        
+
+    Returns
+    -------
+
+    
+    """
+    # get the best jet of this class
+    if current_best is None:
+        current_best = CompareClusters.get_best(eventWise, jet_class)
+    if ignore_parameteres is None:
+        ignore_parameteres = []
+    # use the name of the best and get its parameters
+    best_parameters = FormJets.get_jet_params(eventWise, current_best, True)
+    new_parameters = {k: v for k, v in best_parameters.items()}
+    tries = 0
+    stopping_point = 100
+    while True:
+        tries += 1
+        # pick one at random and change it
+        to_change = np.random.choice(best_parameters)
+        new_parameters[to_change] = random_parameters(jet_class, [to_change])
+        possibles = FormJets.check_for_jet(eventWise, new_parameters, jet_class)
+        if not possibles:
+            yield new_parameters
+        # reset that variable
+        new_parameters[to_change] = best_parameters[to_change]
+        if tries > stopping_point:
+            raise StopIteration
 
 #def iterate(eventWise_path, jet_class):
 #    """
@@ -564,7 +579,7 @@ def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=No
 #        count += 1
 
 
-def random_parameters(jet_class=None):
+def random_parameters(jet_class=None, desired_parameters=None):
     """
     
 
@@ -583,7 +598,11 @@ def random_parameters(jet_class=None):
         jet_class = np.random.choice(jet_classes)
     params = {}
     permitted_vals = getattr(FormJets, jet_class).permited_values
+    if desired_parameters is None:
+        desired_parameters = permited_values.keys()
     for key, selection in permitted_vals.items():
+        if key not in desired_parameters:
+            continue
         if key == 'DeltaR':
             params[key] = np.random.uniform(0, 1.5)
         elif key == 'ExpofPTMultiplier':

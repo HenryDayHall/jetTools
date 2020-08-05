@@ -3102,8 +3102,38 @@ def get_jet_names(eventWise):
     ending = '_' + PseudoJet.int_columns[0].split('_', 1)[1]
     possibles = [name.split('_', 1)[0] for name in eventWise.columns if name.endswith(ending)]
     # with the word Jet put on the end
-    possibles = [name for name in possibles if name.endswith('Jet')]
+    possibles = [name for name in possibles if 'Jet' in name]
     return possibles
+
+
+def check_for_jet(eventWise, parameters, name_start=None, pottentials=None):
+    if pottentials is None:
+        pottentials = get_jet_names(eventWise)
+        if name_start is not None:
+            pottentials = {name for name in pottentials if name.startswith(name_start)}
+    discreet_types = (bool, str, type(None))
+    discreet_parameters = [key for key, val in parameters.items()
+                           if isinstance(val, discreet_types)]
+    continuous_parameters = [key for key in parameters
+                             if key not in discreet_parameters]
+    while len(pottentials) > 1 and discreet_parameters:
+        key = discreet_parameters.pop()
+        values = [getattr(eventWise, name+'_'+key) for name in pottentials]
+        pottentials = [name for name, value in zip(pottentials, values)
+                       if isinstance(value, discreet_types) and value == parameters[key]]
+    while len(pottentials) > 1 and continuous_parameters:
+        required = parameters[key]
+        key = continuous_parameters.pop()
+        values = [getattr(eventWise, name+'_'+key) for name in pottentials]
+        if isinstance(required, tuple):
+            pottentials = [name for name, value in zip(pottentials, values)
+                           if isinstance(value, tuple) and 
+                           value[0] == required[0] and 
+                           np.isclose(value[1], required[1])]
+        else:
+            pottentials = [name for name, value in zip(pottentials, values)
+                           if np.isclose(value, required)]
+    return pottentials
 
 
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
@@ -3426,16 +3456,17 @@ if __name__ == '__main__':
     spectral_jet_params = dict(ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
                                NumEigenvectors=7,
-                               #BaseJump=0.01,
-                               #JumpEigenFactor=10,
-                               MaxCutScore=0.2, 
+                               BaseJump=0.01,
+                               JumpEigenFactor=10,
+                               #MaxCutScore=0.2, 
                                Laplacien='symmetric',
                                AffinityType='exponent2',
                                AffinityCutoff=('distance', 1),
                                PhyDistance='angular')
 
-    c_class = Splitting
+    c_class = Indicator
     check_hyperparameters(c_class, spectral_jet_params)
+    #cluster_multiapply(eventWise, c_class, spectral_jet_params, "TestJet", 10)
     eventWise.selected_index = event_num
     jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
     jets.plt_assign_parents(save_prefix=None)

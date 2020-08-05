@@ -389,9 +389,8 @@ def get_root_rest_energies(root_idxs, energies, pxs, pys, pzs):
     energies : array like of floats
         the energies of the particles in the rest frame of the root
     """
-    if len(root_idxs.flatten()) == 0:
-        assert len(energies.flatten()) == 0
-        return energies
+    # don't give this empty events, it screws with indexing
+    assert len(root_idxs.flatten()) > 0
     # if we are to use the roots as indices they must have this form
     assert isinstance(root_idxs, awkward.array.jagged.JaggedArray)
     momentum = np.vstack((pxs, pys, pzs)).T
@@ -403,11 +402,12 @@ def get_root_rest_energies(root_idxs, energies, pxs, pys, pzs):
     return energies
 
 
-def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
+def add_inheritance(eventWise, jet_name, batch_length=100, silent=False, append=True):
     """
     Add the inheritance from each to the tagging particles
     Represents the portion of the energy that has been derived from the true particles
     in the rest frame of the root particle.
+    The highest percentage inheritance*jet energy gets the itag.
 
     Parameters
     ----------
@@ -434,17 +434,19 @@ def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
     
     """
     eventWise.selected_index = None
-    name = jet_name + "_CTags"
+    name = jet_name + "_Inheritance"
+    tag_name = jet_name + "_ITags"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
-    jet_tags = list(getattr(eventWise, name, []))
-    start_point = len(jet_tags)
+    jet_inhs = list(getattr(eventWise, name, []))
+    jet_tags = list(getattr(eventWise, tag_name, []))
+    start_point = len(jet_inhs)
     if start_point >= n_events:
         print("Finished")
         if append:
             return
         else:
             content = {}
-            content[name] = awkward.fromiter(jet_tags)
+            content[name] = awkward.fromiter(jet_inhs)
             return content
     end_point = min(n_events, start_point+batch_length)
     if not silent:
@@ -458,33 +460,89 @@ def add_ctags(eventWise, jet_name, batch_length=100, silent=False, append=True):
             break
         eventWise.selected_index = event_n
         jets_idxs = getattr(eventWise, jet_name + "_InputIdx")
-        parents_idxs = getattr(eventWise, jet_name + "_Parent")
-        roots_inputidxs = getattr(eventWise, jet_name + "_RootInputIdx")
-        roots = awkward.fromiter([np.where(jet == root[0])[0] for jet, root
-                                  in zip(jets_idxs, roots_inputidxs)])
-        energies = getattr(eventWise, jet_name + "_Energy")
-        pxs = getattr(eventWise, jet_name + "_Px")
-        pys = getattr(eventWise, jet_name + "_Py")
-        pzs = getattr(eventWise, jet_name + "_Pz")
-        energies = get_root_rest_energies(roots, energies, pxs, pys, pzs)
-        sourceidx = eventWise.JetInputs_SourceIdx.tolist()
-        tags_here = []
-        for b_idx in eventWise.BQuarkIdx:
-            tags_here.append([])
-            b_decendants = [sourceidx.index(d) for d in
-                            FormShower.descendant_idxs(eventWise, b_idx)
-                            if d in sourceidx]
-            for jet_idxs, parent_idxs, energy in zip(jets_idxs, parents_idxs, energies):
-                ratings = percent_pos(jet_idxs, parent_idxs, b_decendants, energy)
-                tags_here[-1].append(ratings)
+        inhs_here = []
+        tags_here = [[] for _ in jets_idxs]
+        if len(tags_here) > 0:
+            parents_idxs = getattr(eventWise, jet_name + "_Parent")
+            roots_inputidxs = getattr(eventWise, jet_name + "_RootInputIdx")
+            roots = awkward.fromiter([np.where(jet == root[0])[0] for jet, root
+                                      in zip(jets_idxs, roots_inputidxs)])
+            energies = getattr(eventWise, jet_name + "_Energy")
+            pxs = getattr(eventWise, jet_name + "_Px")
+            pys = getattr(eventWise, jet_name + "_Py")
+            pzs = getattr(eventWise, jet_name + "_Pz")
+            rf_energies = get_root_rest_energies(roots, energies, pxs, pys, pzs)
+            root_energies = energies[roots]
+            sourceidx = eventWise.JetInputs_SourceIdx.tolist()
+            for b_idx in eventWise.BQuarkIdx:
+                inhs_here.append([])
+                b_decendants = [sourceidx.index(d) for d in
+                                FormShower.descendant_idxs(eventWise, b_idx)
+                                if d in sourceidx]
+                for jet_idx, parent_idx, energy in zip(jets_idxs, parents_idxs, rf_energies):
+                    ratings = percent_pos(jet_idx, parent_idx, b_decendants, energy)
+                    inhs_here[-1].append(ratings)
+                inhs_here[-1] = awkward.fromiter(inhs_here[-1])
+                if (inhs_here[-1] > 0).any().any(): # if all the inheritances are 0, then no tags
+                    # decide who gets the tag
+                    root_scores = root_energies*inhs_here[-1][roots]
+                    tags_here[np.argmax(root_scores)].append(b_idx)
+        jet_inhs.append(awkward.fromiter(inhs_here))
         jet_tags.append(awkward.fromiter(tags_here))
     content = {}
-    content[name] = awkward.fromiter(jet_tags)
+    content[name] = awkward.fromiter(jet_inhs)
+    content[tag_name] = awkward.fromiter(jet_tags)
     if append:
         eventWise.append(**content)
     else:
         return content
 
+# TODO unit test
+def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
+    """
+    Add a list of detectable four vectors for the tags, 
+    as present in the JetInputs.
+    also add the indices themselves.
+    
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    tag_name : str
+        name of the column in the eventWise that countains the
+        indices of the tags that we wish to use
+        (Default="BQuarkIdx")
+    """
+    name = "DetectableTag"
+    tag_particles = getattr(eventWise, tag_name)
+    indices = []
+    px = []; py = []; pz = []; energy = [];
+    for i, tag_idxs in enumerate(tag_particles):
+        eventWise.selected_index = i
+        shower_inputs = set(eventWise.JetInputs_SourceIdx)
+        all_energy = eventWise.Energy
+        all_px = eventWise.Px
+        all_py = eventWise.Py
+        all_pz = eventWise.Pz
+        indices.append([])
+        energy.append([])
+        px.append([])
+        py.append([])
+        pz.append([])
+        for tag in tag_idxs:
+            tag_decendants = FormShower.descendant_idxs(eventWise, tag)
+            detectables = list(shower_inputs.intersection(tag_decendants))
+            energy[-1].append(np.sum(all_energy[detectables]))
+            px[-1].append(np.sum(all_px[detectables]))
+            py[-1].append(np.sum(all_py[detectables]))
+            pz[-1].append(np.sum(all_pz[detectables]))
+            indices[-1].append(detectables)
+    params = {name+"_Idx": awkward.fromiter(indices),
+              name+"_Energy": awkward.fromiter(energy),
+              name+"_Px": awkward.fromiter(px),
+              name+"_Py": awkward.fromiter(py),
+              name+"_Pz": awkward.fromiter(pz)}
+    eventWise.append(**params)
 
 
 display=False  # note needs full simulation

@@ -238,7 +238,8 @@ def test_get_root_rest_energies():
     tst.assert_allclose(found.tolist(), expected.tolist())
 
 # needs updating becuase the energies are now done in the rest frame
-def test_add_ctags():
+# add testing the taggging itself TODO
+def test_add_inheritance():
     params = {}
     jet_name = "Jet"
     # event 0
@@ -254,6 +255,7 @@ def test_add_ctags():
     params['MCPID'] = [awkward.fromiter([])]
     params['PT'] = [awkward.fromiter([])]
     params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    params['BQuarkIdx'] = [awkward.fromiter([])]
     # event 1
     params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(11))]
     params['Jet_RootInputIdx'] += [awkward.fromiter([[101], [102]])]
@@ -269,6 +271,8 @@ def test_add_ctags():
     params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
     params['PT'] +=       [awkward.fromiter([3,  1,   2,   1,   2,  1,    3,           1,  2,   1, 2])]
     params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
+    params['BQuarkIdx'] += [awkward.fromiter([1, 6])]
+     
     # the positivity will be                 0   1    0    1    0   1       0          0   0    0   0 
     #                                        0   0    1    0    0   0       0          0   0    0   0 
     #                                        0   0    0    0    0   0       0          0   0    0   0 
@@ -276,16 +280,18 @@ def test_add_ctags():
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         FormShower.append_b_idxs(eventWise)
-        TrueTag.add_ctags(eventWise, jet_name)
+        TrueTag.add_inheritance(eventWise, jet_name)
         # the first event is empty
         eventWise.selected_index = 0
-        assert len(eventWise.Jet_CTags) == 0
+        assert len(eventWise.Jet_Inheritance) == 0
+        assert len(eventWise.Jet_ITags) == 0
         # the second event has two jets
         eventWise.selected_index = 1
         expected0 = [[0, 0, 0], [np.sqrt(103)/(np.sqrt(393) + np.sqrt(103)), 0, 1]]
         expected1 = [[0, 2/5, 1], [0, 0, 0]]
-        tst.assert_allclose(eventWise.Jet_CTags.tolist()[0], expected0)
-        tst.assert_allclose(eventWise.Jet_CTags.tolist()[1], expected1)
+        tst.assert_allclose(eventWise.Jet_Inheritance.tolist()[0], expected0)
+        tst.assert_allclose(eventWise.Jet_Inheritance.tolist()[1], expected1)
+        expected_tags = [[1], [6]]
 
 
 def test_tags_to_quarks():

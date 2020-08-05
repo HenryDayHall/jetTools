@@ -1437,6 +1437,39 @@ def add_phi(eventWise, basename=None):
     eventWise.append(**contents)
 
 
+def add_mass(eventWise, basename=None):
+    """
+    Append a calculated invarient mass to the eventWise.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        contains data and will store result
+    base_name : string
+        prefix for inputs to calculation
+        if None will calculate for all prefixes assocated with sutable inputs
+        (Default value = None)
+    """
+    contents = {}
+    if basename is None:
+        # find all the things with e, px, py, pz
+        px_cols = [c[:-2] for c in eventWise.columns if c.endswith("Px")]
+        pxpypze_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c[:-2] in px_cols
+                        and c+"Pz" in eventWise.columns and c+"Energy" in eventWise.columns]
+        missing_mass = [c for c in pxpypze_cols if (c+"Mass") not in eventWise.columns]
+    else:
+        if len(basename) > 0:
+            if not basename.endswith('_'):
+                basename = basename + '_'
+        missing_mass = [basename]
+    for name in missing_mass:
+        px = getattr(eventWise, name+"Px")
+        py = getattr(eventWise, name+"Py")
+        pz = getattr(eventWise, name+"Py")
+        e = getattr(eventWise, name+"Energy")
+        contents[name+"Mass"] = e**2 - px**2 - py**2 - pz**2
+    eventWise.append(**contents)
+
 def last_instance(eventWise, particle_idx):
     """
     Find the particle_idx at which the specified particle decays.
