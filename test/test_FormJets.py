@@ -736,9 +736,43 @@ def test_write_event():
         assert not jets.check_params(ew)
 
 
+# TODO add test for removing correct eigenvector when there are seperated graph components
 def test_calculate_eigenspace_distances():
     n_rows = 4
     dr = 0.8
+    # test that two seperated clusters results in an eigenvectors that seperates them
+    floats = np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
+                       [1., 0., np.pi-0.1, 1., -1., 0., 0., 0.],
+                       [1., 0., np.pi, 1., -1., 0., 0., 0.]])
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
+                                     'AffinityCutoff': ('distance', 0.2),
+                                     'NumEigenvectors': 1,
+                                     'DeltaR': dr}, FormJets.Spectral)
+    # check that there is an eigenvector with the pattern [x, y, y]
+    assert jets._eigenspace.shape[1] == 1
+    eigenvector = jets._eigenspace[:, 0]
+    assert not np.isclose(eigenvector[0], eigenvector[1])
+    assert np.isclose(eigenvector[1], eigenvector[2])
+    # try again with 2 in ech group
+    floats = np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
+                       [1., 0., 0.1, 1., 1.+0.1, 0., 0., 0.],
+                       [1., 0., np.pi-0.1, 1., -1.+0.1, 0., 0., 0.],
+                       [1., 0., np.pi, 1., -1., 0., 0., 0.]])
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
+                                     'AffinityCutoff': ('distance', 0.2),
+                                     'NumEigenvectors': 1,
+                                     'DeltaR': dr}, FormJets.Spectral)
+    # check that there is an eigenvector with the pattern [x, x, y, y]
+    assert jets._eigenspace.shape[1] == 1
+    eigenvector = jets._eigenspace[:, 0]
+    assert not np.isclose(eigenvector[0], eigenvector[2])
+    assert np.isclose(eigenvector[0], eigenvector[1])
+    assert np.isclose(eigenvector[2], eigenvector[3])
+    # test some random combinations
     for i in range(5):
         floats = np.random.random((n_rows, 8))
         # set distance to 0

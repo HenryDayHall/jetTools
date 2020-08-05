@@ -243,7 +243,7 @@ def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
     pair_masses = []
     for event_n in range(n_events):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+            print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
         pairs = smallest_angle_parings(eventWise, jet_name, jet_pt_cut)
         if len(pairs) == 0:
@@ -279,7 +279,7 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None):
     all_masses = []
     for event_n in range(n_events):
         if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+            print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
         tagged_jets = np.where([len(t) for t in getattr(eventWise, jet_name + "_Tags")])[0]
         tagged_jets = filter(eventWise, jet_name, tagged_jets, track_cut=2, min_jet_PT=jet_pt_cut)
@@ -363,7 +363,7 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     all_masses = []
     for event_n in range(n_events):
         if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+            print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
         sorted_idx = order_tagged_jets(eventWise, jet_name, "PT", jet_pt_cut, track_cut)
         # this is accending order, we need decending
@@ -455,7 +455,7 @@ def all_doubleTagged_jets(eventWise, jet_name, jet_pt_cut=None):
     masses = []
     for event_n in range(n_events):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+            print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
         tagged_idxs = np.where([len(t) == 2 for t in getattr(eventWise, jet_name + '_Tags')])[0]
         tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
@@ -523,7 +523,7 @@ def descendants_masses(eventWise, use_jetInputs=True):
     n_events = len(eventWise.MCPID)
     for event_n in range(n_events):
         if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         # we only expect one heavy higgs, excluding radation dups
         heavy_idx = np.where(eventWise.MCPID == heavy_higgs_pid)[0]

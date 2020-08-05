@@ -74,7 +74,7 @@ def get_mass_ratios(eventWise, jet_name, jet_idxs, append=False):
     # we expect 4 tags per event, but only assert this, don't build in the assumption otherwise
     n_tags = len(tags[0])
     assert n_tags == 4
-    too_many_tags = set()  # keep track of which events have more than 4 tags
+    #too_many_tags = set()  # keep track of which events have more than 4 tags
     # we assume the tagger behaves perfectly
     tag_mass_in = []
     bg_mass_in = []
@@ -98,8 +98,8 @@ def get_mass_ratios(eventWise, jet_name, jet_idxs, append=False):
                 percent_found[event_n] += tag_fragment
                 # the tag value is a particle idx
                 tag_position = np.where(event_tags == tag)[0][0]
-                if tag_position >= n_tags:
-                    too_many_tags.add(event_n)
+                #if tag_position >= n_tags:
+                #    too_many_tags.add(event_n)
                 # tag position should be 0 - 3 for the 4 b tags
                 jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jet_n]
                 # convert to source_idxs
@@ -121,7 +121,7 @@ def get_mass_ratios(eventWise, jet_name, jet_idxs, append=False):
     content[jet_name + "_SignalMassRatio"] = awkward.fromiter(tag_mass_in)/eventWise.DetectableTag_Mass
     content[jet_name + "_BGMassRatio"] = awkward.fromiter(bg_mass_in)/eventWise.DetectableBG_Mass
     content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found) 
-    print(f"More than 4 b quarks in {too_many_tags}. This is {len(too_many_tags)*100/n_events}% or events")
+    #print(f"More than 4 b quarks in {too_many_tags}. This is {len(too_many_tags)*100/n_events}% or events")
     if append:
         eventWise.append(**content)
     return content
@@ -170,9 +170,9 @@ def get_kinematic_distances(eventWise, jet_name, jet_idxs, append=False):
     rapidity_distance = awkward.fromiter(rapidity_in_jet) - eventWise.DetectableTag_Rapidity
     pt_distance = awkward.fromiter(pt_in_jet) - eventWise.DetectableTag_PT
     phi_distance = awkward.fromiter(phi_in_jet) - eventWise.DetectableTag_Phi
-    content[jet_name + "_RapidiyDistance"] = rapidity_distance
-    content[jet_name + "_PTDistance"] = pt_distance
-    content[jet_name + "_PhiDistance"] = phi_distance
+    content[jet_name + "_DistanceRapidity"] = rapidity_distance
+    content[jet_name + "_DistancePT"] = pt_distance
+    content[jet_name + "_DistancePhi"] = phi_distance
     if append:
         eventWise.append(**content)
     return content
@@ -211,7 +211,7 @@ def append_scores(eventWise):
         # check if it has already been scored
         if name + "_AvePTDistance" in eventWise.hyperparameter_columns:
             continue
-        print(f"\n{100*i/num_names}%\t{name}\n" + " "*10, flush=True)
+        print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
 
         # if we reach here the jet still needs a score
         try:

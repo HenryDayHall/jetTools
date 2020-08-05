@@ -1428,14 +1428,12 @@ class Spectral(PseudoJet):
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = \
-                    scipy.linalg.eigh(laplacien, eigvals=(1, self._NumEigenvectors+1))
+                    scipy.linalg.eigh(laplacien, eigvals=(0, self._NumEigenvectors))
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
             try:
                 eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
-                eigenvalues = eigenvalues[1:]
-                eigenvectors = eigenvectors[:, 1:]
             except Exception as e:  # sometimes this still fails, not sure when/why
                 # display whatever caused this
                 print(f"Exception while processing event {self.eventWise.selected_index}")
@@ -1447,6 +1445,17 @@ class Spectral(PseudoJet):
                                           self._ints[:self.currently_avalible]]
                 self.currently_avalible = 0
                 return
+        # now remove any trivial eigenvector with 0 eigenvalue
+        zero_value = np.where(np.isclose(eigenvalues, 0))[0]
+        to_remove = np.isclose(eigenvectors[:, zero_value], eigenvectors[0, zero_value])
+        to_remove = zero_value[np.all(to_remove, axis=0)]
+        if len(to_remove) == 0:
+            # then the trivial one has been given varying values....
+            # this is possible when the laplacien contains all zero rows
+            to_remove = np.argmin(eigenvalues)
+        eigenvectors = np.delete(eigenvectors, to_remove, axis=1)
+        eigenvalues = np.delete(eigenvalues, to_remove)
+        # now the trivial eigenvector should eb removed
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
@@ -2020,13 +2029,13 @@ class Indicator(Spectral):
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien,
-                                                          eigvals=(1, self._NumEigenvectors))
+                                                          eigvals=(0, self._NumEigenvectors))
         except (ValueError, TypeError):
             # sometimes there are fewer eigenvalues avalible
             # just take waht can be found
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien)
-            eigenvalues = eigenvalues[1:]
-            eigenvectors = eigenvectors[:, 1:]
+            eigenvalues = eigenvalues
+            eigenvectors = eigenvectors
         except Exception as e:
             # display whatever caused this
             print(f"Exception while processing event {self.eventwise.selected_index}")
@@ -2036,6 +2045,16 @@ class Indicator(Spectral):
                                        self._ints[:self.currently_avalible]]
             self.currently_avalible = 0
             return
+        # now remove any trivial eigenvector with 0 eigenvalue
+        zero_value = np.where(np.isclose(eigenvalues, 0))[0]
+        to_remove = np.isclose(eigenvectors[:, zero_value], eigenvectors[0, zero_value])
+        to_remove = zero_value[np.all(to_remove, axis=0)]
+        if len(to_remove) == 0:
+            # then the trivial one has been given varying values....
+            # this is possible when the laplacien contains all zero rows
+            to_remove = np.argmin(eigenvalues)
+        eigenvectors = np.delete(eigenvectors, to_remove, axis=1)
+        eigenvalues = np.delete(eigenvalues, to_remove)
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = eigenvectors
@@ -2707,7 +2726,7 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
         print("Finished")
         return True
     end_point = min(n_events, start_point+batch_length)
-    print(f" Will stop at {100*end_point/n_events}%")
+    print(f" Will stop at {end_point/n_events:.1%}")
     # sort out olumn names
     sources = ["PT", "Rapidity", "Phi", "Energy", "Px", "Py", "Pz"]
     for s in sources:
@@ -2724,7 +2743,7 @@ def create_jetInputs(eventWise, filter_functions=[filter_obs, filter_pt_eta], ba
     mask = []
     for event_n in range(start_point, end_point):
         if event_n % 100 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         idx_selection = np.arange(len(eventWise.PT))
         for filter_func in filter_functions:
@@ -2944,8 +2963,8 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
         return True
     end_point = min(n_events, start_point+batch_length)
     if not silent:
-        print(f" Starting at {100*start_point/n_events}%")
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Starting at {start_point/n_events:.1%}")
+        print(f" Will stop at {end_point/n_events:.1%}")
     # updated_dict will be replaced in the first batch
     updated_dict = None
     checked = False
@@ -2954,7 +2973,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
         eigenvalues = []
     for event_n in range(start_point, end_point):
         if event_n % 100 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables

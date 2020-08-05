@@ -118,7 +118,7 @@ class TracksTowersDataset(EventWiseDataset):
         eventWise = self.eventWise
         for i, event_n in enumerate(self.all_indices):
             if i%100 == 0:
-                print(f"{100*i/n_events}%", end='\r')
+                print(f"{i/n_events:.1%}", end='\r')
             tracks_near_tower, towers_near_track = LinkingFramework.tower_track_proximity(eventWise)
             MCtruth = LinkingFramework.MC_truth_links(eventWise)
             event_info = gen_overall_data(eventWise)
@@ -733,7 +733,7 @@ class FlatJetDataset(JetWiseDataset):
         update=False
         for jet_num, idx in enumerate(sorted(self.all_indices)):
             if jet_num %100 == 0:
-                print(f"{100*jet_num/n_train_jets:.2f}%", end='\r', flush=True)
+                print(f"{jet_num/n_train_jets:.2f:.1%}", end='\r', flush=True)
             while idx >= self._cumulative_jets[event_num]:
                 event_num += 1
                 update=True

@@ -470,13 +470,13 @@ def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=No
     num_combinations = np.product([len(vals) for vals in ordered_values])
     print(f"This scan contains {num_combinations} combinations to test.")
     if existing_jets:
-        complete = 100*num_combinations/len(existing_jets)
-        print(f"Assuming all existing jets are from this scan it is {complete:.1f}% complete")
+        complete = num_combinations/len(existing_jets)
+        print(f"Assuming all existing jets are from this scan it is {complete:.1%} complete")
     finished = 0
     if fix_parameters is None:
         fix_parameters = {}
     for i, combination in enumerate(itertools.product(*ordered_values)):
-        print(f"{100*i/num_combinations}%", end='\r', flush=True)
+        print(f"{i/num_combinations:.1%}", end='\r', flush=True)
         # check if it's been done
         parameters = {**dict(zip(key_order, combination)), **fix_parameters}
         if FormJets.check_for_jet(eventWise, parameters, pottentials=existing_jets):

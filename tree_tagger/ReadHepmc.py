@@ -88,7 +88,7 @@ class Hepmc(Components.EventWise):
                                                                                self.prepared_contents["Start_vertex_barcode"],
                                                                                self.prepared_contents["End_vertex_barcode"])):
             if event_n % 100 == 0:
-                print(f"{100*event_n/n_events}%", end='\r', flush=True)
+                print(f"{event_n/n_events:.1%}", end='\r', flush=True)
             children = []
             parents = []
             for particle_n, (start_b, end_b) in enumerate(zip(start_barcodes, end_barcodes)):

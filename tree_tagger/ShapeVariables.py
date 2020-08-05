@@ -316,14 +316,14 @@ def append_jetshapes(eventWise, jet_name, batch_length=100, silent=False, jet_pt
         return True
     end_point = min(n_events, start_point+batch_length)
     if not silent:
-        print(f" Starting at {100*start_point/n_events}%")
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Starting at {start_point/n_events:.1%}")
+        print(f" Will stop at {end_point/n_events:.1%}")
     # updated_dict will be replaced in the first batch
     #thrust_issues = []
     #hjm_issues = []
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         # select the jets that have been tagged
         jet_idx = [i for i, tags in enumerate(getattr(eventWise, name_tags))
@@ -410,14 +410,14 @@ def append_tagshapes(eventWise, batch_length=100, silent=False, jet_pt_cut='defa
         return True
     end_point = min(n_events, start_point+batch_length)
     if not silent:
-        print(f" Starting at {100*start_point/n_events}%")
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Starting at {start_point/n_events:.1%}")
+        print(f" Will stop at {end_point/n_events:.1%}")
     # updated_dict will be replaced in the first batch
     #thrust_issues = []
     #hjm_issues = []
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         tag_idx = eventWise.TagIndex
         # there shoudl always be 4 tags

@@ -39,7 +39,7 @@ def truth_vertices(eventWise, jet_name, batch_length=np.inf):
         return
     for event_n in range(start_event, end_event):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         end_bar_codes = eventWise.End_vertex_barcode
         start_bar_codes = eventWise.Start_vertex_barcode
@@ -361,7 +361,7 @@ def find_vertices(eventWise, jet_name, vertex_name=None, batch_length=np.inf, th
     end_event = min(batch_length+start_event, n_events)
     for event_n in range(start_event, end_event):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         input_idx = getattr(eventWise, jet_inputidx_name)
         source_idx = eventWise.JetInputs_SourceIdx
@@ -469,7 +469,7 @@ def vertex_uncertanty(eventWise, jet_name, vertex_name):
     tag_locations = getattr(eventWise, tag_vertex_name)
     for event_n in range(n_events):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         distances_to_tag
 
 
@@ -502,7 +502,7 @@ def compare_vertices(eventWise, jet_name, vertex_name):
     secondary_displacement = []
     for event_n in range(n_events):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         eventWise.selected_index = event_n
         x = eventWise.X
         y = eventWise.Y

@@ -168,12 +168,12 @@ def add_tag_particles(eventWise, silent=False):
         return True
     end_point = n_events
     if not silent:
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Will stop at {end_point/n_events:.1%}")
     #tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
     tag_pids = np.array([5])
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break
@@ -265,7 +265,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
             return hyperparameter_content, content
     end_point = min(n_events, start_point+batch_length)
     if not silent:
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Will stop at {end_point/n_events:.1%}")
     # name the vaiables to be cut on
     inputidx_name = jet_name + "_InputIdx"
     rootinputidx_name = jet_name+"_RootInputIdx"
@@ -273,7 +273,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     max_angle2 = max_angle**2
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break
@@ -450,11 +450,11 @@ def add_inheritance(eventWise, jet_name, batch_length=100, silent=False, append=
             return content
     end_point = min(n_events, start_point+batch_length)
     if not silent:
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Will stop at {end_point/n_events:.1%}")
     # will actually compare the square of the angle for speed
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break

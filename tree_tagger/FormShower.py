@@ -62,10 +62,10 @@ def append_b_idxs(eventWise, silent=True, append=True):
         return True
     end_point = n_events
     if not silent:
-        print(f" Will stop at {100*end_point/n_events}%")
+        print(f" Will stop at {end_point/n_events:.1%}")
     for event_n in range(start_point, end_point):
         if event_n % 10 == 0 and not silent:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break
@@ -484,7 +484,7 @@ def shared_ends(eventWise):
     shared_counts = []
     for event_n in range(n_events):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r', flush=True)
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
         if os.path.exists("stop"):
             print(f"Completed event {event_n-1}")
             break

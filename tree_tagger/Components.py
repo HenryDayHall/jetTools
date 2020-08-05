@@ -450,7 +450,9 @@ class EventWise:
         #all_content = {'column_order': column_order,
         #               'hyperparameter_column_order': hyperparameter_column_order,
         #               **self._column_contents}
-        all_content = self._column_contents.copy()
+        all_content = {}
+        # must happen in this order so the new column order overwrites the old
+        all_content.update(self._column_contents)
         all_content['column_order'] = column_order
         all_content['hyperparameter_column_order'] = hyperparameter_column_order
         awkward.save(path, all_content, mode='w')
@@ -1151,7 +1153,7 @@ def add_rapidity(eventWise, base_name=''):
     rapidities = []
     for event_n in range(n_events):
         if event_n % 10 == 0:
-            print(f"{100*event_n/n_events}%", end='\r')
+            print(f"{event_n/n_events:.1%}", end='\r')
         rap_here = []
         eventWise.selected_index = event_n
         pts = getattr(eventWise, base_name+"PT")
