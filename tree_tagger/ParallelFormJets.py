@@ -599,7 +599,7 @@ def random_parameters(jet_class=None, desired_parameters=None):
     params = {}
     permitted_vals = getattr(FormJets, jet_class).permited_values
     if desired_parameters is None:
-        desired_parameters = permited_values.keys()
+        desired_parameters = permitted_vals.keys()
     for key, selection in permitted_vals.items():
         if key not in desired_parameters:
             continue

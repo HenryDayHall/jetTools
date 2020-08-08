@@ -515,8 +515,10 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
     """
     name = "DetectableTag"
     tag_particles = getattr(eventWise, tag_name)
-    indices = []
-    px = []; py = []; pz = []; energy = [];
+    # the leaves are the bits that are detected, the roots are the tag particles
+    # group roots with common leaves
+    leaves = []; roots = []
+    px = []; py = []; pz = []; energy = []
     for i, tag_idxs in enumerate(tag_particles):
         eventWise.selected_index = i
         shower_inputs = set(eventWise.JetInputs_SourceIdx)
@@ -524,20 +526,36 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
         all_px = eventWise.Px
         all_py = eventWise.Py
         all_pz = eventWise.Pz
-        indices.append([])
+        per_tag = []
+        for tag in tag_idxs:
+            tag_decendants = FormShower.descendant_idxs(eventWise, tag)
+            detectables = shower_inputs.intersection(tag_decendants)
+            per_tag.append(detectables)
+        # now work out what overlaps
+        leaves.append([])
+        roots.append([])
         energy.append([])
         px.append([])
         py.append([])
         pz.append([])
-        for tag in tag_idxs:
-            tag_decendants = FormShower.descendant_idxs(eventWise, tag)
-            detectables = list(shower_inputs.intersection(tag_decendants))
+        while per_tag:
+            # start from the tag at the end of the list
+            roots[-1].append([tag_idxs[len(per_tag)]])
+            seed = per_tag.pop()
+            # make a mask of what will be grouped with
+            group_with = np.fromiter((not seed.isdisjoint(other) for other in per_tag),
+                                     dtype=bool)
+            roots[-1][-1] += tag_idxs[group_with].tolist()
+            detectables = sorted(seed.union(*per_tag[group_with]))
+            leaves[-1].append(detectables)
+            per_tag = per_tag[~group_with]
+            # now find the kinematics
             energy[-1].append(np.sum(all_energy[detectables]))
             px[-1].append(np.sum(all_px[detectables]))
             py[-1].append(np.sum(all_py[detectables]))
             pz[-1].append(np.sum(all_pz[detectables]))
-            indices[-1].append(detectables)
-    params = {name+"_Idx": awkward.fromiter(indices),
+    params = {name+"_Leaves": awkward.fromiter(leaves),
+              name+"_Roots": awkward.fromiter(roots),
               name+"_Energy": awkward.fromiter(energy),
               name+"_Px": awkward.fromiter(px),
               name+"_Py": awkward.fromiter(py),
