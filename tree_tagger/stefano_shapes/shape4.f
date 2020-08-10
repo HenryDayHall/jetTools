@@ -62,9 +62,9 @@ c serve per il thrust (tmm, tw asse di thrust).
       end do
       call PXTTH3(4,3,ptrak,thrust,tmm,IERR)
 c  Pritingin like this gets through to python dict
-      print *, "thrustVector[1] ", tmm(1)
-      print *, "thrustVector[2] ", tmm(2)
-      print *, "thrustVector[3] ", tmm(3)
+      print *, "ThrustVector[1] ", tmm(1)
+      print *, "ThrustVector[2] ", tmm(2)
+      print *, "ThrustVector[3] ", tmm(3)
       do i=1,3
         tv4(i)=tmm(i)
       end do
@@ -77,6 +77,16 @@ c calcolo oblateness.
       obl=oblateness
 c serve per minor and major
       call PXLTH4(4,4,rtrak,THRVAL,THRVEC,IERR)
+c  Pritingin like this gets through to python dict
+      print *, "Principle[1] ", THRVEC(1, 3)
+      print *, "Principle[2] ", THRVEC(2, 3)
+      print *, "Principle[3] ", THRVEC(3, 3)
+      print *, "Major[1] ", THRVEC(1, 2)
+      print *, "Major[2] ", THRVEC(2, 2)
+      print *, "Major[3] ", THRVEC(3, 2)
+      print *, "Minor[1] ", THRVEC(1, 1)
+      print *, "Minor[2] ", THRVEC(2, 1)
+      print *, "Minor[3] ", THRVEC(3, 1)
       rmax=THRVAL(2)
       rmin=THRVAL(1)      
 c serve per C-, D-parameter.

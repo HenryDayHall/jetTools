@@ -358,7 +358,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
     return True
 
 # prevents stalled jets from causing issues
-def remove_partial(all_paths, jet_name):
+def remove_partial(all_paths, expected_length=None):
     """
     Remove a jet from all specified paths, optimising for the case
     where this jet may not exist in many of the jets.
@@ -367,19 +367,21 @@ def remove_partial(all_paths, jet_name):
     ----------
     all_paths : list of str
         list of fiel name sof the eventWise datasets
-    jet_name : str
-        prefix of the jet variables being removed from the files
+    expected_length : int
+        the number of events that should exist
     
     """
-    if not jet_name.endswith('_'):
-        jet_name += '_'  # to ensure that two jets that start with the same string
-        # cannot be confused
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
-        rewrite = any(name.startswith(jet_name) for name in ew.columns)
-        ew.remove_prefix(jet_name)
-        if rewrite:
-            ew.write()
+        length = len(ew.X)
+        if expected_length:
+            assert length == expected_length
+        jets = FormJets.get_jet_names(ew)
+        too_short = [name + '_' for name in jets
+                     if len(getattr(ew, name + "_InputIdx")) < length]
+        for name in too_short:
+            ew.remove_prefix(name)
+        ew.write()
 
 
 def recombine_eventWise(eventWise_path):

@@ -538,17 +538,21 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
         px.append([])
         py.append([])
         pz.append([])
-        while per_tag:
-            # start from the tag at the end of the list
-            roots[-1].append([tag_idxs[len(per_tag)]])
-            seed = per_tag.pop()
+        unallocated = np.ones_like(tag_idxs, dtype=bool)
+        while np.any(unallocated):
+            position = next(i for i, free in enumerate(unallocated) if free)
+            unallocated[position] = False
+            # start from the first free tag
+            seed = per_tag[position]
             # make a mask of what will be grouped with
-            group_with = np.fromiter((not seed.isdisjoint(other) for other in per_tag),
-                                     dtype=bool)
-            roots[-1][-1] += tag_idxs[group_with].tolist()
-            detectables = sorted(seed.union(*per_tag[group_with]))
+            if not seed:  # this tag is undetectable
+                continue
+            group_with = [g for g, other in enumerate(per_tag)
+                          if not seed.isdisjoint(other)]
+            unallocated[group_with] = False
+            roots[-1].append(tag_idxs[group_with].tolist())
+            detectables = sorted(set().union(*(per_tag[g] for g in group_with)))
             leaves[-1].append(detectables)
-            per_tag = per_tag[~group_with]
             # now find the kinematics
             energy[-1].append(np.sum(all_energy[detectables]))
             px[-1].append(np.sum(all_px[detectables]))

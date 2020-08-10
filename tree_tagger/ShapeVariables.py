@@ -4,7 +4,7 @@ import scipy.linalg
 import numpy as np
 from ipdb import set_trace as st
 from tree_tagger.stefano_shapes import shape as stefano
-from tree_tagger import TrueTag, Constants, PlottingTools
+from tree_tagger import TrueTag, Constants, PlottingTools, Components
 import awkward
 from matplotlib import pyplot as plt
 
@@ -12,9 +12,10 @@ from matplotlib import pyplot as plt
 scipy_vect_methods = ["L-BFGS-B", "TNC", "SLSQP", "Powell", "trust-constr"]
 scipy_scal_methods = ["Brent", "Bounded", "Golden"]
 successes = {name: 0 for name in scipy_vect_methods + scipy_scal_methods}
-successes = {'Fail': 0}
+successes['Fail'] = 0
+failed_in = {}
 
-def minimzer(function, bounds):
+def minimzer(function, bounds, log=None):
     choices = []
     if isinstance(bounds[0], float):
         # treat as scalar optimisation
@@ -22,20 +23,27 @@ def minimzer(function, bounds):
         for name in scipy_methods:
             choices.append(scipy.optimize.minimize_scalar(function, bounds=bounds,
                                                           method=name).x)
+        choices += np.linspace(*bounds, 10000).tolist()
     else:
         start = np.mean(np.array(bounds), axis=1)
         scipy_methods = scipy_vect_methods
         for name in scipy_methods:
             choices.append(scipy.optimize.minimize(function, start, method=name,
                                                    bounds=bounds).x)
+        if log != "Thrust":
+            choices += np.random.random((10000, len(bounds))).tolist()
     results = [function(choice) for choice in choices]
     best = np.argmin(results)
-    successes[scipy_methods[best]] += 1
+    if best < len(scipy_methods):
+        successes[scipy_methods[best]] += 1
+    else:
+        successes['Fail'] += 1
+        failed_in[log] = failed_in.get(log, 0) + 1
     # now try a bunch of random values to see if these can be bettered
     return choices[best]
 
 
-def python_shape(energies, pxs, pys, pzs):
+def python_shape(energies, pxs, pys, pzs, thrust_axis=None):
     """
     
 
@@ -65,30 +73,35 @@ def python_shape(energies, pxs, pys, pzs):
     sum_birr = np.sum(np.sqrt(birrs2))
     sum_Tbirr = np.sum(np.sqrt(np.sum(momentums[:, :2]**2, axis=1)))
     # Thrust
-    def to_minimise(theta_phi):
-        """
-        
-
-        Parameters
-        ----------
-        theta_phi :
+    if thrust_axis is None:
+        def to_minimise(theta_phi):
+            """
             
 
-        Returns
-        -------
+            Parameters
+            ----------
+            theta_phi :
+                
 
-        """
-        sin_theta = np.sin(theta_phi[0])
-        thrust_axis = [sin_theta*np.cos(theta_phi[1]),
-                       sin_theta*np.sin(theta_phi[1]),
-                       np.cos(theta_phi[0])]
-        return -np.sum(np.abs(np.dot(momentums, thrust_axis)))
-    theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
-    best_theta_phi = minimzer(to_minimise, bounds=theta_phi_bounds)
-    sin_theta = np.sin(best_theta_phi[0])
-    thrust_axis = [sin_theta*np.cos(best_theta_phi[1]),
-                   sin_theta*np.sin(best_theta_phi[1]),
-                   np.cos(best_theta_phi[0])]
+            Returns
+            -------
+
+            """
+            sin_theta = np.sin(theta_phi[0])
+            thrust_axis = [sin_theta*np.cos(theta_phi[1]),
+                           sin_theta*np.sin(theta_phi[1]),
+                           np.cos(theta_phi[0])]
+            return -np.sum(np.abs(np.dot(momentums, thrust_axis)))
+        theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
+        best_theta_phi = minimzer(to_minimise, bounds=theta_phi_bounds, log="Thrust")
+        sin_theta = np.sin(best_theta_phi[0])
+        thrust_axis = [sin_theta*np.cos(best_theta_phi[1]),
+                       sin_theta*np.sin(best_theta_phi[1]),
+                       np.cos(best_theta_phi[0])]
+    else:
+        phi, pt = Components.pxpy_to_phipt(thrust_axis[0], thrust_axis[1])
+        theta = Components.ptpz_to_theta(pt, thrust_axis[2])
+        best_theta_phi = (theta, phi)
     shapes['thrustVector[1]'] = thrust_axis[0]
     shapes['thrustVector[2]'] = thrust_axis[1]
     shapes['thrustVector[3]'] = thrust_axis[2]
@@ -111,7 +124,7 @@ def python_shape(energies, pxs, pys, pzs):
         transverse_thrust_axis = [np.cos(phi), np.sin(phi)]
         return -np.sum(np.abs(np.dot(momentums[:, :2], transverse_thrust_axis)))
     phi_bounds = (-np.pi, np.pi)
-    best_phi = minimzer(to_minimise_transverse, bounds=phi_bounds)
+    best_phi = minimzer(to_minimise_transverse, bounds=phi_bounds, log="TransThrust")
     transverse_thrust_axis = [np.cos(best_phi), np.sin(best_phi)]
     momentum_dot_Tthrust = np.dot(momentums[:, :2], transverse_thrust_axis)
     shapes['Transversethrust'] = np.sum(np.abs(momentum_dot_Tthrust))/sum_Tbirr
@@ -125,6 +138,10 @@ def python_shape(energies, pxs, pys, pzs):
         perp1 /= np.sqrt(np.sum(perp1**2))
         perp2 = np.cross(perp1, thrust_axis)
         perp2 /= np.sqrt(np.sum(perp2**2))
+    if not (np.isclose(np.dot(perp1, thrust_axis), 0) and \
+           np.isclose(np.dot(perp2, thrust_axis), 0) and \
+           np.isclose(np.dot(perp1, perp2), 0)):
+        st()
     def to_minimise_major(alpha):
         """
         
@@ -140,12 +157,18 @@ def python_shape(energies, pxs, pys, pzs):
         """
         major_thrust_axis = np.cos(alpha)*perp1 + np.sin(alpha)*perp2
         return -np.sum(np.abs(momentums*major_thrust_axis))
-    best_alpha = minimzer(to_minimise_major, bounds=(-np.pi, np.pi))
+    best_alpha = minimzer(to_minimise_major, bounds=(-np.pi, np.pi), log="Major")
     major_thrust_axis = np.cos(best_alpha)*perp1 + np.sin(best_alpha)*perp2
+    shapes['Major[1]'] = major_thrust_axis[0]
+    shapes['Major[2]'] = major_thrust_axis[1]
+    shapes['Major[3]'] = major_thrust_axis[2]
     momentum_dot_major = np.dot(momentums, major_thrust_axis)
     shapes['Major'] = np.sum(np.abs(momentum_dot_major))/sum_birr
     minor_direction = np.cross(major_thrust_axis, thrust_axis)
     minor_direction /= np.sqrt(np.sum(minor_direction**2))
+    shapes['Minor[1]'] = minor_direction[0]
+    shapes['Minor[2]'] = minor_direction[1]
+    shapes['Minor[3]'] = minor_direction[2]
     sum_momentum_dot_minor = max(np.sum(np.abs(np.dot(momentums, minor_direction))),
                                  np.sum(np.abs(np.dot(momentums, -minor_direction))))
     shapes['Minor'] = sum_momentum_dot_minor/sum_birr
@@ -187,7 +210,7 @@ def python_shape(energies, pxs, pys, pzs):
         spherocity_axis = [np.cos(phi), np.sin(phi)]
         return -np.abs(np.sum(np.cross(momentums[:, :2], spherocity_axis)))
     phi_bounds = (-np.pi, np.pi)
-    best_phi = minimzer(to_minimise_spherocity, bounds=phi_bounds)
+    best_phi = minimzer(to_minimise_spherocity, bounds=phi_bounds, log="Spherocity")
     spherocity_axis = [np.cos(best_phi), np.sin(best_phi)]
     momentum_cross_sphro = np.cross(momentums[:, :2], spherocity_axis)
     shapes['Spherocity'] = 0.25*np.pi**2*(np.sum(momentum_cross_sphro)/sum_Tbirr)**2
@@ -209,9 +232,9 @@ def python_shape(energies, pxs, pys, pzs):
         acoplanarity_axis = [sin_theta*np.cos(theta_phi[1]),
                              sin_theta*np.sin(theta_phi[1]),
                              np.cos(theta_phi[0])]
-        return -np.sum(np.abs(momentums*acoplanarity_axis))
+        return np.sum(np.abs(momentums*acoplanarity_axis))
     theta_phi_bounds = ((0, np.pi), (-np.pi, np.pi))
-    best_theta_phi = minimzer(to_minimise_aco, bounds=theta_phi_bounds)
+    best_theta_phi = minimzer(to_minimise_aco, bounds=theta_phi_bounds, log="Acoplanarity")
     sin_theta = np.sin(best_theta_phi[0])
     acoplanarity_axis = [sin_theta*np.cos(best_theta_phi[1]),
                          sin_theta*np.sin(best_theta_phi[1]),

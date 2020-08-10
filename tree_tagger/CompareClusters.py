@@ -75,15 +75,24 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     eventWise.selected_index = None
     tag_groups = eventWise.DetectableTag_Roots
     n_events = len(tag_groups)
-    #too_many_tags = set()  # keep track of which events have more than 4 tags
     # we assume the tagger behaves perfectly
+    # for all jets allocated to each tag group
+    # calcualte total contained values
     tag_mass_in = [[] for _ in range(n_events)]
     bg_mass_in = [[] for _ in range(n_events)]
-    rapidity_in_jet = [[] for _ in range(n_events)]
-    phi_in_jet = [[] for _ in range(n_events)]
-    pt_in_jet = [[] for _ in range(n_events)]
+    rapidity_in = [[] for _ in range(n_events)]
+    phi_in = [[] for _ in range(n_events)]
+    pt_in = [[] for _ in range(n_events)]
+    # the fraction of the tags that have been connected to some jet
     percent_found = np.zeros(n_events)
     for event_n, event_tags in enumerate(tag_groups):
+        # it is possible to have no event tags
+        # this happens whn the tags create no detectable particles
+        if len(event_tags) == 0:
+            # if there isn't anything to be found then they must all be found
+            percent_found[event_n] = 1
+            continue # then skip
+        # if we get here, there are detectable particles from the tags
         eventWise.selected_index = event_n
         energy = eventWise.Energy
         px = eventWise.Px
@@ -93,9 +102,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
         parent_idxs = getattr(eventWise, jet_name + "_Parent")
         inheritance = getattr(eventWise, jet_name + "_Inheritance")
         tag_idxs = eventWise.BQuarkIdx
-        # we need to go though the
-        tag_fragment = 1/len(event_tags.flatten())
-        matched_jets = [[] for _ in tag_groups]
+        matched_jets = [[] for _ in event_tags]
         for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_ITags")):
             if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
                 continue  # jet not sutable or has no tags
@@ -105,49 +112,60 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
             else:
                 # chose the tag with the greatest inheritance
                 jet_root = np.where(parent_idxs[jet_n] == -1)[0][0]
-                tag_position = np.argmax(inheritance[:, jet_root])
+                # dimension 0 of inheritance is which tag particle
+                # dimension 1 of inheritance is which jet
+                # dimension 2 of inheritance is particles in the jet
+                tag_position = np.argmax(inheritance[:, jet_n, jet_root])
                 # this is the particle index of the tag with greatest inheritance in the jet
                 tag_idx = tag_idxs[tag_position]
             # which group does the tag belong to
-            group_position = next(i for i, group in tag_groups if tag_idx in group)
-            # all tags in this jet and in this group are found
-            percent_found[event_n] += tag_fragment*sum((i in tag_idxs for
-                                                        i in tag_groups[group_position]))
+            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
             matched_jets[group_position].append(jet_n)
+        # the tag fragment accounts only for tags that could be found
+        num_found = sum(len(group) for group, matched in zip(event_tags, matched_jets)
+                                 if len(matched))
+        percent_found[event_n] = num_found/len(event_tags.flatten())
         for group_n, jets in enumerate(matched_jets):
-            jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jets].flatten()
-            # convert to source_idxs
-            jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
-            jet_inputs = set(source_idx[jet_inputs])
-            tag_in_jet = jet_inputs.intersection(eventWise.DetectableTag_Leaves[group_n])
-            bg_in_jet = list(jet_inputs - tag_in_jet)
-            tag_in_jet = list(tag_in_jet)
-            tag_mass_in[event_n].append(np.sum(energy[tag_in_jet])**2 -\
-                                        np.sum(px[tag_in_jet])**2 -\
-                                        np.sum(py[tag_in_jet])**2 -\
-                                        np.sum(pz[tag_in_jet])**2)
-            bg_mass_in[event_n].append(np.sum(energy[bg_in_jet])**2 -\
-                                       np.sum(px[bg_in_jet])**2 -\
-                                       np.sum(py[bg_in_jet])**2 -\
-                                       np.sum(pz[bg_in_jet])**2)
-            phi, pt = Components.pxpy_to_phipt(np.sum(px[tag_in_jet]),
-                                               np.sum(py[tag_in_jet]))
-            phi_in_jet[event_n].append(phi)
-            pt_in_jet[event_n].append(pt)
-            rapidity_in_jet[event_n].append(Components.ptpze_to_rapidity(pt, np.sum(pz[tag_in_jet]),
-                                                                         np.sum(energy[tag_in_jet])))
+            if jets:
+                jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jets].flatten()
+                # convert to source_idxs
+                jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
+                jet_inputs = set(source_idx[jet_inputs])
+                tag_in_jet = jet_inputs.intersection(eventWise.DetectableTag_Leaves[group_n])
+                bg_in_jet = list(jet_inputs - tag_in_jet)
+                tag_in_jet = list(tag_in_jet)
+                tag_mass = np.sum(energy[tag_in_jet])**2 -\
+                           np.sum(px[tag_in_jet])**2 -\
+                           np.sum(py[tag_in_jet])**2 -\
+                           np.sum(pz[tag_in_jet])**2
+                bg_mass = np.sum(energy[bg_in_jet])**2 -\
+                          np.sum(px[bg_in_jet])**2 -\
+                          np.sum(py[bg_in_jet])**2 -\
+                          np.sum(pz[bg_in_jet])**2
+                phi, pt = Components.pxpy_to_phipt(np.sum(px[tag_in_jet]),
+                                                   np.sum(py[tag_in_jet]))
+                rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[tag_in_jet]),
+                                                        np.sum(energy[tag_in_jet]))
+            else:
+                # no jets in this group
+                tag_mass = bg_mass = 0
+                phi = pt = rapidity = np.nan
+            tag_mass_in[event_n].append(tag_mass)
+            bg_mass_in[event_n].append(bg_mass)
+            phi_in[event_n].append(phi)
+            pt_in[event_n].append(pt)
+            rapidity_in[event_n].append(rapidity)
     eventWise.selected_index = None
     content = {}
-    rapidity_distance = awkward.fromiter(rapidity_in_jet) - eventWise.DetectableTag_Rapidity
-    pt_distance = awkward.fromiter(pt_in_jet) - eventWise.DetectableTag_PT
-    phi_distance = awkward.fromiter(phi_in_jet) - eventWise.DetectableTag_Phi
+    rapidity_distance = awkward.fromiter(rapidity_in) - eventWise.DetectableTag_Rapidity
+    pt_distance = awkward.fromiter(pt_in) - eventWise.DetectableTag_PT
+    phi_distance = awkward.fromiter(phi_in) - eventWise.DetectableTag_Phi
     content[jet_name + "_DistanceRapidity"] = rapidity_distance
     content[jet_name + "_DistancePT"] = pt_distance
     content[jet_name + "_DistancePhi"] = phi_distance
     content[jet_name + "_SignalMassRatio"] = awkward.fromiter(tag_mass_in)/eventWise.DetectableTag_Mass
     content[jet_name + "_BGMassRatio"] = awkward.fromiter(bg_mass_in)/eventWise.DetectableBG_Mass
     content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found) 
-    #print(f"More than 4 b quarks in {too_many_tags}. This is {len(too_many_tags)*100/n_events}% or events")
     if append:
         eventWise.append(**content)
     return content

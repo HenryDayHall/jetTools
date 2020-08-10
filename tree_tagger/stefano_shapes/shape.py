@@ -29,7 +29,7 @@ def shape(energies, pxs, pys, pzs, my_dir='./'):
     """
     # these need to be stacked into a momentum vector that 
     # has energy last
-    momentums = np.vstack((pxs, pys, pzs, energies)).T
+    momentums = np.vstack((pzs, pxs, pys, energies)).T
     # check for tachyons, probably edit this out at some point
     s = energies**2 - np.sum(momentums[:, :3]**2, axis=1)
     tollerance = -0.001
