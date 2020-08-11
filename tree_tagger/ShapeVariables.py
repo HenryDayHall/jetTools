@@ -9,7 +9,8 @@ import awkward
 from matplotlib import pyplot as plt
 
 
-scipy_vect_methods = ["L-BFGS-B", "TNC", "SLSQP", "Powell", "trust-constr"]
+#scipy_vect_methods = ["L-BFGS-B", "TNC", "SLSQP", "Powell", "trust-constr"]
+scipy_vect_methods = ["L-BFGS-B", "Powell", "trust-constr"]
 scipy_scal_methods = ["Brent", "Bounded", "Golden"]
 successes = {name: 0 for name in scipy_vect_methods + scipy_scal_methods}
 successes['Fail'] = 0
@@ -23,7 +24,7 @@ def minimzer(function, bounds, log=None):
         for name in scipy_methods:
             choices.append(scipy.optimize.minimize_scalar(function, bounds=bounds,
                                                           method=name).x)
-        choices += np.linspace(*bounds, 10000).tolist()
+        #choices += np.linspace(*bounds, 10000).tolist()
     else:
         start = np.mean(np.array(bounds), axis=1)
         scipy_methods = scipy_vect_methods

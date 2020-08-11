@@ -373,7 +373,7 @@ def remove_partial(all_paths, expected_length=None):
     """
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
-        length = len(ew.X)
+        length = len(ew.Event_n)
         if expected_length:
             assert length == expected_length
         jets = FormJets.get_jet_names(ew)
