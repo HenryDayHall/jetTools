@@ -293,6 +293,66 @@ def test_add_inheritance():
         tst.assert_allclose(eventWise.Jet_Inheritance.tolist()[1], expected1)
         expected_tags = [[1], [6]]
 
+def test_add_detectable_fourvector():
+    # will need the BQuarkIdx, Px, Py, Pz, Energy, JetInputs_SourceIdx, Child, Parent 
+    # empty event should do nothing
+    params = {}
+    params["Children"] = [awkward.fromiter([])]
+    params["Parents"] = [awkward.fromiter([])]
+    params["Energy"] = [awkward.fromiter([])]
+    params["Px"] = [awkward.fromiter([])]
+    params["Py"] = [awkward.fromiter([])]
+    params["Pz"] = [awkward.fromiter([])]
+    params["BQuarkIdx"] = [awkward.fromiter([])]
+    params["JetInputs_SourceIdx"] = [awkward.fromiter([])]
+    # idx       0   1       2    3       4   5       6          7   8   9   10
+    # dtectable                          x   v                  v   v   v
+    children = [[], [2, 3], [5], [6, 5], [], [],     [7, 8, 9], [], [], [], []]
+    parents =  [[], [],     [1], [1],    [], [2, 3], [3],       [6],[6],[6],[]]
+    energy  =  [0, 11,      9,  11,     10, 23,      1,         2,  0,  5,  0 ]
+    px      =  [4,  2,     30,   0,      1,  0,      1,         0,  0, -4,  0 ]
+    py      =  [0,  0,      2,   6,      0,  4,      1,         0,  0,  0,  0 ]
+    pz      =  [0,  1,      0,   0,      0,  2,      0,         1,  0,  1,  0 ]
+    bquark =   [2, 3, 4, 10]
+    source = [0, 4, 5, 8, 9]
+    expected_roots = [{2,3}, {4}]
+    expected_leaves = [{5, 8, 9}, {4}]
+    expected_px = [-4, 1]
+    expected_py = [4, 0]
+    expected_pz = [3, 0]
+    expected_energy = [28, 10]
+    params["Children"] += [awkward.fromiter(children)]
+    params["Parents"] += [awkward.fromiter(parents)]
+    params["Energy"] += [awkward.fromiter(energy)]
+    params["Px"] += [awkward.fromiter(px)]
+    params["Py"] += [awkward.fromiter(py)]
+    params["Pz"] += [awkward.fromiter(pz)]
+    params["BQuarkIdx"] += [awkward.fromiter(bquark)]
+    params["JetInputs_SourceIdx"] += [awkward.fromiter(source)]
+    params = {k: awkward.fromiter(v) for k, v in params.items()}
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        TrueTag.add_detectable_fourvector(eventWise)
+        # the first event should contain nothing
+        eventWise.selected_index = 0
+        roots = eventWise.DetectableTag_Roots
+        assert len(roots) == 0
+        energy = eventWise.DetectableTag_Energy
+        assert len(energy) == 0
+        # the second event should contain the predicted values
+        eventWise.selected_index = 1
+        roots = [set(r) for r in eventWise.DetectableTag_Roots]
+        assert len(roots) == len(expected_roots)
+        # this will thro an error if anythign is missing
+        order = [roots.index(r) for r in expected_roots]
+        for e, f in enumerate(order):
+            assert expected_leaves[e] == set(eventWise.DetectableTag_Leaves[f])
+        tst.assert_allclose(expected_energy, eventWise.DetectableTag_Energy[order])
+        tst.assert_allclose(expected_px, eventWise.DetectableTag_Px[order])
+        tst.assert_allclose(expected_py, eventWise.DetectableTag_Py[order])
+        tst.assert_allclose(expected_pz, eventWise.DetectableTag_Pz[order])
+
 
 def test_tags_to_quarks():
     params = {}
