@@ -160,11 +160,13 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     rapidity_distance = awkward.fromiter(rapidity_in) - eventWise.DetectableTag_Rapidity
     pt_distance = awkward.fromiter(pt_in) - eventWise.DetectableTag_PT
     phi_distance = awkward.fromiter(phi_in) - eventWise.DetectableTag_Phi
-    content[jet_name + "_DistanceRapidity"] = rapidity_distance
-    content[jet_name + "_DistancePT"] = pt_distance
-    content[jet_name + "_DistancePhi"] = phi_distance
-    content[jet_name + "_SignalMassRatio"] = awkward.fromiter(tag_mass_in)/eventWise.DetectableTag_Mass
-    content[jet_name + "_BGMassRatio"] = awkward.fromiter(bg_mass_in)/eventWise.DetectableBG_Mass
+    content[jet_name + "_DistanceRapidity"] = np.abs(rapidity_distance)
+    content[jet_name + "_DistancePT"] = np.abs(pt_distance)
+    content[jet_name + "_DistancePhi"] = np.abs(phi_distance)
+    tag_mass_in = np.sqrt(awkward.fromiter(tag_mass_in))
+    content[jet_name + "_SignalMassRatio"] = tag_mass_in/eventWise.DetectableTag_Mass
+    bg_mass_in = np.sqrt(awkward.fromiter(bg_mass_in))
+    content[jet_name + "_BGMassRatio"] = bg_mass_in/eventWise.DetectableBG_Mass
     content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found) 
     if append:
         eventWise.append(**content)
@@ -217,10 +219,18 @@ def append_scores(eventWise):
         TrueTag.add_inheritance(eventWise, name, batch_length=np.inf)
         jet_idxs = filter_jets(eventWise, name)
         new_content = get_detectable_comparisons(eventWise, name, jet_idxs, False)
-        new_averages = {key.replace('_', '_Ave'): np.nanmean(values.flatten())
-                         for key, values in new_content.items()}
-        new_hyperparameters.update(new_content)
-        new_contents.update(new_averages)
+        new_averages = {}
+        # we are only intrested in finite results
+        for key, values in new_content.items():
+            flattened = values.flatten()
+            finite = np.isfinite(flattened)
+            if np.any(finite):
+                value = np.mean(flattened[finite])
+            else:  # sometimes there could be no finite results at all
+                value = np.nan
+            new_averages[key.replace('_', '_Ave')] = value
+        new_content.update(new_content)
+        new_hyperparameters.update(new_averages)
         if not os.path.exists('continue'):
             eventWise.append_hyperparameters(**new_hyperparameters)
             eventWise.append(**new_contents)
