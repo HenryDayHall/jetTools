@@ -229,7 +229,7 @@ def append_scores(eventWise):
             else:  # sometimes there could be no finite results at all
                 value = np.nan
             new_averages[key.replace('_', '_Ave')] = value
-        new_content.update(new_content)
+        new_contents.update(new_content)
         new_hyperparameters.update(new_averages)
         if not os.path.exists('continue'):
             eventWise.append_hyperparameters(**new_hyperparameters)

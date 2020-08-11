@@ -28,6 +28,7 @@ def multi_start_minimizer(function, bounds, method, max_restarts, patience):
     current_best = range_start
     current_min = function(current_best)
     with warnings.catch_warnings():
+        warnings.simplefilter('ignore')  # else this has a tendancy to spit user warnings
         for start_n in range(max_restarts):
             start = range_start + range_width*np.random.rand(n_variables)
             location = scipy.optimize.minimize(function, start, bounds=bounds, method=method).x
@@ -56,7 +57,7 @@ def minimzer(function, bounds, objective_name):
     else:
         scipy_methods = scipy_vect_methods
         for name in scipy_methods:
-            choices.append(multi_start_minimizer(function, bounds, name, 10000, 10))
+            choices.append(multi_start_minimizer(function, bounds, name, 100, 3))
         if objective_name != "Thrust":
             choices += np.random.random((10000, len(bounds))).tolist()
     results = [function(choice) for choice in choices]
