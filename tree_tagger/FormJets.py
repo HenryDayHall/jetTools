@@ -3217,18 +3217,14 @@ def plot_tags(eventWise, b_decendants=True, ax=None, detectables=True):
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
     ax.scatter(tag_rapidity, tag_phis, marker='d', c=TRUTH_COLOUR)
     if detectables:
-        for i, (leaves, roots) in enumerate(zip(eventWise.DetectableTag_Leaves, eventWise.DetectableTag_Roots)):
+        for i, leaves in enumerate(eventWise.DetectableTag_Leaves):
             leg_ends = np.vstack((eventWise.Rapidity[leaves], eventWise.Phi[leaves])).T
-            for root in roots:
-                #phi = eventWise.DetectableTag_Phi
-                #rapidity = eventWise.DetectableTag_Rapidity
-                #energy = eventWise.DetectableTag_Energy
-                phi = eventWise.Phi[root]
-                rapidity = eventWise.Rapidity[root]
-                energy = eventWise.Energy[root]
-                plot_spider(ax, TRUTH_COLOUR,
-                            [rapidity, phi], energy,
-                            leg_ends, eventWise.Energy[leaves])
+            phi = eventWise.DetectableTag_Phi[i]
+            rapidity = eventWise.DetectableTag_Rapidity[i]
+            energy = eventWise.DetectableTag_Energy[i]
+            plot_spider(ax, TRUTH_COLOUR,
+                        [rapidity, phi], energy,
+                        leg_ends, eventWise.Energy[leaves])
     if b_decendants:
         b_decendants = np.fromiter(FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx),
                                    dtype=int)
