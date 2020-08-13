@@ -25,13 +25,26 @@ def get_best(eventWise, jet_class):
     score = np.fromiter((getattr(eventWise, name+"_AveSignalMassRatio")
                          /getattr(eventWise, name+"_AveBGMassRatio")
                          for name in scored_names), dtype=float)
-    best_name = scored_names[np.nanargmax(score)]
+    try:
+        best_name = scored_names[np.nanargmax(score)]
+    except ValueError as e:
+        # this amy be becuase there are no jets of this class
+        if not scored_names:
+            err_message = f"no jets of class {jet_class} in {eventWise.save_name}"
+            raise ValueError(err_message)
+        # or it may be becuase all the scores were nan
+        if np.all(np.isnan(score)):
+            # then return the first
+            return scored_names[0]
+        # else, raise the original error
+        raise e from None
     return best_name
 
 
 # code for making scores
 
 def add_bg_mass(eventWise):
+    eventWise.selected_index = None
     n_events = len(eventWise.BQuarkIdx)
     all_bg_mass = np.zeros(n_events)
     for event_n in range(n_events):
@@ -42,9 +55,12 @@ def add_bg_mass(eventWise):
         bg = list(set(source_idx)  - set(detectable_idx.flatten()))
         all_bg_mass[event_n] = np.sum(eventWise.Energy[bg])**2 - np.sum(eventWise.Px[bg])**2 -\
                                np.sum(eventWise.Py[bg])**2 - np.sum(eventWise.Pz[bg])**2
+    all_bg_mass = np.sqrt(all_bg_mass)
     eventWise.append(DetectableBG_Mass = awkward.fromiter(all_bg_mass))
 
 
+
+# TODO what is happening with PT/rapidity/phi distance
 def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     """
     
@@ -78,8 +94,8 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     # we assume the tagger behaves perfectly
     # for all jets allocated to each tag group
     # calcualte total contained values
-    tag_mass_in = [[] for _ in range(n_events)]
-    bg_mass_in = [[] for _ in range(n_events)]
+    tag_mass2_in = [[] for _ in range(n_events)]
+    bg_mass2_in = [[] for _ in range(n_events)]
     rapidity_in = [[] for _ in range(n_events)]
     phi_in = [[] for _ in range(n_events)]
     pt_in = [[] for _ in range(n_events)]
@@ -89,8 +105,8 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
         # it is possible to have no event tags
         # this happens whn the tags create no detectable particles
         if len(event_tags) == 0:
-            # if there isn't anything to be found then they must all be found
-            percent_found[event_n] = 1
+            # if there isn't anything to be found then ignore this event
+            percent_found[event_n] = np.nan
             continue # then skip
         # if we get here, there are detectable particles from the tags
         eventWise.selected_index = event_n
@@ -134,24 +150,27 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                 tag_in_jet = jet_inputs.intersection(eventWise.DetectableTag_Leaves[group_n])
                 bg_in_jet = list(jet_inputs - tag_in_jet)
                 tag_in_jet = list(tag_in_jet)
-                tag_mass = np.sum(energy[tag_in_jet])**2 -\
+                tag_mass2 = np.sum(energy[tag_in_jet])**2 -\
                            np.sum(px[tag_in_jet])**2 -\
                            np.sum(py[tag_in_jet])**2 -\
                            np.sum(pz[tag_in_jet])**2
-                bg_mass = np.sum(energy[bg_in_jet])**2 -\
+                bg_mass2 = np.sum(energy[bg_in_jet])**2 -\
                           np.sum(px[bg_in_jet])**2 -\
                           np.sum(py[bg_in_jet])**2 -\
                           np.sum(pz[bg_in_jet])**2
-                phi, pt = Components.pxpy_to_phipt(np.sum(px[tag_in_jet]),
-                                                   np.sum(py[tag_in_jet]))
-                rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[tag_in_jet]),
-                                                        np.sum(energy[tag_in_jet]))
+                # for the pt and the phi comparisons use all the jet components
+                # not just the ones that come from the truth
+                jet_inputs = list(jet_inputs)
+                phi, pt = Components.pxpy_to_phipt(np.sum(px[jet_inputs]),
+                                                   np.sum(py[jet_inputs]))
+                rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[jet_inputs]),
+                                                        np.sum(energy[jet_inputs]))
             else:
                 # no jets in this group
-                tag_mass = bg_mass = 0
+                tag_mass2 = bg_mass2 = 0
                 phi = pt = rapidity = np.nan
-            tag_mass_in[event_n].append(tag_mass)
-            bg_mass_in[event_n].append(bg_mass)
+            tag_mass2_in[event_n].append(tag_mass2)
+            bg_mass2_in[event_n].append(bg_mass2)
             phi_in[event_n].append(phi)
             pt_in[event_n].append(pt)
             rapidity_in[event_n].append(rapidity)
@@ -163,9 +182,9 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     content[jet_name + "_DistanceRapidity"] = np.abs(rapidity_distance)
     content[jet_name + "_DistancePT"] = np.abs(pt_distance)
     content[jet_name + "_DistancePhi"] = np.abs(phi_distance)
-    tag_mass_in = np.sqrt(awkward.fromiter(tag_mass_in))
+    tag_mass_in = np.sqrt(awkward.fromiter(tag_mass2_in))
     content[jet_name + "_SignalMassRatio"] = tag_mass_in/eventWise.DetectableTag_Mass
-    bg_mass_in = np.sqrt(awkward.fromiter(bg_mass_in))
+    bg_mass_in = np.sqrt(awkward.fromiter(bg_mass2_in))
     content[jet_name + "_BGMassRatio"] = bg_mass_in/eventWise.DetectableBG_Mass
     content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found) 
     if append:

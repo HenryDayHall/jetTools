@@ -1148,7 +1148,6 @@ def add_rapidity(eventWise, base_name=''):
     pts = getattr(eventWise, base_name+"PT")
     pzs = getattr(eventWise, base_name+"Pz")
     es = getattr(eventWise, base_name+"Energy")
-    assert not hasattr(pts[0][0], '__iter__')
     n_events = len(getattr(eventWise, base_name+"PT"))
     rapidities = []
     for event_n in range(n_events):
@@ -1457,7 +1456,7 @@ def add_mass(eventWise, basename=None):
         # find all the things with e, px, py, pz
         px_cols = [c[:-2] for c in eventWise.columns if c.endswith("Px")]
         pxpypze_cols = [c[:-2] for c in eventWise.columns if c.endswith("Py") and c[:-2] in px_cols
-                        and c+"Pz" in eventWise.columns and c+"Energy" in eventWise.columns]
+                and c[:-2]+"Pz" in eventWise.columns and c[:-2]+"Energy" in eventWise.columns]
         missing_mass = [c for c in pxpypze_cols if (c+"Mass") not in eventWise.columns]
     else:
         if len(basename) > 0:
@@ -1467,9 +1466,9 @@ def add_mass(eventWise, basename=None):
     for name in missing_mass:
         px = getattr(eventWise, name+"Px")
         py = getattr(eventWise, name+"Py")
-        pz = getattr(eventWise, name+"Py")
+        pz = getattr(eventWise, name+"Pz")
         e = getattr(eventWise, name+"Energy")
-        contents[name+"Mass"] = e**2 - px**2 - py**2 - pz**2
+        contents[name+"Mass"] = np.sqrt(e**2 - px**2 - py**2 - pz**2)
     eventWise.append(**contents)
 
 def last_instance(eventWise, particle_idx):

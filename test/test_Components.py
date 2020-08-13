@@ -679,6 +679,36 @@ def test_add_rapidity():
             ew.B_Rapidity
 
 
+def test_add_mass():
+    large_num = np.inf
+    pxs = awkward.fromiter([[0., 1., 0., 0.,  0., 1., 1.,  1., 1., 10.]])
+    pys = awkward.fromiter([[0., 0., 1., 1., 0., 1., -1., 0., 0., 10.]])
+    pzs = awkward.fromiter([[0., 0., 1., 0., 0., 1., -1., 0., 0., 10.]])
+    es =  awkward.fromiter([[0., 1., 2., 3.,  2., 5., 4.,  1., 2., 100.]])
+    mass = awkward.fromiter([0, 0., np.sqrt(2), np.sqrt(9-1), 2.,
+                            np.sqrt(25-3), np.sqrt(16-3), 0.,
+                            np.sqrt(4-1), np.sqrt(10000 - 300)])
+    with TempTestDir("tst") as dir_name:
+        # instansation
+        save_name = "rapidity.awkd"
+        contents = {"Px": pxs, "Py": pys, "Pz": pzs, "Energy": es}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_mass(ew)
+        ew.selected_index = 0
+        tst.assert_allclose(ew.Mass, mass)
+        # try adding to a specific prefix
+        contents = {"A_Px": pxs, "A_Py": pys, "A_Pz": pzs, "A_Energy": es,
+                    "B_Px": pxs, "B_Py": pys, "B_Pz": pzs, "B_Energy": es}
+        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+                                  contents=contents)
+        Components.add_mass(ew, 'A')
+        ew.selected_index = 0
+        tst.assert_allclose(ew.A_Mass, mass)
+        with pytest.raises(AttributeError):
+            ew.B_Mass
+
+
 class Particle:
     def __init__(self, direction, mass):
         self.px = awkward.fromiter([0.])

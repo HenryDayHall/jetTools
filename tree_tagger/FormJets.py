@@ -2240,7 +2240,7 @@ class Indicator(Spectral):
             else:
                 ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
                              arrowprops={'arrowstyle':arrow_style, 'color':colour})
-        plot_tags(self.eventWise, ax=ax2)
+        plot_tags(self.eventWise, ax=ax2, detectables=False)
         # discribe the jet and stick the colour bar on ax 0
         str_eigenvalues = ''.join([f'{val:.3e}, ' + '\n'*((i+1)%3==0)
                                    for i, val in enumerate(eigenvalues)])
@@ -2524,7 +2524,7 @@ class Splitting(Indicator):
             else:
                 ax2.annotate('', (rap[start_idx], phi[start_idx]), (rap[end_idx], phi[end_idx]),
                              arrowprops={'arrowstyle':arrow_style, 'color':colour})
-        plot_tags(self.eventWise, ax=ax2)
+        plot_tags(self.eventWise, ax=ax2, detectables=False)
         # discribe the jet and stick the colour bar on ax 0
         str_eigenvalues = ''.join([f'{val:.3e}, ' + '\n'*((i+1)%3==0)
                                    for i, val in enumerate(eigenvalues)])
@@ -3194,7 +3194,7 @@ def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):
     #ax.scatter([body[0]], [body[1]], c='black', marker='o', s=body_size+1)
     #ax.scatter([body[0]], [body[1]], c=[colour], marker='o', s=body_size)
 
-def plot_tags(eventWise, b_decendants=True, ax=None):
+def plot_tags(eventWise, b_decendants=True, ax=None, detectables=True):
     """
     Plot the location of taggin particles and their decendants
 
@@ -3216,6 +3216,19 @@ def plot_tags(eventWise, b_decendants=True, ax=None):
     tag_phis = eventWise.Phi[eventWise.TagIndex]
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
     ax.scatter(tag_rapidity, tag_phis, marker='d', c=TRUTH_COLOUR)
+    if detectables:
+        for i, (leaves, roots) in enumerate(zip(eventWise.DetectableTag_Leaves, eventWise.DetectableTag_Roots)):
+            leg_ends = np.vstack((eventWise.Rapidity[leaves], eventWise.Phi[leaves])).T
+            for root in roots:
+                #phi = eventWise.DetectableTag_Phi
+                #rapidity = eventWise.DetectableTag_Rapidity
+                #energy = eventWise.DetectableTag_Energy
+                phi = eventWise.Phi[root]
+                rapidity = eventWise.Rapidity[root]
+                energy = eventWise.Energy[root]
+                plot_spider(ax, TRUTH_COLOUR,
+                            [rapidity, phi], energy,
+                            leg_ends, eventWise.Energy[leaves])
     if b_decendants:
         b_decendants = np.fromiter(FormShower.descendant_idxs(eventWise, *eventWise.BQuarkIdx),
                                    dtype=int)
@@ -3387,6 +3400,7 @@ def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, a
     if "TagIndex" not in eventWise.columns:
         TrueTag.add_tag_particles(eventWise)
     # plot the location of the tag particles
+    plot_tags(eventWise, ax=ax, b_decendants=False)
     eventWise.selected_index = event_n
     pseudojet_traditional = run_FastJet(eventWise, **fast_jet_params)
     # plot the pseudojets
@@ -3396,7 +3410,6 @@ def plot_realspace(eventWise, event_n, fast_jet_params, comparitor_jet_params, a
     # plot the pseudojets
     #comparitor_colours = [colours(i) for i in np.linspace(0.6, 1.0, len(pjets_comparitor))]
     plot_cluster(pseudojet_comparitor, SPECTRAL_COLOUR, ax=ax, pt_text=False)
-    plot_tags(eventWise, ax=ax)
     ax.set_title("Jets")
     ax.set_xlabel("rapidity")
     ax.set_ylim(-np.pi, np.pi)
@@ -3475,7 +3488,7 @@ if __name__ == '__main__':
     spectral_jet_params = dict(ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
                                NumEigenvectors=7,
-                               BaseJump=0.01,
+                               BaseJump=0.05,
                                JumpEigenFactor=10,
                                #MaxCutScore=0.2, 
                                Laplacien='symmetric',
@@ -3494,7 +3507,6 @@ if __name__ == '__main__':
     #for event_num in range(30):
     #    try:
     #        eventWise.selected_index = event_num
-    #        dict_jet_params['NumEigenvectors'] = 0
     #        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
     #        jets.plt_assign_parents(save_prefix=f"evt{event_num}")
     #        #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
