@@ -67,5 +67,5 @@ def is_numeric_class(param, permitted):
     return True
 
 
+dijet_mass = 40
 
-                

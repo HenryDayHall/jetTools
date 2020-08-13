@@ -205,14 +205,16 @@ def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     for pts, parents, child1s in zip(jet_pt, jet_parent, jet_child1):
         pt_passes = np.where(pts[parents==-1].flatten() > min_jetpt)[0]
         long_enough = awkward.fromiter((i for i, children in zip(pt_passes, child1s[pt_passes])
-                                        if sum(children == -1) > min_ntracks))
+                                        if sum(children == -1) >= min_ntracks))
         jet_idxs.append(long_enough)
     return awkward.fromiter(jet_idxs)
 
 
-def append_scores(eventWise):
+def append_scores(eventWise, dijet_mass=None):
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
+    if dijet_mass is None:
+        dijet_mass = Constants.dijet_mass
     eventWise_path = os.path.join(eventWise.dir_name, eventWise.save_name)
     new_hyperparameters = {}
     new_contents = {}
@@ -229,7 +231,8 @@ def append_scores(eventWise):
 
         # if we reach here the jet still needs a score
         try:
-            best_width, best_fraction = JetQuality.quality_width_fracton(eventWise, name, 40)
+            best_width, best_fraction = JetQuality.quality_width_fracton(eventWise, name,
+                                                                         dijet_mass)
         except (ValueError, RuntimeError):  # didn't make enough masses
             best_width = best_fraction = np.nan
         new_hyperparameters[name + "_QualityWidth"] = best_width
