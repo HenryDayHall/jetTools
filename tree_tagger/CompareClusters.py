@@ -272,7 +272,7 @@ def append_scores(eventWise, dijet_mass=None):
 def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     if score_cols is None:
         score_cols = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
-                      "AvePTDistance", "AvePhiDistance", "AveRapidityDistance"]
+                      "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity"]
     if variable_cols is None:
         classes = ["Traditional", "SpectralMean", "SpectralFull", "Splitting", "Indicator"]
         variable_cols = set()
@@ -299,29 +299,55 @@ def plot_scores(all_cols, variable_cols, score_cols, table, plot_path="./images/
     inverted_names = ["QualityWidth", "QualityFraction", "AvePTDistance", "AvePhiDistance",
                       "AveRapidityDistance", "AveBGMassRatio"]
     invert = [name in inverted_names for name in score_cols]
-    fig, ax_arr = plt.subplots(len(score_cols), len(variable_cols), sharex=True, sharey=True)
+    n_variables = len(variable_cols)
+    n_scores = len(score_cols)
+    # allow at most a 3 by 3 plot
+    #grid_size = 3
+    #n_variable_groups = int(np.ceil(n_variables/grid_size))
+    #n_score_groups = int(np.ceil(n_scores/grid_size))
+    #all_figs = []; all_ax_arrs = []
+    #fig, ax_arr = plt.subplots(grid_size, grid_size, sharex=True, sharey=True)
     # give each of the clusters a random colour and marker shape
-    colours = np.random.rand((len(table), 4))
-    markers = np.random.choice(['v', 's', '*', 'D', 'P', 'X'], len(table))
-    plotting_params = dict(c=colours, marker=markers)
+    colours = np.random.rand(len(table)*4).reshape((len(table), 4))
+    #markers = np.random.choice(['v', 's', '*', 'D', 'P', 'X'], len(table))
+    plotting_params = dict(c=colours) #, marker=markers)
     for col_n, variable_name in enumerate(variable_cols):
-        values = table[all_cols.index(variable_name)]
+        values = table[:, all_cols.index(variable_name)]
         # this function will decided what kind of scale and create it
         x_positions, scale_positions, scale_labels = make_scale(values)
         for row_n, score_name in enumerate(score_cols):
-            scores = table[all_cols.index(score_name)]
-            ax = ax_arr[row_n, col_n]
-            ax.set_xlabel(variable_name)
-            ax.set_ylabel(score_name)
+            fig, ax = plt.subplots()
+            scores = table[:, all_cols.index(score_name)].tolist()
+            #ax = ax_arr[row_n, col_n]
             ax.scatter(x_positions, scores, **plotting_params)
+            #if row_n == n_scores-1:
             ax.set_xticks(scale_positions)
-            ax.set_xticklabels(scale_labels)
-    return fig, ax_arr
+            ax.set_xticklabels(scale_labels, rotation=90)
+            ax.set_xlabel(variable_name)
+            #else:
+            #    ax.set_xticks([], [])
+            #if col_n == 0:
+            ax.set_ylabel(score_name)
+            #else:
+            #    ax.set_yticks([], [])
+            plt.show()
+            input()
+            plt.close(fig)
+
+    #return fig, ax_arr
 
 
 def make_scale(content):
     for val in content:
-        if val in [None, np.nan]:
+        # if it's an array with 2 elements and the first is a string
+        # this it's probably a cutoff type, convert to tuple
+        if hasattr(val, '__iter__') and len(val) == 2 and isinstance(val[0], str):
+            val = tuple(val)
+            likely_tuples = [hasattr(x, '__iter__') and len(x) == 2 for x in content]
+            # make the tuples into tuples
+            content = [tuple(x) if (hasattr(x, '__iter__') and len(x) == 2) else x
+                       for x in content]
+        elif val in [None, np.nan]:
             continue
         if isinstance(val, (tuple, str, bool)):
             return make_ordinal_scale(content)
@@ -330,7 +356,7 @@ def make_scale(content):
     return make_ordinal_scale(content)
 
 
-def make_float_scale(content):
+def make_float_scale(content, num_increments=11):
     """
     
 
@@ -343,27 +369,42 @@ def make_float_scale(content):
     -------
 
     """
-    has_none = None in content or np.nan in content
-    has_inf = np.inf in np.abs(content)
-    numbers = set(content)
-    content -= {None, np.nan, np.inf, -np.inf}
-    min_val, max_val = min(numbers), max(numbers)
-    # calculate a good distance to but the None and inf values
-    gap_length = 0.1*(max_val-min_val)
-    # now make a copy of the content for positions
-    positions = np.copy(content)
-    positions[positions==-np.inf] = min_val - gap_length
-    positions[positions==np.inf] = max_val + gap_length
-    positions[np.logical_and(positions==None, positions==np.nan)] = max_val + (has_inf+1)*gap_length
+    # converting to a list is better for some checks
+    positions = np.copy(content.tolist())  # and the llist will be needed later
+    has_none = None in content or np.any(np.isnan(positions))
+    has_inf = np.any(np.isinf(positions))
+    numbers = set(content[np.isfinite(content)]) - {None, np.nan, np.inf, - np.inf}
     # now work out how the scale should work
-    scale_positions = np.linspace(min(positions), max(positions), 11+has_none+2*has_inf)
+    try:
+        start, stop = min(numbers), max(numbers)
+    except ValueError:  # there may be no numbers present
+        start = stop = 0
+        numeric_positions = [0]
+        step = 1
+    else:
+        step = (stop - start)/num_increments
+        if stop - start > 2: # if it's large enough make the ticks be integer values
+            step = int(np.ceil(step))
+            numeric_positions = np.arange(start, stop, step, dtype=int)
+        else:
+            numeric_positions = np.arange(start, stop, step)
+    # as positions for specle values
+    scale_positions = np.copy(numeric_positions).tolist()
+    if has_inf:
+        scale_positions = [scale_positions[0] - step] + scale_positions + [scale_positions[-1] + step]
+    if has_none:
+        scale_positions = [scale_positions[0] - step] + scale_positions
     scale_labels = has_none*["NaN"] + has_inf*["$-\\inf$"] + \
-                   [f"{x:.3g}" for x in np.linspace(min_val, max_val, 11)] + \
+                   [f"{x:.3g}" for x in numeric_positions] + \
                    has_inf*["$+\\inf$"]
+    # now make the positions finite for the special values
+    positions[np.logical_or(positions==None, np.isnan(positions))] = start - (has_inf+1)*step
+    positions[np.logical_and(positions<0, np.isinf(positions))] = start - step
+    positions[np.isinf(positions)] = stop + step
     return positions, scale_positions, scale_labels
 
 
-def make_ordinal_scale(col_content):
+def make_ordinal_scale(col_content, max_entries=14):
     """
     
 
@@ -379,6 +420,7 @@ def make_ordinal_scale(col_content):
     # occasionaly equality comparison on the col_content is not possible
     # make a translation to names
     content_names = []
+    # if the points need thinning divide into sets
     for con in col_content:
         if isinstance(con, tuple):
             name = ', '.join((con[0], f"{con[1]:.3g}"))
@@ -389,6 +431,33 @@ def make_ordinal_scale(col_content):
     scale_positions = np.arange(len(scale_labels))
     positions = np.fromiter((scale_labels.index(name) for name in content_names),
                             dtype=int)
+    # now this set may be too long
+    if len(scale_positions) > max_entries:  # thin it out
+        scale_catigories = []
+        for label in scale_labels:
+            example = col_content[content_names.index(label)]
+            if isinstance(example, tuple):
+                # if there are tuples, consider the type to be the first entry
+                scale_catigories.append(example[0])
+            else:
+                scale_catigories.append(type(example))
+        # set a maximum numbr of entries per data type
+        max_per_catigory = max_entries/len(set(scale_catigories))
+        # we will never remove the first of the last entry
+        keep = np.zeros_like(scale_positions, dtype=bool)
+        for catigory in set(scale_catigories):
+            mask = np.fromiter((x == catigory for x in scale_catigories), dtype=bool)
+            catigory_keep = np.where(mask)[0]
+            if len(catigory_keep) > 1:  # dont throw anything out if the catigory is 1 long
+                last_item = catigory_keep[-1]
+                keep_one_in = int(np.ceil(np.sum(mask)/max_entries))
+                catigory_keep = catigory_keep[:-1:keep_one_in]
+                if catigory_keep[-1] != last_item:
+                    catigory_keep = np.append(catigory_keep, last_item)
+            keep[catigory_keep] = True
+        # now reduce the list to the list of things in keep
+        scale_labels = np.array(scale_labels)[keep]
+        scale_positions = scale_positions[keep]
     return positions, scale_positions, scale_labels
 
 
