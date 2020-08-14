@@ -295,18 +295,44 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     return all_cols, variable_cols, score_cols, table
 
 
-def plot_scores(all_cols, variable_cols, score_cols, table, plot_path="./images/scores"):
-    inverted_names = ["QualityWidth", "QualityFraction", "AvePTDistance", "AvePhiDistance",
-                      "AveRapidityDistance", "AveBGMassRatio"]
-    invert = [name in inverted_names for name in score_cols]
+def filter_table(all_cols, variable_cols, score_cols, table):
+    # make a mask marking the location of nan
+    nan_mask = []
+    for row in table:
+        nan_mask.append([])
+        for x in row:
+            try:
+                # by calling any on the is_nan
+                # we throw a ValueError if x is actually a jaggedArray
+                nan_mask[-1].append(np.any(np.isnan(x)))
+            except TypeError:
+                nan_mask[-1].append(False)
+    nan_mask = np.array(nan_mask)
+    # drop any rows where all score_cols are nan
+    score_nan = nan_mask[:, [all_cols.index(name) for name in score_cols]]
+    all_nan = np.all(score_nan, axis=1)
+    table = table[~all_nan]
+    nan_mask = nan_mask[~all_nan]
+    # then drop any cols where all values are np.nan
+    drop_cols = np.fromiter((np.all(nan_mask[:, i]) for i, name in enumerate(all_cols)),
+                            dtype=bool)
+    for i in np.where(drop_cols)[0][::-1]:
+        name = all_cols.pop(i)
+        if name in variable_cols:
+            del variable_cols[variable_cols.index(name)]
+        elif name in score_cols:
+            del score_cols[score_cols.index(name)]
+    table = awkward.fromiter([row[~drop_cols] for row in table])
+    return all_cols, variable_cols, score_cols, table
+    
+
+
+def plot_grid(all_cols, variable_cols, score_cols, table):
+    inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
+                      "AveDistanceRapidity", "AveBGMassRatio"]
     n_variables = len(variable_cols)
     n_scores = len(score_cols)
-    # allow at most a 3 by 3 plot
-    #grid_size = 3
-    #n_variable_groups = int(np.ceil(n_variables/grid_size))
-    #n_score_groups = int(np.ceil(n_scores/grid_size))
-    #all_figs = []; all_ax_arrs = []
-    #fig, ax_arr = plt.subplots(grid_size, grid_size, sharex=True, sharey=True)
+    fig, ax_arr = plt.subplots(n_scores, n_variables, sharex='col', sharey='row')
     # give each of the clusters a random colour and marker shape
     colours = np.random.rand(len(table)*4).reshape((len(table), 4))
     #markers = np.random.choice(['v', 's', '*', 'D', 'P', 'X'], len(table))
@@ -316,25 +342,36 @@ def plot_scores(all_cols, variable_cols, score_cols, table, plot_path="./images/
         # this function will decided what kind of scale and create it
         x_positions, scale_positions, scale_labels = make_scale(values)
         for row_n, score_name in enumerate(score_cols):
-            fig, ax = plt.subplots()
             scores = table[:, all_cols.index(score_name)].tolist()
-            #ax = ax_arr[row_n, col_n]
+            ax = ax_arr[row_n, col_n]
             ax.scatter(x_positions, scores, **plotting_params)
-            #if row_n == n_scores-1:
-            ax.set_xticks(scale_positions)
-            ax.set_xticklabels(scale_labels, rotation=90)
-            ax.set_xlabel(variable_name)
-            #else:
-            #    ax.set_xticks([], [])
-            #if col_n == 0:
-            ax.set_ylabel(score_name)
-            #else:
-            #    ax.set_yticks([], [])
-            plt.show()
-            input()
-            plt.close(fig)
+            if score_name in inverted_names:
+                ax.invert_yaxis()
+            if row_n == n_scores-1:
+                ax.set_xticks(scale_positions)
+                ax.set_xticklabels(scale_labels, rotation=90)
+                ax.set_xlabel(variable_name)
+            else:
+                ax.set_xticks([], [])
+            if col_n == 0:
+                ax.set_ylabel(score_name)
+    return fig, ax_arr
 
-    #return fig, ax_arr
+
+def plot_scores(eventWise_paths):
+    all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
+    kinematic_scores = [name for name in score_cols if "Distance" in name]
+    ratio_scores = [name for name in score_cols if "Ratio" in name]
+    quality_scores = [name for name in score_cols if "Quality" in name]
+    score_types = [kinematic_scores, ratio_scores, quality_scores]
+    for scores in score_types:
+        fig, ax_arr = plot_grid(all_cols, variable_cols, scores, table)
+        fig.set_size_inches(len(variable_cols)*2, 8)
+        fig.tight_layout()
+        plt.show()
+        input()
+        plt.close(fig)
+
 
 
 def make_scale(content):
@@ -347,12 +384,13 @@ def make_scale(content):
             # make the tuples into tuples
             content = [tuple(x) if (hasattr(x, '__iter__') and len(x) == 2) else x
                        for x in content]
-        elif val in [None, np.nan]:
-            continue
+        # check this first, becuase non floats make np.isnan throw an error
         if isinstance(val, (tuple, str, bool)):
             return make_ordinal_scale(content)
-        else:
-            return make_float_scale(content)
+        if val is None or np.isnan(val):
+            continue  # then look for another value
+        # if we get past the continue statement then it's a float like thing
+        return make_float_scale(content)
     return make_ordinal_scale(content)
 
 
@@ -394,9 +432,9 @@ def make_float_scale(content, num_increments=11):
         scale_positions = [scale_positions[0] - step] + scale_positions + [scale_positions[-1] + step]
     if has_none:
         scale_positions = [scale_positions[0] - step] + scale_positions
-    scale_labels = has_none*["NaN"] + has_inf*["$-\\inf$"] + \
+    scale_labels = int(has_none)*["NaN"] + int(has_inf)*["$-\\inf$"] + \
                    [f"{x:.3g}" for x in numeric_positions] + \
-                   has_inf*["$+\\inf$"]
+                   int(has_inf)*["$+\\inf$"]
     # now make the positions finite for the special values
     positions[np.logical_or(positions==None, np.isnan(positions))] = start - (has_inf+1)*step
     positions[np.logical_and(positions<0, np.isinf(positions))] = start - step
@@ -493,6 +531,16 @@ if __name__ == '__main__':
     #    print(ew_name)
     #    records.score(ew_name.strip())
     
-    ew_name = InputTools.get_file_name("EventWise file? (existing) ")
-    append_scores(ew_name.strip())
+    if InputTools.yesNo_question("Score an eventWise? "):
+        ew_name = InputTools.get_file_name("EventWise file? (existing) ")
+        append_scores(ew_name.strip())
+    elif InputTools.yesNo_question("Plot results? "):
+        ew_paths = []
+        path = True
+        while path:
+            path = InputTools.get_file_name(f"EventWise file {len(ew_paths)+1}? (empty to complete list) ").strip()
+            ew_paths.append(path)
+        ew_paths.pop()  # the last one is empty
+        plot_scores(ew_paths)
+
 
