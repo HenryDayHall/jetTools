@@ -278,9 +278,9 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
         variable_cols = set()
         for name in classes:
             variable_cols.update(getattr(FormJets, name).default_params.keys())
-        variables_cols = sorted(variables_cols)
+        variable_cols = sorted(variable_cols)
     # also record jet class, eventWise.svae_name and jet_name
-    all_cols = ["jet_name", "jet_class", "eventWise_name"] + variables_cols + score_cols
+    all_cols = ["jet_name", "jet_class", "eventWise_name"] + variable_cols + score_cols
     table = []
     for path in eventWise_paths:
         eventWise = Components.EventWise.from_file(path)

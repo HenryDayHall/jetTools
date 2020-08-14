@@ -1,4 +1,5 @@
 """ tests for the CompareClusters module """
+import os
 from ipdb import set_trace as st
 import awkward
 import pytest
@@ -320,6 +321,41 @@ def test_append_scores():
                     tst.assert_allclose(ew.Jet_AveQuack, 0.5)
                     assert np.isnan(ew.Jet_QualityWidth)
                     tst.assert_allclose(ew.Jet_QualityFraction, 3/Constants.dijet_mass)
+
+
+def test_tabulate_scores():
+    params1 = {}
+    params2 = {}
+    params1["DogJet_QualityWidth"] = 4
+    params1["DogJet_DeltaR"] = .5
+    params2["CatJet_QualityWidth"] = np.inf
+    with TempTestDir("tst") as dir_name:
+        # this will raise a value error if given an empty eventWise
+        save_name1 = "test1.awkd"
+        save_name2 = "test2.awkd"
+        ew1 = Components.EventWise(dir_name, save_name1)
+        ew1.append_hyperparameters(**params1)
+        ew1.append(DogJet_InputIdx = awkward.fromiter([[]]))
+        path1 = os.path.join(dir_name, save_name1)
+        ew2 = Components.EventWise(dir_name, save_name2)
+        ew2.append_hyperparameters(**params2)
+        ew2.append(CatJet_InputIdx = awkward.fromiter([[]]))
+        path2 = os.path.join(dir_name, save_name2)
+        all_cols, variable_cols, score_cols, table = CompareClusters.tabulate_scores([path1, path2])
+        assert len(all_cols) == len(table[0])
+        assert len(all_cols) == len(variable_cols) + len(score_cols) + 3
+        assert len(table) == 2
+        dog_row = next(i for i, name in enumerate(table[:, all_cols.index("jet_name")])
+                       if name == "DogJet")
+        cat_row = next(i for i, name in enumerate(table[:, all_cols.index("jet_name")])
+                       if name == "CatJet")
+        use_cols = [all_cols.index("QualityWidth"), all_cols.index("DeltaR"), all_cols.index("AveBGMassRatio")]
+        tst.assert_allclose(table[dog_row, use_cols], [4, .5, np.nan])
+        tst.assert_allclose(table[cat_row, use_cols], [np.inf, np.nan, np.nan])
+
+
+
+
 
 
 
