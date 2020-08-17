@@ -60,7 +60,6 @@ def add_bg_mass(eventWise):
 
 
 
-# TODO what is happening with PT/rapidity/phi distance
 def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     """
     
@@ -272,7 +271,7 @@ def append_scores(eventWise, dijet_mass=None):
 def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     if score_cols is None:
         score_cols = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
-                      "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity"]
+                      "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound"]
     if variable_cols is None:
         classes = ["Traditional", "SpectralMean", "SpectralFull", "Splitting", "Indicator"]
         variable_cols = set()
@@ -327,51 +326,86 @@ def filter_table(all_cols, variable_cols, score_cols, table):
     
 
 
-def plot_grid(all_cols, variable_cols, score_cols, table):
+def plot_grid(all_cols, plot_column_names, plot_row_names, table):
+    # a list of cols where the axis should be inverted so that up is still better
     inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
                       "AveDistanceRapidity", "AveBGMassRatio"]
-    n_variables = len(variable_cols)
-    n_scores = len(score_cols)
-    fig, ax_arr = plt.subplots(n_scores, n_variables, sharex='col', sharey='row')
+    # a list of cols where the axis must be constructed
+    impure_cols = ["NumEigenvectors", "ExpofPTPosition", "AffinityType", "AffinityCutoff",
+                   "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore",
+                   "BaseJump"]
+    n_cols = len(plot_column_names)
+    n_rows = len(plot_row_names)
+    fig, ax_arr = plt.subplots(n_rows, n_cols, sharex='col', sharey='row')
     # give each of the clusters a random colour and marker shape
     colours = np.random.rand(len(table)*4).reshape((len(table), 4))
     #markers = np.random.choice(['v', 's', '*', 'D', 'P', 'X'], len(table))
     plotting_params = dict(c=colours) #, marker=markers)
-    for col_n, variable_name in enumerate(variable_cols):
-        values = table[:, all_cols.index(variable_name)]
+    for col_n, col_name in enumerate(plot_column_names):
+        x_positions = table[:, all_cols.index(col_name)]
         # this function will decided what kind of scale and create it
-        x_positions, scale_positions, scale_labels = make_scale(values)
-        for row_n, score_name in enumerate(score_cols):
-            scores = table[:, all_cols.index(score_name)].tolist()
+        if col_name in impure_cols:
+            x_positions, x_scale_positions, x_scale_labels = make_scale(x_positions)
+        else:
+            x_positions = x_positions.tolist()  # awkward arrays don't play well
+        for row_n, row_name in enumerate(plot_row_names):
+            y_positions = table[:, all_cols.index(row_name)]
+            if row_name in impure_cols:
+                y_positions, y_scale_positions, y_scale_labels = make_scale(y_positions)
+            else:
+                y_positions = y_positions.tolist()
             ax = ax_arr[row_n, col_n]
-            ax.scatter(x_positions, scores, **plotting_params)
-            if score_name in inverted_names:
+            ax.scatter(x_positions, y_positions, **plotting_params)
+            if row_name in inverted_names:
                 ax.invert_yaxis()
-            if row_n == n_scores-1:
-                ax.set_xticks(scale_positions)
-                ax.set_xticklabels(scale_labels, rotation=90)
-                ax.set_xlabel(variable_name)
+            if col_name in inverted_names:
+                ax.invert_xaxis()
+            if row_n == n_rows-1:
+                ax.set_xlabel(col_name)
+                if col_name in impure_cols:  # then we have a custom scale
+                    ax.set_xticks(x_scale_positions)
+                    ax.set_xticklabels(x_scale_labels, rotation=90)
             else:
                 ax.set_xticks([], [])
             if col_n == 0:
-                ax.set_ylabel(score_name)
+                ax.set_ylabel(row_name)
+                if row_name in impure_cols:
+                    ax.set_yticks(y_scale_positions)
+                    ax.set_yticklabels(y_scale_labels)
+
     return fig, ax_arr
 
 
 def plot_scores(eventWise_paths):
     all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
+    variable_cols = ['jet_class'] + variable_cols
+    # if there are oo many variabel run them in smaller batches
+    max_cols = 6
+    num_groups = int(np.ceil(len(variable_cols)/max_cols))
+    # it's possible that the number of parts actually splits into smaller groups than
+    # the max size
+    group_length = int(np.ceil(len(variable_cols)/num_groups))
+    variable_groups = [variable_cols[i*group_length:(i+1)*group_length]
+                       for i in range(num_groups)]
     kinematic_scores = [name for name in score_cols if "Distance" in name]
-    ratio_scores = [name for name in score_cols if "Ratio" in name]
+    ratio_scores = [name for name in score_cols if "Ratio" in name] + ["AvePercentFound"]
     quality_scores = [name for name in score_cols if "Quality" in name]
-    score_types = [kinematic_scores, ratio_scores, quality_scores]
-    for scores in score_types:
-        fig, ax_arr = plot_grid(all_cols, variable_cols, scores, table)
-        fig.set_size_inches(len(variable_cols)*2, 8)
-        fig.tight_layout()
-        plt.show()
-        input()
-        plt.close(fig)
+    score_types = {"Kinematic scores" : kinematic_scores, 
+                   "Mass Ratio scores" : ratio_scores,
+                   "Peak Quality scores" : quality_scores}
+    for title in score_types:
+        for group in variable_groups:
+            fig, ax_arr = plot_grid(all_cols, group, score_types[title], table)
+            fig.suptitle(title)
+            fig.set_size_inches(len(variable_cols)*2, 8)
+            fig.tight_layout()
+            plt.show()
+            input()
+            plt.close(fig)
 
+
+def score_corrilation(eventWise_paths):
+    all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
 
 
 def make_scale(content):
@@ -391,6 +425,8 @@ def make_scale(content):
             continue  # then look for another value
         # if we get past the continue statement then it's a float like thing
         return make_float_scale(content)
+    if len(content) == 0:
+        return [], [], []
     return make_ordinal_scale(content)
 
 
@@ -413,19 +449,21 @@ def make_float_scale(content, num_increments=11):
     has_inf = np.any(np.isinf(positions))
     numbers = set(content[np.isfinite(content)]) - {None, np.nan, np.inf, - np.inf}
     # now work out how the scale should work
-    try:
-        start, stop = min(numbers), max(numbers)
-    except ValueError:  # there may be no numbers present
-        start = stop = 0
-        numeric_positions = [0]
-        step = 1
+    if len(numbers) < 2:  # there may be no numbers present, or just one
+        numeric_positions = list(numbers)
+        if not numeric_positions:
+            numeric_positions = [0]
+        start = stop = numeric_positions[0]
+        step = 1  # we need a non zero step for the next bits
     else:
+        start, stop = min(numbers), max(numbers)
         step = (stop - start)/num_increments
         if stop - start > 2: # if it's large enough make the ticks be integer values
             step = int(np.ceil(step))
-            numeric_positions = np.arange(start, stop, step, dtype=int)
+            numeric_positions = np.arange(start, stop+step, step, dtype=int)
+            stop = np.max(numeric_positions)  # the stop should always be the last numertic point
         else:
-            numeric_positions = np.arange(start, stop, step)
+            numeric_positions = np.arange(start, stop+step, step)
     # as positions for specle values
     scale_positions = np.copy(numeric_positions).tolist()
     if has_inf:

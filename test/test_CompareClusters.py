@@ -354,6 +354,84 @@ def test_tabulate_scores():
         tst.assert_allclose(table[cat_row, use_cols], [np.inf, np.nan, np.nan])
 
 
+def test_make_scale():
+    # this has two modes, ordinal and float
+    # either way it should return somehting sensible
+    # given an empty list it should not choke
+    empty = np.array([])
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(empty)
+    assert len(positions) == 0
+    assert len(scale_positions) == 0
+    assert len(scale_labels) == 0
+    # a list with just one number should return it
+    one = np.array([1])
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(one)
+    assert len(positions) == 1
+    tst.assert_allclose(positions, one)
+    assert len(scale_positions) == 1
+    tst.assert_allclose(scale_positions, one)
+    assert len(scale_labels) == 1
+    assert scale_labels[0] == '1'
+    # ditto for one string
+    one = np.array(['frog'])
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(one)
+    assert len(positions) == 1
+    assert len(scale_positions) == 1
+    assert len(scale_labels) == 1
+    assert scale_labels[0] == one[0]
+    # one nan or inf should return that, but it may also add 0 as a scale pos
+    one = np.array([np.nan])
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(one)
+    assert len(positions) == 1
+    scale_loc = np.argmin(np.abs(scale_positions - positions[0]))
+    assert 'nan' in scale_labels[scale_loc] or 'None' in scale_labels[scale_loc]
+    one = np.array([-np.inf])
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(one)
+    assert len(positions) == 1
+    scale_loc = np.argmin(np.abs(scale_positions - positions[0]))
+    assert 'inf' in scale_labels[scale_loc] and '-' in scale_labels[scale_loc]
+    one = np.array([np.inf])
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(one)
+    assert len(positions) == 1
+    scale_loc = np.argmin(np.abs(scale_positions - positions[0]))
+    assert 'inf' in scale_labels[scale_loc] and '-' not in scale_labels[scale_loc]
+    # now try some more complex arrangements
+    inputs = [[4, 3.2], [4, 3.2, np.nan], [4, 3.2, 0., np.nan], [-4, 3.2, np.nan],
+              [4, 3.2, np.inf], [4, 3.2, -np.inf], [-4, 3.2, 0, np.nan, np.inf],
+              [None, 'dog', 'cat'],
+              [np.inf, 1, 3, 5, 3.4, 10, np.nan, 2.2, 7, 3, 5, 9, 2, 2, -np.inf]]
+    closest_contains = [['4', '3'], ['4', '3', 'nan'], ['4', '3', '0', 'nan'],
+                        ['-4', '3', 'nan'], ['4', '3', 'inf'], ['4', '3', '-'], 
+                        ['-4', '3', '0', 'nan', 'inf'], ['none', 'dog', 'cat'],
+                        ['inf', '1', '3', '5', '3', '10', 'nan', '2', '7', '3', '5', '9',
+                         '2', '2', '-']]
+    for inp, close in zip(inputs, closest_contains):
+        # make the test scale
+        inp = np.array(inp)
+        positions, scale_positions, scale_labels = CompareClusters.make_scale(inp)
+        # check that for each of the values in the test scale
+        for i, pos in enumerate(positions):
+            s_position = np.argmin(np.abs(scale_positions - pos))
+            # the closest label contains the expected string
+            assert close[i] in scale_labels[s_position].lower(), f"inputs={inp}, expected={close[i]}, found={scale_labels[s_position]}"
+    # finally check the behavior with tuples
+    inp = [None, ('knn', 5), ('knn', 4), ('distance', 0), ('distance', 2)]
+    # make the test scale
+    inp = awkward.fromiter(inp)
+    positions, scale_positions, scale_labels = CompareClusters.make_scale(inp)
+    assert positions[1] > positions[2]
+    assert positions[4] > positions[3]
+    label0 = scale_labels[np.argmin(np.abs(scale_positions - positions[0]))].lower()
+    assert 'none' in label0
+    label1 = scale_labels[np.argmin(np.abs(scale_positions - positions[1]))].lower()
+    assert 'knn' in label1 and '5' in label1
+    label2 = scale_labels[np.argmin(np.abs(scale_positions - positions[2]))].lower()
+    assert 'knn' in label2 and '4' in label2
+    label3 = scale_labels[np.argmin(np.abs(scale_positions - positions[3]))].lower()
+    assert 'distance' in label3 and '0' in label3
+    label4 = scale_labels[np.argmin(np.abs(scale_positions - positions[4]))].lower()
+    assert 'distance' in label4 and '2' in label4
+
 
 
 
