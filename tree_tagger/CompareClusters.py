@@ -114,22 +114,20 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
         pz = eventWise.Pz
         source_idx = eventWise.JetInputs_SourceIdx
         parent_idxs = getattr(eventWise, jet_name + "_Parent")
-        inheritance = getattr(eventWise, jet_name + "_Inheritance")
+        tagmass = getattr(eventWise, jet_name + "_TagMass")
         tag_idxs = eventWise.BQuarkIdx
         matched_jets = [[] for _ in event_tags]
-        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_ITags")):
+        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
             if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
                 continue  # jet not sutable or has no tags
             if len(jet_tags) == 1:
                 # no chosing to be done, the jet just has one tag
                 tag_idx = jet_tags[0]
             else:
-                # chose the tag with the greatest inheritance
-                jet_root = np.where(parent_idxs[jet_n] == -1)[0][0]
-                # dimension 0 of inheritance is which tag particle
-                # dimension 1 of inheritance is which jet
-                # dimension 2 of inheritance is particles in the jet
-                tag_position = np.argmax(inheritance[:, jet_n, jet_root])
+                # chose the tag with the greatest tagmass
+                # dimension 0 of tagmass is which jet
+                # dimension 1 of tagmass is which tag
+                tag_position = np.argmax(tagmass[jet_n])
                 # this is the particle index of the tag with greatest inheritance in the jet
                 tag_idx = tag_idxs[tag_position]
             # which group does the tag belong to
@@ -236,7 +234,7 @@ def append_scores(eventWise, dijet_mass=None):
         new_hyperparameters[name + "_QualityWidth"] = best_width
         new_hyperparameters[name + "_QualityFraction"] = best_fraction
         # now the mc truth based scores
-        TrueTag.add_inheritance(eventWise, name, batch_length=np.inf)
+        TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
         jet_idxs = filter_jets(eventWise, name)
         new_content = get_detectable_comparisons(eventWise, name, jet_idxs, False)
         new_averages = {}
