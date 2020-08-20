@@ -128,7 +128,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                 # dimension 0 of tagmass is which jet
                 # dimension 1 of tagmass is which tag
                 tag_position = np.argmax(tagmass[jet_n])
-                # this is the particle index of the tag with greatest inheritance in the jet
+                # this is the particle index of the tag with greatest massshare in the jet
                 tag_idx = tag_idxs[tag_position]
             # which group does the tag belong to
             group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
