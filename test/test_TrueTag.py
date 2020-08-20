@@ -237,7 +237,6 @@ def test_get_root_rest_energies():
     found = TrueTag.get_root_rest_energies(root_idxs, energy, px, py, pz)
     tst.assert_allclose(found.tolist(), expected.tolist())
 
-# needs updating becuase the energies are now done in the rest frame
 # add testing the taggging itself TODO
 def test_add_inheritance():
     params = {}
@@ -292,6 +291,57 @@ def test_add_inheritance():
         tst.assert_allclose(eventWise.Jet_Inheritance.tolist()[0], expected0)
         tst.assert_allclose(eventWise.Jet_Inheritance.tolist()[1], expected1)
         expected_tags = [[1], [6]]
+
+
+def test_add_mass_share():
+    params = {}
+    jet_name = "Jet"
+    # event 0
+    params['Jet_InputIdx'] = [awkward.fromiter([])]
+    params['Energy'] = [awkward.fromiter([])]
+    params['Px'] = [awkward.fromiter([])]
+    params['Py'] = [awkward.fromiter([])]
+    params['Pz'] = [awkward.fromiter([])]
+    params['Children'] = [awkward.fromiter([])]
+    params['Parents'] = [awkward.fromiter([])]
+    params['MCPID'] = [awkward.fromiter([])]
+    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    params['BQuarkIdx'] = [awkward.fromiter([])]
+    # event 1
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(6))]
+    params['Jet_InputIdx'] += [awkward.fromiter([[0, 101, 2], [102, 4, 5]])]
+    params['Energy'] += [awkward.fromiter([30., 10., 20., 70., 20., 10., 45., 56., 40., 25.])]
+    params['Px'] += [awkward.fromiter([3., 0., 2., 1., 2., -1., 0., 3., -1., 0.])]
+    params['Py'] += [awkward.fromiter([3., 0., 2., 2., 2., 1., -1., -3., 0., -1.])]
+    params['Pz'] += [awkward.fromiter([3., 0., 2., 0., 2., 2., -5., -2., 1., 0.])]
+    # invarient_mass                      873  100  388   4859, 388, 94
+    # shifted energy                       30   10   20   70 sqrt(393) sqrt(103)
+    #                                        0   1    2    3    4   5    6             7   8   9   10
+    params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
+    params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
+    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
+    params['BQuarkIdx'] += [awkward.fromiter([1, 6])]
+     
+    # the positivity will be                 0   1    0    1    0   1       0          0   0    0   0 
+    #                                        0   0    1    0    0   0       0          0   0    0   0 
+    # in jet 1  are decendents 2 from tag 1
+    # in jet 2 are decendents 5 from tag 0
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        FormShower.append_b_idxs(eventWise)
+        TrueTag.add_mass_share(eventWise, jet_name)
+        # the first event is empty
+        eventWise.selected_index = 0
+        assert len(eventWise.Jet_TagMass) == 0
+        assert len(eventWise.Jet_MTags) == 0
+        # the second event has two jets
+        eventWise.selected_index = 1
+        expected = [[0., np.sqrt(388.)], [np.sqrt(94.), 0.]]
+        expected_tags = [[6], [1]]
+        tst.assert_allclose(eventWise.Jet_TagMass.tolist(), expected)
+        tst.assert_allclose(eventWise.Jet_MTags.tolist(), expected_tags)
+
 
 def test_add_detectable_fourvector():
     # will need the BQuarkIdx, Px, Py, Pz, Energy, JetInputs_SourceIdx, Child, Parent 

@@ -59,7 +59,6 @@ def add_bg_mass(eventWise):
     eventWise.append(DetectableBG_Mass = awkward.fromiter(all_bg_mass))
 
 
-
 def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     """
     
@@ -168,6 +167,8 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                 # no jets in this group
                 tag_mass2 = bg_mass2 = 0
                 phi = pt = rapidity = np.nan
+            if bg_mass2 > eventWise.DetectableBG_Mass:
+                st()
             tag_mass2_in[event_n].append(tag_mass2)
             bg_mass2_in[event_n].append(bg_mass2)
             phi_in[event_n].append(phi)
@@ -224,7 +225,7 @@ def append_scores(eventWise, dijet_mass=None):
         TrueTag.add_detectable_fourvector(eventWise)
     for i, name in enumerate(names):
         # check if it has already been scored
-        if name + "_AvePTDistance" in eventWise.hyperparameter_columns:
+        if name + "_AveDistancePT" in eventWise.hyperparameter_columns:
             continue
         print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
 
@@ -294,7 +295,15 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     return all_cols, variable_cols, score_cols, table
 
 
-def filter_table(all_cols, variable_cols, score_cols, table):
+def filter_table(*args):
+    args = nan_filter_table(*args)
+    table = args[-1]
+    if len(table) > 200:
+        args = quality_filter_table(*args)
+    return args
+
+
+def nan_filter_table(all_cols, variable_cols, score_cols, table):
     # make a mask marking the location of nan
     nan_mask = []
     for row in table:
@@ -324,6 +333,32 @@ def filter_table(all_cols, variable_cols, score_cols, table):
     table = awkward.fromiter([row[~drop_cols] for row in table])
     return all_cols, variable_cols, score_cols, table
     
+def quality_filter_table(all_cols, variable_cols, score_cols, table):
+    # require at least 0.15 PercentFound
+    percent_found = table[:, all_cols.index("AvePercentFound")]
+    table = table[percent_found > 0.15]
+    # require that rapidity distance be no more than 0.4
+    rapidity_distance = table[:, all_cols.index("AveDistanceRapidity")]
+    table = table[rapidity_distance < 0.4]
+    # require that phi distance be no more than 1.2
+    phi_distance = table[:, all_cols.index("AveDistancePhi")]
+    table = table[phi_distance < 1.2]
+    # require that PT distance be no more than 15.
+    pt_distance = table[:, all_cols.index("AveDistancePT")]
+    table = table[pt_distance < 15.]
+    # require average BG mass ratio under 100k
+    bg_mass_ratio = table[:, all_cols.index("AveBGMassRatio")]
+    table = table[bg_mass_ratio < 1e5]
+    # require that average Siganl ratio be over 0.07
+    sig_mass_ratio = table[:, all_cols.index("AveSignalMassRatio")]
+    table = table[sig_mass_ratio > 0.07]
+    # require that quality fractio be under 600
+    quality_fraction = table[:, all_cols.index("QualityFraction")]
+    table = table[np.logical_or(quality_fraction < 600, ~np.isnan(quality_fraction.tolist()))]
+    # require that quality width be under 0.1
+    quality_width = table[:, all_cols.index("QualityWidth")]
+    table = table[np.logical_or(quality_width < 0.1, ~np.isnan(quality_width.tolist()))]
+    return all_cols, variable_cols, score_cols, table
 
 
 def plot_grid(all_cols, plot_column_names, plot_row_names, table):
@@ -331,14 +366,31 @@ def plot_grid(all_cols, plot_column_names, plot_row_names, table):
     inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
                       "AveDistanceRapidity", "AveBGMassRatio"]
     # a list of cols where the axis must be constructed
-    impure_cols = ["NumEigenvectors", "ExpofPTPosition", "AffinityType", "AffinityCutoff",
+    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition", "AffinityType", "AffinityCutoff",
                    "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore",
                    "BaseJump"]
     n_cols = len(plot_column_names)
     n_rows = len(plot_row_names)
     fig, ax_arr = plt.subplots(n_rows, n_cols, sharex='col', sharey='row')
     # give each of the clusters a random colour and marker shape
-    colours = np.random.rand(len(table)*4).reshape((len(table), 4))
+    # colours = np.random.rand(len(table)*4).reshape((len(table), 4))
+    # colour each cluster by jet_class and AvePercentFound
+    class_colour_dict = {'SpectralFull': 'Blues', 'SpectralMean': 'Greens',
+                         'Splitting': 'Oranges', 'Indicator': 'Reds',
+                         'Traditional': 'Greys'}
+    colours = np.zeros((len(table), 4))
+    for name in class_colour_dict:
+        cmap = matplotlib.cm.get_cmap(class_colour_dict[name])
+        rows = [c==name for c in table[:, all_cols.index('jet_class')]]
+        values = np.fromiter(table[rows, all_cols.index('AvePercentFound')],
+                             dtype=float)
+        # rescale to make better use of the colour range
+        if len(values) > 0:
+            max_val = np.nanmax(values) 
+            if np.isfinite(max_val):
+                values = values/max_val
+            colours[rows] = cmap(values)
+            colours[rows, -1] = values  # increasing alpha with increasing percent found
     #markers = np.random.choice(['v', 's', '*', 'D', 'P', 'X'], len(table))
     plotting_params = dict(c=colours) #, marker=markers)
     for col_n, col_name in enumerate(plot_column_names):
@@ -365,18 +417,36 @@ def plot_grid(all_cols, plot_column_names, plot_row_names, table):
                 if col_name in impure_cols:  # then we have a custom scale
                     ax.set_xticks(x_scale_positions)
                     ax.set_xticklabels(x_scale_labels, rotation=90)
-            else:
-                ax.set_xticks([], [])
             if col_n == 0:
                 ax.set_ylabel(row_name)
                 if row_name in impure_cols:
                     ax.set_yticks(y_scale_positions)
                     ax.set_yticklabels(y_scale_labels)
+    # the title at the top required 0.4 of an inch
+    title_height = 0.4
+    # the bottom and the left may require up to 1.5 inches
+    attributes_height = 1.5
+    # then there is a max likely screen size of 11.75 by 21 inches
+    row_height = min((11.75 - title_height - attributes_height)/n_rows, 2.)
+    title = row_height > 1.  # lose the title space if it's too short
+    if not title:
+        row_height = min((11.75 - attributes_height)/n_rows, 2.)
+    col_width = min((11.75 - attributes_height)/n_cols, 2.)
+    height = int(title)*title_height + attributes_height + row_height*n_rows
+    width = attributes_height + col_width*n_cols
 
+    fig.set_size_inches(width, height)
+    fig.tight_layout()
+    # now work out what percentage of the total is the title/attributes
+    title_percent = int(title)*(title_height/height)
+    bottom_margin = attributes_height/height
+    left_margin = attributes_height/width
+    fig.subplots_adjust(wspace=0, hspace=0, top=1.-title_percent,
+                        bottom=bottom_margin, left=left_margin, right=1.)
     return fig, ax_arr
 
 
-def plot_scores(eventWise_paths):
+def plot_scores(eventWise_paths, save_prefix=None):
     all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
     variable_cols = ['jet_class'] + variable_cols
     # if there are oo many variabel run them in smaller batches
@@ -397,15 +467,41 @@ def plot_scores(eventWise_paths):
         for group in variable_groups:
             fig, ax_arr = plot_grid(all_cols, group, score_types[title], table)
             fig.suptitle(title)
-            fig.set_size_inches(len(variable_cols)*2, 8)
-            fig.tight_layout()
-            plt.show()
-            input()
+            if save_prefix is None or len(save_prefix) == 0:
+                plt.show()
+                input()
+            else:
+                save_name = save_prefix + '_' + title.replace(' ', '') + ".png"
+                plt.savefig(save_name)
             plt.close(fig)
 
 
-def score_corrilation(eventWise_paths):
+def score_corrilation(eventWise_paths, save_prefix=None):
     all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
+    fig, ax_arr = plot_grid(all_cols, score_cols, score_cols, table)
+    title = "Score corrilations"
+    fig.suptitle(title)
+    if save_prefix is None or len(save_prefix) == 0:
+        plt.show()
+        input()
+    else:
+        save_name = save_prefix + '_' + title.replace(' ', '') + ".png"
+        plt.savefig(save_name)
+    plt.close(fig)
+
+
+def input_corrilation(eventWise_paths, save_prefix=None):
+    all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
+    fig, ax_arr = plot_grid(all_cols, variable_cols, variable_cols, table)
+    title = "Input corrilations"
+    fig.suptitle(title)
+    if save_prefix is None or len(save_prefix) == 0:
+        plt.show()
+        input()
+    else:
+        save_name = save_prefix + '_' + title.replace(' ', '') + ".png"
+        plt.savefig(save_name)
+    plt.close(fig)
 
 
 def make_scale(content):
@@ -537,32 +633,6 @@ def make_ordinal_scale(col_content, max_entries=14):
     return positions, scale_positions, scale_labels
 
 
-def chose_ylims(y_data, invert=False):
-    """
-    
-
-    Parameters
-    ----------
-    y_data :
-        param invert:  (Default value = False)
-    invert :
-        (Default value = False)
-
-    Returns
-    -------
-
-    
-    """
-    std = np.std(y_data)
-    if invert:
-        top = np.min(y_data) - 0.3*std
-        bottom = np.min((np.max(y_data), np.mean(y_data) + 1.*std))
-    else:
-        top = np.max(y_data) + 0.3*std
-        bottom = np.max((np.min(y_data), np.mean(y_data) - 1.*std))
-    return bottom, top
-
-
 if __name__ == '__main__':
     #for i in range(1, 10):
     #    ew_name = f"megaIgnore/MC{i}.awkd"
@@ -572,13 +642,24 @@ if __name__ == '__main__':
     if InputTools.yesNo_question("Score an eventWise? "):
         ew_name = InputTools.get_file_name("EventWise file? (existing) ")
         append_scores(ew_name.strip())
-    elif InputTools.yesNo_question("Plot results? "):
+    elif InputTools.yesNo_question("Plot something? "):
         ew_paths = []
         path = True
         while path:
             path = InputTools.get_file_name(f"EventWise file {len(ew_paths)+1}? (empty to complete list) ").strip()
             ew_paths.append(path)
         ew_paths.pop()  # the last one is empty
-        plot_scores(ew_paths)
+        save_prefix = InputTools.get_dir_name("Save prefix? (empty to display) ").strip()
+        if not save_prefix:
+            save_prefix = None
+        again = True
+        while again:
+            if InputTools.yesNo_question("Plot scores? "):
+                plot_scores(ew_paths, save_prefix)
+            elif InputTools.yesNo_question("Plot score corrilations? "):
+                score_corrilation(ew_paths, save_prefix)
+            elif InputTools.yesNo_question("Plot input corrilations? "):
+                input_corrilation(ew_paths, save_prefix)
+            again = InputTools.yesNo_question("Plot something else? ")
 
 

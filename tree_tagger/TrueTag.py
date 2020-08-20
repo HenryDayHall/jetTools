@@ -497,7 +497,96 @@ def add_inheritance(eventWise, jet_name, batch_length=100, silent=False, append=
     else:
         return content
 
-# TODO unit test
+
+def add_mass_share(eventWise, jet_name, batch_length=100, silent=False, append=True):
+    """
+    Tagging procedure based on which jet has the largest portion of the tag's mass.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing locations of particles and jets
+    jet_name : str
+        The prefix of the jet vairables in the eventWise
+    batch_length: int
+        max number of events to process
+        (Default value = 100)
+    silent : bool
+        Should the progress be printed?
+        (Default value = False)
+    append : bool
+        Should the results be appended to the eventWise?
+        (Default value = True)
+
+    Returns
+    -------
+    (if append is false)
+    content: dict of awkward arrays
+        content for eventWise
+
+    
+    """
+    eventWise.selected_index = None
+    name = jet_name + "_TagMass"
+    tag_name = jet_name + "_MTags"
+    n_events = len(getattr(eventWise, jet_name+"_InputIdx", []))
+    jet_tagmass2 = list(getattr(eventWise, name, np.array([]))**2)
+    jet_tags = list(getattr(eventWise, tag_name, []))
+    start_point = len(jet_tagmass2)
+    if start_point >= n_events:
+        print("Finished")
+        if append:
+            return
+        else:
+            content = {}
+            content[name] = awkward.fromiter(jet_tagmass2)**0.5
+            content[tag_name] = awkward.fromiter(jet_tags)
+            return content
+    end_point = min(n_events, start_point+batch_length)
+    if not silent:
+        print(f" Will stop at {end_point/n_events:.1%}")
+    for event_n in range(start_point, end_point):
+        if event_n % 10 == 0 and not silent:
+            print(f"{event_n/n_events:.1%}", end='\r', flush=True)
+        if os.path.exists("stop"):
+            print(f"Completed event {event_n-1}")
+            break
+        eventWise.selected_index = event_n
+        jets_idxs = getattr(eventWise, jet_name + "_InputIdx")
+        tags_here = [[] for _ in jets_idxs]
+        mass2_here = [[] for _ in jets_idxs]
+        if len(tags_here) > 0:
+            energies = eventWise.Energy
+            pxs = eventWise.Px
+            pys = eventWise.Py
+            pzs = eventWise.Pz
+            sourceidx = eventWise.JetInputs_SourceIdx.tolist()
+            this_tag = np.zeros(len(sourceidx))
+            for b_idx in eventWise.BQuarkIdx:
+                b_decendants = {sourceidx.index(d) for d in
+                                FormShower.descendant_idxs(eventWise, b_idx)
+                                if d in sourceidx}
+
+                for jet_n, jet_idx in enumerate(jets_idxs):
+                    b_in_jet = list(b_decendants.intersection(jet_idx))
+                    mass2 = np.sum(energies[b_in_jet])**2 - np.sum(pxs[b_in_jet])**2 - \
+                            np.sum(pys[b_in_jet])**2 - np.sum(pzs[b_in_jet])**2
+                    mass2_here[jet_n].append(mass2)
+                    this_tag[jet_n] = mass2
+                if (this_tag > 0).any(): # if all the inheritances are 0, then no tags
+                    # decide who gets the tag
+                    tags_here[np.argmax(this_tag)].append(b_idx)
+        jet_tagmass2.append(awkward.fromiter(mass2_here))
+        jet_tags.append(awkward.fromiter(tags_here))
+    content = {}
+    content[name] = awkward.fromiter(jet_tagmass2)**0.5
+    content[tag_name] = awkward.fromiter(jet_tags)
+    if append:
+        eventWise.append(**content)
+    else:
+        return content
+
+
 def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
     """
     Add a list of detectable four vectors for the tags, 
