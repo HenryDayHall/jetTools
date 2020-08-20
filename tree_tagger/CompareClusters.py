@@ -167,8 +167,6 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                 # no jets in this group
                 tag_mass2 = bg_mass2 = 0
                 phi = pt = rapidity = np.nan
-            if bg_mass2 > eventWise.DetectableBG_Mass:
-                st()
             tag_mass2_in[event_n].append(tag_mass2)
             bg_mass2_in[event_n].append(bg_mass2)
             phi_in[event_n].append(phi)
