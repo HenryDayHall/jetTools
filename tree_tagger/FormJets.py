@@ -102,6 +102,7 @@ class PseudoJet:
                 self._ints = self._ints.tolist()
                 self._floats = self._floats.tolist()
             self.root_jetInputIdxs = kwargs.get('root_jetInputIdxs', [])
+            self.n_inputs = 0  # there are no raw inputs
         else:
             assert "JetInputs_PT" in eventWise.columns, "eventWise must have JetInputs"
             assert isinstance(eventWise.selected_index, int), "selected index should be int"
@@ -137,7 +138,7 @@ class PseudoJet:
         while self.currently_avalible > 0:
             self._step_assign_parents()
 
-    def plt_assign_parents(self):
+    def plt_assign_parents(self, save_prefix):
         """
         Join pseudojets until all avalible psseudojets are taken.
         Also plot the process
@@ -1310,7 +1311,7 @@ class Spectral(PseudoJet):
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
-                       'StoppingCondition': ['standard', 'beamparticle']}
+                       'StoppingCondition': ['standard', 'beamparticle', 'conductance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
         Class constructor
@@ -1344,6 +1345,7 @@ class Spectral(PseudoJet):
         self._define_calculate_affinity()
         self.eigenvalues = []  # create a list to track the eigenvalues
         self.beam_particle = self.StoppingCondition == 'beamparticle'
+        self.conductance = self.StoppingCondition == 'conductance'
         assign = kwargs.get('assign', False)
         kwargs['assign'] = False  # don't let the super constructor assign
         if dict_jet_params is not None:
@@ -1353,8 +1355,38 @@ class Spectral(PseudoJet):
         # is garenteed to be finitie
         self._NumEigenvectors = int(np.nan_to_num(self.NumEigenvectors))
         self._calculate_eigenspace()  # we need to make the eigenspace first
+        if self.conductance:  # need self.n_inputs to be formed and for an eigenspace to exist
+            # set up to calcualte conductance
+            self._conductance_sets = [{r} for r in range(self.currently_avalible)]
+            self._set_input_idx = set().union(*self._conductance_sets)
+            self._initial_affinity = np.copy(self._affinity)
+            if self.Laplacien == 'symmetric':
+                self._current_conductance = np.ones(self.n_inputs).tolist()
+                self._total_affinity = np.sum(self._initial_affinity)
+            else:
+                self._current_conductance = 1/np.sum(self._initial_affinity, axis=0)
         if assign:
             self.assign_parents()
+
+    def _conductance_check(self, idx_a, idx_b):
+        inside = self._conductance_sets[idx_a].union(self._conductance_sets[idx_b])
+        outside = list(self._set_input_idx - inside)
+        inside = list(inside)
+        numerator = np.sum(self._initial_affinity[inside][:, outside])
+        if self.Laplacien == 'symmetric':
+            denominator = np.sum(self._initial_affinity[inside])
+            denominator = min(denominator,
+                              self._total_affinity-denominator)
+        elif self.Laplacien == 'unnormalised':
+            denominator = min(len(inside), len(outside))
+        new_conductance = numerator/denominator
+        # we will remove any jet with lower conductance than then new conductance
+        to_remove = []
+        if self._current_conductance[idx_a] < new_conductance:
+            to_remove.append(idx_a)
+        if self._current_conductance[idx_b] < new_conductance:
+            to_remove.append(idx_b)
+        return to_remove, new_conductance
 
     def _calculate_distances(self):
         """ Calculate all distances between avalible pseudojets """
@@ -1485,7 +1517,7 @@ class Spectral(PseudoJet):
                 self._distances2[-1, :-1] *= pt_fractions[:-1]
                 self._distances2[:-1, -1] *= pt_fractions[:-1]
         # if the clustering is not going to stop at 1 we must put something in the diagonal
-        if self.beam_particle:  # in he case of a beam particle we stop the clustering when
+        if self.beam_particle or self.conductance:  # in he case of a beam particle we stop the clustering when
             # our particle reaches the beam particle
             # so the diagonal should never be grouped with
             np.fill_diagonal(self._distances2, np.inf)
@@ -1754,7 +1786,7 @@ class Spectral(PseudoJet):
         # this is make into a class fuction becuase it will b needed elsewhere
         self.calculate_affinity = calculate_affinity
 
-    def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2):
+    def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2, conductance=None):
         """
         Merge two pseudojets to form a new pseudojet, moving the
         exising pseudojets to the back of the ints/floats lists
@@ -1788,6 +1820,12 @@ class Spectral(PseudoJet):
         self.currently_avalible -= 1
         # now recalculate for the new pseudojet
         self._recalculate_one(remove_index, replace_index)
+        # if a conductance is given then deal with the conductance lists
+        if conductance is not None:
+           removed_set = self._conductance_sets.pop(remove_index)
+           self._conductance_sets[replace_index].update(removed_set)
+           self._current_conductance = np.delete(self._current_conductance, remove_index)
+           self._current_conductance[replace_index] = conductance
 
     def _remove_pseudojet(self, pseudojet_index):
         """
@@ -1816,6 +1854,10 @@ class Spectral(PseudoJet):
         # one less pseudojet avalible
         self.currently_avalible -= 1
         self.root_jetInputIdxs.append(pseudojet_ints[self._InputIdx_col])
+        # if we are tracking conductance, also sort those lists out
+        if self.conductance:
+           del self._conductance_sets[pseudojet_index]
+           self._current_conductance = np.delete(self._current_conductance, pseudojet_index)
 
     def _recalculate_one(self, remove_index, replace_index):
         """
@@ -1871,7 +1913,7 @@ class Spectral(PseudoJet):
                                      for row in self._floats[:self.currently_avalible]),
                                     dtype=float)
             new_distances2[:self.currently_avalible] *= pt_factor
-        if self.beam_particle:
+        if self.beam_particle or self.conductance:
             new_distances2[replace_index] = np.inf
         else:
             new_distances2[replace_index] = self.DeltaR**2
@@ -1895,11 +1937,21 @@ class Spectral(PseudoJet):
         row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
         removed = None
         if row == column:
-            if self.beam_particle:
+            if self.beam_particle or self.conductance:
                 raise RuntimeError("A jet with a beam particle should" +
                                    " never have a minimal diagonal")
             self._remove_pseudojet(row)
             removed = row
+        elif self.conductance:
+            to_remove, new_conductance = self._conductance_check(row, column)
+            if to_remove:
+                # be sure to go from higest to lowest
+                for idx in sorted(to_remove)[::-1]:
+                    self._remove_pseudojet(idx)
+                removed = idx   # cannot really include 2 as they have moved
+            else:
+                self._merge_pseudojets(row, column, self._distances2[row, column],
+                                       conductance=new_conductance)
         elif self.beam_particle and row == beam_index:
             # the column merged with the beam
             self._remove_pseudojet(column)
@@ -2582,7 +2634,7 @@ class SpectralMean(Spectral):
             pt_factor **= exponent
             np.clip(pt_factor, None, pt_here, out=pt_factor)
             new_distances2[:self.currently_avalible] *= pt_factor
-        if self.beam_particle:
+        if self.beam_particle or self.conductance:
             new_distances2[replace_index] = np.inf
         else:
             new_distances2[replace_index] = self.DeltaR**2
@@ -3484,15 +3536,16 @@ if __name__ == '__main__':
     spectral_jet_params = dict(ExpofPTMultiplier=0,
                                ExpofPTPosition='input',
                                NumEigenvectors=7,
-                               BaseJump=0.05,
-                               JumpEigenFactor=10,
+                               StoppingCondition='conductance',
+                               #BaseJump=0.05,
+                               #JumpEigenFactor=10,
                                #MaxCutScore=0.2, 
                                Laplacien='symmetric',
                                AffinityType='exponent2',
                                AffinityCutoff=('distance', 1),
                                PhyDistance='angular')
 
-    c_class = Indicator
+    c_class = SpectralMean
     check_hyperparameters(c_class, spectral_jet_params)
     #cluster_multiapply(eventWise, c_class, spectral_jet_params, "TestJet", 10)
     eventWise.selected_index = event_num

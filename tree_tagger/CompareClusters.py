@@ -3,6 +3,7 @@ import tabulate
 import awkward
 import ast
 import csv
+import time
 import os
 import pickle
 import matplotlib
@@ -206,7 +207,7 @@ def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     return awkward.fromiter(jet_idxs)
 
 
-def append_scores(eventWise, dijet_mass=None):
+def append_scores(eventWise, dijet_mass=None, duration=np.inf):
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
     if dijet_mass is None:
@@ -217,6 +218,7 @@ def append_scores(eventWise, dijet_mass=None):
     names = FormJets.get_jet_names(eventWise)
     num_names = len(names)
     save_interval = 10
+    end_time = duration + time.time()
     if "DetectableTag_Idx" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise)
     for i, name in enumerate(names):
@@ -260,6 +262,8 @@ def append_scores(eventWise, dijet_mass=None):
             new_contents = {}
             # at each save interval also load the eventWise afresh
             eventWise = Components.EventWise.from_file(eventWise_path)
+        if time.time() > end_time:
+            break
     eventWise.append_hyperparameters(**new_hyperparameters)
     eventWise.append(**new_contents)
 
@@ -637,7 +641,10 @@ if __name__ == '__main__':
     
     if InputTools.yesNo_question("Score an eventWise? "):
         ew_name = InputTools.get_file_name("EventWise file? (existing) ")
-        append_scores(ew_name.strip())
+        duration = InputTools.get_time("How long to run for? (negative for inf) ")
+        if duration < 0:
+            duration = np.inf
+        append_scores(ew_name.strip(), duration=duration)
     elif InputTools.yesNo_question("Plot something? "):
         ew_paths = []
         path = True
