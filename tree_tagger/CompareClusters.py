@@ -298,7 +298,7 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
 def filter_table(*args):
     args = nan_filter_table(*args)
     table = args[-1]
-    if len(table) > 200:
+    if len(table) > 20000:
         args = quality_filter_table(*args)
     return args
 
@@ -464,14 +464,14 @@ def plot_scores(eventWise_paths, save_prefix=None):
                    "Mass Ratio scores" : ratio_scores,
                    "Peak Quality scores" : quality_scores}
     for title in score_types:
-        for group in variable_groups:
+        for i, group in enumerate(variable_groups):
             fig, ax_arr = plot_grid(all_cols, group, score_types[title], table)
             fig.suptitle(title)
             if save_prefix is None or len(save_prefix) == 0:
                 plt.show()
                 input()
             else:
-                save_name = save_prefix + '_' + title.replace(' ', '') + ".png"
+                save_name = save_prefix + '_' + title.replace(' ', '') + str(i) + ".png"
                 plt.savefig(save_name)
             plt.close(fig)
 

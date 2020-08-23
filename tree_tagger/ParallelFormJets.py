@@ -441,6 +441,28 @@ scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         PhyDistance=['invarient', 'angular', 'Luclus'])
 
 
+
+scan_Indicator = dict(
+                      JumpEigenFactor=np.linspace(0, 50, 6),
+                      ExpofPTMultiplier=np.linspace(-1, 1, 5),
+                      AffinityType=['exponent', 'exponent2'],
+                      BaseJump=np.linspace(0., 0.2, 3),
+                      AffinityCutoff = [None] + [('distance', d) for d in np.linspace(1, 5, 3)],
+                         )
+fix_Indicator1 = dict(
+                     Laplacien='unnormalised',
+                     ExpofPTPosition='input',
+                     NumEigenvectors=np.inf,
+                     PhyDistance='Luclus',
+                     )
+
+fix_Indicator2 = dict(
+                     Laplacien='symmetric',
+                     ExpofPTPosition='input',
+                     NumEigenvectors=np.inf,
+                     PhyDistance='Luclus',
+                     )
+
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
     Scan over all combinations of a range of options.
