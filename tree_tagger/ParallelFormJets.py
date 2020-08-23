@@ -446,7 +446,7 @@ scan_Indicator = dict(
                       JumpEigenFactor=np.linspace(0, 50, 6),
                       ExpofPTMultiplier=np.linspace(-1, 1, 5),
                       AffinityType=['exponent', 'exponent2'],
-                      BaseJump=np.linspace(0., 0.2, 3),
+                      BaseJump=np.linspace(0.01, 0.2, 3),
                       AffinityCutoff = [None] + [('distance', d) for d in np.linspace(1, 5, 3)],
                          )
 fix_Indicator1 = dict(
