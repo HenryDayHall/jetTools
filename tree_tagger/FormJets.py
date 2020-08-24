@@ -1441,6 +1441,7 @@ class Spectral(PseudoJet):
         Also find the distances in eigenspace and the eigenvalues.
         """
         if np.sum(np.abs(self._affinity), initial=0) == 0.:
+            self._eigenspace = np.eye(self.currently_avalible)
             # everything is seperated
             self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
                                       self._ints[:self.currently_avalible]]
@@ -2062,6 +2063,7 @@ class Indicator(Spectral):
         Calculate the embedding of the currently_avalible pseudojets in eignspace
         """
         if np.sum(np.abs(self._affinity)) == 0.:
+            self._eigenspace = np.eye(self.currently_avalible)
             # everything is seperated
             self.root_jetInputIdxs += [row[self._InputIdx_col] for row in
                                        self._ints[:self.currently_avalible]]
@@ -3201,9 +3203,18 @@ def check_for_jet(eventWise, parameters, name_start=None, pottentials=None):
                            if isinstance(value, tuple) and 
                            value[0] == required[0] and 
                            np.isclose(value[1], required[1])]
-        else:
+        elif isinstance(required, (str, bool, type(None))):  # can require strict equality
             pottentials = [name for name, value in zip(pottentials, values)
-                           if np.isclose(value, required)]
+                           if value == required]
+        else:  # some sort of numeric
+            pottentials = []
+            for name, value in zip(pottentials, values):
+                try:
+                    close = np.isclose(value, required, equal_nan=True)
+                except TypeError:
+                    close = False
+                if close:
+                    pottentials.append(name)
     return pottentials
 
 
