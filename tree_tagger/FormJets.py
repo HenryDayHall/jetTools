@@ -1442,6 +1442,7 @@ class Spectral(PseudoJet):
         """
         if np.sum(np.abs(self._affinity), initial=0) == 0.:
             self._eigenspace = np.eye(self.currently_avalible)
+            self.eigenvalues = np.ones(self.currently_avalible)
             # everything is seperated
             self.root_jetInputIdxs = [row[self._InputIdx_col] for row in
                                       self._ints[:self.currently_avalible]]
@@ -2064,6 +2065,7 @@ class Indicator(Spectral):
         """
         if np.sum(np.abs(self._affinity)) == 0.:
             self._eigenspace = np.eye(self.currently_avalible)
+            self.eigenvalues = np.ones(self.currently_avalible)
             # everything is seperated
             self.root_jetInputIdxs += [row[self._InputIdx_col] for row in
                                        self._ints[:self.currently_avalible]]

@@ -29,9 +29,7 @@ def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, f
     create_ax = ax is None
     if create_ax:
         fig, (ax, ax2) = plt.subplots(1, 2)
-    ax.set_frame_on(False)
-    ax.axes.get_xaxis().set_visible(False)
-    ax.axes.get_yaxis().set_visible(False)
+    hide_axis(ax)
     # write out the jet properties
     text = ''
     if eventWise is not None:
@@ -97,4 +95,9 @@ def find_crossing_point(x_start, y_start, x_end, y_end, y_max=np.pi, y_min=-np.p
     #          top x     +  x seperation * percent to top
     x_cross = top_x + (bottom_x - top_x)*percent_to_top
     return x_cross, sign
-    
+
+
+def hide_axis(ax):
+    ax.set_frame_on(False)
+    ax.axes.get_xaxis().set_visible(False)
+    ax.axes.get_yaxis().set_visible(False)

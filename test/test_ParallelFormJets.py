@@ -17,6 +17,7 @@ def test_make_jet_name():
     found = ParallelFormJets.make_jet_name("Dog", 3.)
     assert found == expected
 
+
 def test_name_generator():
     # should work fine with no existing jets
     jet_class = "Horse"
