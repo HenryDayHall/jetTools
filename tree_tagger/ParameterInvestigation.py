@@ -79,21 +79,21 @@ def get_seperations(vectors, norm_values=None):
     # suppress warnings
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        for i, vecs in enumerate(vectors):
+        for event_n, vecs in enumerate(vectors):
             n_points = len(vecs)
             # make a array for the results
             local = np.zeros((n_metrics, n_points, n_points), dtype=float)
             # do without norming
-            for i, name in enumerate(metrics):
+            for metric_n, name in enumerate(metrics):
                 distance = scipy.spatial.distance.pdist(vecs, **metrics[name])
-                local[i] = scipy.spatial.distance.squareform(distance)
+                local[metric_n] = scipy.spatial.distance.squareform(distance)
             # now normalise the vectors and go again
             if norm_values is not None:
-                vecs /= norm_values[i]
-                after_norm = i+1
-                for i, name in enumerate(metrics):
+                vecs /= norm_values[event_n]
+                after_norm = metric_n+1
+                for metric_n, name in enumerate(metrics):
                     distance = scipy.spatial.distance.pdist(vecs, **metrics[name])
-                    local[after_norm + i] = scipy.spatial.distance.squareform(distance)
+                    local[after_norm + metric_n] = scipy.spatial.distance.squareform(distance)
                 seperations.append(local)
     return seperations
 
@@ -143,7 +143,6 @@ def label_crossings(labels):
         # the whole diagonal will be made false by this automaticaly
         crossings.append(local)
     return crossings
-
 
 
 def closest_relative(eventWise):
@@ -302,6 +301,7 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
         # get the distances
         distance_name = name + "_PhysSeperation"
         if distance_name not in eventWise.columns:
+            eventWise.selected_index = None
             distances = physical_distances(eventWise.JetInputs_Phi,
                                            eventWise.JetInputs_Rapidity,
                                            eventWise.JetInputs_PT,
@@ -327,7 +327,7 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
             new_content = {}
             # delete and reload the eventWise
             del eventWise
-            eventWise = Components.EventWise.from_file(eventWise)
+            eventWise = Components.EventWise.from_file(eventWise_path)
         # to keep memory requirments down, del everything
         del distances
     eventWise.append(**new_content)
@@ -591,7 +591,7 @@ def append_eig_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
             new_content = {}
             # delete and reload the eventWise
             del eventWise
-            eventWise = Components.EventWise.from_file(eventWise)
+            eventWise = Components.EventWise.from_file(eventWise_path)
         # to keep memory requirments down, del everything
         del vectors
         del values
