@@ -79,7 +79,7 @@ def get_seperations(vectors, norm_values=None):
     # suppress warnings
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        for vecs, norm in zip(vectors, norm_values):
+        for i, vecs in enumerate(vectors):
             n_points = len(vecs)
             # make a array for the results
             local = np.zeros((n_metrics, n_points, n_points), dtype=float)
@@ -88,8 +88,8 @@ def get_seperations(vectors, norm_values=None):
                 distance = scipy.spatial.distance.pdist(vecs, **metrics[name])
                 local[i] = scipy.spatial.distance.squareform(distance)
             # now normalise the vectors and go again
-            if norm_values:
-                vecs /= norm
+            if norm_values is not None:
+                vecs /= norm_values[i]
                 after_norm = i+1
                 for i, name in enumerate(metrics):
                     distance = scipy.spatial.distance.pdist(vecs, **metrics[name])
@@ -139,7 +139,7 @@ def label_crossings(labels):
         in_jet = np.diag(label)
         # if in_jet is true but the off diagonal is false,
         # then it is a crossing
-        local = np.logical_or(~labels, in_jet)
+        local = np.logical_or(~label, in_jet)
         # the whole diagonal will be made false by this automaticaly
         crossings.append(local)
     return crossings
@@ -228,7 +228,9 @@ def make_inputs_table(eventWise, jet_names, table_ax):
 
 def physical_distances(phis, rapidities, pts, exp_multipler=0):
     exponent = exp_multipler*2
-    vectors = [np.vstack((phi, rap)) for phi, rap in zip(phis, rapidities)]
+    empty = np.empty((0, 0))
+    vectors = [empty if not len(phi) else np.vstack((phi, rap))
+               for phi, rap in zip(phis, rapidities)]
     metric_distances = get_seperations(vectors)
     distances = []
     # multiply by 2 to account for Luclus
@@ -236,7 +238,7 @@ def physical_distances(phis, rapidities, pts, exp_multipler=0):
     luclus_start = len(metrics)
     for pt, m_dist in zip(pts, metric_distances):
         # the angular section is the sam for normal and luclus
-        local = np.concatinate((m_dist, m_dist), axis=0)
+        local = np.concatenate((m_dist, m_dist), axis=0)
         # sort out the pt factor for the normal section
         exp_pt = pt**exponent
         col_pt = pt.reshape((-1, 1))
@@ -330,6 +332,125 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
         del distances
     eventWise.append(**new_content)
     eventWise.append_hyperparameters(**new_hyper)
+
+
+def plot_phys_event(eventWise, event_num, *jet_names):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    event_num :
+        
+    *jet_names :
+        
+
+    Returns
+    -------
+
+    """
+    if not jet_names:
+        jet_names = [name.split('_')[0] for name in eventWise.columns
+                     if name.endswith("_EigSeperation")]
+    num_jets = len(jet_names)
+    # give each jet a colour
+    jet_map = matplotlib.cm.get_cmap('gist_rainbow')
+    jet_colours = [jet_map((i+0.5)/num_jets) for i in range(num_jets)]
+    # get global data
+    eventWise.selected_index = event_num
+    label_mask = eventWise.JetInputs_PairLabels.flatten()
+    label_markers = ['o', 'v']
+    distances = eventWise.JetInputs_ShowerDistance.flatten()
+    # going to plot each seperation on it's own axis against the shower distances
+    # represent the jets as colours and the labels as shapes
+    # put the rank and the auc in the legend
+    # the jets will be tablulated
+    num_metrics = len(eig_metric_names)
+    n_rows = int(np.ceil(num_metrics/2+1))
+    n_cols = 4
+    fig, ax_arr = plt.subplots(n_rows, n_cols, sharex='col')
+    plot_arr = np.vstack((ax_arr[1:, :2], ax_arr[1:, 2:]))
+    # add the table
+    table_ax = ax_arr[0, 0]
+    make_inputs_table(eventWise, jet_names, table_ax)
+    for blank_ax in ax_arr[0, 1:]:
+        PlottingTools.hide_axis(blank_ax)
+    # now the other axis should contain the plots
+    marker_size = 10
+    edge_width = 0.2
+    for metric_n, metric in enumerate(eig_metric_names):
+        legend_ax, plot_ax = plot_arr[metric_n]
+        for name, colour in zip(jet_names, jet_colours):
+            seperations = getattr(eventWise, name + "_EigSeperation")[metric_n].flatten()
+            rank = getattr(eventWise, name+"_DistanceEigRank")[metric_n]
+            auc = getattr(eventWise, name+"_LabelEigAUC")[metric_n]
+            plot_ax.scatter(distances[label_mask], seperations[label_mask], s=marker_size,
+                    alpha=0.5, 
+                    c=[colour], marker=label_markers[1], edgecolors='k', linewidths=edge_width,
+                    label=f"{name} same quark.{os.linesep}Rank {rank:.3g}. Auc {auc:.3g}.")
+            plot_ax.scatter(distances[~label_mask], seperations[~label_mask], s=marker_size,
+                            alpha=0.5,
+                            c=[colour], marker=label_markers[0], label=name+" diferent quarks")
+        plot_ax.set_ylabel(metric)
+        legend_ax.legend(*plot_ax.get_legend_handles_labels(), loc='center')
+        PlottingTools.hide_axis(legend_ax)
+    plot_ax.set_xlabel("Shower distance")
+    fig.set_size_inches(n_cols*3.5, n_rows*1.8)
+    #fig.tight_layout()
+    fig.subplots_adjust(hspace=0.0, left=0, right=1., top=1., bottom=0.05)
+
+
+def plot_phys_overall(eventWise, *jet_names):
+    if not jet_names:
+        jet_names = [name.split('_')[0] for name in eventWise.columns
+                     if name.endswith("_EigSeperation")]
+    num_jets = len(jet_names)
+    # give each jet a colour
+    jet_map = matplotlib.cm.get_cmap('gist_rainbow')
+    jet_colours = [jet_map((i+0.5)/num_jets) for i in range(num_jets)]
+    # set up the axis
+    fig, ax_arr = plt.subplots(2, 2)
+    PlottingTools.hide_axis(ax_arr[0, 1])
+    make_inputs_table(eventWise, jet_names, ax_arr[0][0])
+    # get the scores
+    num_metrics = len(eig_metric_names)
+    auc_scores = np.empty((num_jets, num_metrics), dtype=float)
+    rank_scores = np.empty((num_jets, num_metrics), dtype=float)
+    eventWise.selected_index = None
+    for jet_n, name in enumerate(jet_names):
+        aucs = np.array(getattr(eventWise, name + '_LabelEigAUC').tolist())
+        ranks = np.array(getattr(eventWise, name + '_DistanceEigRank').tolist())
+        auc_scores[jet_n] = np.nanmean(aucs, axis=0)
+        rank_scores[jet_n] = np.nanmean(ranks, axis=0)
+    # title the heatmaps
+    ax_arr[1, 0].set_title("AUC from labels")
+    ax_arr[1, 1].set_title("Rank from shower distances")
+    # plot as a heatmap
+    for ax, score in zip(ax_arr[1], [auc_scores, rank_scores]):
+        img = ax.imshow(score)
+        plt.colorbar(mappable=img, ax=ax)
+        
+        ax.set_xticks(np.arange(num_metrics))
+        ax.set_yticks(np.arange(num_jets))
+        # ... and label them with the respective list entries
+        ax.set_xticklabels(eig_metric_names)
+        ax.set_yticklabels(jet_names)
+
+        # Rotate the tick labels and set their alignment.
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                 rotation_mode="anchor")
+
+        # Loop over data dimensions and create text annotations.
+        height = num_jets/2
+        for metric_n in range(num_metrics):
+            mean = np.nanmean(score[:, metric_n])
+            text = ax.text(metric_n, height, f"ave={mean:.3g}",
+                           ha="center", va="center", color="k",
+                           rotation=90.)
+
+    fig.set_size_inches(10, 8)
 
 
 # Eigenspace distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -732,13 +853,14 @@ def eig_jets():
     return jet_names, jet_params
 
 if __name__ == '__main__':
-    eventWise = Components.EventWise.from_file("megaIgnore/eigenspace.awkd")
+    eventWise = Components.EventWise.from_file("megaIgnore/physspace.awkd")
     # jet_names, jet_params = eig_jets()
     #append_eig_metrics(eventWise, jet_names, jet_params)
     exp_of_pt = np.linspace(-1, 1, 9)
-    jet_names = ["ExpofPT" + str(exp)[:4].replace('.', 'p') for exp in exp_of_pt]
+    jet_names = ["ExpofPT" + str(exp)[:4].replace('.', 'p').replace('-', 'm')
+                 for exp in exp_of_pt]
     jet_params = [dict(ExpofPTMultiplier=exp) for exp in exp_of_pt]
-    append_phys_metrics(eventWise, jet_names, jet_param_list)
+    append_phys_metrics(eventWise, jet_names, jet_params)
     print("Done")
     #plot_eig_event(eventWise, 0, 'AngularExponent2', 'AngularExponent1', 'AngularExponent21')
     #plot_eig_overall(eventWise)
