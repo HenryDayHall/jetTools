@@ -735,9 +735,13 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file("megaIgnore/eigenspace.awkd")
     # jet_names, jet_params = eig_jets()
     #append_eig_metrics(eventWise, jet_names, jet_params)
+    exp_of_pt = np.linspace(-1, 1, 9)
+    jet_names = ["ExpofPT" + str(exp)[:4].replace('.', 'p') for exp in exp_of_pt]
+    jet_params = [dict(ExpofPTMultiplier=exp) for exp in exp_of_pt]
+    append_phys_metrics(eventWise, jet_names, jet_param_list)
     print("Done")
-    plot_eig_event(eventWise, 0, 'AngularExponent2', 'AngularExponent1', 'AngularExponent21')
-    plot_eig_overall(eventWise)
+    #plot_eig_event(eventWise, 0, 'AngularExponent2', 'AngularExponent1', 'AngularExponent21')
+    #plot_eig_overall(eventWise)
     input()
     
 
