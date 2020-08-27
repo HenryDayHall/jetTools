@@ -187,7 +187,7 @@ def test_get_seperations():
     eigenvectors += [np.array([[0.], [0.]])]
     # run the function
     seperations = ParameterInvestigation.get_seperations(eigenvectors, eigenvalues)
-    num_metrics = len(ParameterInvestigation.metric_names)
+    num_metrics = len(ParameterInvestigation.eig_metric_names)
     half_metrics = int(num_metrics/2)
     # first one should be empty
     assert seperations[0].shape == (num_metrics, 0, 0)

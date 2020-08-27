@@ -13,43 +13,89 @@ import awkward
 from matplotlib import pyplot as plt
 import matplotlib
 
+# general ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Physical distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Eigenspace distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def create_eigenvectors(eventWise, jet_params):
+# a metric function
+def min_sep(u, v):
     """
-    Create and return the initial eigenspace and eigenvectors.
-    The jet params relevent to this are;
-    PhyDistance, AffinityType, AffinityCutoff, Laplacien, ExpOfPTMultiplier
-    SpectralMean will be used.
+    Difernence in the dimension with minimal seperation.
 
     Parameters
     ----------
-    eventWise : EventWise
-        Data set containing particle data.
-        
-    jet_params : dict
-        Input parameter choices
+    u : array like of floats
+        vector 1
+    v : array like of floats
+        vector 2
 
     Returns
     -------
-    eigenvalues : list of numpy arrays of floats
-        Non trivial eigenvalues for inital eigenspace
-
-    eigenvectors : list of numpy arrays of floats
-        Non trivial eigenvectors for inital eigenspace
+    : float
+        the diference
 
     """
-    eventWise.selected_index = None
-    eigenvectors = []; eigenvalues = []
-    for event_n in range(len(eventWise.X)):
-        eventWise.selected_index = event_n
-        jets = FormJets.SpectralMean(eventWise, assign=False, dict_jet_params=jet_params)
-        eigenvalues.append(np.array(jets.eigenvalues).flatten())
-        eigenvectors.append(np.copy(jets._eigenspace))
-        del jets
-    return eigenvalues, eigenvectors
+    return np.min(np.abs(u - v))
+
+metrics = OrderedDict(Euclidian = dict(metric='euclidean'),
+                      L3 = dict(metric='minkowski', p=3),
+                      L4 = dict(metric='minkowski', p=4),
+                      Taxicab = dict(metric='cityblock'),
+                      Braycurtis = dict(metric='braycurtis'),
+                      Canberra = dict(metric='canberra'),
+                      Min = dict(metric=min_sep),
+                      Max = dict(metric='chebyshev'),
+                      Correlation = dict(metric='correlation'),
+                      Cosine = dict(metric='cosine'))
+eig_metric_names = list(metrics.keys()) + [name + " normed" for name in metrics]
+phys_metric_names = list(metrics.keys()) + [name + " Luclus" for name in metrics]
+
+
+def get_seperations(vectors, norm_values=None):
+    """
+    For each pair of jet inputs in an event get the seperation.
+    Each or the metrics in the dict will be tried,
+    then retried with a normed space if norming norm_values are given
+    A normed space is one where the vectors have been divided
+    by the norm_values.
+
+    Parameters
+    ----------
+    vectors : list of 2d numpy arrays of floats
+        the vectors of each event.
+    norm_values : list of 1d numpy arrays of floats
+        the norm_values of each event.
+
+    Returns
+    -------
+    seperations : list of 3d numpy arrays of floats
+        the distances in each event
+        axis 0 is each of the metrics used
+        axis 1 and 2 are the particles in each event
+
+    """
+    seperations = []
+    n_metrics = len(metrics)
+    if norm_values:
+        n_metrics *= 2
+    # suppress warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for vecs, norm in zip(vectors, norm_values):
+            n_points = len(vecs)
+            # make a array for the results
+            local = np.zeros((n_metrics, n_points, n_points), dtype=float)
+            # do without norming
+            for i, name in enumerate(metrics):
+                distance = scipy.spatial.distance.pdist(vecs, **metrics[name])
+                local[i] = scipy.spatial.distance.squareform(distance)
+            # now normalise the vectors and go again
+            if norm_values:
+                vecs /= norm
+                after_norm = i+1
+                for i, name in enumerate(metrics):
+                    distance = scipy.spatial.distance.pdist(vecs, **metrics[name])
+                    local[after_norm + i] = scipy.spatial.distance.squareform(distance)
+                seperations.append(local)
+    return seperations
 
 
 def label_parings(eventWise):
@@ -81,6 +127,23 @@ def label_parings(eventWise):
             local += np.expand_dims(is_decendent, 0) * np.expand_dims(is_decendent, 1)
         labels.append(local)
     return labels
+
+
+def label_crossings(labels):
+    """ The prinicple is that is a particle is in a b-jet it's disgonal will be true
+    If the other particle is not the offdiagonal will be false """
+    crossings = []
+    for label in labels:
+        # where in_jet is false the outcome must be false,
+        # but all the off diagonal wil be anyway
+        in_jet = np.diag(label)
+        # if in_jet is true but the off diagonal is false,
+        # then it is a crossing
+        local = np.logical_or(~labels, in_jet)
+        # the whole diagonal will be made false by this automaticaly
+        crossings.append(local)
+    return crossings
+
 
 
 def closest_relative(eventWise):
@@ -135,85 +198,177 @@ def closest_relative(eventWise):
     return labels
 
 
-def min_sep(u, v):
+# Plotting tools  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def make_inputs_table(eventWise, jet_names, table_ax):
+    jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
+                  "Laplacien", "ExpOfPTMultiplier"]
+    # construct a text table
+    table_content = [[" "] + jet_inputs]
+    table_content += [[name] + [getattr(eventWise, name+'_'+inp) for inp in jet_inputs]
+                      for name in jet_names]
+    table_sep = '|'
+    table = []
+    cell_fmt = "17.17"
+    for row in table_content:
+        table.append([])
+        for x in row:
+            try:
+                table[-1].append(f"{x:{cell_fmt}}")
+            except ValueError:
+                table[-1].append(f"{x:{cell_fmt[0]}}")
+            except TypeError:
+                table[-1].append(f"{str(x):{cell_fmt}}")
+        table[-1] = table_sep.join(table[-1])
+    table = os.linesep.join(table)
+    table_ax.text(0, 0, table, fontdict={"family": 'monospace'})
+    PlottingTools.hide_axis(table_ax)
+    return table, jet_inputs
+
+# Physical distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def physical_distances(phis, rapidities, pts, exp_multipler=0):
+    exponent = exp_multipler*2
+    vectors = [np.vstack((phi, rap)) for phi, rap in zip(phis, rapidities)]
+    metric_distances = get_seperations(vectors)
+    distances = []
+    # multiply by 2 to account for Luclus
+    num_metrics = len(metrics)*2
+    luclus_start = len(metrics)
+    for pt, m_dist in zip(pts, metric_distances):
+        # the angular section is the sam for normal and luclus
+        local = np.concatinate((m_dist, m_dist), axis=0)
+        # sort out the pt factor for the normal section
+        exp_pt = pt**exponent
+        col_pt = pt.reshape((-1, 1))
+        col_exp_pt = exp_pt.reshape((-1, 1))
+        local[:luclus_start] *= np.minimum(exp_pt, col_exp_pt)
+        # sort out the luclus factor
+        luclus_factor = (exp_pt * col_exp_pt) * ((pt + col_pt)**-exponent)
+        local[luclus_start:] *= luclus_factor
+        distances.append(local)
+    return distances
+
+
+def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
     """
-    Difernence in the dimension with minimal seperation.
+    
 
     Parameters
     ----------
-    u : array like of floats
-        vector 1
-    v : array like of floats
-        vector 2
+    eventWise :
+        
+    jet_names :
+        
+    jet_param_list :
+        
+    duration :
+         (Default value = np.inf)
 
     Returns
     -------
-    : float
-        the diference
 
     """
-    return np.min(np.abs(u - v))
+    if isinstance(eventWise, str):
+        eventWise_path = eventWise
+        eventWise = Components.EventWise.from_file(eventWise_path)
+    else:
+        eventWise_path = os.path.join(eventWise.dir_name, eventWise.save_name)
+    end_time = time.time() + duration
+    print("Making global data")
+    if "JetInputs_PairLabels" not in eventWise.columns:
+        labels = label_parings(eventWise)
+        eventWise.append(JetInputs_PairLabels=labels)
+    else:
+        labels = eventWise.JetInputs_PairLabels
+    if "JetInputs_PairCrossings" not in eventWise.columns:
+        crossings = label_crossings(labels)
+        eventWise.append(JetInputs_PairCrossings=crossings)
+    else:
+        crossings = eventWise.JetInputs_PairCrossings
+    num_configureations = len(jet_names)
+    save_interval = 5
+    print("Done with global data")
+    new_content = {}
+    new_hyper = {}
+    for i, (name, params) in enumerate(zip(jet_names, jet_param_list)):
+        if time.time() > end_time:
+            break
+        print(f"{i/num_configureations:.1%} {name}" + " "*10, end='\r', flush=True)
+        # add the hyper parameters
+        for key in params:
+            new_hyper[name+'_'+key] = params[key]
+        # get the distances
+        distance_name = name + "_PhysSeperation"
+        if distance_name not in eventWise.columns:
+            distances = physical_distances(eventWise.JetInputs_Phi,
+                                           eventWise.JetInputs_Rapidity,
+                                           eventWise.JetInputs_PT,
+                                           params["ExpofPTMultiplier"])
+            new_content[distance_name] = distances
+        else:
+            eventWise.selected_index = None
+            distances = getattr(eventWise, distance_name)
+        # create the scores
+        ratio_name = name + "_PhysDistanceRatio"
+        if ratio_name not in eventWise.columns:
+            ratios = []
+            for i, dis in enumerate(distances):
+                cross_group = crossings[i]
+                same_group = labels[i]
+                ratios.append([np.nanmean(metric[cross_group])/np.nanmean(metric[same_group])
+                               for metric in dis])
+            new_content[ratio_name] = awkward.fromiter(ratios)
+        if (i+5)%save_interval == 0 and new_content:
+            eventWise.append_hyperparameters(**new_hyper)
+            new_hyper = {}
+            eventWise.append(**new_content)
+            new_content = {}
+            # delete and reload the eventWise
+            del eventWise
+            eventWise = Components.EventWise.from_file(eventWise)
+        # to keep memory requirments down, del everything
+        del distances
+    eventWise.append(**new_content)
+    eventWise.append_hyperparameters(**new_hyper)
 
-metrics = OrderedDict(Euclidian = dict(metric='euclidean'),
-                      L3 = dict(metric='minkowski', p=3),
-                      L4 = dict(metric='minkowski', p=4),
-                      Taxicab = dict(metric='cityblock'),
-                      Braycurtis = dict(metric='braycurtis'),
-                      Canberra = dict(metric='canberra'),
-                      Min = dict(metric=min_sep),
-                      Max = dict(metric='chebyshev'),
-                      Correlation = dict(metric='correlation'),
-                      Cosine = dict(metric='cosine'))
-metric_names = list(metrics.keys()) + [name + " normed" for name in metrics]
 
-
-def get_seperations(eigenvectors, eigenvalues):
+# Eigenspace distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def create_eigenvectors(eventWise, jet_params):
     """
-    For each pair of jet inputs in an event get the seperation.
-    Each or the metrics in the dict will be tried,
-    then retried with a normed eigenspace.
-    A normed eigenspace is one where the eigenvectors have been divided
-    by the eigenvalues.
+    Create and return the initial eigenspace and eigenvectors.
+    The jet params relevent to this are;
+    PhyDistance, AffinityType, AffinityCutoff, Laplacien, ExpOfPTMultiplier
+    SpectralMean will be used.
 
     Parameters
     ----------
-    eigenvectors : list of 2d numpy arrays of floats
-        the eigenvectors of each event.
-    eigenvectors : list of 1d numpy arrays of floats
-        the eigenvalues of each event.
+    eventWise : EventWise
+        Data set containing particle data.
+        
+    jet_params : dict
+        Input parameter choices
 
     Returns
     -------
-    seperations : list of 3d numpy arrays of floats
-        the distances in each event
-        axis 0 is each of the metrics used
-        axis 1 and 2 are the particles in each event
+    eigenvalues : list of numpy arrays of floats
+        Non trivial eigenvalues for inital eigenspace
+
+    eigenvectors : list of numpy arrays of floats
+        Non trivial eigenvectors for inital eigenspace
 
     """
-    seperations = []
-    n_metrics = len(metric_names)
-    # suppress warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        for vectors, values in zip(eigenvectors, eigenvalues):
-            n_points = len(vectors)
-            # make a array for the results
-            local = np.zeros((n_metrics, n_points, n_points), dtype=float)
-            # do without norming
-            for i, name in enumerate(metrics):
-                distance = scipy.spatial.distance.pdist(vectors, **metrics[name])
-                local[i] = scipy.spatial.distance.squareform(distance)
-            # now normalise the eigenvectors and go again
-            vectors /= values
-            after_norm = i+1
-            for i, name in enumerate(metrics):
-                distance = scipy.spatial.distance.pdist(vectors, **metrics[name])
-                local[after_norm + i] = scipy.spatial.distance.squareform(distance)
-            seperations.append(local)
-    return seperations
+    eventWise.selected_index = None
+    eigenvectors = []; eigenvalues = []
+    for event_n in range(len(eventWise.X)):
+        eventWise.selected_index = event_n
+        jets = FormJets.SpectralMean(eventWise, assign=False, dict_jet_params=jet_params)
+        eigenvalues.append(np.array(jets.eigenvalues).flatten())
+        eigenvectors.append(np.copy(jets._eigenspace))
+        del jets
+    return eigenvalues, eigenvectors
 
 
-def append_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
+def append_eig_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
     """
     
 
@@ -271,7 +426,7 @@ def append_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
             vectors = getattr(eventWise, eigenvector_name)
         # get the seperations
         seperation_name = name + "_EigSeperation"
-        if seperation_name not in eventWise.columns or True:
+        if seperation_name not in eventWise.columns:
             if not isinstance(vectors, list):
                 # scipy distances cannot deal with jagged arrays
                 new_vectors = []
@@ -291,7 +446,7 @@ def append_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
         # create the scores
         rank_name = name + "_DistanceEigRank"
         auc_name = name + "_LabelEigAUC"
-        if rank_name not in eventWise.columns or True:
+        if rank_name not in eventWise.columns:
             # suppress warnings
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
@@ -324,33 +479,7 @@ def append_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
     eventWise.append_hyperparameters(**new_hyper)
 
 
-def make_inputs_table(eventWise, jet_names, table_ax):
-    jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
-                  "Laplacien", "ExpOfPTMultiplier"]
-    # construct a text table
-    table_content = [[" "] + jet_inputs]
-    table_content += [[name] + [getattr(eventWise, name+'_'+inp) for inp in jet_inputs]
-                      for name in jet_names]
-    table_sep = '|'
-    table = []
-    cell_fmt = "17.17"
-    for row in table_content:
-        table.append([])
-        for x in row:
-            try:
-                table[-1].append(f"{x:{cell_fmt}}")
-            except ValueError:
-                table[-1].append(f"{x:{cell_fmt[0]}}")
-            except TypeError:
-                table[-1].append(f"{str(x):{cell_fmt}}")
-        table[-1] = table_sep.join(table[-1])
-    table = os.linesep.join(table)
-    table_ax.text(0, 0, table, fontdict={"family": 'monospace'})
-    PlottingTools.hide_axis(table_ax)
-    return table, jet_inputs
-
-
-def plot_event(eventWise, event_num, *jet_names):
+def plot_eig_event(eventWise, event_num, *jet_names):
     """
     
 
@@ -383,7 +512,7 @@ def plot_event(eventWise, event_num, *jet_names):
     # represent the jets as colours and the labels as shapes
     # put the rank and the auc in the legend
     # the jets will be tablulated
-    num_metrics = len(metric_names)
+    num_metrics = len(eig_metric_names)
     n_rows = int(np.ceil(num_metrics/2+1))
     n_cols = 4
     fig, ax_arr = plt.subplots(n_rows, n_cols, sharex='col')
@@ -396,7 +525,7 @@ def plot_event(eventWise, event_num, *jet_names):
     # now the other axis should contain the plots
     marker_size = 10
     edge_width = 0.2
-    for metric_n, metric in enumerate(metric_names):
+    for metric_n, metric in enumerate(eig_metric_names):
         legend_ax, plot_ax = plot_arr[metric_n]
         for name, colour in zip(jet_names, jet_colours):
             seperations = getattr(eventWise, name + "_EigSeperation")[metric_n].flatten()
@@ -418,7 +547,7 @@ def plot_event(eventWise, event_num, *jet_names):
     fig.subplots_adjust(hspace=0.0, left=0, right=1., top=1., bottom=0.05)
 
 
-def plot_overall(eventWise, *jet_names):
+def plot_eig_overall(eventWise, *jet_names):
     if not jet_names:
         jet_names = [name.split('_')[0] for name in eventWise.columns
                      if name.endswith("_EigSeperation")]
@@ -431,7 +560,7 @@ def plot_overall(eventWise, *jet_names):
     PlottingTools.hide_axis(ax_arr[0, 1])
     make_inputs_table(eventWise, jet_names, ax_arr[0][0])
     # get the scores
-    num_metrics = len(metric_names)
+    num_metrics = len(eig_metric_names)
     auc_scores = np.empty((num_jets, num_metrics), dtype=float)
     rank_scores = np.empty((num_jets, num_metrics), dtype=float)
     eventWise.selected_index = None
@@ -451,7 +580,7 @@ def plot_overall(eventWise, *jet_names):
         ax.set_xticks(np.arange(num_metrics))
         ax.set_yticks(np.arange(num_jets))
         # ... and label them with the respective list entries
-        ax.set_xticklabels(metric_names)
+        ax.set_xticklabels(eig_metric_names)
         ax.set_yticklabels(jet_names)
 
         # Rotate the tick labels and set their alignment.
@@ -469,8 +598,7 @@ def plot_overall(eventWise, *jet_names):
     fig.set_size_inches(10, 8)
 
 
-
-if __name__ == '__main__':
+def eig_jets():
     jet_names = []
     jet_params = []
     jet_name = 'AngularExponent21'
@@ -601,11 +729,15 @@ if __name__ == '__main__':
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
     jet_params.append(jet_ps)
+    return jet_names, jet_params
+
+if __name__ == '__main__':
     eventWise = Components.EventWise.from_file("megaIgnore/eigenspace.awkd")
-    append_metrics(eventWise, jet_names, jet_params)
+    # jet_names, jet_params = eig_jets()
+    #append_eig_metrics(eventWise, jet_names, jet_params)
     print("Done")
-    plot_event(eventWise, 0, 'AngularExponent2', 'AngularExponent1', 'AngularExponent21')
-    plot_overall(eventWise)
+    plot_eig_event(eventWise, 0, 'AngularExponent2', 'AngularExponent1', 'AngularExponent21')
+    plot_eig_overall(eventWise)
     input()
     
 
