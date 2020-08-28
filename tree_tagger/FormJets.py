@@ -393,6 +393,31 @@ class PseudoJet:
                     distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) *\
                                  inv_invar_exp
                 return distance2
+        elif self.PhyDistance == 'taxicab':
+            rap_col = self._Rapidity_col
+            phi_col = self._Phi_col
+            def physical_distance2(row, column):
+                """
+                Calculate the physical distance between 2 particles.
+
+                Parameters
+                ----------
+                row : list of ints
+                    data about particle, in the order specified by the column attributes
+                column : list of ints
+                    data about particle, in the order specified by the column attributes
+
+                Returns
+                -------
+                : float
+                    the distance squared between the two particles
+
+                """
+                distance2 = (np.abs(row[rap_col] - column[rap_col]) + np.abs(row[phi_col] - column[phi_col]))**2
+                if exponent_now:
+                    distance2 *= min(row[pt_col]**exponent, column[pt_col]**exponent) *\
+                                 inv_invar_exp
+                return distance2
         else:
             raise ValueError(f"Don't recognise {self.PhyDistance} as an Invarient")
         self.physical_distance2 = physical_distance2
@@ -1031,7 +1056,7 @@ class Traditional(PseudoJet):
     default_params = {'DeltaR': .8, 'ExpofPTMultiplier': 0, 'PhyDistance': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient']}
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient', 'taxicab']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
         Class constructor
@@ -1310,7 +1335,7 @@ class Spectral(PseudoJet):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
-                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient', 'taxicab'],
                        'StoppingCondition': ['standard', 'beamparticle', 'conductance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
@@ -1983,7 +2008,7 @@ class Indicator(Spectral):
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
-                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient', 'taxicab'],
                        'BaseJump': Constants.numeric_classes['pdn'],
                        'JumpEigenFactor': Constants.numeric_classes['rn']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -2332,7 +2357,7 @@ class Splitting(Indicator):
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
-                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient'],
+                       'PhyDistance': ['angular', 'normed', 'Luclus', 'invarient', 'taxicab'],
                        'MaxCutScore': Constants.numeric_classes['pdn']}
 
     # TODO, make tests for this, when your done making changes

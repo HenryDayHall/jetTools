@@ -6,9 +6,6 @@ from tree_tagger import Components, ParameterInvestigation
 import numpy.testing as tst
 import numpy as np
 
-# Physical distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Eigenspace distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def test_create_eigenvectors():
     params = {}
     # event 0  # no particles, should not have issues
@@ -220,4 +217,142 @@ def test_get_seperations():
     tst.assert_allclose(seperations[4][:, 0, 1], 0)
     tst.assert_allclose(seperations[4][:, 0, 0], 0)
     tst.assert_allclose(seperations[4][:, 1, 1], 0)
+
+
+def test_label_crossings():
+    # start by making labels
+    # will need BQuarkIdx, Children, Parents, X, JetInputs_SourceIdx
+    params = {}
+    # event 0  # no particles, should not have issues
+    params['X'] = [awkward.fromiter([])]
+    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    params['BQuarkIdx'] = [awkward.fromiter([])]
+    params['Children'] = [awkward.fromiter([])]
+    params['Parents'] = [awkward.fromiter([])]
+    # event 1  # no jet inputs
+    params['X'] += [awkward.fromiter([3,4,5])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter([])]
+    params['BQuarkIdx'] += [awkward.fromiter([0])]
+    params['Children'] += [awkward.fromiter([[1], [2], []])]
+    params['Parents'] += [awkward.fromiter([[], [0], [1]])]
+    # event 2 all b decendents, but only one jet input
+    params['X'] += [awkward.fromiter([3,4,5])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter([2])]
+    params['BQuarkIdx'] += [awkward.fromiter([0])]
+    params['Children'] += [awkward.fromiter([[1], [2], []])]
+    params['Parents'] += [awkward.fromiter([[], [0], [1]])]
+    # event 3 no b decendents
+    params['X'] += [awkward.fromiter([3,4,5])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter([2])]
+    params['BQuarkIdx'] += [awkward.fromiter([])]
+    params['Children'] += [awkward.fromiter([[1], [2], []])]
+    params['Parents'] += [awkward.fromiter([[], [0], [1]])]
+    # event 3 some b decendents
+    params['X'] += [awkward.fromiter([3,4,5,1,1,1])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter([2, 4, 5])]
+    params['BQuarkIdx'] += [awkward.fromiter([3])]
+    params['Children'] += [awkward.fromiter([[1], [2], [], [4, 5], [], []])]
+    params['Parents'] += [awkward.fromiter([[], [0], [1], [], [3], [3]])]
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        labels = ParameterInvestigation.label_parings(eventWise)
+        crossings = ParameterInvestigation.label_crossings(labels)
+        # first 2 should contain nothing
+        assert len(crossings[0]) == 0
+        assert len(crossings[1]) == 0
+        # the 2nd has only one particle, it is not crossing
+        assert len(crossings[2]) == 1
+        assert not crossings[2][0,0]  # should be true
+        # event 3 has only one non b
+        assert len(crossings[3]) == 1
+        assert not crossings[3][0,0]
+        # event 4 has a mix
+        assert len(crossings[4]) == 3
+        expected = np.array([[False, True, True],
+                             [True, False, False],
+                             [True, False, False]])
+        assert np.all(expected == crossings[4])
+
+
+
+def test_physical_distances():
+    # start with an empty event
+    phis = [np.empty(0)]
+    rapidities = [np.empty(0)]
+    pts = [np.empty(0)]
+    # try somethign with one particle and 5 vectors
+    phis += [np.ones(5)]
+    rapidities += [np.ones(5)]
+    pts += [np.ones(5)]
+    exp_multipler = 0.
+    phis += [np.zeros(5)]
+    rapidities += [np.zeros(5)]
+    pts += [np.ones(5)]
+    # try two particles and one vector
+    phis += [np.array([0., 1.])]
+    rapidities += [np.array([0., 1.])]
+    pts += [np.array([1., 1.])]
+    # run the function
+    exp_multipler = 0.
+    distances0 = ParameterInvestigation.physical_distances(phis, rapidities,
+                                                           pts, exp_multipler)
+    exp_multipler = 1.
+    distances1 = ParameterInvestigation.physical_distances(phis, rapidities,
+                                                           pts, exp_multipler)
+    exp_multipler = -1.
+    distancesm1 = ParameterInvestigation.physical_distances(phis, rapidities,
+                                                            pts, exp_multipler)
+    num_metrics = len(ParameterInvestigation.phys_metric_names)
+    half_metrics = int(num_metrics/2)
+    # first one should be empty
+    assert distances0[0].shape == (num_metrics, 0, 0)
+    assert distances1[0].shape == (num_metrics, 0, 0)
+    assert distancesm1[0].shape == (num_metrics, 0, 0)
+    # next one should be just one 0
+    assert distances0[1].shape == (num_metrics, 1, 1)
+    assert distances0[2].shape == (num_metrics, 1, 1)
+    tst.assert_allclose(distances0[1].flatten(), 0.)
+    tst.assert_allclose(distances0[2][0, 0], 0.)
+    assert distances1[1].shape == (num_metrics, 1, 1)
+    assert distances1[2].shape == (num_metrics, 1, 1)
+    tst.assert_allclose(distances1[1].flatten(), 0.)
+    tst.assert_allclose(distances1[2][0, 0], 0.)
+    assert distancesm1[1].shape == (num_metrics, 1, 1)
+    assert distancesm1[2].shape == (num_metrics, 1, 1)
+    tst.assert_allclose(distancesm1[1].flatten(), 0.)
+    tst.assert_allclose(distancesm1[2][0, 0], 0.)
+    # next is two particles, the first should be seperated
+    assert distances0[3].shape == (num_metrics, 2, 2)
+    assert distances1[3].shape == (num_metrics, 2, 2)
+    assert distancesm1[3].shape == (num_metrics, 2, 2)
+    # ignore the nan
+    mask = ~np.isnan(distances0[3][:, 0, 1])
+    assert np.all(distances0[3][:, 0, 1][mask] > 0.)
+    mask = ~np.isnan(distances0[3][:, 1, 0])
+    assert np.all(distances0[3][:, 1, 0][mask] > 0.)
+    mask = ~np.isnan(distances1[3][:, 0, 1])
+    assert np.all(distances1[3][:, 0, 1][mask] > 0.)
+    mask = ~np.isnan(distances1[3][:, 1, 0])
+    assert np.all(distances1[3][:, 1, 0][mask] > 0.)
+    mask = ~np.isnan(distancesm1[3][:, 0, 1])
+    assert np.all(distancesm1[3][:, 0, 1][mask] > 0.)
+    mask = ~np.isnan(distancesm1[3][:, 1, 0])
+    assert np.all(distancesm1[3][:, 1, 0][mask] > 0.)
+    # all diagnoals should be 0
+    tst.assert_allclose(distances0[3][:, 0, 0], 0)
+    tst.assert_allclose(distances0[3][:, 1, 1], 0)
+    tst.assert_allclose(distances1[3][:, 0, 0], 0)
+    tst.assert_allclose(distances1[3][:, 0, 0], 0)
+    tst.assert_allclose(distancesm1[3][:, 1, 1], 0)
+    tst.assert_allclose(distancesm1[3][:, 1, 1], 0)
+    # maek the nans 0, becuase they don't matter
+    distances0[3][np.isnan(distances0[3])] = 0
+    distances1[3][np.isnan(distances1[3])] = 0
+    distancesm1[3][np.isnan(distancesm1[3])] = 0
+    # the PT is always gt 1, so a positive exponent multiplier should
+    # make the distances larger
+    # should be less seperated than the first half
+    #assert np.any(distances > normed)  # at least euclidien should be diferent
+    #assert np.all(unnormed >= normed)  # nothing should be getting futher appart
 
