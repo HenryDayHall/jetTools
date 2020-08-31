@@ -1118,7 +1118,7 @@ def cutoff_jets():
         parameters = {**dict(zip(key_order, combination)), **fix_parameters}
         jet_name = "ExpofPT" + \
                    str(parameters["ExpOfPTMultiplier"]).replace('.', 'p').replace('-', 'm') + \
-                   parameters["PhyDistance"]
+                   parameters["PhyDistance"] + str(i)
         jet_names.append(jet_name)
         jet_params.append(parameters)
     return jet_names, jet_params
