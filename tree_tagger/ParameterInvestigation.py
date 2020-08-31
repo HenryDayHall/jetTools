@@ -917,12 +917,17 @@ def get_linked(eventWise, jet_params):
         eventWise.selected_index = event_n
         jets = FormJets.Traditional(eventWise, jet_params, assign=False)
         distances2 = jets._distances2
+        # although distances2 can have a non-zero diagonal this is never meaningful
+        np.fill_diagonal(distances2, 0.)
+        # distances2 only has the lower triangle filled in
+        upper_triangle = np.triu_indices_from(distances2)
+        distances2[upper_triangle] = distances2.T[upper_triangle]
         local = np.ones_like(distances2, dtype=bool)
         if AffinityCutoff is None:
             pass # everything is linke
         elif AffinityCutoff[0] == 'knn':
             num_neigbours = AffinityCutoff[1]
-            local[np.argsort(distances2, axis=0) > num_neigbours] = False
+            local[np.argsort(np.argsort(distances2, axis=0), axis=0) > num_neigbours] = False
         elif AffinityCutoff[0] == 'distance':
             max_distance2 = AffinityCutoff[1]**2
             local[distances2 > max_distance2] = False
@@ -930,7 +935,7 @@ def get_linked(eventWise, jet_params):
             raise NotImplementedError
         is_linked.append(local)
         percent_sparcity.append(np.sum(~is_linked[-1])/(len(distances2)**2))
-    return awkward.fromiter(is_linked), awkward.fromiter(percent_sparcity)
+    return is_linked, percent_sparcity
 
 
 def append_cutoff_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
@@ -996,8 +1001,8 @@ def append_cutoff_metrics(eventWise, jet_names, jet_param_list, duration=np.inf)
             if linked_name not in eventWise.columns:
                 eventWise.selected_index = None
                 is_linked, percent_sparcity = get_linked(eventWise, params)
-                new_content[linked_name] = is_linked
-                new_content[sparcity_name] = percent_sparcity
+                new_content[linked_name] = awkward.fromiter(is_linked)
+                new_content[sparcity_name] = awkward.fromiter(percent_sparcity)
             else:
                 eventWise.selected_index = None
                 is_linked = [np.array(linked) for linked in
@@ -1009,8 +1014,8 @@ def append_cutoff_metrics(eventWise, jet_names, jet_param_list, duration=np.inf)
             if isolated_name not in eventWise.columns:
                 eventWise.selected_index = None
                 isolated, percent_isolated = get_isolated(is_linked, labels)
-                new_content[isolated_name] = isolated
-                new_content[pisolated_name] = percent_isolated
+                new_content[isolated_name] = awkward.fromiter(isolated)
+                new_content[pisolated_name] = awkward.fromiter(percent_isolated)
             else:
                 eventWise.selected_index = None
                 isolated = [np.array(isolated) for isolated in

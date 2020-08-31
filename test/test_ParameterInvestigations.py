@@ -44,7 +44,7 @@ def test_create_eigenvectors():
         Components.add_phi(eventWise, "JetInputs")
         Components.add_PT(eventWise, "JetInputs")
         Components.add_rapidity(eventWise, "JetInputs")
-        jet_params = dict(AffinityCutoff=('distance',1.))
+        jet_params = dict(AffinityCutoff=('distance', 1.))
         values, vectors = ParameterInvestigation.create_eigenvectors(eventWise, jet_params)
         # first event was empty
         assert len(values[0]) == 0
@@ -275,7 +275,6 @@ def test_label_crossings():
         assert np.all(expected == crossings[4])
 
 
-
 def test_physical_distances():
     # start with an empty event
     phis = [np.empty(0)]
@@ -356,4 +355,92 @@ def test_physical_distances():
     assert np.all(distances1[3] >= distances0[3])
     assert np.any(distances0[3] > distancesm1[3])
     assert np.all(distances0[3] >= distancesm1[3])
+
+
+def test_get_linked():
+    params = {}
+    # event 0  # no particles, should not have issues
+    params['X'] = [awkward.fromiter([])]
+    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    params['JetInputs_Energy'] = [awkward.fromiter([])]
+    params['JetInputs_Px'] = [awkward.fromiter([])]
+    params['JetInputs_Py'] = [awkward.fromiter([])]
+    params['JetInputs_Pz'] = [awkward.fromiter([])]
+    # event 1  # just one particle should still work
+    params['X'] += [awkward.fromiter([0.])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(1))]
+    params['JetInputs_Energy'] += [awkward.fromiter([30.])]
+    params['JetInputs_Px'] += [awkward.fromiter([3.])]
+    params['JetInputs_Py'] += [awkward.fromiter([3.])]
+    params['JetInputs_Pz'] += [awkward.fromiter([3.])]
+    # event 2  # two totally identical particles
+    params['X'] += [awkward.fromiter([0., 0.])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(2))]
+    params['JetInputs_Energy'] += [awkward.fromiter([30., 30.])]
+    params['JetInputs_Px'] += [awkward.fromiter([3., 3.])]
+    params['JetInputs_Py'] += [awkward.fromiter([3., 3.])]
+    params['JetInputs_Pz'] += [awkward.fromiter([3., 3.])]
+    # event 3  # two totally seperated particles should get cut off by distance
+    params['X'] += [awkward.fromiter([0., 0.])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(2))]
+    params['JetInputs_Energy'] += [awkward.fromiter([30., 40.])]
+    params['JetInputs_Px'] += [awkward.fromiter([3., 3.])]
+    params['JetInputs_Py'] += [awkward.fromiter([3., -3.])]
+    params['JetInputs_Pz'] += [awkward.fromiter([3., -3.])]
+    # event 4 particles progressivly futher apart
+    params['X'] += [awkward.fromiter(np.arange(6).astype(float))]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(6))]
+    params['JetInputs_Energy'] += [awkward.fromiter(np.arange(6)*50. + 1.)]
+    params['JetInputs_Px'] += [awkward.fromiter(np.arange(6.))]
+    params['JetInputs_Py'] += [awkward.fromiter(np.arange(6., 0., -1.))]
+    params['JetInputs_Pz'] += [awkward.fromiter(np.arange(6)*5.)]
+    with TempTestDir("tst") as dir_name:
+        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise.append(**params)
+        Components.add_phi(eventWise, "JetInputs")
+        Components.add_PT(eventWise, "JetInputs")
+        Components.add_rapidity(eventWise, "JetInputs")
+        # first try no cutoff
+        eventWise.selected_index = None
+        jet_params = dict(ExpofPTPosition='input', ExpofPTMultiplier=0.,
+                          PhyDistance='angular',
+                          AffinityCutoff=None)
+        is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
+        expected_sparsity = [np.nan, 0., 0., 0., 0.]
+        tst.assert_allclose(percent_sparcity, expected_sparsity)
+        for linked in is_linked:
+            assert np.all(linked)
+        # now try a v small distance cutoff
+        eventWise.selected_index = None
+        jet_params = dict(ExpofPTPosition='input', ExpofPTMultiplier=0.,
+                          PhyDistance='angular',
+                          AffinityCutoff=('distance', 0.1))
+        is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
+        expected_sparsity = [np.nan, 0., 0., .5, 5/6]
+        tst.assert_allclose(percent_sparcity, expected_sparsity)
+        assert len(is_linked[0]) == 0.
+        assert np.all(is_linked[1].flatten() == np.array([True]))
+        assert np.all(is_linked[2].flatten() == np.array([True]*4))
+        assert np.all(is_linked[3] == np.array([[True, False], [False, True]]))
+        # now two nearest neighbours
+        eventWise.selected_index = None
+        jet_params = dict(ExpofPTPosition='input', ExpofPTMultiplier=0.,
+                          PhyDistance='angular',
+                          AffinityCutoff=('knn', 2))
+        is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
+        expected_sparsity = [np.nan, 0., 0., 0., 3/6]
+        tst.assert_allclose(percent_sparcity, expected_sparsity)
+        assert len(is_linked[0]) == 0.
+        assert np.all(is_linked[1].flatten() == np.array([True]))
+        assert np.all(is_linked[2].flatten() == np.array([True]*4))
+        assert np.all(is_linked[3].flatten() == np.array([True]*4))
+        st()
+        expected4 = np.array([[True, True, True, False, False, False],
+                              [True, True, True, False, False, False],
+                              [False, True, True, True, False, False],
+                              [False, False, True, True, True, False],
+                              [False, False, False, True, True, True],
+                              [False, False, False, True, True, True]])
+        assert np.all(is_linked[4] == expected4)
+
 
