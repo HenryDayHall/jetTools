@@ -281,18 +281,18 @@ def test_physical_distances():
     phis = [np.empty(0)]
     rapidities = [np.empty(0)]
     pts = [np.empty(0)]
-    # try somethign with one particle and 5 vectors
-    phis += [np.ones(5)]
-    rapidities += [np.ones(5)]
-    pts += [np.ones(5)]
+    # try somethign with one particle
+    phis += [np.ones(1)]
+    rapidities += [np.ones(1)]
+    pts += [np.ones(1)]
     exp_multipler = 0.
-    phis += [np.zeros(5)]
-    rapidities += [np.zeros(5)]
-    pts += [np.ones(5)]
+    phis += [np.zeros(1)]
+    rapidities += [np.zeros(1)]
+    pts += [np.ones(1)]
     # try two particles and one vector
     phis += [np.array([0., 1.])]
     rapidities += [np.array([0., 1.])]
-    pts += [np.array([1., 1.])]
+    pts += [np.array([4., 4.])]
     # run the function
     exp_multipler = 0.
     distances0 = ParameterInvestigation.physical_distances(phis, rapidities,
@@ -352,7 +352,8 @@ def test_physical_distances():
     distancesm1[3][np.isnan(distancesm1[3])] = 0
     # the PT is always gt 1, so a positive exponent multiplier should
     # make the distances larger
-    # should be less seperated than the first half
-    #assert np.any(distances > normed)  # at least euclidien should be diferent
-    #assert np.all(unnormed >= normed)  # nothing should be getting futher appart
+    assert np.any(distances1[3] > distances0[3])
+    assert np.all(distances1[3] >= distances0[3])
+    assert np.any(distances0[3] > distancesm1[3])
+    assert np.all(distances0[3] >= distancesm1[3])
 

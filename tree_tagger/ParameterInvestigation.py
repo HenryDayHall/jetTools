@@ -196,9 +196,10 @@ def closest_relative(eventWise):
 
 
 # Plotting tools  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def make_inputs_table(eventWise, jet_names, table_ax):
-    jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
-                  "Laplacien", "ExpOfPTMultiplier"]
+def make_inputs_table(eventWise, jet_names, table_ax, jet_inputs=None):
+    if jet_inputs is None:
+        jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
+                      "Laplacien", "ExpOfPTMultiplier"]
     # construct a text table
     table_content = [[" "] + jet_inputs]
     table_content += [[name] + [getattr(eventWise, name+'_'+inp) for inp in jet_inputs]
@@ -885,6 +886,219 @@ def eig_jets():
     jet_names.append(jet_name)
     jet_params.append(jet_ps)
     return jet_names, jet_params
+
+
+# affinity cutoff ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+def get_isolated(is_linked, labels):
+    isolated = []
+    percent_isolated = []
+    for linked, lab in zip(is_linked, labels):
+        # particles in the b-jet have a positive diagonal
+        in_bjet = np.diag(lab)
+        # we are intrested in how many partices are in the same b-jet and have stayed linked
+        connected_in_b = np.logical_and(linked[in_bjet], lab[in_bjet])
+        # each row of this will have at least one positive value,
+        # due to the particles connection to itself
+        # if it only has one positive value then it is isolated
+        isolated.append(np.sum(connected_in_b, axis=1) < 2)
+        percent_isolated.append(np.sum(isolated[-1])/np.sum(in_bjet))
+    return isolated, percent_isolated
+
+
+def get_linked(eventWise, jet_params):
+    n_events = len(eventWise.JetInputs_SourceIdx)
+    is_linked = []
+    percent_sparcity = []
+    AffinityCutoff = jet_params["AffinityCutoff"]
+    for event_n in range(n_events):
+        eventWise.selected_index = event_n
+        jets = FormJets.Traditional(eventWise, jet_params, assign=False)
+        distances2 = jets._distances2
+        local = np.ones_like(distances2, dtype=bool)
+        if AffinityCutoff is None:
+            pass # everything is linke
+        elif AffinityCutoff[0] == 'knn':
+            num_neigbours = AffinityCutoff[1]
+            local[np.argsort(distances2, axis=0) > num_neigbours] = False
+        elif AffinityCutoff[0] == 'distance':
+            max_distance2 = AffinityCutoff[1]**2
+            local[distances2 > max_distance2] = False
+        else:
+            raise NotImplementedError
+        is_linked.append(local)
+        percent_sparcity.append(np.sum(~is_linked[-1])/(len(distances2)**2))
+    return awkward.fromiter(is_linked), awkward.fromiter(percent_sparcity)
+
+
+def append_cutoff_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_names :
+        
+    jet_param_list :
+        
+    duration :
+         (Default value = np.inf)
+
+    Returns
+    -------
+
+    """
+    if isinstance(eventWise, str):
+        eventWise_path = eventWise
+        eventWise = Components.EventWise.from_file(eventWise_path)
+    else:
+        eventWise_path = os.path.join(eventWise.dir_name, eventWise.save_name)
+    end_time = time.time() + duration
+    print("Making global data")
+    eventWise.selected_index = None
+    if "JetInputs_PairLabels" not in eventWise.columns:
+        labels = label_parings(eventWise)
+        eventWise.append(JetInputs_PairLabels=awkward.fromiter(labels))
+    else:
+        labels = eventWise.JetInputs_PairLabels
+        # these have to be made into lists, else they don't work as masks
+        labels = [np.array(lab, dtype=bool) for lab in labels.tolist()]
+    eventWise.selected_index = None
+    if "JetInputs_PairCrossings" not in eventWise.columns:
+        crossings = label_crossings(labels)
+        eventWise.append(JetInputs_PairCrossings=awkward.fromiter(crossings))
+    else:
+        crossings = eventWise.JetInputs_PairCrossings
+        # these have to be made into lists, else they don't work as masks
+        crossings = [np.array(cross, dtype=bool) for cross in crossings.tolist()]
+    eventWise.selected_index = None
+    num_configureations = len(jet_names)
+    save_interval = 5
+    print("Done with global data")
+    new_content = {}
+    new_hyper = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for i, (name, params) in enumerate(zip(jet_names, jet_param_list)):
+            if time.time() > end_time:
+                break
+            print(f"{i/num_configureations:.1%} {name}" + " "*10, end='\r', flush=True)
+            # add the hyper parameters
+            for key in params:
+                new_hyper[name+'_'+key] = params[key]
+            # get the links
+            linked_name = name + "_Linked"
+            sparcity_name = name + "_Sparcity"
+            if linked_name not in eventWise.columns:
+                eventWise.selected_index = None
+                is_linked, percent_sparcity = get_linked(eventWise, params)
+                new_content[linked_name] = is_linked
+                new_content[sparcity_name] = percent_sparcity
+            else:
+                eventWise.selected_index = None
+                is_linked = [np.array(linked) for linked in
+                             getattr(eventWise, linked_name).tolist()]
+                percent_sparcity = getattr(eventWise, sparcity_name).tolist()
+            # get the isolated parts
+            isolated_name = name + "_Isolated"
+            pisolated_name = name + "_PercentIsolated"
+            if isolated_name not in eventWise.columns:
+                eventWise.selected_index = None
+                isolated, percent_isolated = get_isolated(is_linked, labels)
+                new_content[isolated_name] = isolated
+                new_content[pisolated_name] = percent_isolated
+            else:
+                eventWise.selected_index = None
+                isolated = [np.array(isolated) for isolated in
+                            getattr(eventWise, isolated_name).tolist()]
+                percent_isolated = getattr(eventWise, pisolated_name).tolist()
+            if (i+5)%save_interval == 0 and new_content:
+                eventWise.append_hyperparameters(**new_hyper)
+                new_hyper = {}
+                eventWise.append(**new_content)
+                new_content = {}
+                # delete and reload the eventWise
+                del eventWise
+                eventWise = Components.EventWise.from_file(eventWise_path)
+            # to keep memory requirments down, del everything
+            del percent_isolated
+            del percent_sparcity
+            del isolated
+            del is_linked
+    eventWise.append(**new_content)
+    eventWise.append_hyperparameters(**new_hyper)
+
+
+def plot_cutoff_event(eventWise, event_num, jet_names=None):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    event_num :
+        
+    *jet_names :
+        
+
+    Returns
+    -------
+
+    """
+    if jet_names is None:
+        jet_names = [name.split('_')[0] for name in eventWise.columns
+                     if name.endswith("_AffinityCutoff")]
+        #jet_names = jet_names[::2]
+    # get global data
+    eventWise.selected_index = event_num
+    phis = eventWise.JetInputs_Phi
+    y_lims = np.min(phis), np.max(phis)
+    rapidities = eventWise.JetInputs_Rapidity
+    x_lims = np.min(rapidities), np.max(rapidities)
+    same_mask = np.array(eventWise.JetInputs_PairLabels.tolist())
+    cross_mask = np.array(eventWise.JetInputs_PairCrossings.tolist())
+    colours = np.zeros((len(same_mask), len(same_mask[0]), 4), dtype=float)
+    colours += 0.3
+    colours[same_mask] = [0.1, 1., 0.1, 0.]
+    colours[cross_mask] = [1., 0.1, 0., 0.]
+    colours[:, :, -1] = same_mask.astype(float)*0.5 + cross_mask.astype(float)*0.5 + 0.2
+    # make a grid of axis for the jets
+    num_jets = len(jet_names)
+    n_rows = int(np.floor(np.sqrt(num_jets)))
+    n_cols = int(np.ceil(num_jets/n_rows))
+    fig, ax_arr = plt.subplots(1+n_rows, n_cols, sharex=True, sharey=True)
+    # use the first row to discribe the jets
+    jet_inputs = ["PhyDistance", "ExpOfPTMultiplier", "AffinityCutoff"]
+    make_inputs_table(eventWise, jet_names, ax_arr[0, 0], jet_inputs)
+    for blank_ax in ax_arr[0, 1:]:
+        PlottingTools.hide_axis(blank_ax)
+    jets_axis = ax_arr[1:].flatten()
+    # now the other axis should contain the plots
+    for jet_n, jet_name in enumerate(jet_names):
+        ax = jets_axis[jet_n]
+        is_linked = getattr(eventWise, jet_name+"_Linked")
+        # draw the connections that have not been dropped.
+        for i1, (p1, r1) in enumerate(zip(phis, rapidities)):
+            for i2, (p2, r2) in enumerate(zip(phis, rapidities)):
+                if is_linked[i1, i2]:
+                    line = matplotlib.lines.Line2D([r1, r2], [p1, p2],
+                                                   c=colours[i1, i1])
+                    ax.add_line(line)
+        # put the isolated points on in red
+        isolated = getattr(eventWise, jet_name+"_Isolated")
+        ax.scatter(rapidities[isolated], phis[isolated], c='r')
+        ax.set_xlim(*x_lims)
+        ax.set_ylim(*y_lims)
+        ax.text(0, 0, jet_name, fontdict={"family": 'monospace'})
+    fig.set_size_inches(n_rows*3.5, n_cols*1.8)
+    #fig.tight_layout()
+    fig.subplots_adjust(hspace=0.0, wspace=0., right=1., top=1.)
+
+
 
 if __name__ == '__main__':
     eventWise = Components.EventWise.from_file("megaIgnore/physspace.awkd")
