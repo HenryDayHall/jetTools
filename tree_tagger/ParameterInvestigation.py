@@ -1,4 +1,5 @@
 """ Module to investigate parameter choices, base on questions in writeup """
+import itertools
 import warnings
 from collections import OrderedDict
 from ipdb import set_trace as st
@@ -1099,22 +1100,45 @@ def plot_cutoff_event(eventWise, event_num, jet_names=None):
     fig.subplots_adjust(hspace=0.0, wspace=0., right=1., top=1.)
 
 
+def cutoff_jets():
+    jet_names = []
+    jet_params = []
+    # put the things to be iterated over into a fixed order
+    fix_parameters = dict(ExpofPTPosition='input')
+    scan_parameters = dict(PhyDistance=['angular', 'Luclus', 'Taxicab'],
+                           ExpOfPTMultiplier=np.linspace(-1, 1, 9),
+                           AffinityCutoff=[None] + [('distance', x) for x in np.linspace(0.5, 7.5, 8)]
+                                          +[('knn', x) for x in range(1, 6)])
+    key_order = list(scan_parameters.keys())
+    ordered_values = [scan_parameters[key] for key in key_order]
+    num_combinations = np.product([len(vals) for vals in ordered_values])
+    for i, combination in enumerate(itertools.product(*ordered_values)):
+        print(f"{i/num_combinations:.1%}", end='\r', flush=True)
+        # check if it's been done
+        parameters = {**dict(zip(key_order, combination)), **fix_parameters}
+        jet_name = "ExpofPT" + \
+                   str(parameters["ExpOfPTMultiplier"]).replace('.', 'p').replace('-', 'm') + \
+                   parameters["PhyDistance"]
+        jet_names.append(jet_name)
+        jet_params.append(parameters)
+    return jet_names, jet_params
+
 
 if __name__ == '__main__':
-    eventWise = Components.EventWise.from_file("megaIgnore/physspace.awkd")
-    # jet_names, jet_params = eig_jets()
-    #append_eig_metrics(eventWise, jet_names, jet_params)
-    exp_of_pt = np.linspace(-1, 1, 9)
-    jet_names = ["ExpofPT" + str(exp)[:4].replace('.', 'p').replace('-', 'm')
-                 for exp in exp_of_pt]
-    jet_params = [dict(ExpofPTMultiplier=exp) for exp in exp_of_pt]
+    eventWise = Components.EventWise.from_file("megaIgnore/cutoff.awkd")
+    jet_names, jet_params = cutoff_jets()
+    append_cutoff_metrics(eventWise, jet_names, jet_params)
+    #exp_of_pt = np.linspace(-1, 1, 9)
+    #jet_names = ["ExpofPT" + str(exp)[:4].replace('.', 'p').replace('-', 'm')
+    #             for exp in exp_of_pt]
+    #jet_params = [dict(ExpofPTMultiplier=exp) for exp in exp_of_pt]
     #append_phys_metrics(eventWise, jet_names, jet_params)
     print("Done")
     #plot_phys_event(eventWise, 0)
-    input()
-    plot_phys_overall(eventWise)
+    #jinput()
+    #plot_phys_overall(eventWise)
     #plot_eig_event(eventWise, 0, 'AngularExponent2', 'AngularExponent1', 'AngularExponent21')
     #plot_eig_overall(eventWise)
-    input()
+    #input()
     
 
