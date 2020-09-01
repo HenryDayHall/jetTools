@@ -428,19 +428,106 @@ def test_get_linked():
                           PhyDistance='angular',
                           AffinityCutoff=('knn', 2))
         is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
-        expected_sparsity = [np.nan, 0., 0., 0., 3/6]
+        expected4 = np.array([[True, True, True, False, False, False],
+                              [True, True, True, False, False, False],
+                              [True, True, True, True, False, False],
+                              [False, False, True, True, True, True],
+                              [False, False, False, True, True, True],
+                              [False, False, False, True, True, True]])
+        expected_sparsity = [np.nan, 0., 0., 0., np.sum(~expected4)/(6*6)]
         tst.assert_allclose(percent_sparcity, expected_sparsity)
         assert len(is_linked[0]) == 0.
         assert np.all(is_linked[1].flatten() == np.array([True]))
         assert np.all(is_linked[2].flatten() == np.array([True]*4))
         assert np.all(is_linked[3].flatten() == np.array([True]*4))
-        st()
-        expected4 = np.array([[True, True, True, False, False, False],
-                              [True, True, True, False, False, False],
-                              [False, True, True, True, False, False],
-                              [False, False, True, True, True, False],
-                              [False, False, False, True, True, True],
-                              [False, False, False, True, True, True]])
         assert np.all(is_linked[4] == expected4)
 
 
+def test_get_isolated():
+    is_linked = []
+    labels = []
+    expected_isolated = []
+    expected_percent = []
+    # 0 should not choke on a n empty set
+    empty = np.array([], dtype=bool).reshape((0, 0))
+    is_linked.append(empty)
+    labels.append(empty)
+    expected_isolated.append(empty.flatten())
+    expected_percent.append(np.nan)
+    # 1 one particle
+    is_linked.append(np.array([[True]]))
+    labels.append(np.array([[True]]))
+    expected_isolated.append(np.array([False]))
+    expected_percent.append(0.)
+    # 2 if it's not labeled it shouldn't matter if it's linked
+    is_linked.append(np.array([[False]]))
+    labels.append(np.array([[False]]))
+    expected_isolated.append(np.array([False]))
+    expected_percent.append(np.nan)
+    # 3 if it's labeled and not linked to itself then it is isolated
+    is_linked.append(np.array([[False]]))
+    labels.append(np.array([[True]]))
+    expected_isolated.append(np.array([True]))
+    expected_percent.append(1.)
+    # 4 two particles
+    is_linked.append(np.array([[True, True],
+                               [True, True]]))
+    labels.append(np.array([[True, True],
+                            [True, True]]))
+    expected_isolated.append(np.array([False, False]))
+    expected_percent.append(0.)
+    # 5 not linked
+    is_linked.append(np.array([[True, False],
+                               [False, True]]))
+    labels.append(np.array([[True, True],
+                            [True, True]]))
+    expected_isolated.append(np.array([True, True]))
+    expected_percent.append(1.)
+    # 6 not linked, only one in b jet
+    is_linked.append(np.array([[True, False],
+                               [False, True]]))
+    labels.append(np.array([[False, False],
+                            [False, True]]))
+    expected_isolated.append(np.array([False, False]))
+    expected_percent.append(0.)
+    # 7 not linked, not in b jet
+    is_linked.append(np.array([[True, False],
+                               [False, True]]))
+    labels.append(np.array([[False, False],
+                            [False, False]]))
+    expected_isolated.append(np.array([False, False]))
+    expected_percent.append(np.nan)
+    # 8 not labeled
+    is_linked.append(np.array([[True, True],
+                               [True, True]]))
+    labels.append(np.array([[False, False],
+                            [False, False]]))
+    expected_isolated.append(np.array([False, False]))
+    expected_percent.append(np.nan)
+    # 9 complex event
+    is_linked.append(np.array([[True, True, False],
+                               [True, True, False],
+                               [False, False, True]]))
+    labels.append(np.array([[False, False, False],
+                            [False, True, True],
+                            [False, True, True]]))
+    expected_isolated.append(np.array([False, True, True]))
+    expected_percent.append(1.)
+    # 10 complex event 2
+    is_linked.append(np.array([[True, True, False],
+                               [True, True, False],
+                               [False, False, True]]))
+    labels.append(np.array([[True, True, False],
+                            [True, True, True],
+                            [False, True, True]]))
+    expected_isolated.append(np.array([False, False, True]))
+    expected_percent.append(1/3)
+    found = ParameterInvestigation.get_isolated(is_linked, labels)
+    for i, (found_isolated, found_percent) in enumerate(zip(*found)):
+        tst.assert_allclose(found_isolated, expected_isolated[i], err_msg=f"isolated {i} not as exspected")
+        tst.assert_allclose(found_percent, expected_percent[i], err_msg=f"percent {i} not as exspected")
+
+    
+
+
+    

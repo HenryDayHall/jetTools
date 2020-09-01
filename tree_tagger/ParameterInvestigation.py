@@ -899,12 +899,21 @@ def get_isolated(is_linked, labels):
         # particles in the b-jet have a positive diagonal
         in_bjet = np.diag(lab)
         # we are intrested in how many partices are in the same b-jet and have stayed linked
-        connected_in_b = np.logical_and(linked[in_bjet], lab[in_bjet])
-        # each row of this will have at least one positive value,
-        # due to the particles connection to itself
-        # if it only has one positive value then it is isolated
-        isolated.append(np.sum(connected_in_b, axis=1) < 2)
-        percent_isolated.append(np.sum(isolated[-1])/np.sum(in_bjet))
+        # particles not in the b-jet are never considered isolated
+        local = np.full_like(in_bjet, False)
+        # having only one b jet particle is a special case,
+        if np.sum(in_bjet) == 1:
+            # if the b jet is linked to itself then it is not isolated
+            local[in_bjet] = ~linked[in_bjet, in_bjet]
+            # there is nothing else it would eb meaningful for it to be conencted to
+        else:
+            connected_in_b = np.logical_and(linked[in_bjet], lab[in_bjet])
+            # each row of this will have at least one positive value,
+            # due to the particles connection to itself
+            # if it only has one positive value then it is isolated
+            local[in_bjet] += np.sum(connected_in_b, axis=1) < 2
+        isolated.append(local)
+        percent_isolated.append(np.sum(local)/np.sum(in_bjet))
     return isolated, percent_isolated
 
 
@@ -927,7 +936,7 @@ def get_linked(eventWise, jet_params):
             pass # everything is linke
         elif AffinityCutoff[0] == 'knn':
             num_neigbours = AffinityCutoff[1]
-            local[np.argsort(np.argsort(distances2, axis=0), axis=0) > num_neigbours] = False
+            local[~FormJets.knn(distances2, num_neigbours)] = False
         elif AffinityCutoff[0] == 'distance':
             max_distance2 = AffinityCutoff[1]**2
             local[distances2 > max_distance2] = False

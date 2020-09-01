@@ -19,6 +19,13 @@ TRUTH_SIZE = 25.
 JET_ALPHA = 0.5
 
 
+def knn(distances, num_neighbours):
+    order = np.argsort(np.argsort(distances, axis=0), axis=0)
+    neighbours = order <= num_neighbours
+    neighbours += neighbours.T
+    return neighbours
+
+
 class PseudoJet:
     """ Base class for jets, needs to be extended to be usable """
     int_columns = ["Pseudojet_InputIdx",
@@ -1578,7 +1585,7 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = np.exp(-(distances2**0.5))
-                        affinity[np.argsort(np.argsort(distances2, axis=0), axis=0) > cutoff_param] = 0
+                        affinity[~knn(distances2, cutoff_param)] = 0
                         return affinity
                 elif self.AffinityType == 'exponent2':
                     def calculate_affinity(distances2):
@@ -1597,7 +1604,7 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = np.exp(-(distances2))
-                        affinity[np.argsort(np.argsort(distances2, axis=0), axis=0) > cutoff_param] = 0
+                        affinity[~knn(distances2, cutoff_param)] = 0
                         return affinity
                 elif self.AffinityType == 'linear':  # this actually makes for relative distances
                     def calculate_affinity(distances2):
@@ -1619,7 +1626,7 @@ class Spectral(PseudoJet):
                         # if you don't shift first then if there is only
                         # one non zero connection everything ends up as zero
                         affinity -= np.min(affinity)
-                        affinity[np.argsort(np.argsort(distances2, axis=0), axis=0) > cutoff_param] = 0
+                        affinity[~knn(distances2, cutoff_param)] = 0
                         return affinity
                 elif self.AffinityType == 'inverse':
                     def calculate_affinity(distances2):
@@ -1638,7 +1645,7 @@ class Spectral(PseudoJet):
 
                         """
                         affinity = distances2**-0.5
-                        affinity[np.argsort(np.argsort(distances2, axis=0), axis=0) > cutoff_param] = 0
+                        affinity[~knn(distances2, cutoff_param)] = 0
                         mask = np.isinf(affinity)
                         affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
                         return affinity

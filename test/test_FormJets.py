@@ -9,6 +9,51 @@ from tools import TempTestDir
 from test_Components import AwkdArrays
 import awkward
 import itertools
+import scipy.spatial
+
+
+def test_knn():
+    # zero points should not create an error
+    points = []
+    expected = np.array([]).reshape((0, 0))
+    distances = np.array([]).reshape((0, 0))
+    tst.assert_allclose(FormJets.knn(distances, 1),  expected)
+    # one point is always it's own nearest neigbour
+    points = [1]
+    expected = np.array([[True]])
+    distances = scipy.spatial.distance.pdist(np.array(points).reshape((-1, 1)))
+    distances = scipy.spatial.distance.squareform(distances)
+    tst.assert_allclose(FormJets.knn(distances, 1),  expected)
+    # even if no neighbours are requested
+    distances = scipy.spatial.distance.pdist(np.array(points).reshape((-1, 1)))
+    distances = scipy.spatial.distance.squareform(distances)
+    tst.assert_allclose(FormJets.knn(distances, 0),  expected)
+    # two points
+    points = [1, 2]
+    expected = np.full((2,2), True)
+    distances = scipy.spatial.distance.pdist(np.array(points).reshape((-1, 1)))
+    distances = scipy.spatial.distance.squareform(distances)
+    tst.assert_allclose(FormJets.knn(distances, 1),  expected)
+    # without neighbours
+    expected = np.full((2,2), False)
+    np.fill_diagonal(expected, True)
+    distances = scipy.spatial.distance.pdist(np.array(points).reshape((-1, 1)))
+    distances = scipy.spatial.distance.squareform(distances)
+    tst.assert_allclose(FormJets.knn(distances, 0),  expected)
+    # three points
+    points = [3, 1, 2.5]
+    distances = scipy.spatial.distance.pdist(np.array(points).reshape((-1, 1)))
+    distances = scipy.spatial.distance.squareform(distances)
+    expected = np.full((3,3), False)
+    np.fill_diagonal(expected, True)
+    tst.assert_allclose(FormJets.knn(distances, 0),  expected)
+    expected = np.array([[True, False, True],
+                         [False, True, True],
+                         [True, True, True]])
+    tst.assert_allclose(FormJets.knn(distances, 1),  expected)
+    expected = np.full((3,3), True)
+    tst.assert_allclose(FormJets.knn(distances, 2),  expected)
+
 
 # Consider adding tests for jets created with pseudorapidity instead of rapidity.
 # if you ever use that functionality again....
