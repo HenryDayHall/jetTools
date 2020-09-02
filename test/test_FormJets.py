@@ -518,16 +518,10 @@ def internal_physical_distance(jets, param_dict):
     else:
         pt_factor = pts**exponent * invarient_mass2**(-0.5*exponent)
     beam_distance2 = param_dict['DeltaR']**2 * pt_factor
-    found_distance2 = jets.physical_distance2(*jets._floats)
-    try:
-        tst.assert_allclose(distance2, found_distance2, err_msg=f"distance between particles with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
-    except Exception as e:
-        st()
-    found_beam2 = [jets.beam_distance2(jets._floats[0]), jets.beam_distance2(jets._floats[1])]
-    try:
-        tst.assert_allclose(beam_distance2, found_beam2, err_msg=f"distance to beam with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
-    except Exception as e:
-        st()
+    found_distance2 = jets.physical_distance2(*jets._floats).squeeze()
+    tst.assert_allclose(distance2, found_distance2, err_msg=f"distance between particles with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
+    found_beam2 = jets.beam_distance2(jets._floats).squeeze()
+    tst.assert_allclose(beam_distance2, found_beam2, err_msg=f"distance to beam with floats \n{float_array}\nwhen joined with parameters\n{param_dict}\n does not match expected")
 internal_physical_distance.valid_one = False
 internal_physical_distance.valid_zero = False
 
@@ -841,11 +835,7 @@ def test_calculate_eigenspace_distances():
                     factors *= invarient_mass**(-2*exp_mul)
                     distances2 *= factors
                 np.fill_diagonal(distances2, dr**2)
-                try:
-                    tst.assert_allclose(jets._distances2, distances2)
-                except:
-                    st()
-                    pass
+                tst.assert_allclose(jets._distances2, distances2)
             # check that the eigenvectors and the eigenvalues have the correct relationship
             # with the laplacien
             # this only needs to be done once for each laplacien type,
@@ -923,15 +913,14 @@ def internal_calculate_affinity(jets, param_dict):
     #jets.currently_avalible = len(floats)
     #jets._calculate_distances()
     # and procede with a comparison calculation
-    distances2 = np.array([[jets.physical_distance2(row, col) for col in jets._floats]
-                           for row in jets._floats])
+    distances2 = jets.physical_distance2(jets._floats, jets._floats)
     if len(distances2) < 1:
         tst.assert_allclose(jets._affinity, np.array([[]]))
         return
     if param_dict['StoppingCondition'] == 'beamparticle':
         # if there is a beam particles the last row should eb beam distances
         # but only if something exists
-        beam_row = np.fromiter((jets.beam_distance2(row) for row in jets._floats), dtype=float).reshape((1, -1))
+        beam_row = jets.beam_distance2(jets._floats).reshape((1, -1))
         distances2 = np.concatenate((distances2, beam_row))
         beam_row = np.concatenate((beam_row.T, [[0]]))
         distances2 = np.concatenate((distances2, beam_row), axis=1)
@@ -970,11 +959,7 @@ def internal_calculate_affinity(jets, param_dict):
     np.fill_diagonal(expected, 0)
     if np.inf in expected:  # fix internal approximations
         jets._affinity[jets._affinity > 10^100] = np.inf
-    try:
-        tst.assert_allclose(jets._affinity, expected, atol=0.0001, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
-    except:
-        st()
-        jets2 = make_simple_jets(np.array(jets._floats), param_dict, type(jets))
+    tst.assert_allclose(jets._affinity, expected, atol=0.0001, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
     expected
 internal_calculate_affinity.valid_one = True
 internal_calculate_affinity.valid_zero = True
@@ -1200,6 +1185,7 @@ def test_SM_recalculate_one():
     for floats in float_variations:
         for row in floats:
             SimpleClusterSamples.fill_angular(row, True)
+        np.nan_to_num(floats, copy=False)
         deltaR=0.4
         invarient_mass = SimpleClusterSamples.get_invarient_mass(dict(floats=floats))
         jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
@@ -1239,11 +1225,7 @@ def test_SM_recalculate_one():
                                for row, ptb in zip(jets._eigenspace, pt_list)])
         distances2 *= invarient_mass**(-2*exp_mul)
         np.fill_diagonal(distances2, deltaR**2)
-        try:
-            tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
-        except:
-            st()
-            pass
+        tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
         # try with a beam particle
         exp_mul = 0.5
         jets = make_simple_jets(floats, {'DeltaR':0.4,
@@ -1294,8 +1276,13 @@ def test_cluster_edge_cases():
         jet_class = combination[0]
         jet_params = {name: value for name, value in zip(param_order, combination[1:])}
         # the degenrate pair
-        jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
-                               jet_params, jet_class=jet_class, assign=True)
+        try:
+            jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
+                                   jet_params, jet_class=jet_class, assign=True)
+        except:
+            st()
+            jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
+                                   jet_params, jet_class=jet_class, assign=True)
 
 
 def test_filter_obs():

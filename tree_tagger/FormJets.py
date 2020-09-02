@@ -197,17 +197,22 @@ class PseudoJet:
     def _get_event_mass(self):
         """ Should be called in constructor, and assigned to self.event_mass, 
         don't need to call again"""
-        leaves = np.where(self.Child1 == -1)[0]
-        sum_energies = sum(self._floats[row][self._Energy_col] for row in leaves)
-        sum_px = sum(self._floats[row][self._Px_col] for row in leaves)
-        sum_py = sum(self._floats[row][self._Py_col] for row in leaves)
-        sum_pz = sum(self._floats[row][self._Pz_col] for row in leaves)
-        invarient_mass2 = sum_energies**2 - sum_px**2 - sum_py**2 - sum_pz**2
+        floats = np.array(self._floats)[self.Child1==-1]
+        if len(floats) == 0:
+            return 0.
+        invarient_mass2 = (np.sum(floats[:, self._Energy_col])**2 
+                           - np.sum(floats[:, self._Px_col])**2 
+                           - np.sum(floats[:, self._Py_col])**2 
+                           - np.sum(floats[:, self._Pz_col])**2)
         if invarient_mass2 > 0:
             invarient_mass = np.sqrt(invarient_mass2)
         elif invarient_mass2 > -1e-4:  # massless events are a weird specal case
             invarient_mass = 1.  # give them mass 1. to avoid nan issues.
         else:
+            sum_energies = np.sum(floats[:, self._Energy_col])
+            sum_px = np.sum(floats[:, self._Px_col])
+            sum_py = np.sum(floats[:, self._Py_col])
+            sum_pz = np.sum(floats[:, self._Pz_col])
             written_sum = "e**2 - px**2 - py**2 - pz**2 =\n" +\
                     f"{sum_energies}**2 - {sum_px}**2 - {sum_py}**2 - {sum_pz}**2" +\
                     f"={invarient_mass2}"
@@ -215,22 +220,26 @@ class PseudoJet:
         return invarient_mass
 
     def _define_PT_factor(self):
-        pt_col = self._PT_col
         # set up a few more variables
         exponent = self.ExpofPTMultiplier * 2
-        inv_invar_exp = self.event_mass**-exponent
-        def beam_PT_factor(row):
-            return inv_invar_exp*row[pt_col]**exponent
+        try:
+            inv_invar_exp = self.event_mass**-exponent
+        except ZeroDivisionError:
+            # if the event is massless it should have one particle at most
+            assert len(self._floats) < 2, "why is a multiparticle event massless?"
+            inv_invar_exp = np.nan  # clusterign is meaningless here anyway
+        def beam_PT_factor(pt):
+            return inv_invar_exp*pt**exponent
         if self.ExpofPTFormat == 'min':
-            def min_PT_factor(row, column):
-                factor = np.minimum(row[pt_col]**exponent, column[pt_col]**exponent)
+            def min_PT_factor(row_pt, column_pt):
+                factor = np.minimum(row_pt**exponent, column_pt**exponent)
                 factor *= inv_invar_exp
                 return factor
             return beam_PT_factor, min_PT_factor
         elif self.ExpofPTFormat == 'Luclus':
-            def luclus_PT_factor(row, column):
-                factor = (row[pt_col]**exponent)*(column[pt_col]**exponent)*\
-                         (row[pt_col] + column[pt_col])**-exponent
+            def luclus_PT_factor(row_pt, column_pt):
+                factor = (row_pt**exponent)*(column_pt**exponent)*\
+                         (row_pt + column_pt)**-exponent
                 factor *= inv_invar_exp
                 return factor
             return beam_PT_factor, luclus_PT_factor
@@ -240,13 +249,14 @@ class PseudoJet:
         Define a function that measures distance in physical space,
         and also a function that measures distance of a particle to the beam.
         """
+        pt_col = self._PT_col
         # set up a few more variables
         exponent = self.ExpofPTMultiplier * 2
         exponent_now = self.ExpofPTPosition == 'input'
         deltaR2 = self.DeltaR**2
         # same for everything but Luclus
         if exponent_now:
-            def beam_distance2(row):
+            def beam_distance2(rows):
                 """
                 Calculate the distance of this particle to the beam squared
 
@@ -262,9 +272,12 @@ class PseudoJet:
                     the distance squared to the beam
 
                 """
-                return deltaR2 * self.beam_PT_factor(row)
+                if len(rows) == 0:
+                    return np.empty(0)
+                row_pt = np.array(rows)[..., [pt_col]]
+                return deltaR2 * self.beam_PT_factor(row_pt)
         else:
-            def beam_distance2(row):
+            def beam_distance2(rows):
                 """
                 Calculate the distance of this particle to the beam squared
 
@@ -279,14 +292,20 @@ class PseudoJet:
                     the distance squared to the beam
 
                 """
-                return deltaR2
+                num_particles = len(rows) if hasattr(rows[0], '__iter__') else 1
+                return np.full(num_particles, deltaR2)
         if self.PhyDistance == 'invarient':
             px_col = self._Px_col
             py_col = self._Py_col
             pz_col = self._Pz_col
             e_col = self._Energy_col
-            inv_invar2 = self.event_mass**-2
-            def physical_distance2(row, column):
+            try:
+                inv_invar2 = self.event_mass**-2
+            except ZeroDivisionError:
+                # if the event is massless it should have one particle at most
+                assert len(self._floats) < 2, "why is a multiparticle event massless?"
+                inv_invar2 = np.nan  # clusterign is meaningless here anyway
+            def physical_distance2(rows, columns):
                 """
                 Calculate the physical distance between 2 particles.
 
@@ -303,13 +322,17 @@ class PseudoJet:
                     the distance squared between the two particles
 
                 """
+                if len(rows)*len(columns) == 0:
+                    return np.empty((len(columns), len(rows)))
+                row = np.array(rows)
+                column = np.array(columns)
                 # this is proper length, but it may be -ve..... so should be using invarient mass?
-                distance2 = (row[e_col]*column[e_col]
-                             - row[px_col]*column[px_col]
-                             - row[py_col]*column[py_col]
-                             - row[pz_col]*column[pz_col])*inv_invar2
+                distance2 = (row[..., [e_col]]*column[..., [e_col]].T
+                             - row[..., [px_col]]*column[..., [px_col]].T
+                             - row[..., [py_col]]*column[..., [py_col]].T
+                             - row[..., [pz_col]]*column[..., [pz_col]].T)*inv_invar2
                 if exponent_now:
-                    distance2 *= self.PT_factor(row, column)
+                    distance2 *= self.PT_factor(row[..., [pt_col]], column[..., [pt_col]].T)
                 return distance2
         elif self.PhyDistance == 'normed':
             px_col = self._Px_col
@@ -317,7 +340,7 @@ class PseudoJet:
             pz_col = self._Pz_col
             e_col = self._Energy_col
             small_num = 1e-10
-            def physical_distance2(row, column):
+            def physical_distance2(rows, columns):
                 """
                 Calculate the physical distance between 2 particles.
 
@@ -334,19 +357,23 @@ class PseudoJet:
                     the distance squared between the two particles
 
                 """
-                energies = row[e_col] * column[e_col]
-                if energies == 0:
-                    energies = small_num
-                row_3vec = np.array([row[px_col], row[py_col], row[pz_col]])
-                column_3vec = np.array([column[px_col], column[py_col], column[pz_col]])
-                distance2 = 1. - np.sum(row_3vec*column_3vec)/energies
+                if len(rows)*len(columns) == 0:
+                    return np.empty((len(columns), len(rows)))
+                row = np.array(rows)
+                column = np.array(columns)
+                energies = row[..., [e_col]] * column[..., [e_col]].T
+                # prevent 0 division errors
+                energies[energies==0] = small_num
+                distance2 = 1 - (row[..., [px_col]]*column[..., [px_col]].T
+                                 + row[..., [py_col]]*column[..., [py_col]].T
+                                 + row[..., [pz_col]]*column[..., [pz_col]].T)/energies
                 if exponent_now:
-                    distance2 *= self.PT_factor(row, column)
+                    distance2 *= self.PT_factor(row[..., [pt_col]], column[..., [pt_col]].T)
                 return distance2
         elif self.PhyDistance == 'angular':
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
-            def physical_distance2(row, column):
+            def physical_distance2(rows, columns):
                 """
                 Calculate the physical distance between 2 particles.
 
@@ -363,15 +390,20 @@ class PseudoJet:
                     the distance squared between the two particles
 
                 """
-                angular_distance = Components.angular_distance(row[phi_col], column[phi_col])
-                distance2 = (row[rap_col] - column[rap_col])**2 + angular_distance**2
+                if len(rows)*len(columns) == 0:
+                    return np.empty((len(columns), len(rows)))
+                row = np.array(rows)
+                column = np.array(columns)
+                angular_distance = Components.angular_distance(row[..., [phi_col]],
+                                                               column[..., [phi_col]].T)
+                distance2 = (row[..., [rap_col]] - column[..., [rap_col]].T)**2 + angular_distance**2
                 if exponent_now:
-                    distance2 *= self.PT_factor(row, column)
+                    distance2 *= self.PT_factor(row[..., [pt_col]], column[..., [pt_col]].T)
                 return distance2
         elif self.PhyDistance == 'taxicab':
             rap_col = self._Rapidity_col
             phi_col = self._Phi_col
-            def physical_distance2(row, column):
+            def physical_distance2(rows, columns):
                 """
                 Calculate the physical distance between 2 particles.
 
@@ -388,12 +420,18 @@ class PseudoJet:
                     the distance squared between the two particles
 
                 """
-                distance2 = (np.abs(row[rap_col] - column[rap_col]) + np.abs(row[phi_col] - column[phi_col]))**2
+                if len(rows)*len(columns) == 0:
+                    return np.empty((len(columns), len(rows)))
+                row = np.array(rows)
+                column = np.array(columns)
+                angular_distance = Components.angular_distance(row[..., [phi_col]],
+                                                               column[..., [phi_col]].T)
+                distance2 = np.abs(row[..., [rap_col]] - column[..., [rap_col]].T) + angular_distance
                 if exponent_now:
-                    distance2 *= self.PT_factor(row, column)
+                    distance2 *= self.PT_factor(row[..., [pt_col]], column[..., [pt_col]].T)
                 return distance2
         else:
-            raise ValueError(f"Don't recognise {self.PhyDistance} as an Invarient")
+            raise ValueError(f"Don't recognise {self.PhyDistance} as a Physical distance measure")
         return beam_distance2, physical_distance2
 
     def _set_hyperparams(self, default_params, dict_jet_params, kwargs):
@@ -1076,20 +1114,17 @@ class Traditional(PseudoJet):
     def _calculate_distances(self):
         """ Calculate all distances between avalible pseudojets """
         # this is caluculating all the distances
-        self._distances2 = np.full((self.currently_avalible, self.currently_avalible), np.inf)
-        # for speed, make local variables
-        pt_col = self._PT_col
-        for row in range(self.currently_avalible):
-            for column in range(self.currently_avalible):
-                if column > row:
-                    continue  # we only need a triangular matrix due to symmetry
-                if self._floats[row][pt_col] == 0:
-                    distance2 = 0  # soft radation might as well be at 0 distance
-                elif column == row:
-                    distance2 = self.beam_distance2(self._floats[row])
-                else:
-                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
-                self._distances2[row, column] = distance2
+        avalible_floats = self._floats[:self.currently_avalible]
+        self._distances2 = self.physical_distance2(avalible_floats, avalible_floats)
+        infinite_distance = np.isinf(self._distances2)
+        if np.any(infinite_distance):
+            # soft radation may create undesirable infinities
+            soft_radiation = np.fromiter((row[self._PT_col] == 0 for row in avalible_floats),
+                                         dtype=bool)
+            # if this has occured make them 0
+            self._distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
+        # finally, add the diagonals
+        np.fill_diagonal(self._distances2, self.beam_distance2(avalible_floats))
 
     def _recalculate_one(self, remove_index, replace_index):
         """
@@ -1112,15 +1147,10 @@ class Traditional(PseudoJet):
         self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
 
         # calculate new values into the second column
-        for row in range(self.currently_avalible):
-            column = replace_index
-            if column > row:
-                distance2 = self._distances2[column, row]
-            if column == row:
-                distance2 = self.beam_distance2(self._floats[row])
-            else:
-                distance2 = self.physical_distance2(self._floats[row], self._floats[column])
-            self._distances2[row, column] = distance2
+        new_distances = self.physical_distance2(self._floats[replace_index],
+                                                self._floats[:self.currently_avalible])
+        new_distances[:, replace_index] = self.beam_distance2(self._floats[replace_index])
+        self._distances2[replace_index] = self._distances2[:, replace_index] = new_distances
 
     @classmethod
     def read_fastjet(cls, arg, eventWise, jet_name="FastJet", do_checks=False):
@@ -1401,35 +1431,30 @@ class Spectral(PseudoJet):
             return
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
-        physical_distances2 = np.zeros((n_distances, n_distances))
         # for speed, make local variables
         pt_col = self._PT_col
-        rap_col = self._Rapidity_col
-        phi_col = self._Phi_col
         # future calculatins will depend on the starting positions
-        self._starting_position = np.array([self._floats[row][:] for row
-                                      in range(self.currently_avalible)])
+        self._starting_position = np.array(self._floats[:self.currently_avalible])
         if self.beam_particle:
             # the beam particles dosn't have a real location,
             # but to preserve the dimensions of future calculations, add it in
             self._starting_position = np.vstack((self._starting_position,
                                                  np.ones(len(self.float_columns))))
             # it is added to the end so as to maintain the indices
-        for row in range(self.currently_avalible):
-            for column in range(self.currently_avalible):
-                if column < row:
-                    distance2 = physical_distances2[column, row]  # the matrix is symmetric
-                elif self._floats[row][pt_col] == 0:
-                    distance2 = 0  # soft radation might as well be at 0 distance
-                elif column == row:
-                    # not used
-                    continue
-                else:
-                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
-                physical_distances2[row, column] = distance2
+
+
+        physical_distances2 = self.physical_distance2(self._starting_position,
+                                                      self._starting_position)
+        infinite_distance = np.isinf(physical_distances2)
+        if np.any(infinite_distance):
+            # soft radation may create undesirable infinities
+            soft_radiation = self._starting_position[:, pt_col] == 0
+            # if this has occured make them 0
+            physical_distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
+
         if self.beam_particle:
             # the last row and column should give the distance of each particle to the beam
-            physical_distances2[-1, :] = [self.beam_distance2(row) for row in self._starting_position]
+            physical_distances2[-1, :] = self.beam_distance2(self._starting_position).squeeze()
             physical_distances2[:, -1] = physical_distances2[-1, :]
         np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
@@ -1501,23 +1526,13 @@ class Spectral(PseudoJet):
                 scipy.spatial.distance.pdist(eigenvectors,
                 metric='sqeuclidean'))
         if self.ExpofPTPosition == 'eigenspace':
-            # if beamparticle the last entry will be nonsense, but we wont touch it anyway
-            for row in range(self.currently_avalible):
-                for column in range(self.currently_avalible):
-                    if column < row:
-                        distance2 = self._distances2[column, row]  # the matrix is symmetric
-                    elif column == row:
-                        # not used
-                        continue
-                    else:
-                        # at this point apply the pt factors
-                        distance2 = self.PT_factor(self._floats[row], self._floats[column])*self._distances2[row, column]
-                    self._distances2[row, column] = distance2
+            pt_col = self._PT_col
+            avalible_pt = self._starting_position[:, pt_col]
+            pt_factor = self.PT_factor(avalible_pt, avalible_pt.reshape((-1, 1)))
             if self.beam_particle:
-                pt_fractions = np.fromiter((self.beam_PT_factor(row) for row in self._starting_position),
-                                           dtype=float)
-                self._distances2[-1, :-1] *= pt_fractions[:-1]
-                self._distances2[:-1, -1] *= pt_fractions[:-1]
+                beam_PT_factor = self.beam_PT_factor(self._starting_position[:, pt_col])
+                pt_factor[-1] = pt_factor[:, -1] = beam_PT_factor
+            self._distances2 *= pt_factor
         # if the clustering is not going to stop at 1 we must put something in the diagonal
         if self.beam_particle or self.conductance:  # in he case of a beam particle we stop the clustering when
             # our particle reaches the beam particle
@@ -1884,19 +1899,19 @@ class Spectral(PseudoJet):
         new_position = self._floats[replace_index]
         # since we take rows out of the eigenspace the
         # laplacien also needs to get corrispondingly smaller
-        new_distances2 = np.fromiter((self.physical_distance2(self._floats[row], new_position)
-                                      for row in range(self.currently_avalible)),
-                                     dtype=float)
+        avalible_floats = self._floats[:self.currently_avalible]
+        # this will create a 2d object, but we want a 1d object
+        new_distances2 = self.physical_distance2(avalible_floats, new_position).flatten()
         if self.beam_particle:
             # then add in one more index for the beam partical
             new_distances2 = np.append(new_distances2, self.beam_distance2(new_position))
         # from this get a new line of the laplacien
         new_laplacien = -self.calculate_affinity(new_distances2)
         new_laplacien[replace_index] = 0.  # need to blank this before summing the laplacien
-        new_laplacien[replace_index] = -np.sum(new_laplacien)
+        new_laplacien[replace_index] = new_diagonal = -np.sum(new_laplacien)
         if self.Laplacien == 'symmetric':
             self.alt_diag = np.delete(self.alt_diag, remove_index)
-            new_alt_diag = np.sum(new_laplacien)**(-0.5)
+            new_alt_diag = new_diagonal**(-0.5)
             self.alt_diag[replace_index] = new_alt_diag
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
         # remove from the eigenspace and the affinity
@@ -1904,15 +1919,22 @@ class Spectral(PseudoJet):
         self._affinity = np.delete(self._affinity, (remove_index), axis=0)
         self._affinity = np.delete(self._affinity, (remove_index), axis=1)
         # and make its position in vector space
-        new_position = np.dot(self._eigenspace.T, new_laplacien)
+        try:
+            new_position = np.dot(self._eigenspace.T, new_laplacien)
+        except:
+            st()
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
         new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
         if self.ExpofPTPosition == 'eigenspace':
+            pt_col = self._PT_col
             col = self._floats[replace_index]
-            pt_factor = np.fromiter((self.PT_factor(row, col) for row in self._floats[:self.currently_avalible]),
-                                    dtype=float)
-            new_distances2[:self.currently_avalible] *= pt_factor
+            avalible_pt = np.fromiter((row[pt_col] for row in avalible_floats),
+                                      dtype=float)
+            pt_factor = self.PT_factor(avalible_pt, col[pt_col])
+            if self.beam_particle:
+                pt_factor[-1] = self.beam_PT_factor(col[pt_col])
+            new_distances2 *= pt_factor
         if self.beam_particle or self.conductance:
             new_distances2[replace_index] = np.inf
         else:
@@ -1922,6 +1944,7 @@ class Spectral(PseudoJet):
         self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # replace the secone
         self._distances2[replace_index] = new_distances2
+        self._distances2[:, replace_index] = new_distances2
 
     def _step_assign_parents(self):
         """
@@ -2034,23 +2057,17 @@ class Indicator(Spectral):
             return
         # to start with create a 'normal' distance measure
         # this can be based on any of the three algorithms
-        physical_distances2 = np.zeros((n_distances, n_distances))
-        # for speed, make local variables
         pt_col = self._PT_col
-        rap_col = self._Rapidity_col
-        phi_col = self._Phi_col
-        for row in range(self.currently_avalible):
-            for column in range(self.currently_avalible):
-                if column < row:
-                    distance2 = physical_distances2[column, row]  # the matrix is symmetric
-                elif self._floats[row][pt_col] == 0:
-                    distance2 = 0  # soft radation might as well be at 0 distance
-                elif column == row:
-                    # not used
-                    continue
-                else:
-                    distance2 = self.physical_distance2(self._floats[row], self._floats[column])
-                physical_distances2[row, column] = distance2
+        avalible_floats = self._floats[:self.currently_avalible]
+        physical_distances2 = self.physical_distance2(avalible_floats, avalible_floats)
+        infinite_distance = np.isinf(physical_distances2)
+        if np.any(infinite_distance):
+            # soft radation may create undesirable infinities
+            soft_radiation = np.fromiter((row[pt_col] == 0 for row in avalible_floats),
+                                         dtype=bool)
+            # if this has occured make them 0
+            physical_distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
+        # finally, add the diagonals
         np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation, which we will need
@@ -2632,10 +2649,10 @@ class SpectralMean(Spectral):
         # get the new disntance in eigenspace
         new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
         if self.ExpofPTPosition == 'eigenspace':
-            col = self._floats[replace_index]
-            pt_factor = np.fromiter((self.PT_factor(row, col) for row in
-                                     self._floats[:self.currently_avalible]),
-                                    dtype=float)
+            pt_col = self._PT_col
+            replace_pt = self._floats[replace_index][pt_col]
+            avalible_pt = np.array(self._floats[:self.currently_avalible])[:, pt_col]
+            pt_factor = self.PT_factor(avalible_pt, replace_pt)
             new_distances2[:self.currently_avalible] *= pt_factor
         if self.beam_particle or self.conductance:
             new_distances2[replace_index] = np.inf
