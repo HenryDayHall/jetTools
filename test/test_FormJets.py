@@ -101,7 +101,7 @@ class SimpleClusterSamples:
                                                            # energy = col3
             invarient_mass = np.sqrt(np.sum(inputs['floats'][:, 3])**2
                                                            # pt = col0,  pz = col6
-                                     - np.sum(np.sum(inputs['floats'][:, [0, 6]], axis=0)**2))
+                                     - np.sum(np.sum(inputs['floats'][:, [4, 5, 6]], axis=0)**2))
         if invarient_mass == 0:
             invarient_mass = 1.
         return invarient_mass
@@ -435,7 +435,7 @@ def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, assign
 def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
     if additional_jet_params is None:
         additional_jet_params = {}
-    physical_distance_measures = ["angular", "invarient", "normed", "Luclus"]
+    physical_distance_measures = ["angular", "invarient", "normed"]
     exp_of_pt_pos = ["input", "eigenspace"]
     exponents = [-1, -0.5, 0, 0.5, 1]
     deltaR = [0, 0.5, 1]
@@ -496,7 +496,7 @@ def internal_physical_distance(jets, param_dict):
     exponent = 2*param_dict['ExpofPTMultiplier']
     # get the pt factor
     if param_dict['ExpofPTPosition'] == 'input':
-        if param_dict['PhyDistance'] == 'Luclus':
+        if param_dict['ExpofPTFormat'] == 'Luclus':
             pt_factor = np.product(pts)**exponent*invarient_mass2**(-0.5*exponent)/np.sum(pts)**exponent
         else:
             pt_factor = np.min(pts**exponent) * invarient_mass2**(-0.5*exponent)
@@ -513,7 +513,7 @@ def internal_physical_distance(jets, param_dict):
         angular_change2 = Components.angular_distance(*phis)**2 + (rapidities[0] - rapidities[1])**2
         distance2 = pt_factor*angular_change2
     # get the beam distance
-    if param_dict['PhyDistance'] == 'Luclus' or param_dict['ExpofPTPosition'] != 'input':
+    if param_dict['ExpofPTPosition'] != 'input':
         pt_factor = 1.
     else:
         pt_factor = pts**exponent * invarient_mass2**(-0.5*exponent)
@@ -541,8 +541,8 @@ def test_physical_distance():
 
 def internal_currently_avalible(jets, param_dict):
     avalible = np.sum(jets.Parent == -1)
-    jets._calculate_currently_avalible()
-    assert avalible == jets.currently_avalible
+    currently_avalible = jets._get_currently_avalible()
+    assert avalible == currently_avalible
 internal_currently_avalible.valid_one = True
 internal_currently_avalible.valid_zero = True
 
@@ -693,7 +693,7 @@ def internal_recalculate_one(jets, param_dict):
     int_array[:, jets._InputIdx_col] += len(jets)
     jets._ints += int_array.tolist()
     jets._floats += float_array.tolist()
-    jets._calculate_currently_avalible()
+    jets.currently_avalible = jets._get_currently_avalible()
     # calculate the distances
     jets._calculate_distances()
     start_distances = np.copy(jets._distances2)
@@ -824,6 +824,7 @@ def test_calculate_eigenspace_distances():
         floats[:, -1] = 0.
         for row in floats:
             SimpleClusterSamples.fill_angular(row)
+        invarient_mass = SimpleClusterSamples.get_invarient_mass(dict(floats=floats))
         for ltype in ('unnormalised', 'symmetric'):
             for exp_mul, exp_pos in [(-1, 'input'), (-1, 'eigenspace'), (0, 'eigenspace'), (.5, 'eigenspace')]:
                 jets = make_simple_jets(floats, {'Laplacien': ltype,
@@ -837,9 +838,14 @@ def test_calculate_eigenspace_distances():
                     pts = np.fromiter((row[jets._PT_col] for row in jets._floats), dtype=float)
                     factors = np.array([[min(pt1**(2*exp_mul), pt2**(2*exp_mul)) for pt1 in pts]
                                         for pt2 in pts])
+                    factors *= invarient_mass**(-2*exp_mul)
                     distances2 *= factors
                 np.fill_diagonal(distances2, dr**2)
-                tst.assert_allclose(jets._distances2, distances2)
+                try:
+                    tst.assert_allclose(jets._distances2, distances2)
+                except:
+                    st()
+                    pass
             # check that the eigenvectors and the eigenvalues have the correct relationship
             # with the laplacien
             # this only needs to be done once for each laplacien type,
@@ -1195,12 +1201,15 @@ def test_SM_recalculate_one():
         for row in floats:
             SimpleClusterSamples.fill_angular(row, True)
         deltaR=0.4
+        invarient_mass = SimpleClusterSamples.get_invarient_mass(dict(floats=floats))
         jets = make_simple_jets(floats, {'DeltaR':0.4}, FormJets.SpectralMean)
+        # set up an error message
         err_msg = "Problem when recalculating with floats;\n"
         err_msg += "E, Px, Py, Pz\n"
         for row in floats:
             err_msg += f"{row[jets._Energy_col]}, {row[jets._Px_col]}, {row[jets._Py_col]}"
             err_msg += f", {row[jets._Pz_col]}\n"
+        # make the recalculaton
         replace, remove = 0, 1
         expected_position = (jets._eigenspace[remove] + jets._eigenspace[replace])/2
         jets._merge_pseudojets(remove, replace, 0)
@@ -1212,9 +1221,11 @@ def test_SM_recalculate_one():
         tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
         # try with a pt in the eigenspace
         exp_mul = 0.5
+        pt_list = floats[:, jets._PT_col]**(2*exp_mul)
         jets = make_simple_jets(floats, {'DeltaR':0.4,
                                          'ExpofPTPosition':'eigenspace',
                                          'ExpofPTMultiplier': exp_mul}, FormJets.SpectralMean)
+
         # grap the pt before the combination
         pt_list = floats[1:, jets._PT_col]**(2*exp_mul)
         combined_PT2 = (floats[remove, jets._Px_col] + floats[replace, jets._Px_col])**2 +\
@@ -1226,8 +1237,13 @@ def test_SM_recalculate_one():
         # now caculate all distances
         distances2 = np.array([[min(pta, ptb)*np.sum((row-col)**2) for col, pta in zip(jets._eigenspace, pt_list)]
                                for row, ptb in zip(jets._eigenspace, pt_list)])
+        distances2 *= invarient_mass**(-2*exp_mul)
         np.fill_diagonal(distances2, deltaR**2)
-        tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
+        try:
+            tst.assert_allclose(jets._distances2, distances2, err_msg=err_msg+"Distance2 wrong")
+        except:
+            st()
+            pass
         # try with a beam particle
         exp_mul = 0.5
         jets = make_simple_jets(floats, {'DeltaR':0.4,
@@ -1268,7 +1284,7 @@ def test_cluster_edge_cases():
     affinity_type = ('linear', 'exponent')  # skip exponent2 and inverse
     # also skip affinity cutoffs
     laplacien = ('unnormalised', 'symmetric')
-    dist = ('angular', 'invarient', 'Luclus')
+    dist = ('angular', 'invarient')
     stopping = ('beamparticle', 'standard')
     param_order = ['DeltaR', 'NumEigenvectors', 'ExpofPTPosition', 'ExpofPTMultiplier',
                   'AffinityType', 'Laplacien', 'PhyDistance', 'StoppingCondition']
