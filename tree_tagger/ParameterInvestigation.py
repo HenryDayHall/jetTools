@@ -1118,8 +1118,8 @@ def cutoff_jets():
     jet_names = []
     jet_params = []
     # put the things to be iterated over into a fixed order
-    fix_parameters = dict(ExpofPTPosition='input')
-    scan_parameters = dict(PhyDistance=['angular', 'Luclus', 'taxicab'],
+    fix_parameters = dict(ExpofPTPosition='input', ExpofPTFormat='Luclus')
+    scan_parameters = dict(PhyDistance=['angular', 'taxicab'],
                            ExpOfPTMultiplier=np.linspace(-1, 1, 9),
                            AffinityCutoff=[None] + [('distance', x) for x in np.linspace(0.5, 7.5, 8)]
                                           +[('knn', x) for x in range(1, 6)])
