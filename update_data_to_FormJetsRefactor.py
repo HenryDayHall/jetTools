@@ -1,0 +1,41 @@
+""" a script to update all datasets in the top level of megaIgnore to acount ro recent changes from FormTreesRefactor branch """
+import os
+from tree_tagger import Components, FormJets
+# grab the datasets
+dir_name = "megaIgnore"
+file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name) if name.endswith('.awkd')]
+num_names = len(file_names)
+
+for i, name in enumerate(file_names):
+    try:
+        eventWise = Components.EventWise.from_file(name)
+    except Exception:
+        print(f"{name} dosn't seem to be an EventWise")
+        continue
+    print(f"{i/num_names:.0%}\t{name}", flush=True)
+
+    # Delele all knn items - known fault
+    affinitycutoffs = [(name, getattr(eventWise, name)) for name in eventWise.hyperparameter_columns
+                       if name.endswith("AffinityCutOff")]
+    knn_jets = [name.split('_', 1)[0] for name, cutoff in affinitycutoffs
+                if cutoff is not None and cutoff[0] == 'knn']
+    for jet in knn_jets:
+        eventWise.remove_prefix(jet)
+
+
+    # add parameters to datasets
+    # change Luclus to angular and add Luclus
+    for name in FormJets.get_jet_names(eventWise):
+        new_hyper = {}
+        is_luclus = getattr(eventWise, name+"_PhyDistance").lower() == 'luclus'
+        if is_luclus:
+            new_hyper[name+"_AffinityType"] = 'angular'
+            new_hyper[name+"_ExpofPTFormat"] = 'Luclus'
+        else:
+            new_hyper[name+"_ExpofPTFormat"] = 'min'
+        new_hyper[name+"_Eigenspace"] = 'unnormalised'
+        eventWise.append_hyperparameters(**new_hyper)
+
+        
+
+
