@@ -425,16 +425,46 @@ fix_SpectralFull = dict(ExpofPTPosition='eigenspace',
                         AffinityType='exponent2',
                         StoppingConditon='standard')
 
+# Spectral mean -------------------------
+scan_SpectralMean1 = dict(DeltaR = np.linspace(0.1, 0.9, 5),
+                          ExpofPTMultiplier = [0.0, 0.2, 0.4],
+                          AffinityCutoff = [None, ('knn', 3)],
+                          Laplacien = ['unnormalised', 'symmetric'],
+                        )
+fix_SpectralMean1a = dict(
+                          NumEigenvectors = 4,
+                          AffinityType = 'exponent2',
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'input',
+                          Eigenspace = 'normalised',
+                          PhyDistance = 'taxicab',
+                          StoppingCondition = 'beamparticle')
+fix_SpectralMean1b = dict(
+                          NumEigenvectors = 4,
+                          AffinityType = 'exponent2',
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'input',
+                          Eigenspace = 'normalised',
+                          PhyDistance = 'taxicab',
+                          StoppingCondition = 'standard')
+fix_SpectralMean1c = dict(
+                          NumEigenvectors = 4,
+                          AffinityType = 'exponent2',
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'input',
+                          Eigenspace = 'normalised',
+                          PhyDistance = 'angular', 
+                          StoppingCondition = 'beamparticle')
 
-scan_SpectralMean = dict(ExpofPTPosition = ['input', 'eigenspace'],
-                         DeltaR = np.linspace(0.2, 0.6, 4),
-                         AffinityCutoff = [('distance', 2), None],
-                         PhyDistance = ['invarient', 'angular', 'Luclus'],
-                         NumEigenvectors = [2, 4, 6])
-fix_SpectralMean = dict(ExpofPTMultiplier=-0.2,
-                        Laplacien='symmetric',
-                        AffinityType='exponent2',
-                        StoppingConditon='beamparticle')
+fix_SpectralMean1d = dict(
+                          NumEigenvectors = 4,
+                          AffinityType = 'exponent2',
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'input',
+                          Eigenspace = 'normalised',
+                          PhyDistance = 'angular', 
+                          StoppingCondition = 'standard')
+# Traditional -----------------------------
 
 scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5),
