@@ -445,7 +445,7 @@ scan_Traditional1 = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5))
 
 
-fix_Traditional1 = dict( PhyDistance='taxicab')
+fix_Traditional1 = dict(PhyDistance='taxicab')
 
 
 scan_Indicator = dict(

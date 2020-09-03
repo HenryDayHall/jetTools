@@ -1333,7 +1333,7 @@ class Spectral(PseudoJet):
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent', 'AffinityCutoff': None,
-                      'Laplacien': 'unnormalised',
+                      'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
                       'PhyDistance': 'angular', 'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
@@ -1343,6 +1343,7 @@ class Spectral(PseudoJet):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
+                       'Eigenspace': ['unnormalised', 'normalised'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'StoppingCondition': ['standard', 'beamparticle', 'conductance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -1400,6 +1401,13 @@ class Spectral(PseudoJet):
                 self._current_conductance = 1/np.sum(self._initial_affinity, axis=0)
         if assign:
             self.assign_parents()
+
+    @property
+    def eigenvectors(self):
+        eigenvectors = self._eigenspace
+        if self.Eigenspace == 'normed':
+            eigenvectors *= self.eigenvalues
+        return eigenvectors
 
     def _conductance_check(self, idx_a, idx_b):
         inside = self._conductance_sets[idx_a].union(self._conductance_sets[idx_b])
@@ -1521,6 +1529,8 @@ class Spectral(PseudoJet):
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
+        if self.Eigenspace == 'normed':
+            self._eigenspace /= self.eigenvalues[-1]
         # now treating the rows of this matrix as the new points get euclidien distances
         self._distances2 = scipy.spatial.distance.squareform(
                 scipy.spatial.distance.pdist(eigenvectors,
@@ -3550,9 +3560,10 @@ if __name__ == '__main__':
     eventWise = Components.EventWise.from_file(eventWise_path)
     event_num = InputTools.get_literal("Event number? ", int)
     eventWise.selected_index = event_num
-    fast_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0, ExpofPTFormat='min')
-    pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
-    pseudojets.plt_assign_parents()
+    fast_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0)
+    #traditional_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0, ExpofPTFormat='min')
+    #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
+    #pseudojets.plt_assign_parents()
     #spectral_jet_params = dict(DeltaR=0.4, ExpofPTMultiplier=0.2,
     #                           ExpofPTPosition='eigenspace',
     #                           NumEigenvectors=6,
@@ -3564,27 +3575,29 @@ if __name__ == '__main__':
     #                           PhyDistance='Luclus',
     #                           jet_name="SpectralFull")
 
-    #c_class = SpectralFull
-    #spectral_jet_params = dict(ExpofPTMultiplier=0,
-    #                           ExpofPTPosition='input',
-    #                           ExpofPTFormat='min',
-    #                           NumEigenvectors=7,
-    #                           StoppingCondition='conductance',
-    #                           #BaseJump=0.05,
-    #                           #JumpEigenFactor=10,
-    #                           #MaxCutScore=0.2, 
-    #                           Laplacien='symmetric',
-    #                           AffinityType='exponent2',
-    #                           AffinityCutoff=('distance', 1),
-    #                           PhyDistance='angular')
+    c_class = SpectralFull
+    spectral_jet_params = dict(ExpofPTMultiplier=0,
+                               ExpofPTPosition='input',
+                               ExpofPTFormat='Luclus',
+                               NumEigenvectors=7,
+                               StoppingCondition='standard',
+                               #BaseJump=0.05,
+                               #JumpEigenFactor=10,
+                               #MaxCutScore=0.2, 
+                               Laplacien='symmetric',
+                               Eigenspace='normed',
+                               AffinityType='exponent2',
+                               #AffinityCutoff=('distance', 1),
+                               AffinityCutoff=None,
+                               PhyDistance='angular')
 
     #c_class = SpectralMean
     #check_hyperparameters(c_class, spectral_jet_params)
     #cluster_multiapply(eventWise, c_class, spectral_jet_params, "TestJet", 10)
     #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-    #jets.plt_assign_parents(save_prefix=None)
-    #plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
-    #plt.show()
+    #jets.plt_assign_parents()
+    plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
+    plt.show()
     #for event_num in range(30):
     #    try:
     #        eventWise.selected_index = event_num

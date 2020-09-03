@@ -7,6 +7,7 @@ import awkward
 import uproot
 import numpy as np
 from tree_tagger import Constants, InputTools
+import pygit2
 
 def flatten(nested):
     """
@@ -214,13 +215,70 @@ def safe_convert(cls, string):
     else: return cls(string)
 
 
+class git_properties:
+    def __init__(self, gitdict=None):
+        # start with them being None, try to fix
+        self.latest_branch = self.latest_time = self.latest_message = None
+        if gitdict is None:  # this is assumed to be brand new
+            self.update_latest()
+            self.initial_branch = self.latest_branch
+            self.initial_time = self.latest_time
+            outdated = False
+        elif 'initial_branch' in gitdict:
+            self.initial_branch = gitdict['initial_branch']
+            self.initial_time = gitdict.get('initial_time', None)
+            self.latest_branch = gitdict.get('latest_branch', None)
+            self.latest_time = gitdict.get('latest_time', None)
+            self.latest_message = gitdict.get('latest_message', None)
+            self.outdated = gitdict.get('outdated', True)
+        elif gitdict == 'old':
+            # if the initial time is not known, this is a reasonable estimate
+            self.initial_branch = "master"
+            self.initial_time = 1598960722
+            outdated = True
+        else:  # gitdict has no recognised form
+            raise KeyError
+
+    def _get_current(self):
+        repo = pygit2.Repository('.')
+        branch = repo.head.shorthand
+        walker = repo.walk(repo.head.target, pygit2.GIT_SORT_TOPOLOGICAL)
+        commit = next(walker)
+        time = commit.commit_time
+        message = commit.message
+        return branch, time, message
+
+    def update_latest(self):
+        try:
+            self.latest_branch, self.latest_time, self.latest_message = self._get_current()
+            self.outdated = False
+        except pygit2.GitError:
+            self.outdated = True
+            print("Couldn't get git commit, update manually" + 
+                  " with eventWise.write(update_git_properties=True)")
+
+    @property
+    def gitdict(self):
+        gitdict = dict(initial_branch=self.initial_branch,
+                       initial_time=self.initial_time,
+                       latest_branch=self.latest_branch,
+                       latest_time=self.latest_time,
+                       latest_message=self.latest_message,
+                       outdated=self.outdated)
+        return gitdict
+
+    def __str__(self):
+        string = '\n'.join([f"{key}={value}" for key, value in self.gitdict.items()])
+        return string
+
+
 class EventWise:
     """The most basic properties of collections that exist in an eventwise sense"""
     selected_index = None
     EVENT_DEPTH = 1 # events, objects in events
     JET_DEPTH = 2 # events, jets, objects in jets
 
-    def __init__(self, dir_name, save_name, columns=None, contents=None, hyperparameter_columns=None):
+    def __init__(self, dir_name, save_name, columns=None, contents=None, hyperparameter_columns=None, gitdict=None):
         """
         Default constructor.
         If loading from file see 'from_file' method as alterative constructor.
@@ -265,6 +323,7 @@ class EventWise:
         assert len(set(self.columns)) == len(self.columns), f"Duplicates in columns; {self.columns}"
         self._alias_dict = self._gen_alias()
         self.hyperparameters = {}
+        self.git_properties = git_properties(gitdict)
 
     def _gen_alias(self):
         """
@@ -431,7 +490,7 @@ class EventWise:
         """ Assumeing two eventwise objects saved in the same place are the same object """
         return self.save_name == other.save_name and self.dir_name == other.dir_name
 
-    def write(self):
+    def write(self, update_git_properties=False):
         """Write to disk"""
         path = os.path.join(self.dir_name, self.save_name)
         assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
@@ -455,6 +514,14 @@ class EventWise:
         all_content.update(self._column_contents)
         all_content['column_order'] = column_order
         all_content['hyperparameter_column_order'] = hyperparameter_column_order
+        if update_git_properties:
+            self.git_properties.update_latest()
+        # turn the gitdict into a list of tuples
+        # this prevents clashes with other parts of the code that assume everhting is
+        # basically an awkward array
+        gittuples = awkward.fromiter([(key, value) for key, value
+                                      in self.git_properties.gitdict.items()])
+        all_content['gitdict'] = gittuples
         awkward.save(path, all_content, mode='w')
 
     @classmethod
@@ -476,12 +543,16 @@ class EventWise:
         contents = awkward.load(path)
         columns = list(contents['column_order'])
         hyperparameter_columns = list(contents['hyperparameter_column_order'])
+        if 'gitdict' in contents:  # it will appear as a list of tuples
+            gitdict = {key: value for key, value in contents['gitdict']}
+        else:  # the file format is outdated
+            gitdict = 'old'
         new_eventWise = cls(*os.path.split(path), columns=columns,
                             hyperparameter_columns=hyperparameter_columns,
-                            contents=contents)
+                            contents=contents, gitdict=gitdict)
         return new_eventWise
 
-    def append(self, **kwargs):
+    def append(self, **new_content):
         """
         Append a new column to the eventwise.
         Will remove any existing column with the same name.
@@ -489,28 +560,28 @@ class EventWise:
 
         Parameters
         ----------
-        **kwargs : iterables
+        **new_content : iterables
             the parameter names are the names for the columns
             the parameter values are the column content
         """
-        new_content = kwargs
-        new_columns = sorted(kwargs.keys())
-        # enforce the first letter of each attrbute to be capital
-        New_columns = [c[0].upper() + c[1:] for c in new_columns]
-        new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
-        # check it's not in hyperparameters
-        for name in New_columns:
-            if name in self.hyperparameter_columns:
-                raise KeyError(f"Already have {name} as a hyperparameter column")
-        # delete existing duplicates
-        for name in New_columns:
-            if name in self.columns:
-                self.remove(name)
-        self.columns += New_columns
-        self._column_contents = {**self._column_contents, **new_content}
-        self.write()
+        if new_content:
+            new_columns = sorted(new_content.keys())
+            # enforce the first letter of each attrbute to be capital
+            New_columns = [c[0].upper() + c[1:] for c in new_columns]
+            new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
+            # check it's not in hyperparameters
+            for name in New_columns:
+                if name in self.hyperparameter_columns:
+                    raise KeyError(f"Already have {name} as a hyperparameter column")
+            # delete existing duplicates
+            for name in New_columns:
+                if name in self.columns:
+                    self.remove(name)
+            self.columns += New_columns
+            self._column_contents = {**self._column_contents, **new_content}
+            self.write(update_git_properties=True)
 
-    def append_hyperparameters(self, **kwargs):
+    def append_hyperparameters(self, **new_content):
         """
         Append a new hyperparameter to the eventwise.
         Will remove any existing hyperparameters with the same name.
@@ -518,26 +589,26 @@ class EventWise:
 
         Parameters
         ----------
-        **kwargs : objects
+        **new_content : objects
             the parameter names are the names for the hyperparameters
             the parameter values are the hyperparameters
         """
-        new_content = kwargs
-        new_columns = sorted(kwargs.keys())
-        # enforce the first letter of each attrbute to be capital
-        New_columns = [c[0].upper() + c[1:] for c in new_columns]
-        new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
-        # check it's not in columns
-        for name in New_columns:
-            if name in self.columns:
-                raise KeyError(f"Already have {name} as a column")
-        # delet duplicates
-        for name in New_columns:
-            if name in self.hyperparameter_columns:
-                self.remove(name)
-        self.hyperparameter_columns += New_columns
-        self._column_contents = {**self._column_contents, **new_content}
-        self.write()
+        if new_content:
+            new_columns = sorted(new_content.keys())
+            # enforce the first letter of each attrbute to be capital
+            New_columns = [c[0].upper() + c[1:] for c in new_columns]
+            new_content = {C: new_content[c] for C, c in zip(New_columns, new_columns)}
+            # check it's not in columns
+            for name in New_columns:
+                if name in self.columns:
+                    raise KeyError(f"Already have {name} as a column")
+            # delet duplicates
+            for name in New_columns:
+                if name in self.hyperparameter_columns:
+                    self.remove(name)
+            self.hyperparameter_columns += New_columns
+            self._column_contents = {**self._column_contents, **new_content}
+            self.write(update_git_properties=True)
 
     def remove(self, col_name):
         """

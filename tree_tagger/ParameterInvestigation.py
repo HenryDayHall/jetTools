@@ -39,7 +39,7 @@ def min_sep(u, v):
 metrics = OrderedDict(Euclidian = dict(metric='euclidean'),
                       L3 = dict(metric='minkowski', p=3),
                       L4 = dict(metric='minkowski', p=4),
-                      Taxicab = dict(metric='cityblock'),
+                      taxicab = dict(metric='cityblock'),
                       Braycurtis = dict(metric='braycurtis'),
                       Canberra = dict(metric='canberra'),
                       Min = dict(metric=min_sep),
@@ -519,7 +519,7 @@ def create_eigenvectors(eventWise, jet_params):
         eventWise.selected_index = event_n
         jets = FormJets.SpectralMean(eventWise, assign=False, dict_jet_params=jet_params)
         eigenvalues.append(np.array(jets.eigenvalues).flatten())
-        eigenvectors.append(np.copy(jets._eigenspace))
+        eigenvectors.append(np.copy(jets.eigenvectors))
         del jets
     return eigenvalues, eigenvectors
 
@@ -1119,7 +1119,7 @@ def cutoff_jets():
     jet_params = []
     # put the things to be iterated over into a fixed order
     fix_parameters = dict(ExpofPTPosition='input')
-    scan_parameters = dict(PhyDistance=['angular', 'Luclus', 'Taxicab'],
+    scan_parameters = dict(PhyDistance=['angular', 'Luclus', 'taxicab'],
                            ExpOfPTMultiplier=np.linspace(-1, 1, 9),
                            AffinityCutoff=[None] + [('distance', x) for x in np.linspace(0.5, 7.5, 8)]
                                           +[('knn', x) for x in range(1, 6)])
@@ -1127,7 +1127,7 @@ def cutoff_jets():
     ordered_values = [scan_parameters[key] for key in key_order]
     num_combinations = np.product([len(vals) for vals in ordered_values])
     for i, combination in enumerate(itertools.product(*ordered_values)):
-        print(f"{i/num_combinations:.1%}", end='\r', flush=True)
+        #print(f"{i/num_combinations:.1%}", end='\r', flush=True)
         # check if it's been done
         parameters = {**dict(zip(key_order, combination)), **fix_parameters}
         jet_name = "ExpofPT" + \

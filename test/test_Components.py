@@ -220,8 +220,10 @@ def test_EventWise():
         # from file
         blank_ew_clone = Components.EventWise.from_file(save_path)
         assert generic_equality_comp(blank_ew.columns, blank_ew_clone.columns)
-        contents = {k:v for k, v in blank_ew._column_contents.items() if not k.endswith("column_order")}
-        contents_clone = {k:v for k, v in blank_ew_clone._column_contents.items() if not k.endswith("column_order")}
+        contents = {k:v for k, v in blank_ew._column_contents.items()
+                    if k not in ["column_order", "hyperparameter_column_order", "gitdict"]}
+        contents_clone = {k:v for k, v in blank_ew_clone._column_contents.items()
+                          if k not in ["column_order", "hyperparameter_column_order", "gitdict"]}
         assert generic_equality_comp(contents, contents_clone)
         # eq
         assert blank_ew == blank_ew_clone
