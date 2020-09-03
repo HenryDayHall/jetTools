@@ -252,7 +252,7 @@ class git_properties:
         try:
             self.latest_branch, self.latest_time, self.latest_message = self._get_current()
             self.outdated = False
-        except pygit2.GitError:
+        except (pygit2.GitError, KeyError):
             self.outdated = True
             print("Couldn't get git commit, update manually" + 
                   " with eventWise.write(update_git_properties=True)")
