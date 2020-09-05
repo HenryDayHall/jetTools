@@ -426,14 +426,14 @@ fix_Best1a = dict(ExpofPTFormat='Luclus',
                  PhyDistance='angular',
                  Laplacien='unnormalised',
                  Eigenspace='normalised',
-                 StoppingConditon='standard')
+                 StoppingCondition='standard')
 
 fix_Best1b = dict(ExpofPTFormat='Luclus',
                  ExpofPTPosition='eigenspace',
                  PhyDistance='angular',
                  Laplacien='unnormalised',
                  Eigenspace='unnormalised',
-                 StoppingConditon='standard')
+                 StoppingCondition='standard')
 
 scan_Best2 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
                   ExpofPTMultiplier = [-0.7, -1.],
@@ -445,7 +445,7 @@ fix_Best2 = dict(ExpofPTFormat='Luclus',
                   ExpofPTPosition='eigenspace',
                   PhyDistance='angular',
                   Laplacien='unnormalised',
-                  StoppingConditon='standard')
+                  StoppingCondition='standard')
 
 # Spectral mean normed eigenspace -------------------------
 scan_SpectralMean1 = dict(DeltaR = np.linspace(0.1, 0.9, 5),
