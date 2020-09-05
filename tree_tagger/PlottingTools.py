@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 import numpy as np
+import os
 
 def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, font_size=12, additional_text=None):
     """
@@ -101,3 +102,35 @@ def hide_axis(ax):
     ax.set_frame_on(False)
     ax.axes.get_xaxis().set_visible(False)
     ax.axes.get_yaxis().set_visible(False)
+
+
+def text_table(ax, content, cell_fmt=None):
+    table_sep = '|'
+    table = []
+    if cell_fmt is None:
+        cell_fmt = "17.17"
+    for row in content:
+        table.append([])
+        for x in row:
+            try:
+                table[-1].append(f"{x:{cell_fmt}}")
+            except ValueError:
+                table[-1].append(f"{x:{cell_fmt[0]}}")
+            except TypeError:
+                table[-1].append(f"{str(x):{cell_fmt}}")
+        table[-1] = table_sep.join(table[-1])
+    table = os.linesep.join(table)
+    ax.text(0, 0, table, fontdict={"family": 'monospace'})
+
+
+def make_inputs_table(eventWise, jet_names, table_ax, jet_inputs=None):
+    if jet_inputs is None:
+        jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
+                      "Laplacien", "ExpOfPTMultiplier"]
+    # construct a text table
+    table_content = [[" "] + jet_inputs]
+    table_content += [[name] + [getattr(eventWise, name+'_'+inp,  "not found") for inp in jet_inputs]
+                      for name in jet_names]
+    text_table(table_ax, table_content)
+    hide_axis(table_ax)
+    return table_content, jet_inputs

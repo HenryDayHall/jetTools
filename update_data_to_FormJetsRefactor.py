@@ -3,8 +3,10 @@ import os
 from tree_tagger import Components, FormJets
 # grab the datasets
 dir_name = "megaIgnore"
-file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name) if name.endswith('.awkd')]
+#file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name) if name.endswith('.awkd')]
+file_names = ["best.awkd"]
 num_names = len(file_names)
+
 
 for i, name in enumerate(file_names):
     try:
@@ -25,16 +27,16 @@ for i, name in enumerate(file_names):
 
     # add parameters to datasets
     # change Luclus to angular and add Luclus
+    new_hyper = {}
     for name in FormJets.get_jet_names(eventWise):
-        new_hyper = {}
-        is_luclus = getattr(eventWise, name+"_PhyDistance").lower() == 'luclus'
+        is_luclus = getattr(eventWise, name+"_PhyDistance") == 'Luclus'
         if is_luclus:
-            new_hyper[name+"_AffinityType"] = 'angular'
+            new_hyper[name+"_PhyDistance"] = 'angular'
             new_hyper[name+"_ExpofPTFormat"] = 'Luclus'
         else:
             new_hyper[name+"_ExpofPTFormat"] = 'min'
         new_hyper[name+"_Eigenspace"] = 'unnormalised'
-        eventWise.append_hyperparameters(**new_hyper)
+    eventWise.append_hyperparameters(**new_hyper)
 
         
 

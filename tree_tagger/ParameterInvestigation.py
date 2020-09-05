@@ -14,8 +14,6 @@ import awkward
 from matplotlib import pyplot as plt
 import matplotlib
 
-# general ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 # a metric function
 def min_sep(u, v):
     """
@@ -197,31 +195,6 @@ def closest_relative(eventWise):
 
 
 # Plotting tools  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def make_inputs_table(eventWise, jet_names, table_ax, jet_inputs=None):
-    if jet_inputs is None:
-        jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
-                      "Laplacien", "ExpOfPTMultiplier"]
-    # construct a text table
-    table_content = [[" "] + jet_inputs]
-    table_content += [[name] + [getattr(eventWise, name+'_'+inp) for inp in jet_inputs]
-                      for name in jet_names]
-    table_sep = '|'
-    table = []
-    cell_fmt = "17.17"
-    for row in table_content:
-        table.append([])
-        for x in row:
-            try:
-                table[-1].append(f"{x:{cell_fmt}}")
-            except ValueError:
-                table[-1].append(f"{x:{cell_fmt[0]}}")
-            except TypeError:
-                table[-1].append(f"{str(x):{cell_fmt}}")
-        table[-1] = table_sep.join(table[-1])
-    table = os.linesep.join(table)
-    table_ax.text(0, 0, table, fontdict={"family": 'monospace'})
-    PlottingTools.hide_axis(table_ax)
-    return table, jet_inputs
 
 # Physical distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -676,7 +649,7 @@ def plot_eig_event(eventWise, event_num, *jet_names):
     plot_arr = np.vstack((ax_arr[1:, :2], ax_arr[1:, 2:]))
     # add the table
     table_ax = ax_arr[0, 0]
-    make_inputs_table(eventWise, jet_names, table_ax)
+    PlottingTools.make_inputs_table(eventWise, jet_names, table_ax)
     for blank_ax in ax_arr[0, 1:]:
         PlottingTools.hide_axis(blank_ax)
     # now the other axis should contain the plots
@@ -715,7 +688,7 @@ def plot_eig_overall(eventWise, *jet_names):
     # set up the axis
     fig, ax_arr = plt.subplots(2, 2)
     PlottingTools.hide_axis(ax_arr[0, 1])
-    make_inputs_table(eventWise, jet_names, ax_arr[0][0])
+    PlottingTools.make_inputs_table(eventWise, jet_names, ax_arr[0][0])
     # get the scores
     num_metrics = len(eig_metric_names)
     auc_scores = np.empty((num_jets, num_metrics), dtype=float)
@@ -1088,7 +1061,7 @@ def plot_cutoff_event(eventWise, event_num, jet_names=None):
     fig, ax_arr = plt.subplots(1+n_rows, n_cols, sharex=True, sharey=True)
     # use the first row to discribe the jets
     jet_inputs = ["PhyDistance", "ExpOfPTMultiplier", "AffinityCutoff"]
-    make_inputs_table(eventWise, jet_names, ax_arr[0, 0], jet_inputs)
+    PlottingTools.make_inputs_table(eventWise, jet_names, ax_arr[0, 0], jet_inputs)
     for blank_ax in ax_arr[0, 1:]:
         PlottingTools.hide_axis(blank_ax)
     jets_axis = ax_arr[1:].flatten()

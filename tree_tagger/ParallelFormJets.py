@@ -414,18 +414,40 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
+# Spectral best ----------------------
 
-scan_SpectralFull = dict(DeltaR = np.linspace(0.05, 0.2, 4),
-                         ExpofPTMultiplier = np.linspace(0, 0.6, 4),
-                         AffinityCutoff = [('distance', 9), None],
-                         PhyDistance = ['Luclus', 'normed'],
-                         NumEigenvectors = [3, 5, 7])
-fix_SpectralFull = dict(ExpofPTPosition='eigenspace',
-                        Laplacien='symmetric',
-                        AffinityType='exponent2',
-                        StoppingConditon='standard')
+scan_Best1 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
+                  ExpofPTMultiplier = [0, -0.3, -1.],
+                  AffinityCutoff = [('knn', 3), None],
+                  AffinityType = ['inverse', 'exponent2'],
+                  NumEigenvectors = [8, np.inf])
+fix_Best1a = dict(ExpofPTFormat='Luclus',
+                 ExpofPTPosition='eigenspace',
+                 PhyDistance='angular',
+                 Laplacien='unnormalised',
+                 Eigenspace='normalised',
+                 StoppingConditon='standard')
 
-# Spectral mean -------------------------
+fix_Best1b = dict(ExpofPTFormat='Luclus',
+                 ExpofPTPosition='eigenspace',
+                 PhyDistance='angular',
+                 Laplacien='unnormalised',
+                 Eigenspace='unnormalised',
+                 StoppingConditon='standard')
+
+scan_Best2 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
+                  ExpofPTMultiplier = [-0.7, -1.],
+                  AffinityCutoff = [('knn', 3), None],
+                  NumEigenvectors = [2, 4, np.inf],
+                  Eigenspace=['unnormalised', 'normalised'])
+fix_Best2 = dict(ExpofPTFormat='Luclus',
+                  AffinityType='linear',
+                  ExpofPTPosition='eigenspace',
+                  PhyDistance='angular',
+                  Laplacien='unnormalised',
+                  StoppingConditon='standard')
+
+# Spectral mean normed eigenspace -------------------------
 scan_SpectralMean1 = dict(DeltaR = np.linspace(0.1, 0.9, 5),
                           ExpofPTMultiplier = [0.0, 0.2, 0.4],
                           AffinityCutoff = [None, ('knn', 3)],

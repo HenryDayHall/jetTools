@@ -9,7 +9,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower, JetQuality
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower, JetQuality, PlottingTools
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -316,21 +316,22 @@ def nan_filter_table(all_cols, variable_cols, score_cols, table):
             except TypeError:
                 nan_mask[-1].append(False)
     nan_mask = np.array(nan_mask)
-    # drop any rows where all score_cols are nan
-    score_nan = nan_mask[:, [all_cols.index(name) for name in score_cols]]
-    all_nan = np.all(score_nan, axis=1)
-    table = table[~all_nan]
-    nan_mask = nan_mask[~all_nan]
-    # then drop any cols where all values are np.nan
-    drop_cols = np.fromiter((np.all(nan_mask[:, i]) for i, name in enumerate(all_cols)),
-                            dtype=bool)
-    for i in np.where(drop_cols)[0][::-1]:
-        name = all_cols.pop(i)
-        if name in variable_cols:
-            del variable_cols[variable_cols.index(name)]
-        elif name in score_cols:
-            del score_cols[score_cols.index(name)]
-    table = awkward.fromiter([row[~drop_cols] for row in table])
+    if np.any(nan_mask):
+        # drop any rows where any score_cols are nan
+        score_nan = nan_mask[:, [all_cols.index(name) for name in score_cols]]
+        any_nan = np.any(score_nan, axis=1)
+        table = table[~any_nan]
+        nan_mask = nan_mask[~any_nan]
+        # then drop any cols where all values are np.nan
+        drop_cols = np.fromiter((np.all(nan_mask[:, i]) for i, name in enumerate(all_cols)),
+                                dtype=bool)
+        for i in np.where(drop_cols)[0][::-1]:
+            name = all_cols.pop(i)
+            if name in variable_cols:
+                del variable_cols[variable_cols.index(name)]
+            elif name in score_cols:
+                del score_cols[score_cols.index(name)]
+        table = awkward.fromiter([row[~drop_cols] for row in table])
     return all_cols, variable_cols, score_cols, table
     
 def quality_filter_table(all_cols, variable_cols, score_cols, table):
@@ -361,13 +362,74 @@ def quality_filter_table(all_cols, variable_cols, score_cols, table):
     return all_cols, variable_cols, score_cols, table
 
 
+def plot_class_bests(eventWise_paths, save_prefix=None):
+    all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
+    variable_cols = ['jet_class'] + variable_cols
+    class_col = all_cols.index("jet_class")
+    jet_col = all_cols.index("jet_name")
+    eventWise_col = all_cols.index("eventWise_name")
+    inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
+                      "AveDistanceRapidity", "AveBGMassRatio"]
+    output1 = [["jet class"] + score_cols]
+    # to identify the best in each score type keep numeric values
+    numeric_scores = []
+    row_nums = []
+    for class_name in set(table[:, class_col]):
+        row_indices, rows = zip(*[(i, row) for i, row in enumerate(table)
+                                  if row[class_col] == class_name])
+        jet_names = [class_name]
+        file_names = ["~  in   ~"]
+        scores =     ["~ score ~"]
+        numeric_scores.append([])
+        row_nums.append([])
+        for score_name in score_cols:
+            class_scores = [row[all_cols.index(score_name)] for row in rows]
+            if score_name in inverted_names:
+                best = np.nanargmin(class_scores)
+                numeric_scores[-1].append(-class_scores[best])
+            else:
+                best = np.nanargmax(class_scores)
+                numeric_scores[-1].append(class_scores[best])
+            row_nums[-1].append(row_indices[best])
+            scores.append(f"{class_scores[best]:.3g}")
+            best_row = rows[best]
+            jet_names.append(best_row[jet_col])
+            file_names.append(best_row[eventWise_col][7:])
+        output1 += [jet_names, file_names, scores]
+    # now identify and label the best
+    numeric_scores = np.array(numeric_scores)
+    # for each thign that was the best in critera, 
+    # make another table of all it's other scores
+    output2 = [["jet_name"] + score_cols]
+    for col, criteria in enumerate(numeric_scores.T):
+        # mark the best in the first tbale
+        best = np.nanargmax(criteria)
+        #    header+ 3 rows per class+row 2 in class block
+        output_row = 1    + 3*best          + 2
+        #             header
+        output1[output_row][col+1] += "*best*"
+        # add the best to the secodn table
+        jet_row = table[row_nums[best][col]]
+        jet_scores = [f"{jet_row[all_cols.index(name)]:.4g}" for name in score_cols]
+        jet_scores[col] += "*best*"
+        output2.append([jet_row[all_cols.index("jet_name")]] + jet_scores)
+    fig, (ax1, ax2) = plt.subplots(2, 1)
+    PlottingTools.hide_axis(ax1)
+    PlottingTools.hide_axis(ax2)
+    PlottingTools.text_table(ax1, output1, "22.22")
+    PlottingTools.text_table(ax2, output2, "20.20")
+    if save_prefix:
+        plt.savefig(save_prefix+"_class_bests.png")
+    return output1, output2
+
+
 def plot_grid(all_cols, plot_column_names, plot_row_names, table):
     # a list of cols where the axis should be inverted so that up is still better
     inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
                       "AveDistanceRapidity", "AveBGMassRatio"]
     # a list of cols where the axis must be constructed
-    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition", "AffinityType", "AffinityCutoff",
-                   "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore",
+    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition", "ExpofPTFormat", "AffinityType", "AffinityCutoff",
+            "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore", "Eigenspace",
                    "BaseJump"]
     n_cols = len(plot_column_names)
     n_rows = len(plot_row_names)
@@ -650,8 +712,21 @@ if __name__ == '__main__':
         path = True
         while path:
             path = InputTools.get_file_name(f"EventWise file {len(ew_paths)+1}? (empty to complete list) ").strip()
-            ew_paths.append(path)
-        ew_paths.pop()  # the last one is empty
+            if path.endswith(".awkd"):
+                ew_paths.append(path)
+            elif os.path.isdir(path):
+                inside = [os.path.join(path, name) for name in os.listdir(path)
+                          if name.endswith("awkd") and name.startswith("iridis")]
+                ew_paths += inside
+                #inside = [os.path.join(path, name) for name in os.listdir(path)
+                #          if name.endswith("awkd")]
+                #for path in inside:
+                #    if InputTools.yesNo_question(f"Add {path}? "):
+                #        ew_paths.append(path)
+                if not inside:
+                    print(f"No awkd found in {path}")
+            elif path:
+                print(f"Error {path} not awkd or folder. ")
         save_prefix = InputTools.get_dir_name("Save prefix? (empty to display) ").strip()
         if not save_prefix:
             save_prefix = None
@@ -663,6 +738,8 @@ if __name__ == '__main__':
                 score_corrilation(ew_paths, save_prefix)
             elif InputTools.yesNo_question("Plot input corrilations? "):
                 input_corrilation(ew_paths, save_prefix)
+            elif InputTools.yesNo_question("Plot class bests? "):
+                plot_class_bests(ew_paths, save_prefix)
             again = InputTools.yesNo_question("Plot something else? ")
 
 
