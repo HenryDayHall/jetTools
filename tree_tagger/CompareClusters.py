@@ -208,6 +208,20 @@ def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     return awkward.fromiter(jet_idxs)
 
 
+def remove_scores(eventWise):
+    suffixes_to_remove = ["DistancePT", "DistancePhi", "DistanceRapidity", "QualityWidth",
+                          "QualityFraction", "PercentFound", "BGMassRatio", "SignalMassRatio"]
+    if isinstance(eventWise, str):
+        eventWise = Components.EventWise.from_file(eventWise)
+    remove_cols = [name for name in eventWise.columns + eventWise.hyperparameter_columns
+                   if np.any([name.endswith(suf) for suf in suffixes_to_remove])]
+    if remove_cols:
+        for name in remove_cols:
+            eventWise.remove(name)
+        eventWise.write()
+
+    
+
 def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, overwrite=True, silent=False):
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
@@ -277,16 +291,18 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=True, leave_
     n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
     if n_threads < 1:
         n_threads = 1
-    wait_time = 30*60  # in seconds
+    wait_time = 0.9*(end_time - time.time())  # in seconds
     # note that the longest wait will be n_cores time this time
     print("Running on {} threads".format(n_threads))
     job_list = []
     # now each segment makes a worker
-    args = [(path, None, end_time, None, overwrite, True)
-            for path in eventWise_paths[:n_threads]]
+    #args = [(path, None, end_time, None, overwrite, True)
+    #        for path in eventWise_paths]
+    args = [(path,) for path in eventWise_paths]
     # set up some initial jobs
     for _ in range(n_threads):
-        job = multiprocessing.Process(target=append_scores, args=args.pop())
+        #job = multiprocessing.Process(target=append_scores, args=args.pop())
+        job = multiprocessing.Process(target=remove_scores, args=args.pop())
         job.start()
         job_list.append(job)
     processed = 0
@@ -294,6 +310,9 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=True, leave_
         job = job_list[dataset_n]
         job.join(wait_time)
         processed += 1
+        # check if we shoudl stop
+        if end_time - time.time() < wait_time/10:
+            break
         if args:  # make a new job
             job = multiprocessing.Process(target=append_scores, args=args.pop())
             job.start()
@@ -308,6 +327,8 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=True, leave_
         print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
         return False
     print("All processes ended")
+    remaining_paths = eventWise_paths[-len(args):]
+    print(f"Num remaining jobs {len(remaining_paths)}")
     return True
 
 # plotting code
