@@ -223,7 +223,7 @@ class git_properties:
             self.update_latest()
             self.initial_branch = self.latest_branch
             self.initial_time = self.latest_time
-            outdated = False
+            self.outdated = False
         elif 'initial_branch' in gitdict:
             self.initial_branch = gitdict['initial_branch']
             self.initial_time = gitdict.get('initial_time', None)
@@ -235,7 +235,7 @@ class git_properties:
             # if the initial time is not known, this is a reasonable estimate
             self.initial_branch = "master"
             self.initial_time = 1598960722
-            outdated = True
+            self.outdated = True
         else:  # gitdict has no recognised form
             raise KeyError
 
