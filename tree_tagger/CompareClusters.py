@@ -296,13 +296,13 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=True, leave_
     print("Running on {} threads".format(n_threads))
     job_list = []
     # now each segment makes a worker
-    #args = [(path, None, end_time, None, overwrite, True)
-    #        for path in eventWise_paths]
-    args = [(path,) for path in eventWise_paths]
+    args = [(path, None, end_time, None, overwrite, True)
+            for path in eventWise_paths]
+    #args = [(path,) for path in eventWise_paths]
     # set up some initial jobs
     for _ in range(n_threads):
-        #job = multiprocessing.Process(target=append_scores, args=args.pop())
-        job = multiprocessing.Process(target=remove_scores, args=args.pop())
+        job = multiprocessing.Process(target=append_scores, args=args.pop())
+        #job = multiprocessing.Process(target=remove_scores, args=args.pop())
         job.start()
         job_list.append(job)
     processed = 0
