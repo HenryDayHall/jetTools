@@ -160,7 +160,7 @@ def add_tag_particles(eventWise, silent=False):
     """
     eventWise.selected_index = None
     name = "TagIndex"
-    n_events = len(eventWise.X)
+    n_events = len(eventWise.MCPID)
     tags = list(getattr(eventWise, name, []))
     start_point = len(tags)
     if start_point >= n_events:
@@ -555,13 +555,14 @@ def add_mass_share(eventWise, jet_name, batch_length=100, silent=False, append=T
         jets_idxs = getattr(eventWise, jet_name + "_InputIdx")
         tags_here = [[] for _ in jets_idxs]
         mass2_here = [[] for _ in jets_idxs]
+        this_tag = np.zeros(len(jets_idxs))
         if len(tags_here) > 0:
+            this_tag[:] = 0.
             energies = eventWise.Energy
             pxs = eventWise.Px
             pys = eventWise.Py
             pzs = eventWise.Pz
             sourceidx = eventWise.JetInputs_SourceIdx.tolist()
-            this_tag = np.zeros(len(sourceidx))
             for b_idx in eventWise.BQuarkIdx:
                 b_decendants = {sourceidx.index(d) for d in
                                 FormShower.descendant_idxs(eventWise, b_idx)
@@ -572,7 +573,7 @@ def add_mass_share(eventWise, jet_name, batch_length=100, silent=False, append=T
                     mass2 = np.sum(energies[b_in_jet])**2 - np.sum(pxs[b_in_jet])**2 - \
                             np.sum(pys[b_in_jet])**2 - np.sum(pzs[b_in_jet])**2
                     mass2_here[jet_n].append(mass2)
-                    this_tag[jet_n] = mass2
+                    this_tag[jet_n] = mass2  # IndexError
                 if (this_tag > 0).any(): # if all the inheritances are 0, then no tags
                     # decide who gets the tag
                     tags_here[np.argmax(this_tag)].append(b_idx)

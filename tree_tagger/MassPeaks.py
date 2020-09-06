@@ -1,4 +1,5 @@
 import numpy as np
+import awkward
 import itertools
 from matplotlib import pyplot as plt
 import matplotlib
@@ -80,7 +81,7 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT", jet_pt_cut=Non
 
     """
     assert eventWise.selected_index is not None
-    tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_Tags')])[0]
+    tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_MTags')])[0]
     tagged_idxs = filter(eventWise, jet_name, tagged_idxs, track_cut, jet_pt_cut)
     input_name = jet_name + '_InputIdx'
     root_name = jet_name + '_RootInputIdx'
@@ -194,7 +195,7 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
 
     """
     assert eventWise.selected_index is not None
-    tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_Tags')])[0]
+    tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_MTags')])[0]
     tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
     num_tags = len(tagged_idxs)
     if num_tags < 2:
@@ -282,7 +283,7 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None):
         if event_n % 100 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        tagged_jets = np.where([len(t) for t in getattr(eventWise, jet_name + "_Tags")])[0]
+        tagged_jets = np.where([len(t) for t in getattr(eventWise, jet_name + "_MTags")])[0]
         tagged_jets = filter(eventWise, jet_name, tagged_jets, track_cut=2, min_jet_PT=jet_pt_cut)
         all_masses.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
     return all_masses
@@ -317,7 +318,7 @@ def plot_smallest_angles(eventWise, jet_name, jet_pt_cut, show=True):
         plt.show()
 
 
-def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_cut=None):
+def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_cut=None, seperate_multi_tagged=False):
     """
     Gather all possible pairings of jets by PT order.
     Highest PT first.
@@ -339,6 +340,8 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     max_tag_angle : float
         The maximum deltaR betweeen a tag and its jet
          (Default value = 0.8)
+    seperate_multi_tagged: bool
+        should multi tagged be put in a seperate list?
 
     Returns
     -------
@@ -351,17 +354,20 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
         Inner list may not have the same length as the number of events
         beuase for some event not all pairings are possble.
 
+
     """
     eventWise.selected_index = None
-    if jet_name + "_Tags" not in eventWise.columns:
+    if jet_name + "_MTags" not in eventWise.columns:
         # jet_pt_cut = None becuase we don't want to cut before tagging
         TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf, jet_pt_cut=None)
+        TrueTag.add_mass_share(eventWise, jet_name, np.inf)
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
     pairs = [list(pair) for pair in itertools.combinations(range(4), 2)]
     pair_masses = [[] for _ in pairs]
     all_masses = []
+    multi_tagged_masses = []
     for event_n in range(n_events):
         if event_n % 100 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
@@ -409,13 +415,14 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
     """
     eventWise.selected_index = None
     if tag_type is None:
-        tag_type = "_Tags"
+        tag_type = "_MTags"
     tag_name = jet_name + tag_type
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     # becuase we will use these to take indices from a numpy array they need to be lists 
     # not tuples
     light_higgs_pid = 25
-    pairs = []
+    pair1 = []
+    pair2 = []
     four_tags = []
     for event_n in range(n_events):
         if event_n % 100 == 0:
@@ -427,6 +434,8 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
         if len(flat_tags) == 4:
             tagged_jets = [i for i, t in enumerate(tags) if len(t)]
             four_tags.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
+        else:
+            four_tags.append(0.)
         # now see if there are any same h pairs
         if len(flat_tags) > 0:
             parents = []
@@ -442,12 +451,142 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
                 else:  # if we his this we didn't hit the break clause
                     parents.append(-1)
             # check through the parents
+            masses = []
             for i, p in enumerate(parents):
+                tag = flat_tags[i]
                 # if there is another of these in the list then we have both decendants
                 if p in parents[i+1:]:
-                    jet_idxs = [i for i, t in enumerate(tags) if p in t]
-                    pairs.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
-    return pairs, four_tags
+                    jet_idxs = [i for i, t in enumerate(tags) if tag in t]
+                    masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
+            mass1 = mass2 = 0
+            if len(masses) == 2:
+                mass2, mass1 = sorted(masses)
+            elif len(masses) == 1:
+                mass1 = masses[0]
+            pair1.append(mass1)
+            pair2.append(mass2)
+    return four_tags, pair1, pair2
+
+
+def plot_correct_pairs(eventWise, jet_names, show=True):
+    """
+    Plot all possible pairings of jets by PT order.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    
+    """
+    fig, ax_array = plt.subplots(1, 3)
+    # get lobal inputs
+    eventWise.selected_index = None
+    heavy, light1, light2 = descendants_masses(eventWise)
+    n_events = len(getattr(eventWise, jet_names[0]+'_InputIdx'))
+    # prepare the hist parameters
+    cmap = matplotlib.cm.get_cmap('tab10')
+    colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
+    hist_params = dict(bins=40, density=False, histtype='step')
+    other_params = dict(bins=40, density=False, histtype='stepfilled', color='gray', alpha=0.8)
+    # get the jet data
+    four_tag_masses = []
+    pair1_masses = []
+    pair2_masses = []
+    for name in jet_names:
+        four_masses, pair1, pair2 = all_h_combinations(eventWise, name)
+        four_tag_masses.append(four_masses)
+        pair1_masses.append(pair1)
+        pair2_masses.append(pair2)
+
+    hist_params['range'] = other_params['range'] = np.nanmin(heavy), np.nanmax(heavy) + 20
+    ax_array[0].set_title(f"Heavy higgs")
+    ax_array[0].hist(heavy, label="heavy decendants", **other_params)
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax_array[0].hist(four_tag_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax_array[0].set_xlabel("Mass (GeV)")
+    ax_array[0].set_ylabel(f"Counts in {n_events}")
+    ax_array[0].legend()
+    ax_array[0].set_xlim(hist_params['range'])
+
+    ax_array[1].set_title(f"Better observed light higgs")
+    hist_params['range'] = other_params['range'] = np.nanmin(light1), np.nanmax(light1) + 10
+    ax_array[1].hist(light1, label="light decendants", **other_params)
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax_array[1].hist(pair1_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax_array[1].set_xlabel("Mass (GeV)")
+    ax_array[1].set_ylabel(f"Counts in {n_events}")
+    ax_array[1].legend()
+    ax_array[1].set_xlim(hist_params['range'])
+
+    ax_array[2].set_title(f"Less observed light higgs")
+    hist_params['range'] = other_params['range'] = np.nanmin(light2), np.nanmax(light2) + 10
+    ax_array[2].hist(light2, label="light decendants", **other_params)
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax_array[2].hist(pair2_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax_array[2].set_xlabel("Mass (GeV)")
+    ax_array[2].set_ylabel(f"Counts in {n_events}")
+    ax_array[2].legend()
+    ax_array[2].set_xlim(hist_params['range'])
+    if show:
+        plt.show()
+    return four_tag_masses, pair1_masses, pair2_masses
+
+
+def plot_all_jets(eventWise, jet_names, show=True):
+    """
+    Plot all possible pairings of jets by PT order.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    
+    """
+    fig, ax = plt.subplots(1, 1)
+    # get lobal inputs
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_names[0]+'_InputIdx'))
+    # prepare the hist parameters
+    cmap = matplotlib.cm.get_cmap('tab10')
+    colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
+    hist_params = dict(bins=120, density=False, histtype='step')
+    # get the jet data
+    all_masses = []
+    for name in jet_names:
+        all_masses.append(all_jet_masses(eventWise, name))
+    hist_params['range'] = np.nanmin(all_masses[0]), np.nanmax(all_masses[0])
+    ax.set_title(f"Total b-jet mass")
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax.hist(all_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax.set_xlabel("Mass (GeV)")
+    ax.set_ylabel(f"Counts in {n_events}")
+    ax.legend()
+    height = 800
+    ax.vlines(40, 0, height, ls='--', colors='r')
+    ax.text(40+2., 0.5*height, "Light higgs",
+                  rotation='vertical', c='r')
+    ax.vlines(125, 0, height, ls='--', colors='r')
+    ax.text(125.+2, 0.5*height, "Heavy higgs",
+                  rotation='vertical', c='r')
+    if show:
+        plt.show()
+
 
 def plot_PT_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angle=0.8):
     """
@@ -472,10 +611,10 @@ def plot_PT_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angl
     input_names = ["NumEigenvectors", "AffinityType", "ExpofPTMultiplier"]
     # get lobal inputs
     eventWise.selected_index = None
-    heavy, light = descendants_masses(eventWise)
+    heavy, light1, light2 = descendants_masses(eventWise)
     #PlottingTools.make_inputs_table(eventWise, jet_names, ax_array[2, 1], input_names)
     n_events = len(getattr(eventWise, jet_names[0]+'_InputIdx'))
-    labels = jet_names + ["heavy descendants", "light descendants"]
+    labels = jet_names + ["heavy descendants", "light descendants 1", "light descendants 2"]
     cmap = matplotlib.cm.get_cmap('gist_rainbow')
     colours = [cmap(x) for x in np.linspace(0, 1, len(labels))]
     all_masses = []
@@ -485,9 +624,9 @@ def plot_PT_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angl
         all_masses.append(masses)
         for i in range(6):
             all_pair_masses[i].append(pair_masses[i])
-    all_masses += [heavy, light]
+    all_masses += [heavy, light1, light2]
     for i in range(6):
-        all_pair_masses[i] += [heavy, light]
+        all_pair_masses[i] += [heavy, light1, light2]
     ax_array[0, 0].hist(all_masses, bins=100, density=True, histtype='step', label=labels, color=colours)
     ax_array[0, 0].set_xlabel("Mass (GeV)")
     ax_array[0, 0].set_ylabel(f"Density")
@@ -540,7 +679,7 @@ def all_doubleTagged_jets(eventWise, jet_name, jet_pt_cut=None):
         if event_n % 10 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        tagged_idxs = np.where([len(t) == 2 for t in getattr(eventWise, jet_name + '_Tags')])[0]
+        tagged_idxs = np.where([len(t) == 2 for t in getattr(eventWise, jet_name + '_MTags')])[0]
         tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
         if len(tagged_idxs) == 0:
             continue
@@ -594,15 +733,23 @@ def descendants_masses(eventWise, use_jetInputs=True):
     -------
     heavy_descendants_mass : list of float
         list of masses decendent from the heavy higgs
-    light_descendants_mass : list of float
-        list of masses decendent from the light higgs
+    light_descendants1_mass : list of float
+        list of larger masses decendent from the light higgs
+    light_descendants2_mass : list of float
+        list of smaller masses decendent from the light higgs
 
     """
     eventWise.selected_index = None
+    if "HeavyDecendentsMass" in eventWise.columns:
+        heavy_descendants_mass = eventWise.HeavyDecendentsMass
+        light_descendants1_mass = eventWise.Light1DecendentsMass
+        light_descendants2_mass = eventWise.Light2DecendentsMass
+        return heavy_descendants_mass, light_descendants1_mass, light_descendants2_mass
     heavy_higgs_pid = 35
     heavy_descendants_mass = []
     light_higgs_pid = 25
-    light_descendants_mass = []
+    light_descendants1_mass = []
+    light_descendants2_mass = []
     n_events = len(eventWise.MCPID)
     for event_n in range(n_events):
         if event_n % 100 == 0:
@@ -619,6 +766,8 @@ def descendants_masses(eventWise, use_jetInputs=True):
             heavy_descendants = heavy_descendants.intersection(eventWise.JetInputs_SourceIdx)
         if heavy_descendants:
             heavy_descendants_mass.append(cluster_mass(eventWise, heavy_descendants))
+        else:
+            heavy_descendants_mass.append(0.)
         # we expect two light higgs
         light_idxs = np.where(eventWise.MCPID == light_higgs_pid)[0]
         light_idxs = {Components.last_instance(eventWise, lidx) for lidx in light_idxs}
@@ -628,17 +777,22 @@ def descendants_masses(eventWise, use_jetInputs=True):
             # select only particles that have already been used in sourceidx
             light_descendants = [ldec.intersection(eventWise.JetInputs_SourceIdx) for ldec in light_descendants]
         # we also expect that the combination of the light descendants should be the heavy descendants
-        all_light_descendants = light_descendants[0].union(light_descendants[1])
-        assert all_light_descendants == heavy_descendants
-        light_descendants_mass += [cluster_mass(eventWise, ldec) for ldec in light_descendants if ldec]
-    return heavy_descendants_mass, light_descendants_mass
+        light_mass = sorted([cluster_mass(eventWise, ldec) if ldec else 0.
+                             for ldec in light_descendants])
+        light_descendants1_mass.append(light_mass[1])
+        light_descendants2_mass.append(light_mass[0])
+    eventWise.append(HeavyDecendentsMass= awkward.fromiter(heavy_descendants_mass),
+                     Light1DecendentsMass= awkward.fromiter(light_descendants1_mass),
+                     Light2DecendentsMass= awkward.fromiter(light_descendants2_mass))
+    return heavy_descendants_mass, light_descendants1_mass, light_descendants2_mass
 
 if __name__ == '__main__':
     from tree_tagger import Components
     ew = Components.EventWise.from_file("best.awkd")
     jet_names = FormJets.get_jet_names(ew)
     
-    plot_PT_pairs(ew, jet_names, True)
+    #plot_PT_pairs(ew, jet_names, True)
+    plot_correct_pairs(ew, jet_names, True)
     input()
 
 

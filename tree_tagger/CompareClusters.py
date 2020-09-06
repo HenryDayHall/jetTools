@@ -1,4 +1,5 @@
 """ compare two jet clustering techniques """
+import multiprocessing
 import tabulate
 import awkward
 import ast
@@ -207,7 +208,7 @@ def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     return awkward.fromiter(jet_idxs)
 
 
-def append_scores(eventWise, dijet_mass=None, duration=np.inf):
+def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, overwrite=True, silent=False):
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
     if dijet_mass is None:
@@ -218,14 +219,16 @@ def append_scores(eventWise, dijet_mass=None, duration=np.inf):
     names = FormJets.get_jet_names(eventWise)
     num_names = len(names)
     save_interval = 10
-    end_time = duration + time.time()
+    if end_time is None:
+        end_time = duration + time.time()
     if "DetectableTag_Idx" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise)
     for i, name in enumerate(names):
         # check if it has already been scored
-        if name + "_AveDistancePT" in eventWise.hyperparameter_columns:
+        if name + "_AveDistancePT" in eventWise.hyperparameter_columns and not overwrite:
             continue
-        print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
+        if not silent:
+            print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
 
         # if we reach here the jet still needs a score
         try:
@@ -266,6 +269,46 @@ def append_scores(eventWise, dijet_mass=None, duration=np.inf):
             break
     eventWise.append_hyperparameters(**new_hyperparameters)
     eventWise.append(**new_contents)
+
+
+def multiprocess_append_scores(eventWise_paths, end_time, overwrite=True, leave_one_free=True):
+    n_paths = len(eventWise_paths)
+    # cap this out at 20, more seems to create a performance hit
+    n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
+    if n_threads < 1:
+        n_threads = 1
+    wait_time = 30*60  # in seconds
+    # note that the longest wait will be n_cores time this time
+    print("Running on {} threads".format(n_threads))
+    job_list = []
+    # now each segment makes a worker
+    args = [(path, None, end_time, None, overwrite, True)
+            for path in eventWise_paths[:n_threads]]
+    # set up some initial jobs
+    for _ in range(n_threads):
+        job = multiprocessing.Process(target=append_scores, args=args.pop())
+        job.start()
+        job_list.append(job)
+    processed = 0
+    for dataset_n in range(n_paths):
+        job = job_list[dataset_n]
+        job.join(wait_time)
+        processed += 1
+        if args:  # make a new job
+            job = multiprocessing.Process(target=append_scores, args=args.pop())
+            job.start()
+            job_list.append(job)
+    # check they all stopped
+    stalled = [job.is_alive() for job in job_list]
+    if np.any(stalled):
+        # stop everything
+        for job in job_list:
+            job.terminate()
+            job.join()
+        print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
+        return False
+    print("All processes ended")
+    return True
 
 # plotting code
 
@@ -700,33 +743,36 @@ if __name__ == '__main__':
     #    ew_name = f"megaIgnore/MC{i}.awkd"
     #    print(ew_name)
     #    records.score(ew_name.strip())
+    ew_paths = []
+    path = True
+    while path:
+        path = InputTools.get_file_name(f"EventWise file {len(ew_paths)+1}? (empty to complete list) ").strip()
+        if path.endswith(".awkd"):
+            ew_paths.append(path)
+        elif os.path.isdir(path):
+            inside = [os.path.join(path, name) for name in os.listdir(path)
+                      if name.endswith("awkd") and name.startswith("iridis")]
+            ew_paths += inside
+            #inside = [os.path.join(path, name) for name in os.listdir(path)
+            #          if name.endswith("awkd")]
+            #for path in inside:
+            #    if InputTools.yesNo_question(f"Add {path}? "):
+            #        ew_paths.append(path)
+            if not inside:
+                print(f"No awkd found in {path}")
+        elif path:
+            print(f"Error {path} not awkd or folder. ")
     
     if InputTools.yesNo_question("Score an eventWise? "):
-        ew_name = InputTools.get_file_name("EventWise file? (existing) ")
         duration = InputTools.get_time("How long to run for? (negative for inf) ")
         if duration < 0:
             duration = np.inf
-        append_scores(ew_name.strip(), duration=duration)
+        if len(ew_paths) == 1:
+            append_scores(ew_paths[0], duration=duration)
+        else:
+            end_time = time.time() + duration
+            multiprocess_append_scores(ew_paths, end_time=end_time)
     elif InputTools.yesNo_question("Plot something? "):
-        ew_paths = []
-        path = True
-        while path:
-            path = InputTools.get_file_name(f"EventWise file {len(ew_paths)+1}? (empty to complete list) ").strip()
-            if path.endswith(".awkd"):
-                ew_paths.append(path)
-            elif os.path.isdir(path):
-                inside = [os.path.join(path, name) for name in os.listdir(path)
-                          if name.endswith("awkd") and name.startswith("iridis")]
-                ew_paths += inside
-                #inside = [os.path.join(path, name) for name in os.listdir(path)
-                #          if name.endswith("awkd")]
-                #for path in inside:
-                #    if InputTools.yesNo_question(f"Add {path}? "):
-                #        ew_paths.append(path)
-                if not inside:
-                    print(f"No awkd found in {path}")
-            elif path:
-                print(f"Error {path} not awkd or folder. ")
         save_prefix = InputTools.get_dir_name("Save prefix? (empty to display) ").strip()
         if not save_prefix:
             save_prefix = None
