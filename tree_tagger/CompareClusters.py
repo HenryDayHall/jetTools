@@ -285,7 +285,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     eventWise.append(**new_contents)
 
 
-def multiprocess_append_scores(eventWise_paths, end_time, overwrite=True, leave_one_free=True):
+def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave_one_free=True):
     n_paths = len(eventWise_paths)
     # cap this out at 20, more seems to create a performance hit
     n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
