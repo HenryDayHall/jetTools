@@ -280,6 +280,10 @@ def fake_empty(*args, **kwargs):
     pass
 
 
+def fake_mass_gaps(eventWise, name, jet_idx, append):
+    scores = {}
+    return scores
+
 def test_append_scores():
     # set up as for filter jets
     params = {}
@@ -338,15 +342,17 @@ def test_append_scores():
                                      new=fake_detectable_comparisons):
                 with unittest.mock.patch('tree_tagger.TrueTag.add_detectable_fourvector',
                                          new=fake_empty):
-                    CompareClusters.append_scores(ew)
-                    tst.assert_allclose(ew.Jet_Bork, [np.inf, np.inf, np.inf])
-                    tst.assert_allclose(ew.Jet_Quack[0], [0.5, np.nan])
-                    tst.assert_allclose(ew.Jet_Quack[1], [0.5, -np.inf])
-                    tst.assert_allclose(ew.Jet_Quack[2], [])
-                    assert np.isnan(ew.Jet_AveBork)
-                    tst.assert_allclose(ew.Jet_AveQuack, 0.5)
-                    assert np.isnan(ew.Jet_QualityWidth)
-                    tst.assert_allclose(ew.Jet_QualityFraction, 3/Constants.dijet_mass)
+                    with unittest.mock.patch('tree_tagger.CompareClusters.get_mass_gaps',
+                                             new=fake_mass_gaps):
+                        CompareClusters.append_scores(ew)
+                        tst.assert_allclose(ew.Jet_Bork, [np.inf, np.inf, np.inf])
+                        tst.assert_allclose(ew.Jet_Quack[0], [0.5, np.nan])
+                        tst.assert_allclose(ew.Jet_Quack[1], [0.5, -np.inf])
+                        tst.assert_allclose(ew.Jet_Quack[2], [])
+                        assert np.isnan(ew.Jet_AveBork)
+                        tst.assert_allclose(ew.Jet_AveQuack, 0.5)
+                        assert np.isnan(ew.Jet_QualityWidth)
+                        tst.assert_allclose(ew.Jet_QualityFraction, 3/Constants.dijet_mass)
 
 
 def test_tabulate_scores():

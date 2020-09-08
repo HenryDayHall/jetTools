@@ -543,6 +543,81 @@ def plot_correct_pairs(eventWise, jet_names, show=True):
     return four_tag_masses, pair1_masses, pair2_masses
 
 
+def plot_scatter_correct_pairs(eventWise, jet_names, show=True):
+    """
+    Plot all possible pairings of jets by PT order.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    
+    """
+    fig, ax_array = plt.subplots(1, 3)
+    # get lobal inputs
+    eventWise.selected_index = None
+    heavy, light1, light2 = descendants_masses(eventWise)
+    n_events = len(getattr(eventWise, jet_names[0]+'_InputIdx'))
+    # prepare the hist parameters
+    cmap = matplotlib.cm.get_cmap('tab10')
+    colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
+    hist_params = dict(bins=40, density=False, histtype='step')
+    other_params = dict(bins=40, density=False, histtype='stepfilled', color='gray', alpha=0.8)
+    # get the jet data
+    four_tag_masses = []
+    pair1_masses = []
+    pair2_masses = []
+    for name in jet_names:
+        four_masses, pair1, pair2 = all_h_combinations(eventWise, name)
+        four_tag_masses.append(four_masses)
+        pair1_masses.append(pair1)
+        pair2_masses.append(pair2)
+
+    hist_params['range'] = other_params['range'] = np.nanmin(heavy), np.nanmax(heavy) + 20
+    ax_array[0].set_title(f"Heavy higgs")
+    ax_array[0].hist(heavy, label="heavy decendants", **other_params)
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax_array[0].hist(four_tag_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax_array[0].set_xlabel("Mass (GeV)")
+    ax_array[0].set_ylabel(f"Counts in {n_events}")
+    ax_array[0].legend()
+    ax_array[0].set_xlim(hist_params['range'])
+
+    ax_array[1].set_title(f"Better observed light higgs")
+    hist_params['range'] = other_params['range'] = np.nanmin(light1), np.nanmax(light1) + 10
+    ax_array[1].hist(light1, label="light decendants", **other_params)
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax_array[1].hist(pair1_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax_array[1].set_xlabel("Mass (GeV)")
+    ax_array[1].set_ylabel(f"Counts in {n_events}")
+    ax_array[1].legend()
+    ax_array[1].set_xlim(hist_params['range'])
+
+    ax_array[2].set_title(f"Less observed light higgs")
+    hist_params['range'] = other_params['range'] = np.nanmin(light2), np.nanmax(light2) + 10
+    ax_array[2].hist(light2, label="light decendants", **other_params)
+    for i, name in enumerate(jet_names):
+        linewidth = 1+i/2
+        alpha = 1-i/(len(jet_names)+1)
+        ax_array[2].hist(pair2_masses[i], label=name, linewidth=linewidth, alpha=alpha,
+                         color=colours[i], **hist_params)
+    ax_array[2].set_xlabel("Mass (GeV)")
+    ax_array[2].set_ylabel(f"Counts in {n_events}")
+    ax_array[2].legend()
+    ax_array[2].set_xlim(hist_params['range'])
+    if show:
+        plt.show()
+    return four_tag_masses, pair1_masses, pair2_masses
+
+
 def plot_all_jets(eventWise, jet_names, show=True):
     """
     Plot all possible pairings of jets by PT order.
