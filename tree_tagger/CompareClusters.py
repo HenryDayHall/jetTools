@@ -190,6 +190,94 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     return content
 
 
+def get_mass_gaps(eventWise, jet_name, jet_idxs, append=False):
+    """ Should be combined with get detectable?"""
+    # get the distance between the signaljetmass and the desired tag mass
+    # get the distance between the the signaljet mass ans the whole jet mass
+    if "DetectableTag_PT" not in eventWise.columns:
+        Components.add_phi(eventWise, "DetectableTag")
+        Components.add_PT(eventWise, "DetectableTag")
+        Components.add_rapidity(eventWise, "DetectableTag")
+    if "DetectableTag_Mass" not in eventWise.columns:
+        Components.add_mass(eventWise, "DetectableTag")
+    if "DetectableBG_Mass" not in eventWise.columns:
+        add_bg_mass(eventWise)
+    eventWise.selected_index = None
+    tag_groups = eventWise.DetectableTag_Roots
+    n_events = len(tag_groups)
+    # we assume the tagger behaves perfectly
+    # for all jets allocated to each tag group
+    # calcualte total contained values
+    tag_mass2_in = [[] for _ in range(n_events)]
+    all_mass2_in = [[] for _ in range(n_events)]
+    for event_n, event_tags in enumerate(tag_groups):
+        # it is possible to have no event tags
+        # this happens whn the tags create no detectable particles
+        if len(event_tags) == 0:
+            # if there isn't anything to be found then ignore this event
+            continue # then skip
+        # if we get here, there are detectable particles from the tags
+        eventWise.selected_index = event_n
+        energy = eventWise.Energy
+        px = eventWise.Px
+        py = eventWise.Py
+        pz = eventWise.Pz
+        source_idx = eventWise.JetInputs_SourceIdx
+        parent_idxs = getattr(eventWise, jet_name + "_Parent")
+        tagmass = getattr(eventWise, jet_name + "_TagMass")
+        tag_idxs = eventWise.BQuarkIdx
+        matched_jets = [[] for _ in event_tags]
+        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
+            if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
+                continue  # jet not sutable or has no tags
+            if len(jet_tags) == 1:
+                # no chosing to be done, the jet just has one tag
+                tag_idx = jet_tags[0]
+            else:
+                # chose the tag with the greatest tagmass
+                # dimension 0 of tagmass is which jet
+                # dimension 1 of tagmass is which tag
+                tag_position = np.argmax(tagmass[jet_n])
+                # this is the particle index of the tag with greatest massshare in the jet
+                tag_idx = tag_idxs[tag_position]
+            # which group does the tag belong to
+            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
+            matched_jets[group_position].append(jet_n)
+        for group_n, jets in enumerate(matched_jets):
+            if jets:
+                jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jets].flatten()
+                # convert to source_idxs
+                jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
+                jet_inputs = source_idx[jet_inputs]
+                # get the tag mass
+                tag_in_jet = list(set(jet_inputs).intersection(eventWise.DetectableTag_Leaves[group_n]))
+                tag_mass2 = np.sum(energy[tag_in_jet])**2 -\
+                            np.sum(px[tag_in_jet])**2 -\
+                            np.sum(py[tag_in_jet])**2 -\
+                            np.sum(pz[tag_in_jet])**2
+                # get the whole jets mass
+                all_mass2 = np.sum(energy[jet_inputs])**2 -\
+                           np.sum(px[jet_inputs])**2 -\
+                           np.sum(py[jet_inputs])**2 -\
+                           np.sum(pz[jet_inputs])**2
+            else:
+                # no jets in this group
+                tag_mass2 = all_mass2 = 0
+            tag_mass2_in[event_n].append(tag_mass2)
+            all_mass2_in[event_n].append(all_mass2)
+    eventWise.selected_index = None
+    content = {}
+    tag_mass_in = np.sqrt(awkward.fromiter(tag_mass2_in))
+    signal_distance = np.abs(tag_mass_in - eventWise.DetectableBG_Mass)
+    background_distance = np.abs(tag_mass_in - np.sqrt(awkward.fromiter(all_mass2_in)))
+    content[jet_name + "_DistanceSignal"] = signal_distance
+    content[jet_name + "_DistanceBG"] = background_distance
+    if append:
+        eventWise.append(**content)
+    return content
+
+
+
 def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     if min_jetpt is None:
         min_jetpt = Constants.min_jetpt
@@ -220,9 +308,8 @@ def remove_scores(eventWise):
             eventWise.remove(name)
         eventWise.write()
 
-    
 
-def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, overwrite=True, silent=False):
+def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, overwrite=False, silent=False):
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
     if dijet_mass is None:
@@ -238,27 +325,38 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     if "DetectableTag_Idx" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise)
     for i, name in enumerate(names):
-        # check if it has already been scored
-        if name + "_AveDistancePT" in eventWise.hyperparameter_columns and not overwrite:
-            continue
         if not silent:
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
-
-        # if we reach here the jet still needs a score
-        try:
-            best_width, best_fraction = JetQuality.quality_width_fracton(eventWise, name,
-                                                                         dijet_mass)
-        except (ValueError, RuntimeError):  # didn't make enough masses
-            best_width = best_fraction = np.nan
-        new_hyperparameters[name + "_QualityWidth"] = best_width
-        new_hyperparameters[name + "_QualityFraction"] = best_fraction
-        # now the mc truth based scores
-        TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
-        jet_idxs = filter_jets(eventWise, name)
-        new_content = get_detectable_comparisons(eventWise, name, jet_idxs, False)
+        # pick up some content
+        content_here = {}
+        # check if it has already been scored
+        if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
+            if not silent:
+                print("Adding quality scores")
+            # if we reach here the jet still needs a score
+            try:
+                best_width, best_fraction = JetQuality.quality_width_fracton(eventWise, name,
+                                                                             dijet_mass)
+            except (ValueError, RuntimeError):  # didn't make enough masses
+                best_width = best_fraction = np.nan
+            new_hyperparameters[name + "_QualityWidth"] = best_width
+            new_hyperparameters[name + "_QualityFraction"] = best_fraction
+        if name + "_DistancePT" not in eventWise.columns or overwrite:
+            if not silent:
+                print("Adding kinematic scores")
+            # now the mc truth based scores
+            TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
+            jet_idxs = filter_jets(eventWise, name)
+            content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
+        # the detectable mass dirnces are new
+        if name + "_DistanceSignal" not in eventWise.columns or overwrite:
+            print("Adding mass scores")
+            jet_idxs = filter_jets(eventWise, name)
+            content_here.update(get_mass_gaps(eventWise, name, jet_idxs, False))
+        # get averages for all other generated content
         new_averages = {}
         # we are only intrested in finite results
-        for key, values in new_content.items():
+        for key, values in content_here.items():
             flattened = values.flatten()
             finite = np.isfinite(flattened)
             if np.any(finite):
@@ -266,7 +364,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             else:  # sometimes there could be no finite results at all
                 value = np.nan
             new_averages[key.replace('_', '_Ave')] = value
-        new_contents.update(new_content)
+        new_contents.update(content_here)
         new_hyperparameters.update(new_averages)
         if not os.path.exists('continue'):
             eventWise.append_hyperparameters(**new_hyperparameters)
@@ -361,9 +459,11 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
 
 def filter_table(*args):
     args = nan_filter_table(*args)
+    print(f"Length after nan filter = {len(args[-1])}")
     table = args[-1]
-    if len(table) > 20000:
+    if len(table) > 200:
         args = quality_filter_table(*args)
+        print(f"Length after quality filter = {len(args[-1])}")
     return args
 
 
@@ -397,26 +497,27 @@ def nan_filter_table(all_cols, variable_cols, score_cols, table):
                 del score_cols[score_cols.index(name)]
         table = awkward.fromiter([row[~drop_cols] for row in table])
     return all_cols, variable_cols, score_cols, table
-    
+
+
 def quality_filter_table(all_cols, variable_cols, score_cols, table):
-    # require at least 0.15 PercentFound
+    # require at least 0.1 PercentFound
     percent_found = table[:, all_cols.index("AvePercentFound")]
-    table = table[percent_found > 0.15]
+    table = table[percent_found > 0.1]
     # require that rapidity distance be no more than 0.4
     rapidity_distance = table[:, all_cols.index("AveDistanceRapidity")]
     table = table[rapidity_distance < 0.4]
-    # require that phi distance be no more than 1.2
+    # require that phi distance be no more than 1.
     phi_distance = table[:, all_cols.index("AveDistancePhi")]
-    table = table[phi_distance < 1.2]
+    table = table[phi_distance < 1.]
     # require that PT distance be no more than 15.
     pt_distance = table[:, all_cols.index("AveDistancePT")]
     table = table[pt_distance < 15.]
-    # require average BG mass ratio under 100k
+    # require average BG mass ratio under 10k
     bg_mass_ratio = table[:, all_cols.index("AveBGMassRatio")]
-    table = table[bg_mass_ratio < 1e5]
-    # require that average Siganl ratio be over 0.07
+    table = table[bg_mass_ratio < 1e4]
+    # require that average Siganl ratio be over 0.1
     sig_mass_ratio = table[:, all_cols.index("AveSignalMassRatio")]
-    table = table[sig_mass_ratio > 0.07]
+    table = table[sig_mass_ratio > 0.1]
     # require that quality fractio be under 600
     quality_fraction = table[:, all_cols.index("QualityFraction")]
     table = table[np.logical_or(quality_fraction < 600, ~np.isnan(quality_fraction.tolist()))]
@@ -438,16 +539,27 @@ def plot_class_bests(eventWise_paths, save_prefix=None):
     # to identify the best in each score type keep numeric values
     numeric_scores = []
     row_nums = []
+    #  pick the jet for each class that creates the highest meta_score
+    # AveSignalMassRatio*AvePercentFound*AvePTDistance
+    mass_ratio_col, percent_found_col, distance_pt_col = [all_cols.index(name) for name in
+                                ["AveSignalMassRatio", "AvePercentFound", "AveDistancePT"]]
+    meta_score = np.fromiter((row[mass_ratio_col]*row[percent_found_col]/row[distance_pt_col]
+                              for row in table), dtype=float)
+    output3 = [["file name", "jet name"] + score_cols]
     for class_name in set(table[:, class_col]):
         row_indices, rows = zip(*[(i, row) for i, row in enumerate(table)
                                   if row[class_col] == class_name])
+        best_meta = np.argmax(meta_score[list(row_indices)])
+        output3.append([rows[best_meta][eventWise_col][7:], rows[best_meta][jet_col]])
         jet_names = [class_name]
         file_names = ["~  in   ~"]
         scores =     ["~ score ~"]
         numeric_scores.append([])
         row_nums.append([])
         for score_name in score_cols:
-            class_scores = [row[all_cols.index(score_name)] for row in rows]
+            score_col = all_cols.index(score_name)
+            output3[-1].append(f"{rows[best_meta][score_col]:.3g}")
+            class_scores = [row[score_col] for row in rows]
             if score_name in inverted_names:
                 best = np.nanargmin(class_scores)
                 numeric_scores[-1].append(-class_scores[best])
@@ -477,11 +589,13 @@ def plot_class_bests(eventWise_paths, save_prefix=None):
         jet_scores = [f"{jet_row[all_cols.index(name)]:.4g}" for name in score_cols]
         jet_scores[col] += "*best*"
         output2.append([jet_row[all_cols.index("jet_name")]] + jet_scores)
-    fig, (ax1, ax2) = plt.subplots(2, 1)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
     PlottingTools.hide_axis(ax1)
     PlottingTools.hide_axis(ax2)
+    PlottingTools.hide_axis(ax3)
     PlottingTools.text_table(ax1, output1, "22.22")
     PlottingTools.text_table(ax2, output2, "20.20")
+    PlottingTools.text_table(ax3, output3, "20.20")
     if save_prefix:
         plt.savefig(save_prefix+"_class_bests.png")
     return output1, output2
@@ -807,6 +921,8 @@ if __name__ == '__main__':
                 input_corrilation(ew_paths, save_prefix)
             elif InputTools.yesNo_question("Plot class bests? "):
                 plot_class_bests(ew_paths, save_prefix)
+                plt.show()
+                input()
             again = InputTools.yesNo_question("Plot something else? ")
 
 

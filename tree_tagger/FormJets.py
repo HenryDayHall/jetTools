@@ -238,7 +238,7 @@ class PseudoJet:
             return beam_PT_factor, min_PT_factor
         elif self.ExpofPTFormat == 'Luclus':
             def luclus_PT_factor(row_pt, column_pt):
-                factor = (row_pt**exponent)*(column_pt**exponent)*\
+                factor = ((row_pt*column_pt)**exponent)*\
                          (row_pt + column_pt)**-exponent
                 factor *= inv_invar_exp
                 return factor
