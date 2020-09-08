@@ -345,12 +345,15 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             if not silent:
                 print("Adding kinematic scores")
             # now the mc truth based scores
-            TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
+            if "DetectableTag_Idx" not in eventWise.columns:
+                TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = filter_jets(eventWise, name)
             content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
         # the detectable mass dirnces are new
         if name + "_DistanceSignal" not in eventWise.columns or overwrite:
             print("Adding mass scores")
+            if "DetectableTag_Idx" not in eventWise.columns:
+                TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = filter_jets(eventWise, name)
             content_here.update(get_mass_gaps(eventWise, name, jet_idxs, False))
         # get averages for all other generated content
