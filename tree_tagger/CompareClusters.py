@@ -19,7 +19,6 @@ import scipy.stats
 import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting, bokeh.transform
 import socket
 
-
 def get_best(eventWise, jet_class):
     """ return the name of the jet with the highest SignalMassRatio/BGMassRatio """
     scored_names = [name.split('_', 1)[0] for name in eventWise.hyperparameter_columns
@@ -41,6 +40,14 @@ def get_best(eventWise, jet_class):
         # else, raise the original error
         raise e from None
     return best_name
+
+
+def get_rand_scores(eventWises, jet_name):
+    n_events = len(eventWises[0].JetInputs_SourceIdx)
+    n_comparisons = len(eventWises)
+    scores = np.empty((n_comparisons, n_comparisons))
+        # TODO
+
 
 
 # code for making scores
@@ -392,7 +399,7 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave
     n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
     if n_threads < 1:
         n_threads = 1
-    wait_time = 0.9*(end_time - time.time())  # in seconds
+    wait_time = 24*60*60 # in seconds
     # note that the longest wait will be n_cores time this time
     print("Running on {} threads".format(n_threads))
     job_list = []
@@ -437,7 +444,8 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave
 def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     if score_cols is None:
         score_cols = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
-                      "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound"]
+                      "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound",
+                      "AveDistanceBG", "AveDistanceSignal"]
     if variable_cols is None:
         classes = ["Traditional", "SpectralMean", "SpectralFull", "Splitting", "Indicator"]
         variable_cols = set()
@@ -544,9 +552,9 @@ def plot_class_bests(eventWise_paths, save_prefix=None):
     row_nums = []
     #  pick the jet for each class that creates the highest meta_score
     # AveSignalMassRatio*AvePercentFound*AvePTDistance
-    mass_ratio_col, percent_found_col, distance_pt_col = [all_cols.index(name) for name in
-                                ["AveSignalMassRatio", "AvePercentFound", "AveDistancePT"]]
-    meta_score = np.fromiter((row[mass_ratio_col]*row[percent_found_col]/row[distance_pt_col]
+    background_col, signal_col = [all_cols.index(name) for name in
+                                  ["AveDistanceBG", "AveDistanceSignal"]]
+    meta_score = np.fromiter((row[background_col] + row[signal_col]
                               for row in table), dtype=float)
     output3 = [["file name", "jet name"] + score_cols]
     for class_name in set(table[:, class_col]):

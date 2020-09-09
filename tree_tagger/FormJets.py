@@ -3167,10 +3167,14 @@ def get_jet_params(eventWise, jet_name, add_defaults=False):
         dictionary with keys being parameter names and values being parameter values
 
     """
+    possible_params = set(sum([list(cluster_class.permited_values.keys())
+                               for cluster_class in
+                               [Traditional, Splitting, Spectral, Indicator]], []))
     prefix = jet_name + "_"
     trim = len(prefix)
     columns = {name[trim:]: getattr(eventWise, name) for name in eventWise.hyperparameter_columns
-               if name.startswith(prefix)}
+               if name.startswith(prefix) and name.split('_', 1)[1] in possible_params}
+
     if add_defaults:
         if jet_name.startswith("SpectralMean"):
             defaults = SpectralMean.default_params
@@ -3244,6 +3248,19 @@ def check_for_jet(eventWise, parameters, name_start=None, pottentials=None):
                 if close:
                     pottentials.append(name)
     return pottentials
+
+
+def take_jets(recipient_eventWise, donar_list, jet_list):
+    if isinstance(recipient_eventWise, str):
+        recipient_eventWise = Components.EventWise.from_file(recipient_eventWise)
+    for donar, jet_name in zip(donar_list, jet_list):
+        if isinstance(donar, str):
+            donar = Components.EventWise.from_file(donar)
+        new_content = {name: getattr(donar, name) for name in donar.columns if name.startwith(jet_name)}
+        recipient_eventWise.append(**new_content)
+        new_content = {name: getattr(donar, name) for name in donar.hyperparameter_columns if name.startwith(jet_name)}
+        recipient_eventWise.append_hyperparameters(**new_content)
+        del donar
 
 
 def plot_spider(ax, colour, body, body_size, leg_ends, leg_size):

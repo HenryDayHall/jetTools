@@ -864,7 +864,7 @@ def descendants_masses(eventWise, use_jetInputs=True):
 
 if __name__ == '__main__':
     from tree_tagger import Components
-    ew = Components.EventWise.from_file("best2.awkd")
+    ew = Components.EventWise.from_file("best.awkd")
     jet_names = FormJets.get_jet_names(ew)
     
     #plot_PT_pairs(ew, jet_names, True)
