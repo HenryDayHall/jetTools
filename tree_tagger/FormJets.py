@@ -3254,11 +3254,13 @@ def take_jets(recipient_eventWise, donar_list, jet_list):
     if isinstance(recipient_eventWise, str):
         recipient_eventWise = Components.EventWise.from_file(recipient_eventWise)
     for donar, jet_name in zip(donar_list, jet_list):
+        if not jet_name.endswith('_'):
+            jet_name += '_'
         if isinstance(donar, str):
             donar = Components.EventWise.from_file(donar)
-        new_content = {name: getattr(donar, name) for name in donar.columns if name.startwith(jet_name)}
+        new_content = {name: getattr(donar, name) for name in donar.columns if name.startswith(jet_name)}
         recipient_eventWise.append(**new_content)
-        new_content = {name: getattr(donar, name) for name in donar.hyperparameter_columns if name.startwith(jet_name)}
+        new_content = {name: getattr(donar, name) for name in donar.hyperparameter_columns if name.startswith(jet_name)}
         recipient_eventWise.append_hyperparameters(**new_content)
         del donar
 

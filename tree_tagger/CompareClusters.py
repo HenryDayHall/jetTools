@@ -48,8 +48,6 @@ def get_rand_scores(eventWises, jet_name):
     scores = np.empty((n_comparisons, n_comparisons))
         # TODO
 
-
-
 # code for making scores
 
 def add_bg_mass(eventWise):
@@ -198,7 +196,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
 
 
 def get_mass_gaps(eventWise, jet_name, jet_idxs, append=False):
-    """ Should be combined with get detectable?"""
+    """ Should be combined with get detectable?"""  #TODO
     # get the distance between the signaljetmass and the desired tag mass
     # get the distance between the the signaljet mass ans the whole jet mass
     if "DetectableTag_PT" not in eventWise.columns:
@@ -284,6 +282,24 @@ def get_mass_gaps(eventWise, jet_name, jet_idxs, append=False):
     return content
 
 
+def get_seperate_jets(eventWise, jet_name, jet_idxs, append=False):
+    """ Should be combined with get detectable?"""  #TODO
+    eventWise.selected_index = None
+    jet_tags = getattr(eventWise, jet_name+'_MTags')
+    n_events = len(jet_tags)
+    # we assume the tagger behaves perfectly
+    # for all jets allocated to each tag group
+    # calcualte total contained values
+    seperate_jets = []
+    for tags, idxs in zip(jet_tags, jet_idxs):
+        if len(jet_idxs) > 0:
+            seperate_jets.append(np.sum([len(j) > 0 for j in tags[idxs]]))
+    eventWise.selected_index = None
+    content = {jet_name + "_SeperateJets": awkward.fromiter(seperate_jets)}
+    if append:
+        eventWise.append(**content)
+    return content
+
 
 def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     if min_jetpt is None:
@@ -363,6 +379,11 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = filter_jets(eventWise, name)
             content_here.update(get_mass_gaps(eventWise, name, jet_idxs, False))
+        # the seperate jets are new
+        if name + "_SeperateJets" not in eventWise.columns or overwrite or True:
+            print("Adding seperate jets")
+            jet_idxs = filter_jets(eventWise, name)
+            content_here.update(get_seperate_jets(eventWise, name, jet_idxs, False))
         # get averages for all other generated content
         new_averages = {}
         # we are only intrested in finite results
@@ -445,7 +466,7 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     if score_cols is None:
         score_cols = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
                       "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound",
-                      "AveDistanceBG", "AveDistanceSignal"]
+                      "AveDistanceBG", "AveDistanceSignal", "AveSeperateJets"]
     if variable_cols is None:
         classes = ["Traditional", "SpectralMean", "SpectralFull", "Splitting", "Indicator"]
         variable_cols = set()
@@ -510,7 +531,7 @@ def nan_filter_table(all_cols, variable_cols, score_cols, table):
     return all_cols, variable_cols, score_cols, table
 
 
-def quality_filter_table(all_cols, variable_cols, score_cols, table):
+def quality_filter_table_old(all_cols, variable_cols, score_cols, table):
     # require at least 0.1 PercentFound
     percent_found = table[:, all_cols.index("AvePercentFound")]
     table = table[percent_found > 0.1]
@@ -538,24 +559,68 @@ def quality_filter_table(all_cols, variable_cols, score_cols, table):
     return all_cols, variable_cols, score_cols, table
 
 
+def quality_filter_table(all_cols, variable_cols, score_cols, table):
+    signal_gap = table[:, all_cols.index("AveDistanceSignal")]
+    table = table[signal_gap < 30.8]
+    background_gap = table[:, all_cols.index("AveDistanceBG")]
+    table = table[background_gap < 7.]
+    return all_cols, variable_cols, score_cols, table
+
+
+def plot_mass_gaps(eventWise_paths, jet_name=None):
+    ax = plt.gca()
+    cluster_comparison = isinstance(eventWise_paths, list)
+    if cluster_comparison:
+        plt.title("Cluster methods")
+        all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
+        signal_gap = np.fromiter((row[all_cols.index("AveDistanceSignal")] for row in table), dtype=float)
+        background_gap = np.fromiter((row[all_cols.index("AveDistanceBG")] for row in table), dtype=float)
+        percent_found = np.fromiter((row[all_cols.index("AvePercentFound")] for row in table), dtype=float)
+        seperate_jets = np.fromiter((row[all_cols.index("AveSeperateJets")] for row in table), dtype=float)
+    else:  # just all the events for one jet
+        assert jet_name is not None
+        plt.title(f"Events clustered with {jet_name}")
+        if isinstance(eventWise_paths, str):
+            eventWise = Components.EventWise.from_file(eventWise_paths)
+        else:
+            eventWise = eventWise_paths
+        signal_gap = getattr(eventWise, jet_name + "_DistanceSignal")
+        background_gap = getattr(eventWise, jet_name + "_DistanceBG")
+        percent_found = getattr(eventWise, jet_name + "_PercentFound")
+        seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
+    if cluster_comparison:
+        mask = np.logical_and(signal_gap < 31, background_gap < 10)
+        signal_gap, background_gap, seperate_jets, percent_found = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask]
+        jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
+        PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
+    points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found))
+    cbar = plt.colorbar(points)
+    cbar.set_label("Seperate $b$-jets per event")
+    ax.set_xlabel("Average signal loss (GeV)")
+    ax.set_ylabel("Average background contamination (GeV)")
+
+
 def plot_class_bests(eventWise_paths, save_prefix=None):
     all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
     variable_cols = ['jet_class'] + variable_cols
     class_col = all_cols.index("jet_class")
     jet_col = all_cols.index("jet_name")
     eventWise_col = all_cols.index("eventWise_name")
-    inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
-                      "AveDistanceRapidity", "AveBGMassRatio"]
+    inverted_names = ["AveBGMassRatio"] + [name for name in all_cols
+                                           if "Distance" in name or "Quality" in name]
     output1 = [["jet class"] + score_cols]
     # to identify the best in each score type keep numeric values
     numeric_scores = []
     row_nums = []
     #  pick the jet for each class that creates the highest meta_score
     # AveSignalMassRatio*AvePercentFound*AvePTDistance
-    background_col, signal_col = [all_cols.index(name) for name in
-                                  ["AveDistanceBG", "AveDistanceSignal"]]
-    meta_score = np.fromiter((row[background_col] + row[signal_col]
+    background_col, signal_col, percent_col, seperate_col = [all_cols.index(name) for name in
+                                  ["AveDistanceBG", "AveDistanceSignal",
+                                   "AvePercentFound", "AveSeperateJets"]]
+    meta_score = np.fromiter((-(row[background_col]+row[signal_col]**2)/(row[percent_col] + row[seperate_col])
                               for row in table), dtype=float)
+    #meta_score = np.fromiter((-row[all_cols.index("AveDistancePT")]
+    #                          for row in table), dtype=float)
     output3 = [["file name", "jet name"] + score_cols]
     for class_name in set(table[:, class_col]):
         row_indices, rows = zip(*[(i, row) for i, row in enumerate(table)
@@ -614,8 +679,8 @@ def plot_class_bests(eventWise_paths, save_prefix=None):
 
 def plot_grid(all_cols, plot_column_names, plot_row_names, table):
     # a list of cols where the axis should be inverted so that up is still better
-    inverted_names = ["QualityWidth", "QualityFraction", "AveDistancePT", "AveDistancePhi",
-                      "AveDistanceRapidity", "AveBGMassRatio"]
+    inverted_names = ["AveBGMassRatio"] + [name for name in all_cols
+                                           if "Distance" in name or "Quality" in name]
     # a list of cols where the axis must be constructed
     impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition", "ExpofPTFormat", "AffinityType", "AffinityCutoff",
             "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore", "Eigenspace",
@@ -932,6 +997,10 @@ if __name__ == '__main__':
                 input_corrilation(ew_paths, save_prefix)
             elif InputTools.yesNo_question("Plot class bests? "):
                 plot_class_bests(ew_paths, save_prefix)
+                plt.show()
+                input()
+            elif InputTools.yesNo_question("Plot mass gaps? "):
+                plot_mass_gaps(ew_paths)
                 plt.show()
                 input()
             again = InputTools.yesNo_question("Plot something else? ")

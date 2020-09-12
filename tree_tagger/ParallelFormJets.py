@@ -486,6 +486,28 @@ fix_SpectralMean1d = dict(
                           Eigenspace = 'normalised',
                           PhyDistance = 'angular', 
                           StoppingCondition = 'standard')
+
+# spectral full ------------------------
+scan_SpectralFull1 = dict(
+                          ExpofPTMultiplier = [0.1, 0.0, -0.1, -0.2],
+                          AffinityCutoff = [None, ('distance', 7), ('distance', 5)],
+                          Laplacien = ['unnormalised', 'symmetric'],
+                          AffinityType = ['exponent2', 'exponent'],
+                        )
+fix_SpectralFull1a = dict(DeltaR=0.5,
+                          NumEigenvectors = 4,
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'eigenspace',
+                          PhyDistance = 'angular',
+                          Eigenspace = 'unnormalised',
+                          StoppingCondition = 'beamparticle')
+fix_SpectralFull1a = dict(DeltaR=0.5,
+                          NumEigenvectors = 4,
+                          Eigenspace = 'normalised',
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'eigenspace',
+                          PhyDistance = 'angular',
+                          StoppingCondition = 'beamparticle')
 # Traditional -----------------------------
 
 scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),

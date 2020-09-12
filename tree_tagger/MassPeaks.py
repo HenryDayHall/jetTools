@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import matplotlib
 import scipy.spatial
 from ipdb import set_trace as st
-from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets
+from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
 
 
 def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
@@ -864,7 +864,8 @@ def descendants_masses(eventWise, use_jetInputs=True):
 
 if __name__ == '__main__':
     from tree_tagger import Components
-    ew = Components.EventWise.from_file("best.awkd")
+    best_name = InputTools.get_file_name("Name the eventWise file? ", 'awkd').strip()
+    ew = Components.EventWise.from_file(best_name)
     jet_names = FormJets.get_jet_names(ew)
     
     #plot_PT_pairs(ew, jet_names, True)

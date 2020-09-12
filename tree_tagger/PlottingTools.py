@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+from ipdb import set_trace as st
 import numpy as np
 import os
 
@@ -134,3 +135,49 @@ def make_inputs_table(eventWise, jet_names, table_ax, jet_inputs=None):
     text_table(table_ax, table_content)
     hide_axis(table_ax)
     return table_content, jet_inputs
+
+
+def label_scatter(x, y, labels, s=None, c=None, **kwargs):
+    if c is None:
+        c = [[0., 0., 0.]]*len(x)
+    # make an array to hold the y pos of the text labels
+    text_y = np.copy(y)
+    # going to scan in the x coordinate moving oyjects that are within 20%
+    # of the x range appart in the y range
+    scan_order = np.argsort(x)
+    x_width = x[scan_order[-1]] - x[scan_order[0]]
+    x_spacing = 0.2*x_width
+    # chose a y range in which we will consider proximity
+    y_width = np.max(y) - np.min(y)
+    y_proximity = 0.05*y_width
+    # keep track of points in the scan window
+    current_y = []
+    current_x = []
+    for next_idx in scan_order:
+        next_x = x[next_idx]
+        next_y = y[next_idx]
+        window_start = next_x - x_spacing
+        while current_x and current_x[0] < window_start:
+            del current_x[0]
+            del current_y[0]
+        above = ceiling = next_y + y_proximity
+        below = floor = next_y - y_proximity
+        for c_y in current_y:
+            if c_y >= next_y and c_y < ceiling:
+                ceiling = c_y
+            elif c_y < next_y and c_y > floor:
+                floor = c_y
+        # now relocate the y coord
+        next_y = 0.5 * (ceiling + floor)
+        text_y[next_idx] = next_y
+        current_y.append(next_y)
+        current_x.append(next_x)
+    ax = kwargs.get('ax', plt.gca())
+    for t_x, t_y, t_c, label in zip(x, text_y, c, labels):
+        ax.text(t_x, t_y, label, color=t_c)
+    if kwargs.get('add_points', False):
+        ax.scatter(x, y, s=s, c=c, **kwargs)
+
+
+
+
