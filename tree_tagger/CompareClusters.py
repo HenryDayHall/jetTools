@@ -19,6 +19,10 @@ import scipy.stats
 import bokeh, bokeh.palettes, bokeh.models, bokeh.plotting, bokeh.transform
 import socket
 
+SCORE_COLS = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
+              "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound",
+              "AveDistanceBG", "AveDistanceSignal", "AveSeperateJets"]
+
 def get_best(eventWise, jet_class):
     """ return the name of the jet with the highest SignalMassRatio/BGMassRatio """
     scored_names = [name.split('_', 1)[0] for name in eventWise.hyperparameter_columns
@@ -100,12 +104,14 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     # for all jets allocated to each tag group
     # calcualte total contained values
     tag_mass2_in = [[] for _ in range(n_events)]
+    all_mass2_in = [[] for _ in range(n_events)]
     bg_mass2_in = [[] for _ in range(n_events)]
     rapidity_in = [[] for _ in range(n_events)]
     phi_in = [[] for _ in range(n_events)]
     pt_in = [[] for _ in range(n_events)]
     # the fraction of the tags that have been connected to some jet
     percent_found = np.zeros(n_events)
+    seperate_jets = np.zeros(n_events)
     for event_n, event_tags in enumerate(tag_groups):
         # it is possible to have no event tags
         # this happens whn the tags create no detectable particles
@@ -127,6 +133,8 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
         for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
             if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
                 continue  # jet not sutable or has no tags
+            # if we get here the jet has at least one tag on it and is in the required list
+            seperate_jets[event_n] += 1
             if len(jet_tags) == 1:
                 # no chosing to be done, the jet just has one tag
                 tag_idx = jet_tags[0]
@@ -161,18 +169,24 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                           np.sum(px[bg_in_jet])**2 -\
                           np.sum(py[bg_in_jet])**2 -\
                           np.sum(pz[bg_in_jet])**2
+                # get the whole jets mass
+                jet_inputs = list(jet_inputs)
+                all_mass2 = np.sum(energy[jet_inputs])**2 -\
+                            np.sum(px[jet_inputs])**2 -\
+                            np.sum(py[jet_inputs])**2 -\
+                            np.sum(pz[jet_inputs])**2
                 # for the pt and the phi comparisons use all the jet components
                 # not just the ones that come from the truth
-                jet_inputs = list(jet_inputs)
                 phi, pt = Components.pxpy_to_phipt(np.sum(px[jet_inputs]),
                                                    np.sum(py[jet_inputs]))
                 rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[jet_inputs]),
                                                         np.sum(energy[jet_inputs]))
             else:
                 # no jets in this group
-                tag_mass2 = bg_mass2 = 0
+                tag_mass2 = bg_mass2 = all_mass2 = 0
                 phi = pt = rapidity = np.nan
             tag_mass2_in[event_n].append(tag_mass2)
+            all_mass2_in[event_n].append(all_mass2)
             bg_mass2_in[event_n].append(bg_mass2)
             phi_in[event_n].append(phi)
             pt_in[event_n].append(pt)
@@ -189,12 +203,18 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     content[jet_name + "_SignalMassRatio"] = tag_mass_in/eventWise.DetectableTag_Mass
     bg_mass_in = np.sqrt(awkward.fromiter(bg_mass2_in))
     content[jet_name + "_BGMassRatio"] = bg_mass_in/eventWise.DetectableBG_Mass
-    content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found) 
+    content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found)
+    signal_distance = np.abs(tag_mass_in - eventWise.DetectableBG_Mass)
+    background_distance = np.abs(tag_mass_in - np.sqrt(awkward.fromiter(all_mass2_in)))
+    content[jet_name + "_DistanceSignal"] = signal_distance
+    content[jet_name + "_DistanceBG"] = background_distance
+    content[jet_name + "_SeperateJets"] = awkward.fromiter(seperate_jets)
     if append:
         eventWise.append(**content)
     return content
 
 
+# Now in detectable comparisons
 def get_mass_gaps(eventWise, jet_name, jet_idxs, append=False):
     """ Should be combined with get detectable?"""  #TODO
     # get the distance between the signaljetmass and the desired tag mass
@@ -282,6 +302,7 @@ def get_mass_gaps(eventWise, jet_name, jet_idxs, append=False):
     return content
 
 
+# Now in detectable comparisons
 def get_seperate_jets(eventWise, jet_name, jet_idxs, append=False):
     """ Should be combined with get detectable?"""  #TODO
     eventWise.selected_index = None
@@ -352,7 +373,6 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # pick up some content
         content_here = {}
-        # check if it has already been scored
         if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
             if not silent:
                 print("Adding quality scores")
@@ -364,26 +384,16 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 best_width = best_fraction = np.nan
             new_hyperparameters[name + "_QualityWidth"] = best_width
             new_hyperparameters[name + "_QualityFraction"] = best_fraction
-        if name + "_DistancePT" not in eventWise.columns or overwrite:
+        # check if it has already been scored asside from quality scores
+        found = [name + '_' + col in eventWise.columns for col in SCORE_COLS if "Quality" not in col]
+        if not np.all(found) or overwrite:
             if not silent:
-                print("Adding kinematic scores")
+                print("Adding scores")
             # now the mc truth based scores
             if "DetectableTag_Idx" not in eventWise.columns:
                 TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = filter_jets(eventWise, name)
             content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
-        # the detectable mass dirnces are new
-        if name + "_DistanceSignal" not in eventWise.columns or overwrite:
-            print("Adding mass scores")
-            if "DetectableTag_Idx" not in eventWise.columns:
-                TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
-            jet_idxs = filter_jets(eventWise, name)
-            content_here.update(get_mass_gaps(eventWise, name, jet_idxs, False))
-        # the seperate jets are new
-        if name + "_SeperateJets" not in eventWise.columns or overwrite or True:
-            print("Adding seperate jets")
-            jet_idxs = filter_jets(eventWise, name)
-            content_here.update(get_seperate_jets(eventWise, name, jet_idxs, False))
         # get averages for all other generated content
         new_averages = {}
         # we are only intrested in finite results
@@ -464,9 +474,7 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave
 
 def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
     if score_cols is None:
-        score_cols = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
-                      "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound",
-                      "AveDistanceBG", "AveDistanceSignal", "AveSeperateJets"]
+        score_cols = SCORE_COLS
     if variable_cols is None:
         classes = ["Traditional", "SpectralMean", "SpectralFull", "Splitting", "Indicator"]
         variable_cols = set()
@@ -584,8 +592,12 @@ def plot_mass_gaps(eventWise_paths, jet_name=None):
             eventWise = Components.EventWise.from_file(eventWise_paths)
         else:
             eventWise = eventWise_paths
-        signal_gap = getattr(eventWise, jet_name + "_DistanceSignal")
-        background_gap = getattr(eventWise, jet_name + "_DistanceBG")
+        signal_gap = np.fromiter((np.mean(d) for d in
+                                  getattr(eventWise, jet_name + "_DistanceSignal")),
+                                 dtype=float)
+        background_gap = np.fromiter((np.mean(d) for d in
+                                      getattr(eventWise, jet_name + "_DistanceBG")),
+                                 dtype=float)
         percent_found = getattr(eventWise, jet_name + "_PercentFound")
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison:
