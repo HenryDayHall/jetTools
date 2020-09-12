@@ -501,7 +501,7 @@ fix_SpectralFull1a = dict(DeltaR=0.5,
                           PhyDistance = 'angular',
                           Eigenspace = 'unnormalised',
                           StoppingCondition = 'beamparticle')
-fix_SpectralFull1a = dict(DeltaR=0.5,
+fix_SpectralFull1b = dict(DeltaR=0.5,
                           NumEigenvectors = 4,
                           Eigenspace = 'normalised',
                          ExpofPTFormat = 'Luclus',
