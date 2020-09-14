@@ -116,7 +116,9 @@ def combined_jet_mass(eventWise, jet_name, jet_idxs):
     py = eventWise.match_indices(jet_name+'_Py', root_name, input_name)[jet_idxs].flatten()
     pz = eventWise.match_indices(jet_name+'_Pz', root_name, input_name)[jet_idxs].flatten()
     e = eventWise.match_indices(jet_name+'_Energy', root_name, input_name)[jet_idxs].flatten()
-    mass = np.sqrt(np.sum(e)**2 - np.sum(px)**2 - np.sum(py)**2 - np.sum(pz)**2)
+    # need to clip the sum to prevent v small masses coming out nan
+    mass = np.sqrt(np.clip(np.sum(e)**2 - np.sum(px)**2 - np.sum(py)**2 - np.sum(pz)**2,
+                           0., None))
     return mass
 
 
@@ -437,6 +439,7 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
         else:
             four_tags.append(0.)
         # now see if there are any same h pairs
+        masses = []
         if len(flat_tags) > 0:
             parents = []
             # look for the closest h to each tag
@@ -451,20 +454,19 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
                 else:  # if we his this we didn't hit the break clause
                     parents.append(-1)
             # check through the parents
-            masses = []
             for i, p in enumerate(parents):
                 tag = flat_tags[i]
                 # if there is another of these in the list then we have both decendants
                 if p in parents[i+1:]:
                     jet_idxs = [i for i, t in enumerate(tags) if tag in t]
                     masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
-            mass1 = mass2 = 0
-            if len(masses) == 2:
-                mass2, mass1 = sorted(masses)
-            elif len(masses) == 1:
-                mass1 = masses[0]
-            pair1.append(mass1)
-            pair2.append(mass2)
+        mass1 = mass2 = 0
+        if len(masses) == 2:
+            mass2, mass1 = sorted(masses)
+        elif len(masses) == 1:
+            mass1 = masses[0]
+        pair1.append(mass1)
+        pair2.append(mass2)
     return four_tags, pair1, pair2
 
 

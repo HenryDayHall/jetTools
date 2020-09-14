@@ -214,114 +214,6 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     return content
 
 
-# Now in detectable comparisons
-def get_mass_gaps(eventWise, jet_name, jet_idxs, append=False):
-    """ Should be combined with get detectable?"""  #TODO
-    # get the distance between the signaljetmass and the desired tag mass
-    # get the distance between the the signaljet mass ans the whole jet mass
-    if "DetectableTag_PT" not in eventWise.columns:
-        Components.add_phi(eventWise, "DetectableTag")
-        Components.add_PT(eventWise, "DetectableTag")
-        Components.add_rapidity(eventWise, "DetectableTag")
-    if "DetectableTag_Mass" not in eventWise.columns:
-        Components.add_mass(eventWise, "DetectableTag")
-    if "DetectableBG_Mass" not in eventWise.columns:
-        add_bg_mass(eventWise)
-    eventWise.selected_index = None
-    tag_groups = eventWise.DetectableTag_Roots
-    n_events = len(tag_groups)
-    # we assume the tagger behaves perfectly
-    # for all jets allocated to each tag group
-    # calcualte total contained values
-    tag_mass2_in = [[] for _ in range(n_events)]
-    all_mass2_in = [[] for _ in range(n_events)]
-    for event_n, event_tags in enumerate(tag_groups):
-        # it is possible to have no event tags
-        # this happens whn the tags create no detectable particles
-        if len(event_tags) == 0:
-            # if there isn't anything to be found then ignore this event
-            continue # then skip
-        # if we get here, there are detectable particles from the tags
-        eventWise.selected_index = event_n
-        energy = eventWise.Energy
-        px = eventWise.Px
-        py = eventWise.Py
-        pz = eventWise.Pz
-        source_idx = eventWise.JetInputs_SourceIdx
-        parent_idxs = getattr(eventWise, jet_name + "_Parent")
-        tagmass = getattr(eventWise, jet_name + "_TagMass")
-        tag_idxs = eventWise.BQuarkIdx
-        matched_jets = [[] for _ in event_tags]
-        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
-            if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
-                continue  # jet not sutable or has no tags
-            if len(jet_tags) == 1:
-                # no chosing to be done, the jet just has one tag
-                tag_idx = jet_tags[0]
-            else:
-                # chose the tag with the greatest tagmass
-                # dimension 0 of tagmass is which jet
-                # dimension 1 of tagmass is which tag
-                tag_position = np.argmax(tagmass[jet_n])
-                # this is the particle index of the tag with greatest massshare in the jet
-                tag_idx = tag_idxs[tag_position]
-            # which group does the tag belong to
-            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
-            matched_jets[group_position].append(jet_n)
-        for group_n, jets in enumerate(matched_jets):
-            if jets:
-                jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jets].flatten()
-                # convert to source_idxs
-                jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
-                jet_inputs = source_idx[jet_inputs]
-                # get the tag mass
-                tag_in_jet = list(set(jet_inputs).intersection(eventWise.DetectableTag_Leaves[group_n]))
-                tag_mass2 = np.sum(energy[tag_in_jet])**2 -\
-                            np.sum(px[tag_in_jet])**2 -\
-                            np.sum(py[tag_in_jet])**2 -\
-                            np.sum(pz[tag_in_jet])**2
-                # get the whole jets mass
-                all_mass2 = np.sum(energy[jet_inputs])**2 -\
-                           np.sum(px[jet_inputs])**2 -\
-                           np.sum(py[jet_inputs])**2 -\
-                           np.sum(pz[jet_inputs])**2
-            else:
-                # no jets in this group
-                tag_mass2 = all_mass2 = 0
-            tag_mass2_in[event_n].append(tag_mass2)
-            all_mass2_in[event_n].append(all_mass2)
-    eventWise.selected_index = None
-    content = {}
-    tag_mass_in = np.sqrt(awkward.fromiter(tag_mass2_in))
-    signal_distance = np.abs(tag_mass_in - eventWise.DetectableBG_Mass)
-    background_distance = np.abs(tag_mass_in - np.sqrt(awkward.fromiter(all_mass2_in)))
-    content[jet_name + "_DistanceSignal"] = signal_distance
-    content[jet_name + "_DistanceBG"] = background_distance
-    if append:
-        eventWise.append(**content)
-    return content
-
-
-# Now in detectable comparisons
-def get_seperate_jets(eventWise, jet_name, jet_idxs, append=False):
-    """ Should be combined with get detectable?"""  #TODO
-    eventWise.selected_index = None
-    jet_tags = getattr(eventWise, jet_name+'_MTags')
-    n_events = len(jet_tags)
-    # we assume the tagger behaves perfectly
-    # for all jets allocated to each tag group
-    # calcualte total contained values
-    seperate_jets = []
-    for tags, idxs in zip(jet_tags, jet_idxs):
-        if len(jet_idxs) > 0:
-            seperate_jets.append(np.sum([len(j) > 0 for j in tags[idxs]]))
-    eventWise.selected_index = None
-    content = {jet_name + "_SeperateJets": awkward.fromiter(seperate_jets)}
-    if append:
-        eventWise.append(**content)
-    return content
-
-
 def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     if min_jetpt is None:
         min_jetpt = Constants.min_jetpt
@@ -373,7 +265,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # pick up some content
         content_here = {}
-        if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
+        if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite or True:
             if not silent:
                 print("Adding quality scores")
             # if we reach here the jet still needs a score
@@ -569,9 +461,11 @@ def quality_filter_table_old(all_cols, variable_cols, score_cols, table):
 
 def quality_filter_table(all_cols, variable_cols, score_cols, table):
     signal_gap = table[:, all_cols.index("AveDistanceSignal")]
-    table = table[signal_gap < 30.8]
+    table = table[signal_gap < 31.]
     background_gap = table[:, all_cols.index("AveDistanceBG")]
-    table = table[background_gap < 7.]
+    table = table[background_gap < 8.]
+    cutoff = table[:, all_cols.index("AffinityCutoff")]
+    table = table[[x is not None for x in cutoff]]
     return all_cols, variable_cols, score_cols, table
 
 
@@ -605,7 +499,7 @@ def plot_mass_gaps(eventWise_paths, jet_name=None):
         signal_gap, background_gap, seperate_jets, percent_found = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask]
         jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
         PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
-    points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found))
+    points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=1.5)
     cbar = plt.colorbar(points)
     cbar.set_label("Seperate $b$-jets per event")
     ax.set_xlabel("Average signal loss (GeV)")

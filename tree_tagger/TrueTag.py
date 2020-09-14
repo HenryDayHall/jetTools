@@ -603,6 +603,7 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
         indices of the tags that we wish to use
         (Default="BQuarkIdx")
     """
+    eventWise.selected_index = None
     name = "DetectableTag"
     tag_particles = getattr(eventWise, tag_name)
     # the leaves are the bits that are detected, the roots are the tag particles

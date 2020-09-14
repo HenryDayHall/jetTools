@@ -342,7 +342,11 @@ class EventWise:
                 alias_dict[row[0]] = row[1]
                 self.columns.append(row[0])
         else:
-            self._column_contents['alias'] = awkward.fromiter([])
+            try:
+                self._column_contents['alias'] = awkward.fromiter([])
+            except TypeError:
+                self._column_contents = {k:v for k, v in self._column_contents.items()}
+                self._column_contents['alias'] = awkward.fromiter([])
         return alias_dict
 
     def _remove_alias(self, to_remove):
@@ -491,7 +495,7 @@ class EventWise:
         return self.save_name == other.save_name and self.dir_name == other.dir_name
 
     def write(self, update_git_properties=False):
-        """Write to disk"""
+        """Write to disk"""  # TODO, could append mode speed this up?
         path = os.path.join(self.dir_name, self.save_name)
         assert len(self.columns) == len(set(self.columns)), "Columns contains duplicates"
         non_alias_cols = [c for c in self.columns if c not in self._alias_dict]

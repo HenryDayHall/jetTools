@@ -5,7 +5,7 @@ import scipy.optimize
 from ipdb import set_trace as st
 
 
-def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
+def sorted_masses(eventWise, jet_name, mass_function='correct allocation',
                   jet_pt_cut=None, max_tag_angle=None):
     """
     Get mass predictions for this jet.
@@ -41,13 +41,18 @@ def sorted_masses(eventWise, jet_name, mass_function='highest pt pair',
         all_masses, pairs, pair_masses = MassPeaks.all_PT_pairs(eventWise, jet_name, jet_pt_cut, max_tag_angle=max_tag_angle)
         idx = next(i for i, p in enumerate(pairs) if set(p) == {0, 1})
         masses = pair_masses[idx]
+    elif mass_function == 'correct allocation':
+        _, masses, _ = MassPeaks.all_h_combinations(eventWise, jet_name)
+        masses = np.array(masses)
+        # zero masses should be dropped as unreconstructed
+        masses = masses[masses > 0.00001]
     else:
         masses = mass_function(eventWise, jet_name, jet_pt_cut)
     masses = np.sort(masses)
     return masses
 
 
-def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt pair',
+def quality_width(eventWise, jet_name, fraction=0.15, mass_function='correct allocation',
                   jet_pt_cut=None, max_tag_angle=None):
     """
     The width of the smallest reconstruced mass windows that contains
@@ -101,7 +106,7 @@ def quality_width(eventWise, jet_name, fraction=0.15, mass_function='highest pt 
 
 
 def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125.,
-                     mass_function='highest pt pair',
+                     mass_function='correct allocation',
                      jet_pt_cut=None, max_tag_angle=0.8):
     """
     A window proportional to the root of the mass of the object to be reconstructed
@@ -152,7 +157,7 @@ def quality_fraction(eventWise, jet_name, mass_of_obj, multiplier=125.,
 
 
 def quality_width_fracton(eventWise, jet_name, mass_of_obj, fraction=0.15, multiplier=125.,
-                          mass_function='highest pt pair', jet_pt_cut=None, max_tag_angle=None):
+                          mass_function='correct allocation', jet_pt_cut=None, max_tag_angle=None):
     """
     Equivalent to calling quality_width and quality_fraction.
     slightly faster to do both together - also don't raise exceptions
