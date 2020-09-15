@@ -543,6 +543,23 @@ fix_Indicator2 = dict(
                      PhyDistance='Luclus',
                      )
 
+
+# writeup scan3 ---------------
+scan_writeup3 = dict(
+                     DeltaR=[0.3, 0.7],
+                     ExpofPTMultiplier = [1., 0., -1.],
+                     AffinityCutoff = [None, ('knn', 3), ('distance', 5)],
+                     ExpofPTPosition = ['input', 'eigenspace'],
+                     )
+fix_writeup3 = dict(
+                    NumEigenvectors = 4,
+                    AffinityType='exponent2',
+                    Eigenspace = 'normalised',
+                    ExpofPTFormat='Luclus',
+                    PhyDistance = 'angular',
+                    StoppingCondition = 'beamparticle'
+                    )
+
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
     Scan over all combinations of a range of options.

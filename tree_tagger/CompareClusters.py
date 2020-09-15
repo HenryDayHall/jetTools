@@ -46,11 +46,78 @@ def get_best(eventWise, jet_class):
     return best_name
 
 
-def get_rand_scores(eventWises, jet_name):
-    n_events = len(eventWises[0].JetInputs_SourceIdx)
-    n_comparisons = len(eventWises)
-    scores = np.empty((n_comparisons, n_comparisons))
-        # TODO
+def get_particle_jet_labels(eventWise, jet_name):
+    eventWise.selected_index = None
+    # the labels will have the same shape as the jet inputs
+    labels = eventWise.JetInputs_SourceIdx.tolist()
+    n_events = len(labels)
+    for event_n in range(n_events):
+        eventWise.selected_index = event_n
+        for jet_n, jet in enumerate(getattr(eventWise, jet_name + "_InputIdx")):
+            for j in jet[jet < len(labels[event_n])]:
+                labels[event_n][j] = jet_n
+    return labels
+
+
+def get_rand_scores(base_eventWise, compare_eventWises, jet_name):
+    if isinstance(base_eventWise, str):
+        base_eventWise = Components.EventWise.from_file(base_eventWise)
+    base_eventWise.selected_index = None
+    n_events = len(base_eventWise.JetInputs_SourceIdx)
+    n_comparisons = len(compare_eventWises)
+    scores = np.full((n_comparisons, n_events), np.nan)
+    base_labels = get_particle_jet_labels(base_eventWise, jet_name)
+    for comp_n, other in enumerate(compare_eventWises):
+        if isinstance(other, str):
+            other = Components.EventWise.from_file(other)
+        try:
+            other_labels = get_particle_jet_labels(other, jet_name)
+        except AttributeError:
+            continue
+        for event_n, (labels1, labels2) in enumerate(zip(base_labels, other_labels)):
+            # need to trim off the extra particles,
+            # they will always be at the end of the list
+            labels2 = labels2[:len(labels1)]
+            scores[comp_n, event_n] = sklearn.metrics.cluster.adjusted_rand_score(labels1, labels2)
+    return scores
+
+
+def plot_rand_scores(base_eventWise, soft_eventWise, collinear_eventWise):
+    if isinstance(base_eventWise, str):
+        base_eventWise = Components.EventWise.from_file(base_eventWise)
+    if isinstance(soft_eventWise, str):
+        soft_eventWise = Components.EventWise.from_file(soft_eventWise)
+    if isinstance(collinear_eventWise, str):
+        collinear_eventWise = Components.EventWise.from_file(collinear_eventWise)
+    jet_names = FormJets.get_jet_names(base_eventWise)
+    n_events = len(base_eventWise.JetInputs_SourceIdx)
+    steps = int(n_events/20)
+    cmap = matplotlib.cm.get_cmap('gist_rainbow')
+    colours = cmap(np.linspace(0, 1, len(jet_names)))
+    scatter_alpha = 0.2
+    soft_marker = '^'
+    colinear_marker = 'o'
+    for name, colour in zip(jet_names, colours):
+        soft_score, colinear_score = get_rand_scores(base_eventWise, [soft_eventWise, collinear_eventWise], name)
+        scatter_x = range(n_events)
+        plt.scatter(scatter_x, soft_score, marker=soft_marker,
+                    color=colour, alpha=scatter_alpha, lw=0)
+        plt.scatter(scatter_x, colinear_score, marker=colinear_marker,
+                    color=colour, alpha=scatter_alpha, lw=0)
+        fit_x = range(0, n_events, steps)
+        if np.any(~np.isnan(soft_score)):
+            plt.plot(fit_x, np.poly1d(np.polyfit(scatter_x, soft_score, 1))(fit_x),
+                     marker=soft_marker, color=colour, label=name + " soft radiation")
+        if np.any(~np.isnan(colinear_score)):
+            plt.plot(fit_x, np.poly1d(np.polyfit(scatter_x, colinear_score, 1))(fit_x),
+                     marker=colinear_marker, color=colour, label=name + " colinear splitting")
+    plt.legend()
+    plt.xlabel("Increasing divergance")
+    plt.ylabel("Rand score")
+    st()
+    plt.show()
+    pass
+
 
 # code for making scores
 
@@ -263,6 +330,9 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     for i, name in enumerate(names):
         if not silent:
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
+        # check if we need to mass tag
+        if name + "_MTags" not in eventWise.columns:
+            TrueTag.add_mass_share(eventWise, name, np.inf, True, True)
         # pick up some content
         content_here = {}
         if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite or True:
@@ -461,11 +531,11 @@ def quality_filter_table_old(all_cols, variable_cols, score_cols, table):
 
 def quality_filter_table(all_cols, variable_cols, score_cols, table):
     signal_gap = table[:, all_cols.index("AveDistanceSignal")]
-    table = table[signal_gap < 31.]
+    table = table[signal_gap < 30.62]
     background_gap = table[:, all_cols.index("AveDistanceBG")]
-    table = table[background_gap < 8.]
-    cutoff = table[:, all_cols.index("AffinityCutoff")]
-    table = table[[x is not None for x in cutoff]]
+    table = table[background_gap < 5.86]
+    #cutoff = table[:, all_cols.index("AffinityCutoff")]
+    #table = table[[x is not None for x in cutoff]]
     return all_cols, variable_cols, score_cols, table
 
 

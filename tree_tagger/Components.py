@@ -681,7 +681,7 @@ class EventWise:
             else:
                 raise KeyError(f"Don't have a column called {old_name}")
             if not isinstance(self._column_contents, dict):
-                self._column_contents = self._column_contents.copy()
+                self._column_contents = {k:v for k, v in self._column_contents.items()}
             self._column_contents[new_name] = self._column_contents[old_name]
             del self._column_contents[old_name]
 
