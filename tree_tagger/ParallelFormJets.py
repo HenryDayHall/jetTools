@@ -423,9 +423,9 @@ certain_Spectral = dict(ExpofPTFormat='Luclus',
                         StoppingCondition='beamparticle',
                         )
 
-cetrain_akt_Spectral = {'ExpofPTMultiplier'=-1, **certain_Spectral}
-cetrain_kt_Spectral = {'ExpofPTMultiplier'=1, **certain_Spectral}
-cetrain_ca_Spectral = {'ExpofPTMultiplier'=0, **certain_Spectral}
+cetrain_akt_Spectral = {'ExpofPTMultiplier':-1, **certain_Spectral}
+cetrain_kt_Spectral = {'ExpofPTMultiplier':1, **certain_Spectral}
+cetrain_ca_Spectral = {'ExpofPTMultiplier':0, **certain_Spectral}
 
 
 scan_Best1 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
@@ -815,5 +815,6 @@ if __name__ == '__main__':
     if InputTools.yesNo_question("Monte carlo? "):
         names = FormJets.cluster_classes
         jet_class = InputTools.list_complete("Jet class? ", names).strip()
-        monte_carlo(eventWise_path, end_time, jet_class=jet_class)
+        #monte_carlo(eventWise_path, end_time, jet_class=jet_class)
+        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=certain_Spectral)
 
