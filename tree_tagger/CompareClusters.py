@@ -49,7 +49,7 @@ def get_best(eventWise, jet_class):
 def get_particle_jet_labels(eventWise, jet_name):
     eventWise.selected_index = None
     # the labels will have the same shape as the jet inputs
-    labels = eventWise.JetInputs_SourceIdx.tolist()
+    labels = eventWise.JetInputs_Px.tolist()
     n_events = len(labels)
     for event_n in range(n_events):
         eventWise.selected_index = event_n
@@ -114,10 +114,62 @@ def plot_rand_scores(base_eventWise, soft_eventWise, collinear_eventWise):
     plt.legend()
     plt.xlabel("Increasing divergance")
     plt.ylabel("Rand score")
-    st()
     plt.show()
-    pass
 
+
+def plot_comparison(base_eventWise=None, comparison_eventWise=None, jet_name=None):
+    if base_eventWise is None:
+        base_eventWise = InputTools.get_file_name("Base eventWise? ").strip()
+    if isinstance(base_eventWise, str):
+        base_eventWise = Components.EventWise.from_file(base_eventWise)
+    if comparison_eventWise is None:
+        comparison_eventWise = InputTools.get_file_name("Comparison eventWise? ").strip()
+    if isinstance(comparison_eventWise, str):
+        comparison_eventWise = Components.EventWise.from_file(comparison_eventWise)
+    if jet_name is None:
+        jet_names = FormJets.get_jet_names(base_eventWise)
+        jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
+    cmap = matplotlib.cm.get_cmap('gist_rainbow')
+    base_labels = awkward.fromiter(get_particle_jet_labels(base_eventWise,  jet_name))
+    comparison_labels = awkward.fromiter(get_particle_jet_labels(comparison_eventWise,  jet_name))
+    scores = get_rand_scores(base_eventWise, [comparison_eventWise], jet_name)[0]
+    i = 0
+    while True:
+        try:
+            i = int(input("Event num? "))
+        except ValueError:
+            i += 1
+        if i<0:
+            break
+        base_eventWise.selected_index = i
+        comparison_eventWise.selected_index = i
+        # set up the plots
+        fig, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
+        fig.suptitle(f"Rand score = {scores[i]}")
+        ax1.set_title("No change")
+        ax2.set_title("Soft radiation" if "soft" in comparison_eventWise.save_name.lower()
+                      else "Colinear splitting")
+        for ax in [ax1, ax2]:
+            ax.set_xlabel("rapidity")
+            ax.set_ylabel("$\\phi$")
+        # add the data
+        num_jets = len(set(base_labels[i]))
+        base_colours = cmap(base_labels[i]/num_jets)
+        ax1.scatter(base_eventWise.JetInputs_Rapidity, base_eventWise.JetInputs_Phi,
+                    s=4*np.sqrt(base_eventWise.JetInputs_Energy), alpha=0.5,
+                    c=base_colours)
+        num_comp_jets = len(set(comparison_labels[i]))
+        comparison_colours = cmap(comparison_labels[i]/num_comp_jets)
+        ax2.scatter(comparison_eventWise.JetInputs_Rapidity, comparison_eventWise.JetInputs_Phi,
+                    s=4*np.sqrt(comparison_eventWise.JetInputs_Energy), alpha=0.5,
+                    c=comparison_colours)
+        # put rings round the new items
+        start_new = len(base_labels[i])
+        ax2.scatter(comparison_eventWise.JetInputs_Rapidity[start_new:],
+                    comparison_eventWise.JetInputs_Phi[start_new:],
+                    s=80, color=[[0,0,0,0]], marker='o', edgecolors='k')
+
+        plt.show()
 
 # code for making scores
 

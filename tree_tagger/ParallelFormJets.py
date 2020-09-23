@@ -414,7 +414,19 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
+
+
 # Spectral best ----------------------
+
+certain_Spectral = dict(ExpofPTFormat='Luclus',
+                        AffinityType='exponent2',
+                        StoppingCondition='beamparticle',
+                        )
+
+cetrain_akt_Spectral = {'ExpofPTMultiplier'=-1, **certain_Spectral}
+cetrain_kt_Spectral = {'ExpofPTMultiplier'=1, **certain_Spectral}
+cetrain_ca_Spectral = {'ExpofPTMultiplier'=0, **certain_Spectral}
+
 
 scan_Best1 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
                   ExpofPTMultiplier = [0, -0.3, -1.],
@@ -555,7 +567,7 @@ fix_writeup3 = dict(
                     NumEigenvectors = 4,
                     AffinityType='exponent2',
                     Eigenspace = 'normalised',
-                    ExpofPTFormat='Luclus',
+                    ExpofPTFormat = 'Luclus',
                     PhyDistance = 'angular',
                     StoppingCondition = 'beamparticle'
                     )
@@ -700,7 +712,7 @@ def parameter_step(eventWise, jet_class, ignore_parameteres=None, current_best=N
 #        count += 1
 
 
-def random_parameters(jet_class=None, desired_parameters=None):
+def random_parameters(jet_class=None, desired_parameters=None, omit_parameters=None):
     """
     
 
@@ -721,21 +733,23 @@ def random_parameters(jet_class=None, desired_parameters=None):
     permitted_vals = getattr(FormJets, jet_class).permited_values
     if desired_parameters is None:
         desired_parameters = permitted_vals.keys()
+    if omit_parameters is not None:
+        desired_parameters = [x for x in desired_parameters if x not in omit_parameters]
     for key, selection in permitted_vals.items():
         if key not in desired_parameters:
             continue
         if key == 'DeltaR':
-            params[key] = np.random.uniform(0, 1.5)
+            params[key] = np.around(np.random.uniform(0, 1.5), 1)
         elif key == 'ExpofPTMultiplier':
-            params[key] = np.random.uniform(-1., 1.)
+            params[key] = np.around(np.random.uniform(-1., 1.), 1)
         elif key == 'NumEigenvectors':
             params[key] = np.random.randint(1, 10)
         elif key == 'MaxCutScore':
-            params[key] = np.random.uniform(0.2, 1.)
+            params[key] = np.around(np.random.uniform(0.2, 1.), 1)
         elif key == 'BaseJump':
-            params[key] = np.random.uniform(0.01, 0.5)
+            params[key] = np.around(np.random.uniform(0.01, 0.5), 2)
         elif key == 'JumpEigenFactor':
-            params[key] = np.random.uniform(0., 100)
+            params[key] = np.around(np.random.uniform(0., 100), -1)
         elif key == 'AffinityCutoff':
             cutofftypes = [None if x is None else x[0] for x in selection]
             cutofftype = np.random.choice(cutofftypes)
@@ -744,13 +758,13 @@ def random_parameters(jet_class=None, desired_parameters=None):
             elif cutofftype == 'knn':
                 params[key] = (cutofftype, np.random.randint(1, 6))
             elif cutofftype == 'distance':
-                params[key] = (cutofftype, np.random.uniform(0., 10.))
+                params[key] = (cutofftype, np.around(np.random.uniform(0., 10.), 1))
         else:  # all the remaining ones are selected from lists
             params[key] = np.random.choice(selection)
     return jet_class, params
 
 
-def monte_carlo(eventWise_path, end_time, jet_class=None):
+def monte_carlo(eventWise_path, end_time, jet_class=None, fixed_parameters=None):
     """
     
 
@@ -778,10 +792,13 @@ def monte_carlo(eventWise_path, end_time, jet_class=None):
     #if not os.path.exists('continue'):
     #    open('continue', 'a').close()
     #while os.path.exists('continue'):
+    if fixed_parameters is None:
+        fixed_parameters = {}
     while time.time() < end_time:
         if change_class:
             jet_class = None
-        jet_class, next_try = random_parameters(jet_class)
+        jet_class, next_try = random_parameters(jet_class, omit_parameters=fixed_parameters)
+        next_try.update(fixed_parameters)
         print(f"Next try is {jet_class}; {next_try}")
         jet_name = next(name_gen)
         generate_pool(eventWise_path, jet_class, next_try, jet_name, True, end_time=end_time)
