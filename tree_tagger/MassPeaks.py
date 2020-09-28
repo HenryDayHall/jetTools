@@ -8,6 +8,7 @@ from ipdb import set_trace as st
 from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
 
 
+
 def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
     """
     Return a subset of a list of jet indices, in a particular event,
@@ -257,7 +258,7 @@ def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
     return pair_masses
 
 
-def all_jet_masses(eventWise, jet_name, jet_pt_cut=None):
+def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, require_seperate=False):
     """
     Calculate the mass of the combination of all tagged jets in each event.
     
@@ -387,7 +388,7 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     return all_masses, pairs, pair_masses
 
 
-def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag_type=None):
+def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag_type=None, require_seperate=True):
     """
     Gather all jets tagged by b-quarks from the same light higgs.
 
@@ -435,7 +436,10 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
         # check if all 4 tags are present
         if len(flat_tags) == 4:
             tagged_jets = [i for i, t in enumerate(tags) if len(t)]
-            four_tags.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
+            if len(tagged_jets) == 4 or not require_seperate:
+                four_tags.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
+            else:
+                four_tags.append(0.)
         else:
             four_tags.append(0.)
         # now see if there are any same h pairs
@@ -459,7 +463,8 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
                 # if there is another of these in the list then we have both decendants
                 if p in parents[i+1:]:
                     jet_idxs = [i for i, t in enumerate(tags) if tag in t]
-                    masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
+                    if len(jet_idxs) == 2 or not require_seperate:
+                        masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
         mass1 = mass2 = 0
         if len(masses) == 2:
             mass2, mass1 = sorted(masses)
@@ -620,7 +625,7 @@ def plot_scatter_correct_pairs(eventWise, jet_names, show=True):
     return four_tag_masses, pair1_masses, pair2_masses
 
 
-def plot_all_jets(eventWise, jet_names, show=True):
+def plot_all_jets(eventWise, jet_names, show=True, require_seperate=True):
     """
     Plot all possible pairings of jets by PT order.
 
@@ -643,7 +648,7 @@ def plot_all_jets(eventWise, jet_names, show=True):
     # get the jet data
     all_masses = []
     for name in jet_names:
-        all_masses.append(all_jet_masses(eventWise, name))
+        all_masses.append(all_jet_masses(eventWise, name, require_seperate=require_seperate))
     hist_params['range'] = np.nanmin(all_masses[0]), np.nanmax(all_masses[0])
     ax.set_title(f"Total b-jet mass")
     for i, name in enumerate(jet_names):
@@ -871,7 +876,7 @@ if __name__ == '__main__':
     jet_names = FormJets.get_jet_names(ew)
     
     #plot_PT_pairs(ew, jet_names, True)
-    plot_correct_pairs(ew, jet_names, True)
+    plot_all_jets(ew, jet_names, True)
     input()
 
 

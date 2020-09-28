@@ -816,5 +816,5 @@ if __name__ == '__main__':
         names = FormJets.cluster_classes
         jet_class = InputTools.list_complete("Jet class? ", names).strip()
         #monte_carlo(eventWise_path, end_time, jet_class=jet_class)
-        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=certain_Spectral)
+        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=cetrain_akt_Spectral)
 

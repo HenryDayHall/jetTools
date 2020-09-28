@@ -189,6 +189,62 @@ def add_bg_mass(eventWise):
     eventWise.append(DetectableBG_Mass = awkward.fromiter(all_bg_mass))
 
 
+# TODO merge with detectable comparisons
+def get_detectable_mask(eventWise, jet_name, jet_idxs, append=False):
+    """
+    
+
+    Parameters
+    ----------
+    eventWise :
+        
+    jet_name :
+        
+    jet_idxs :
+        
+    ctag :
+        
+
+    Returns
+    -------
+
+    """
+    eventWise.selected_index = None
+    tag_groups = eventWise.DetectableTag_Roots
+    n_events = len(tag_groups)
+    mask = [[] for _ in range(n_events)]
+    for event_n, event_tags in enumerate(tag_groups):
+        # it is possible to have no event tags
+        # this happens whn the tags create no detectable particles
+        if len(event_tags) == 0:
+            # if there isn't anything to be found then ignore this event
+            continue # then skip
+        # if we get here, there are detectable particles from the tags
+        eventWise.selected_index = event_n
+        parent_idxs = getattr(eventWise, jet_name + "_Parent")
+        tagmass = getattr(eventWise, jet_name + "_TagMass")
+        tag_idxs = eventWise.BQuarkIdx
+        matched_jets = [[] for _ in event_tags]
+        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
+            if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
+                continue  # jet not sutable or has no tags
+            if len(jet_tags) == 1:
+                # no chosing to be done, the jet just has one tag
+                tag_idx = jet_tags[0]
+            else:
+                # chose the tag with the greatest tagmass
+                # dimension 0 of tagmass is which jet
+                # dimension 1 of tagmass is which tag
+                tag_position = np.argmax(tagmass[jet_n])
+                # this is the particle index of the tag with greatest massshare in the jet
+                tag_idx = tag_idxs[tag_position]
+            # which group does the tag belong to
+            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
+            matched_jets[group_position].append(jet_n)
+        mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
+    return awkward.fromiter(mask)
+
+
 def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     """
     
@@ -408,6 +464,14 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = filter_jets(eventWise, name)
             content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
+        # TODO, megering
+        if len(content_here) == 0:
+            append_content = False
+            content_here = {name + "_" + s : getattr(eventWise, name + "_" + s)
+                            for s in ["DistanceSignal", "DistanceBG"]}
+        # get the mask
+        mask = get_detectable_mask(eventWise, name, jet_idxs, False)
+        flat_mask = mask.flatten()
         # get averages for all other generated content
         new_averages = {}
         # we are only intrested in finite results
@@ -419,6 +483,17 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             else:  # sometimes there could be no finite results at all
                 value = np.nan
             new_averages[key.replace('_', '_Ave')] = value
+            # again but filtered
+            flattened = flattened[flat_mask]
+            finite = np.isfinite(flattened)
+            if np.any(finite):
+                filtered_value = np.mean(flattened[finite])
+            else:  # sometimes there could be no finite results at all
+                filtered_value = np.nan
+            new_averages[key.replace('_', '_FilteredAve')] = filtered_value
+        # TODO remove this again
+        if not append_content:
+            content_here = {}
         new_contents.update(content_here)
         new_hyperparameters.update(new_averages)
         if not os.path.exists('continue'):
@@ -618,10 +693,12 @@ def plot_mass_gaps(eventWise_paths, jet_name=None):
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison:
         mask = np.logical_and(signal_gap < 31, background_gap < 10)
-        signal_gap, background_gap, seperate_jets, percent_found = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask]
-        jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
-        PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
-    points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=1.5)
+        if sum(mask)>4:
+            signal_gap, background_gap, seperate_jets, percent_found = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask]
+            jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
+            PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
+    max_colour = max(1.5, np.max(seperate_jets))
+    points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=max_colour)
     cbar = plt.colorbar(points)
     cbar.set_label("Seperate $b$-jets per event")
     ax.set_xlabel("Average signal loss (GeV)")
