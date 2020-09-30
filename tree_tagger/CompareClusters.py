@@ -284,6 +284,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     rapidity_in = [[] for _ in range(n_events)]
     phi_in = [[] for _ in range(n_events)]
     pt_in = [[] for _ in range(n_events)]
+    mask = [[] for _ in range(n_events)]
     # the fraction of the tags that have been connected to some jet
     percent_found = np.zeros(n_events)
     seperate_jets = np.zeros(n_events)
@@ -323,6 +324,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
             # which group does the tag belong to
             group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
             matched_jets[group_position].append(jet_n)
+        mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
         # the tag fragment accounts only for tags that could be found
         num_found = sum(len(group) for group, matched in zip(event_tags, matched_jets)
                                  if len(matched))
@@ -384,6 +386,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     content[jet_name + "_DistanceSignal"] = signal_distance
     content[jet_name + "_DistanceBG"] = background_distance
     content[jet_name + "_SeperateJets"] = awkward.fromiter(seperate_jets)
+    content[jet_name + "_SeperateMask"] = awkward.fromiter(mask)
     if append:
         eventWise.append(**content)
     return content
@@ -420,7 +423,7 @@ def remove_scores(eventWise):
         eventWise.write()
 
 
-def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, overwrite=False, silent=False):
+def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, overwrite=True, silent=False):
     if isinstance(eventWise, str):
         eventWise = Components.EventWise.from_file(eventWise)
     if dijet_mass is None:
@@ -436,6 +439,9 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     if "DetectableTag_Idx" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise)
     for i, name in enumerate(names):
+        # temporary skip line
+        if name + "_SeperateAveDistanceSignal" in eventWise.hyperparameter_columns:
+            continue # TODO remove
         if not silent:
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # check if we need to mass tag
@@ -443,7 +449,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             TrueTag.add_mass_share(eventWise, name, np.inf, True, True)
         # pick up some content
         content_here = {}
-        if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite or True:
+        if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
             if not silent:
                 print("Adding quality scores")
             # if we reach here the jet still needs a score
@@ -469,8 +475,14 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             append_content = False
             content_here = {name + "_" + s : getattr(eventWise, name + "_" + s)
                             for s in ["DistanceSignal", "DistanceBG"]}
-        # get the mask
-        mask = get_detectable_mask(eventWise, name, jet_idxs, False)
+        else:
+            append_content = True
+        # get the mask for seperate jets
+        mask_name = name + "_SeperateMask"
+        try:
+            mask = content_here[mask_name]
+        except KeyError:
+            mask = getattr(eventWise, mask_name)
         flat_mask = mask.flatten()
         # get averages for all other generated content
         new_averages = {}
@@ -484,13 +496,14 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 value = np.nan
             new_averages[key.replace('_', '_Ave')] = value
             # again but filtered
-            flattened = flattened[flat_mask]
-            finite = np.isfinite(flattened)
-            if np.any(finite):
-                filtered_value = np.mean(flattened[finite])
-            else:  # sometimes there could be no finite results at all
-                filtered_value = np.nan
-            new_averages[key.replace('_', '_FilteredAve')] = filtered_value
+            if flattened.shape == flat_mask.shape:
+                flattened = flattened[flat_mask]
+                finite = np.isfinite(flattened)
+                if np.any(finite):
+                    filtered_value = np.mean(flattened[finite])
+                else:  # sometimes there could be no finite results at all
+                    filtered_value = np.nan
+                new_averages[key.replace('_', '_SeperateAve')] = filtered_value
         # TODO remove this again
         if not append_content:
             content_here = {}
@@ -587,6 +600,7 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
 
 
 def filter_table(*args):
+    st()
     args = nan_filter_table(*args)
     print(f"Length after nan filter = {len(args[-1])}")
     table = args[-1]
@@ -666,7 +680,28 @@ def quality_filter_table(all_cols, variable_cols, score_cols, table):
     return all_cols, variable_cols, score_cols, table
 
 
-def plot_mass_gaps(eventWise_paths, jet_name=None):
+def filter_standard_akt(all_cols, variable_cols, score_cols, table):
+    exact = {"ExpofPTFormat": "min", "PhyDistance": "angular", }
+    approx = {"ExpofPTMultiplier": -1}
+    return filter_matching(all_cols, table, exact, approx)
+
+
+
+def filter_matching(all_cols, table, exact=None, approx=None):
+    mask = np.full(len(table), False, dtype=bool)
+    if exact is not None:
+        for name in exact:
+            column = [row[all_cols.index(name)] == exact[name] for row in table]
+            mask *= column
+    if approx is not None:
+        for name in approx:
+            column = [np.isclose(row[all_cols.index(name)], approx[name]) for row in table]
+            mask *= column
+    return mask
+
+
+
+def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=None):
     ax = plt.gca()
     cluster_comparison = isinstance(eventWise_paths, list)
     if cluster_comparison:
@@ -676,6 +711,10 @@ def plot_mass_gaps(eventWise_paths, jet_name=None):
         background_gap = np.fromiter((row[all_cols.index("AveDistanceBG")] for row in table), dtype=float)
         percent_found = np.fromiter((row[all_cols.index("AvePercentFound")] for row in table), dtype=float)
         seperate_jets = np.fromiter((row[all_cols.index("AveSeperateJets")] for row in table), dtype=float)
+        if highlight_fn is not None:
+            highlight = highlight_fn(all_cols, variable_cols, score_cols, table)
+        else:
+            highlight = np.full_like(signal_gap, False, dtype=bool)
     else:  # just all the events for one jet
         assert jet_name is not None
         plt.title(f"Events clustered with {jet_name}")
@@ -694,11 +733,12 @@ def plot_mass_gaps(eventWise_paths, jet_name=None):
     if cluster_comparison:
         mask = np.logical_and(signal_gap < 31, background_gap < 10)
         if sum(mask)>4:
-            signal_gap, background_gap, seperate_jets, percent_found = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask]
+            signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
             PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
     max_colour = max(1.5, np.max(seperate_jets))
     points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=max_colour)
+    ax.scatter(signal_gap[highlight], background_gap[highlight], c='k', marker='o', s=10*np.sqrt(percent_found)+0.3)
     cbar = plt.colorbar(points)
     cbar.set_label("Seperate $b$-jets per event")
     ax.set_xlabel("Average signal loss (GeV)")
@@ -1081,6 +1121,7 @@ if __name__ == '__main__':
     
     if InputTools.yesNo_question("Score an eventWise? "):
         duration = InputTools.get_time("How long to run for? (negative for inf) ")
+        print(f"Running for {duration/(60**2):.2f} hours}")
         if duration < 0:
             duration = np.inf
         if len(ew_paths) == 1:
@@ -1105,7 +1146,7 @@ if __name__ == '__main__':
                 plt.show()
                 input()
             elif InputTools.yesNo_question("Plot mass gaps? "):
-                plot_mass_gaps(ew_paths)
+                plot_mass_gaps(ew_paths, highlight_fn=filter_standard_akt)
                 plt.show()
                 input()
             again = InputTools.yesNo_question("Plot something else? ")

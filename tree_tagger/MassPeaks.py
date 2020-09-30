@@ -459,10 +459,13 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
                     parents.append(-1)
             # check through the parents
             for i, p in enumerate(parents):
-                tag = flat_tags[i]
+                tag_1 = flat_tags[i]
                 # if there is another of these in the list then we have both decendants
+                # this dosn't produce dupes becuase there are exactly 2 sharing a parent
                 if p in parents[i+1:]:
-                    jet_idxs = [i for i, t in enumerate(tags) if tag in t]
+                    tag_2 = flat_tags[i+1 + parents[i+1:].index(p)]
+                    # check for either tag
+                    jet_idxs = [i for i, t in enumerate(tags) if tag_1 in t or tag_2 in t]
                     if len(jet_idxs) == 2 or not require_seperate:
                         masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
         mass1 = mass2 = 0
@@ -570,13 +573,13 @@ def plot_scatter_correct_pairs(eventWise, jet_names, show=True):
     # prepare the hist parameters
     cmap = matplotlib.cm.get_cmap('tab10')
     colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
-    hist_params = dict(bins=40, density=False, histtype='step')
-    other_params = dict(bins=40, density=False, histtype='stepfilled', color='gray', alpha=0.8)
+    #hist_params = dict(bins=40, density=False, histtype='step')
+    #other_params = dict(bins=40, density=False, histtype='stepfilled', color='gray', alpha=0.8)
     # get the jet data
     four_tag_masses = []
     pair1_masses = []
     pair2_masses = []
-    for name in jet_names:
+    for name, colour in zip(colours, jet_names):
         four_masses, pair1, pair2 = all_h_combinations(eventWise, name)
         four_tag_masses.append(four_masses)
         pair1_masses.append(pair1)
@@ -876,7 +879,7 @@ if __name__ == '__main__':
     jet_names = FormJets.get_jet_names(ew)
     
     #plot_PT_pairs(ew, jet_names, True)
-    plot_all_jets(ew, jet_names, True)
+    plot_correct_pairs(ew, jet_names, True)
     input()
 
 
