@@ -21,7 +21,10 @@ import socket
 
 SCORE_COLS = ["QualityWidth", "QualityFraction", "AveSignalMassRatio", "AveBGMassRatio",
               "AveDistancePT", "AveDistancePhi", "AveDistanceRapidity", "AvePercentFound",
-              "AveDistanceBG", "AveDistanceSignal", "AveSeperateJets"]
+              "AveDistanceBG", "AveDistanceSignal", "AveSeperateJets",
+              "SeperateAveSignalMassRatio", "SeperateAveBGMassRatio",
+              "SeperateAveDistancePT", "SeperateAveDistancePhi", "SeperateAveDistanceRapidity",
+              "SeperateAveDistanceBG", "SeperateAveDistanceSignal"]
 
 def get_best(eventWise, jet_class):
     """ return the name of the jet with the highest SignalMassRatio/BGMassRatio """
@@ -187,62 +190,6 @@ def add_bg_mass(eventWise):
                                np.sum(eventWise.Py[bg])**2 - np.sum(eventWise.Pz[bg])**2
     all_bg_mass = np.sqrt(all_bg_mass)
     eventWise.append(DetectableBG_Mass = awkward.fromiter(all_bg_mass))
-
-
-# TODO merge with detectable comparisons
-def get_detectable_mask(eventWise, jet_name, jet_idxs, append=False):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        
-    jet_name :
-        
-    jet_idxs :
-        
-    ctag :
-        
-
-    Returns
-    -------
-
-    """
-    eventWise.selected_index = None
-    tag_groups = eventWise.DetectableTag_Roots
-    n_events = len(tag_groups)
-    mask = [[] for _ in range(n_events)]
-    for event_n, event_tags in enumerate(tag_groups):
-        # it is possible to have no event tags
-        # this happens whn the tags create no detectable particles
-        if len(event_tags) == 0:
-            # if there isn't anything to be found then ignore this event
-            continue # then skip
-        # if we get here, there are detectable particles from the tags
-        eventWise.selected_index = event_n
-        parent_idxs = getattr(eventWise, jet_name + "_Parent")
-        tagmass = getattr(eventWise, jet_name + "_TagMass")
-        tag_idxs = eventWise.BQuarkIdx
-        matched_jets = [[] for _ in event_tags]
-        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
-            if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
-                continue  # jet not sutable or has no tags
-            if len(jet_tags) == 1:
-                # no chosing to be done, the jet just has one tag
-                tag_idx = jet_tags[0]
-            else:
-                # chose the tag with the greatest tagmass
-                # dimension 0 of tagmass is which jet
-                # dimension 1 of tagmass is which tag
-                tag_position = np.argmax(tagmass[jet_n])
-                # this is the particle index of the tag with greatest massshare in the jet
-                tag_idx = tag_idxs[tag_position]
-            # which group does the tag belong to
-            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
-            matched_jets[group_position].append(jet_n)
-        mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
-    return awkward.fromiter(mask)
 
 
 def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
@@ -600,7 +547,6 @@ def tabulate_scores(eventWise_paths, variable_cols=None, score_cols=None):
 
 
 def filter_table(*args):
-    st()
     args = nan_filter_table(*args)
     print(f"Length after nan filter = {len(args[-1])}")
     table = args[-1]
@@ -672,9 +618,9 @@ def quality_filter_table_old(all_cols, variable_cols, score_cols, table):
 
 def quality_filter_table(all_cols, variable_cols, score_cols, table):
     signal_gap = table[:, all_cols.index("AveDistanceSignal")]
-    table = table[signal_gap < 30.62]
+    table = table[signal_gap < 33.]
     background_gap = table[:, all_cols.index("AveDistanceBG")]
-    table = table[background_gap < 5.86]
+    table = table[background_gap < 33.]
     #cutoff = table[:, all_cols.index("AffinityCutoff")]
     #table = table[[x is not None for x in cutoff]]
     return all_cols, variable_cols, score_cols, table
@@ -684,7 +630,6 @@ def filter_standard_akt(all_cols, variable_cols, score_cols, table):
     exact = {"ExpofPTFormat": "min", "PhyDistance": "angular", }
     approx = {"ExpofPTMultiplier": -1}
     return filter_matching(all_cols, table, exact, approx)
-
 
 
 def filter_matching(all_cols, table, exact=None, approx=None):
@@ -707,8 +652,8 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=None):
     if cluster_comparison:
         plt.title("Cluster methods")
         all_cols, variable_cols, score_cols, table = filter_table(*tabulate_scores(eventWise_paths))
-        signal_gap = np.fromiter((row[all_cols.index("AveDistanceSignal")] for row in table), dtype=float)
-        background_gap = np.fromiter((row[all_cols.index("AveDistanceBG")] for row in table), dtype=float)
+        signal_gap = np.fromiter((row[all_cols.index("SeperateAveDistanceSignal")] for row in table), dtype=float)
+        background_gap = np.fromiter((row[all_cols.index("SeperateAveDistanceBG")] for row in table), dtype=float)
         percent_found = np.fromiter((row[all_cols.index("AvePercentFound")] for row in table), dtype=float)
         seperate_jets = np.fromiter((row[all_cols.index("AveSeperateJets")] for row in table), dtype=float)
         if highlight_fn is not None:
@@ -722,16 +667,17 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=None):
             eventWise = Components.EventWise.from_file(eventWise_paths)
         else:
             eventWise = eventWise_paths
-        signal_gap = np.fromiter((np.mean(d) for d in
-                                  getattr(eventWise, jet_name + "_DistanceSignal")),
+        mask = getattr(eventWise, jet_name + "_SeperateMask")
+        signal_gap = np.fromiter((np.mean(d[m]) for m, d in
+                                  zip(mask, getattr(eventWise, jet_name + "_DistanceSignal"))),
                                  dtype=float)
-        background_gap = np.fromiter((np.mean(d) for d in
-                                      getattr(eventWise, jet_name + "_DistanceBG")),
+        background_gap = np.fromiter((np.mean(d[m]) for m, d in
+                                      zip(mask, getattr(eventWise, jet_name + "_DistanceBG"))),
                                  dtype=float)
         percent_found = getattr(eventWise, jet_name + "_PercentFound")
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison:
-        mask = np.logical_and(signal_gap < 31, background_gap < 10)
+        mask = np.logical_and(signal_gap < 33, background_gap < 33)
         if sum(mask)>4:
             signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
@@ -1121,7 +1067,7 @@ if __name__ == '__main__':
     
     if InputTools.yesNo_question("Score an eventWise? "):
         duration = InputTools.get_time("How long to run for? (negative for inf) ")
-        print(f"Running for {duration/(60**2):.2f} hours}")
+        print(f"Running for {duration/(60**2):.2f} hours")
         if duration < 0:
             duration = np.inf
         if len(ew_paths) == 1:

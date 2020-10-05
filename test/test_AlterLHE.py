@@ -164,5 +164,5 @@ def test_apply_to_events():
         assert input_text == example_file
         with open(output_name, 'r') as output_file:
             output_text = output_file.read()
-        assert len(input_text.split(os.linesep)) == len(output_text.split(os.linesep)) + 2
+        assert len(input_text.split(os.linesep)) + 2 == len(output_text.split(os.linesep))
 

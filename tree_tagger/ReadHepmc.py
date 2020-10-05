@@ -357,11 +357,11 @@ class Hepmc(Components.EventWise):
 def main():
     """ """
     dir_name = "./megaIgnore"
-    save_name = "billy_tag_3_pythia8_events.hepmc"
+    save_name = "reshowered.hepmc"
     #dir_name = "/home/henry/Documents/PhD/jetTagger/tree_tagger/megaIgnore"
     print(f"Reading {save_name}")
     eventWise = Hepmc(dir_name, save_name, 0, 10000)
-    eventWise.save_name = "bases_5k.awkd"
+    eventWise.save_name = "reshowered.awkd"
     print(f"Writing {eventWise.save_name}")
     eventWise.write()
 

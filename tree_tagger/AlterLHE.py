@@ -123,16 +123,43 @@ def soft_kinematics(parent_momentum, max_radiation):
     return parent_momentum - radiation, radiation
 
 
-
 def apply_to_events(old_name, new_name, split_type, end_split=5.):
-    tree = ElementTree.parse(old_name)
-    event_nodes = tree.findall('event')
-    inv_n_events = 1/len(event_nodes)
-    for i, event_node in enumerate(event_nodes):
-        event = Event(event_node.text)
+    new_text = ""
+    start_point = "<event>"
+    start_length = len(start_point)
+    i = 0
+    with open(old_name, 'r') as old_file:
+        old_text = old_file.read()
+    num_events = old_text.count(start_point)
+    inv_n_events = 1/num_events
+    for i in range(num_events):
+        next_event = old_text.index(start_point) + start_length
+        new_text += old_text[:next_event]
+        old_text = old_text[next_event:]
+        event_end = old_text.index('<')
+        # create the event
+        event = Event(old_text[:event_end])
         event.add_split(split_type, i*inv_n_events*end_split)
-        event_node.text = str(event)
-    tree.write(new_name)
+        new_text += os.linesep + str(event) + os.linesep
+        # cut the event off the old text
+        old_text = old_text[event_end:]
+    # add any remaining text on
+    new_text += old_text
+    with open(new_name, 'w') as new_file:
+        new_file.write(new_text)
+
+
+
+#def apply_to_events(old_name, new_name, split_type, end_split=5.):
+#    tree = ElementTree.parse(old_name)
+#    event_nodes = tree.findall('event')
+#    inv_n_events = 1/len(event_nodes)
+#    for i, event_node in enumerate(event_nodes):
+#        event = Event(event_node.text)
+#        event.add_split(split_type, i*inv_n_events*end_split)
+#        event_node.text = str(event)
+#    tree.write(new_name)
+#
 
 if __name__ == '__main__':
     old_name = InputTools.get_file_name("Name of lhe file to read ", '.lhe').strip()
