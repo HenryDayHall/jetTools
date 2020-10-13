@@ -78,7 +78,7 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
     return closest
 
 
-def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=None, include_antiparticles=True):
+def tag_particle_indices(eventWise, hard_interaction_pids=None, tag_pids=None, include_antiparticles=True):
     """
     Identify tag particles emmited by the hard scattering
     follows taggable partilces to last tagable decendant
@@ -90,7 +90,8 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     hard_interaction_pids : list of ints
         These, along with the roots of the shower, are
         starting poitns for looking for tag particle chains
-        (Default value = [25, 35])
+        (Default value = [25, 35] if found in event, else
+         the contents of the proton is used [1, 2, 3, 4, -1, -2, -3, -4, 21])
     tag_pids : array like of ints, or the string 'hadrons'
         All the mcpids that should be considered to be part of a tag particle chain.
         If None, then just b-quarks are considered (5).
@@ -109,6 +110,11 @@ def tag_particle_indices(eventWise, hard_interaction_pids=[25, 35], tag_pids=Non
     """
     assert eventWise.selected_index is not None
     # if no tag pids given, anything that contains a b
+    if hard_interaction_pids is None:
+        if 25 in eventWise.MCPID and 35 in eventWise.MCPID:
+            hard_interaction_pids = [25, 35]
+        else:
+            hard_interaction_pids = [1, 2, 3, 4, -1, -2, -3, -4, 21]
     if tag_pids is None:
         tag_pids = np.array([-5])
     elif isinstance(tag_pids, str) and tag_pids == 'hadrons':
