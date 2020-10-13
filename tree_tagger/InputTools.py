@@ -66,8 +66,8 @@ class PreSelections:
             questions = []
             consistant_length = []
             answers = []
-        self.questions = []
-        self.consistant_length = []
+        self.questions = questions
+        self.consistant_length = consistant_length
         self.answers = answers
 
     def __getitem__(self, message):
@@ -107,6 +107,9 @@ class PreSelections:
         """
         # remove any new lines from the message
         message = message.replace(os.linesep, '').replace('\n', '')
+        # also remove any incidents of the sep
+        message = message.replace(self._sep, '')
+        response = response.replace(self._sep, '')
         self.questions.append(message)
         self.consistant_length.append(consistant_length)
         self.answers.append(response)
@@ -171,7 +174,7 @@ class PreSelections:
 pre_selections = PreSelections()
 last_selections = PreSelections()
 
-def get_previous(function_name, message):
+def get_previousx(function_name, message):
     """
     
 
@@ -186,7 +189,7 @@ def get_previous(function_name, message):
     -------
 
     """
-    delimiter = ','
+    delimiter = '~~'
     message = message.replace(delimiter, '_')
     memory_file = './autofill_memory.csv'
     try:
