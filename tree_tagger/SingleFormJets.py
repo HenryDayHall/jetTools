@@ -128,6 +128,10 @@ def pick_class_params():
             selection = ast.literal_eval(selection)
         except ValueError:
             pass
+        if not InputTools.yesNo_question(f"Understood {selection}, is this correct? "):
+            print("fix it manually")
+            st()
+            pass
         chosen_parameters[name] = selection
     return cluster_name, cluster_function, chosen_parameters
 
