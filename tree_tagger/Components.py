@@ -1205,7 +1205,7 @@ def recursive_distance(awkward1, awkward2):
     return distance
 
 
-def add_rapidity(eventWise, base_name=''):
+def add_rapidity(eventWise, base_name=None):
     """
     Append a calculated rapidity to the eventWise.
 
@@ -1217,27 +1217,37 @@ def add_rapidity(eventWise, base_name=''):
         prefix for inputs to calculation
         (Default value = '')
     """
-    if base_name != '':
+    if base_name is None:
+        # find all the things with an angular property
+        pt_cols = [c[:-3] for c in eventWise.columns if c.endswith("PT")]
+        pz_cols = [c[:-3] for c in pt_cols if c+"Pz" in eventWise.columns]
+        all_cols = [c[:-3] for c in pz_cols if c+"Energy" in eventWise.columns]
+        base_names = [c for c in all_cols if (c+"Rapidity") not in eventWise.columns]
+    else:
         if not base_name.endswith('_'):
             base_name += '_'
-    pts = getattr(eventWise, base_name+"PT")
-    pzs = getattr(eventWise, base_name+"Pz")
-    es = getattr(eventWise, base_name+"Energy")
-    n_events = len(getattr(eventWise, base_name+"PT"))
-    rapidities = []
-    for event_n in range(n_events):
-        if event_n % 10 == 0:
-            print(f"{event_n/n_events:.1%}", end='\r')
-        rap_here = []
-        eventWise.selected_index = event_n
+        base_names = [base_name]
+    new_content = {}
+    for base_name in base_names:
         pts = getattr(eventWise, base_name+"PT")
         pzs = getattr(eventWise, base_name+"Pz")
         es = getattr(eventWise, base_name+"Energy")
-        rap_here = ptpze_to_rapidity(pts, pzs, es)
-        rapidities.append(awkward.fromiter(rap_here))
+        n_events = len(getattr(eventWise, base_name+"PT"))
+        rapidities = []
+        for event_n in range(n_events):
+            if event_n % 10 == 0:
+                print(f"{event_n/n_events:.1%}", end='\r')
+            rap_here = []
+            eventWise.selected_index = event_n
+            pts = getattr(eventWise, base_name+"PT")
+            pzs = getattr(eventWise, base_name+"Pz")
+            es = getattr(eventWise, base_name+"Energy")
+            rap_here = ptpze_to_rapidity(pts, pzs, es)
+            rapidities.append(awkward.fromiter(rap_here))
+        rapidities = awkward.fromiter(rapidities)
+        new_content[base_name+"Rapidity"] = rapidities
     eventWise.selected_index = None
-    rapidities = awkward.fromiter(rapidities)
-    eventWise.append(**{base_name+"Rapidity": rapidities})
+    eventWise.append(**new_content)
 
 
 def add_thetas(eventWise, basename=None):
