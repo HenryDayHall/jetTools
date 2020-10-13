@@ -1546,6 +1546,17 @@ def add_mass(eventWise, basename=None):
         contents[name+"Mass"] = np.sqrt(e**2 - px**2 - py**2 - pz**2)
     eventWise.append(**contents)
 
+
+def add_all(eventWise, basename=None, inc_mass=False):
+    add_thetas(eventWise, basename)
+    add_PT(eventWise, basename)
+    add_phi(eventWise, basename)
+    add_rapidity(eventWise, basename)
+    add_pseudorapidity(eventWise, basename)
+    if inc_mass:
+        add_mass(eventWise, basename)
+
+
 def last_instance(eventWise, particle_idx):
     """
     Find the particle_idx at which the specified particle decays.
