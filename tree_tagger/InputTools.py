@@ -174,7 +174,7 @@ class PreSelections:
 pre_selections = PreSelections()
 last_selections = PreSelections()
 
-def get_previousx(function_name, message):
+def get_previous(function_name, message):
     """
     
 
