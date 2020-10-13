@@ -82,12 +82,13 @@ class Event:
             new_colour = np.max(all_existing_colour) + 1
             # one colour is taken from b
             if b_is_anti:
-                new_particle["colour 1"] = b_particle["colour 2"]
+                new_particle["colour 2"] = b_particle["colour 2"]
+                new_particle["colour 1"] = new_colour
                 b_after["colour 2"] = new_colour
             else:
                 new_particle["colour 1"] = b_particle["colour 1"]
+                new_particle["colour 2"] = new_colour
                 b_after["colour 1"] = new_colour
-            new_particle["colour 2"] = new_colour
         # assume the spin will flip
         assert split_attributes['spin'] == 1.0, "need to implement splins besides 1"
         b_after["spin"] *= -1
@@ -101,10 +102,13 @@ class Event:
             new_b_kinematics, new_other_kinematics = collinear_kinematics(parent_momentum, max_split)
         elif split_type == "soft":
             new_b_kinematics, new_other_kinematics = soft_kinematics(parent_momentum, max_split)
-        b_after["px"], b_after["py"], b_after["pz"] = new_b_kinematics
-        b_after["e"] = np.sqrt(b_after["m"]**2 + np.sum(new_b_kinematics**2))
+        # put in the kinematics of the other particle
         new_particle["px"], new_particle["py"], new_particle["pz"] = new_other_kinematics
         new_particle["e"] = np.sqrt(new_particle["m"]**2 + np.sum(new_other_kinematics**2))
+        # the kinematics of the new particle
+        b_after["px"], b_after["py"], b_after["pz"] = new_b_kinematics
+        #b_after["e"] = np.sqrt(b_after["m"]**2 + np.sum(new_b_kinematics**2))
+        b_after["e"] = b_particle["e"] - new_particle["e"]  # b can eb off shell
         # finnaly we can add the particles to the particle list
         self.particles += [b_after, new_particle]
         self.increment_particle_count(2)

@@ -356,12 +356,14 @@ class Hepmc(Components.EventWise):
 
 def main():
     """ """
-    dir_name = "./megaIgnore"
-    save_name = "reshowered.hepmc"
-    #dir_name = "/home/henry/Documents/PhD/jetTagger/tree_tagger/megaIgnore"
+    input_file = InputTools.get_file_name("Input file? ", 'hepmc').strip()
+    new_name = InputTools.get_file_name("Output file? ", 'awkd').strip()
+    dir_name, save_name = os.path.split(input_file)
+    new_dir_name, new_save_name = os.path.split(new_name)
     print(f"Reading {save_name}")
     eventWise = Hepmc(dir_name, save_name, 0, 10000)
-    eventWise.save_name = "reshowered.awkd"
+    eventWise.dir_name = new_dir_name
+    eventWise.save_name = new_save_name
     print(f"Writing {eventWise.save_name}")
     eventWise.write()
 

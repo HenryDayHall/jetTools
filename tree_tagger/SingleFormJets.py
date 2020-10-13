@@ -116,7 +116,7 @@ def pick_class_params():
             raise NotImplementedError
     else:
         cluster_class = getattr(FormJets, cluster_name)
-    default_parameters = cluster_class.param_list
+    default_parameters = cluster_class.default_params
     chosen_parameters = {}
     print(f"Select the parameters for {cluster_name}, blank for default.")
     for name, default in default_parameters.items():
@@ -157,8 +157,7 @@ def make_new_cluster(eventWise):
             i += 1
             jet_name = cluster_name + "Jet" + str(i)
         print(f"Naming this {jet_name}")
-    chosen_parameters['jet_name'] = jet_name
-    FormJets.cluster_multiapply(eventWise, cluster_function, chosen_parameters, batch_length=BATCH_LENGTH)
+    FormJets.cluster_multiapply(eventWise, cluster_function, chosen_parameters, batch_length=BATCH_LENGTH, jet_name=jet_name)
     return jet_name
 
 

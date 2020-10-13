@@ -57,7 +57,7 @@ def test_Event():
     assert np.sum([p["MCPID"] == 5 for p in event.particles]) == 2
     decayed_particle = next(p for p in event.particles if p["MCPID"] == 5 and p["status"] == 2)
     after_decay = next(p for p in event.particles if p["MCPID"] == 5 and p["status"] == 1)
-    coords = ["px", "py", "pz"]
+    coords = ["e", "px", "py", "pz"]
     tst.assert_allclose(*[[particle[coord] for coord in coords]
                           for particle in [after_decay, decayed_particle]])
     soft_radiation = next(p for p in event.particles if p["MCPID"] in 
