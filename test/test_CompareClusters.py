@@ -274,6 +274,7 @@ def fake_detectable_comparisons(eventWise, name, jet_idx, append):
     scores = {}
     scores[name + "_Bork"] = awkward.fromiter([np.inf, np.inf, np.inf])
     scores[name + "_Quack"] = awkward.fromiter([[0.5, np.nan], [0.5, -np.inf], []])
+    scores[name + "_SeperateMask"] = awkward.fromiter([False, True, True])
     return scores
 
 def fake_empty(*args, **kwargs):

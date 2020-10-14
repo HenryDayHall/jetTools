@@ -1,6 +1,7 @@
 """ some tools for soliciting user input, works in python 2 and 3 
 mostly intrested in autocompletion """
 from __future__ import print_function
+import shutil
 from ipdb import set_trace as st
 import numpy as np
 import os
@@ -14,12 +15,12 @@ except NameError: pass
 
 up = '\x1b[A'
 down = '\x1b[B'
+sep = '||'
 
 # a dictionary of a preselected reponse per quesiton
 
 class PreSelections:
     """ """
-    _sep = '||'
     def __init__(self, file_name=None):
         self.questions = []
         self.consistant_length = []
@@ -28,10 +29,13 @@ class PreSelections:
         if file_name is not None:
             with open(file_name, 'r') as in_file:
                 str_lines = in_file.readlines()
-                self.questions = [q.replace('\n', '') for q in str_lines[0].split(self._sep)]
-                self.consistant_length = [int(q) for q in str_lines[1].split(self._sep)]
+            if len(str_lines) < 3:
+                print(f"{file_name} not valid format for previous selections")
+            else:
+                self.questions = [q.replace('\n', '') for q in str_lines[0].split(sep)]
+                self.consistant_length = [int(q) for q in str_lines[1].split(sep)]
                 # answers may contain numpy arrays,
-                for answer in str_lines[2].split(self._sep):
+                for answer in str_lines[2].split(sep):
                     if answer.endswith('\n'):
                         answer = answer[:-1]
                     answer = answer.strip()
@@ -66,8 +70,8 @@ class PreSelections:
             questions = []
             consistant_length = []
             answers = []
-        self.questions = questions
-        self.consistant_length = consistant_length
+        self.questions = []
+        self.consistant_length = []
         self.answers = answers
 
     def __getitem__(self, message):
@@ -107,9 +111,6 @@ class PreSelections:
         """
         # remove any new lines from the message
         message = message.replace(os.linesep, '').replace('\n', '')
-        # also remove any incidents of the sep
-        message = message.replace(self._sep, '')
-        response = response.replace(self._sep, '')
         self.questions.append(message)
         self.consistant_length.append(consistant_length)
         self.answers.append(response)
@@ -127,7 +128,7 @@ class PreSelections:
         -------
 
         """
-        lines = [self._sep.join([str(p) for p in line]) for line in
+        lines = [sep.join([str(p) for p in line]) for line in
                  [self.questions, self.consistant_length, self.answers]]
         with open(file_name, 'w') as out:
             out.writelines(os.linesep.join(lines))
@@ -189,15 +190,17 @@ def get_previous(function_name, message):
     -------
 
     """
-    delimiter = '~~'
-    message = message.replace(delimiter, '_')
+    message = message.replace(sep, '_')
     memory_file = './autofill_memory.csv'
     try:
-        existing = np.loadtxt(memory_file, delimiter=delimiter, dtype=str)
+        existing = np.loadtxt(memory_file, delimiter=sep, dtype=str)
         if len(existing) == 0:
             return ''
         existing = existing.reshape((-1, 3))
     except OSError:
+        return ''
+    except ValueError:
+        print(f"{memory_file} malformed")
         return ''
     match,  = np.where((existing[:, :2] == [function_name, message]).all(axis=1))
     if len(match) == 0:
@@ -225,11 +228,10 @@ def set_previous(function_name, message, previous):
     """
     if previous in ['', up, down]:
         return
-    delimiter = ','
-    message = message.replace(delimiter, '_')
+    message = message.replace(sep, '_')
     memory_file = './autofill_memory.csv'
     try:
-        existing = np.loadtxt(memory_file, delimiter=delimiter, dtype=str)
+        existing = np.loadtxt(memory_file, delimiter=sep, dtype=str)
         if len(existing) == 0:
             existing = np.array([[function_name, message, previous]])
         else:
@@ -239,9 +241,14 @@ def set_previous(function_name, message, previous):
                 existing = np.vstack((existing, [function_name, message, previous]))
             else:
                 existing[match[0], 2] = previous
+    except ValueError:
+        backup = memory_file+".bk"
+        print(f"{memory_file} malformed, moving old copy to {backup} and starting over")
+        shutil.copyfile(memory_file, backup)
+        existing = np.array([[function_name, message, previous]])
     except OSError:
         existing = np.array([[function_name, message, previous]])
-    np.savetxt(memory_file, existing, delimiter=delimiter, header="Memory of user inputs", fmt='%s')
+    np.savetxt(memory_file, existing, delimiter=sep, header="Memory of user inputs", fmt='%s')
 
 
 def get_file_name(message, file_ending='', consistant_length=-1):

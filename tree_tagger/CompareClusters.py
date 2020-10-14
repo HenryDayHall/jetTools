@@ -386,9 +386,6 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     if "DetectableTag_Idx" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise)
     for i, name in enumerate(names):
-        # temporary skip line
-        if name + "_SeperateAveDistanceSignal" in eventWise.hyperparameter_columns:
-            continue # TODO remove
         if not silent:
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # check if we need to mass tag
@@ -417,13 +414,6 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = filter_jets(eventWise, name)
             content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
-        # TODO, megering
-        if len(content_here) == 0:
-            append_content = False
-            content_here = {name + "_" + s : getattr(eventWise, name + "_" + s)
-                            for s in ["DistanceSignal", "DistanceBG"]}
-        else:
-            append_content = True
         # get the mask for seperate jets
         mask_name = name + "_SeperateMask"
         try:
@@ -451,9 +441,6 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 else:  # sometimes there could be no finite results at all
                     filtered_value = np.nan
                 new_averages[key.replace('_', '_SeperateAve')] = filtered_value
-        # TODO remove this again
-        if not append_content:
-            content_here = {}
         new_contents.update(content_here)
         new_hyperparameters.update(new_averages)
         if not os.path.exists('continue'):
