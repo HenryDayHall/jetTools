@@ -33,10 +33,6 @@ def sorted_masses(eventWise, jet_name, mass_function='correct allocation',
         the sorted list of particle mass predictions
 
     """
-    if max_tag_angle is None:
-        max_tag_angle = Constants.max_tagangle
-    if jet_pt_cut is None:
-        jet_pt_cut = Constants.min_jetpt
     if mass_function == 'highest pt pair':
         all_masses, pairs, pair_masses = MassPeaks.all_PT_pairs(eventWise, jet_name, jet_pt_cut, max_tag_angle=max_tag_angle)
         idx = next(i for i, p in enumerate(pairs) if set(p) == {0, 1})

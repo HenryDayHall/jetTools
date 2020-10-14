@@ -3233,7 +3233,14 @@ def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
     # apply the pt filter
     jet_idxs = []
     jet_parent = getattr(eventWise, jet_name + "_Parent")
-    jet_pt = getattr(eventWise, jet_name + "_PT")[jet_parent == -1]
+    try:
+        jet_pt = getattr(eventWise, jet_name + "_PT")[jet_parent == -1]
+    except ValueError:
+        all_jet_pt = getattr(eventWise, jet_name + "_PT")
+        jet_pt = []
+        for i, j_pt in enumerate(all_jet_pt):
+            jet_pt.append(j_pt[jet_parent[i] == -1])
+        jet_pt = awkward.fromiter(jet_pt)
     jet_child1 = getattr(eventWise, jet_name + "_Child1")
     empty = awkward.fromiter([])
     for pts, child1s in zip(jet_pt, jet_child1):
