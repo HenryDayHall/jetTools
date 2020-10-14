@@ -13,7 +13,10 @@ INCORRECT_MATCH = 2
 NO_TOWER = 3
 
 # define some parameters for jet clustering
-min_jetpt = 20.
+# min_jetpt = 15.  changed to flex based on lightest higgs mass
+min_pt = 30.
+lowlead_min_pt = 20.
+lowother_min_pt = 15.
 min_ntracks = 2
 max_tagangle = 0.8
 

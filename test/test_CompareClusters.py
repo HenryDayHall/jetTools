@@ -237,14 +237,20 @@ def test_filter_jets():
     params['Jet_Parent'] = [awkward.fromiter([])]
     params['Jet_Child1'] = [awkward.fromiter([])]
     params['Jet_PT'] =     [awkward.fromiter([])]
+    params['MCPID'] =      [awkward.fromiter([])]
+    params['Generated_mass'] =[awkward.fromiter([])]
     # an event with nothing that passes cuts
     params['Jet_Parent'] += [awkward.fromiter([[-1], [-1, 1, 1, 2, 2]])]
     params['Jet_Child1'] += [awkward.fromiter([[-1], [1, 2, -1, -1, -1]])]
     params['Jet_PT'] +=     [awkward.fromiter([[50.,], [0.2, 0.1, 0., 0., .1]])]
+    params['MCPID'] +=      [awkward.fromiter([25])]
+    params['Generated_mass']+=[awkward.fromiter([40.])]
     # an event with somthing that passes cuts
     params['Jet_Parent'] += [awkward.fromiter([[-1], [-1, 1, 1]])]
     params['Jet_Child1'] += [awkward.fromiter([[-1], [1, -1, -1]])]
     params['Jet_PT'] +=     [awkward.fromiter([[50.,], [21., 0.1, 0.]])]
+    params['MCPID'] +=      [awkward.fromiter([25])]
+    params['Generated_mass']+=[awkward.fromiter([40.])]
     params = {key: awkward.fromiter(val) for key,val in params.items()}
     with TempTestDir("tst") as dir_name:
         # this will raise a value error if given an empty eventWise

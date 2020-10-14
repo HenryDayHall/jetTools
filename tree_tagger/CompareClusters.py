@@ -340,17 +340,42 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
 
 
 def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
+    eventWise.selected_index = None
+    # decided how the pt will be filtered
     if min_jetpt is None:
-        min_jetpt = Constants.min_jetpt
+        # by default all cuts at 30 GeV
+        lead_jet_min_pt = other_jet_min_pt = Constants.min_pt
+        # look in the eventWise for the light higgs
+        flat_pids = eventWise.MCPID.flatten()
+        light_higgs_pid = 25
+        if light_higgs_pid in flat_pids:  # if we are in a light higgs setup lower cuts
+            higgs_idx = flat_pids.tolist().index(light_higgs_pid)
+            light_higgs_mass = eventWise.Generated_mass.flatten()[higgs_idx]
+            if light_higgs_mass < 120.:
+                lead_jet_min_pt = Constants.lowlead_min_pt
+                other_jet_min_pt = Constants.lowother_min_pt
+    else:
+        lead_jet_min_pt = other_jet_min_pt = min_jetpt
     if min_ntracks is None:
         min_ntracks = Constants.min_ntracks
+    # apply the pt filter
     jet_idxs = []
-    eventWise.selected_index = None
-    jet_pt = getattr(eventWise, jet_name + "_PT")
     jet_parent = getattr(eventWise, jet_name + "_Parent")
+    jet_pt = getattr(eventWise, jet_name + "_PT")[jet_parent == -1]
     jet_child1 = getattr(eventWise, jet_name + "_Child1")
-    for pts, parents, child1s in zip(jet_pt, jet_parent, jet_child1):
-        pt_passes = np.where(pts[parents==-1].flatten() > min_jetpt)[0]
+    empty = awkward.fromiter([])
+    for pts, child1s in zip(jet_pt, jet_child1):
+        pts = pts.flatten()
+        try:
+            lead_jet = np.argmax(pts)
+        except ValueError:  # no pts
+            jet_idxs.append(empty)
+            continue
+        if pts[lead_jet] > lead_jet_min_pt:
+            pt_passes = np.where(pts > other_jet_min_pt)[0].tolist()
+        else:
+            jet_idxs.append(empty)
+            continue
         long_enough = awkward.fromiter((i for i, children in zip(pt_passes, child1s[pt_passes])
                                         if sum(children == -1) >= min_ntracks))
         jet_idxs.append(long_enough)
@@ -1055,13 +1080,14 @@ if __name__ == '__main__':
     if InputTools.yesNo_question("Score an eventWise? "):
         duration = InputTools.get_time("How long to run for? (negative for inf) ")
         print(f"Running for {duration/(60**2):.2f} hours")
+        overwrite = InputTools.yesNo_question("Overwrite previous scores? ")
         if duration < 0:
             duration = np.inf
         if len(ew_paths) == 1:
-            append_scores(ew_paths[0], duration=duration)
+            append_scores(ew_paths[0], duration=duration, overwrite=overwrite)
         else:
             end_time = time.time() + duration
-            multiprocess_append_scores(ew_paths, end_time=end_time)
+            multiprocess_append_scores(ew_paths, end_time=end_time, overwrite=overwrite)
     elif InputTools.yesNo_question("Plot something? "):
         save_prefix = InputTools.get_dir_name("Save prefix? (empty to display) ").strip()
         if not save_prefix:
