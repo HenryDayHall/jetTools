@@ -11,67 +11,6 @@ from tree_tagger import MassPeaks, Components, Constants
 # if tests her start breaking, it could be that the functions are fine,
 # just need to match th elinear and angular measures in the tests
 
-def test_filter():
-    # need InputIdx, RootInputIdx, Child1, PT
-    # try an empty event
-    params = {}
-    jet_name = "Jet"
-    params['Jet_InputIdx'] = []
-    params['Jet_RootInputIdx'] = []
-    params['Jet_PT'] = []
-    params['Jet_Child1'] = []
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    jet_idxs = []
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int))
-        assert len(found) == 0
-    # try a regular event
-    params = {}
-    params['Jet_InputIdx'] = [[0, 1, 2], [3, 4, 5]]
-    params['Jet_RootInputIdx'] = [[0], [4]]
-    params['Jet_PT'] = [[3, 1, 2], [10, 1, 5]]
-    params['Jet_Child1'] = [[0, -1, -1], [-1, 5, -1]]
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    jet_idxs = [0, 1]
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int),
-                                 track_cut=2, min_jet_PT=2.)
-        assert set(found) == {0}
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int),
-                                 track_cut=2, min_jet_PT=.5)
-        assert set(found) == {0, 1}
-        jet_idxs = [1]
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int),
-                                 track_cut=2, min_jet_PT=.5)
-        assert set(found) == {1}
-    # try the default cuts
-    params = {}
-    params['Jet_InputIdx'] = [[0], [3, 4, 5]]
-    params['Jet_RootInputIdx'] = [[0], [4]]
-    params['Jet_PT'] = [[Constants.min_jetpt*2], [10, Constants.min_jetpt*0.5, 5]]
-    params['Jet_Child1'] = [[-1], [-1, 5, -1]]
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    jet_idxs = [0, 1]
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int))
-        assert len(found) == 0  # tracks should cut the first, jet pt should cut the second
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int),
-                                 track_cut=0)
-        assert set(found) == {0}
-        found = MassPeaks.filter(eventWise, jet_name, np.array(jet_idxs, dtype=int),
-                                 min_jet_PT=0)
-        assert set(found) == {1}
-
-
 def test_order_tagged_jets():
     # need Tags, InputIdx and RootInputIdx, and a ranking_variable, by default PT
     # try an empty event
@@ -87,7 +26,8 @@ def test_order_tagged_jets():
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         eventWise.selected_index = 0
-        found = MassPeaks.order_tagged_jets(eventWise, jet_name)
+        filtered_event_idxs = []
+        found = MassPeaks.order_tagged_jets(eventWise, jet_name, filtered_event_idxs)
         assert len(found) == 0
     # try a regular event
     params = {}
@@ -102,9 +42,10 @@ def test_order_tagged_jets():
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         eventWise.selected_index = 0
-        found = MassPeaks.order_tagged_jets(eventWise, jet_name)
+        filtered_event_idxs = [0, 1]
+        found = MassPeaks.order_tagged_jets(eventWise, jet_name, filtered_event_idxs)
         tst.assert_allclose(found, [1, 0])
-        found = MassPeaks.order_tagged_jets(eventWise, jet_name, "Bobble")
+        found = MassPeaks.order_tagged_jets(eventWise, jet_name, filtered_event_idxs, "Bobble")
         tst.assert_allclose(found, [0, 1])
 
 def test_combined_jet_mass():
@@ -203,7 +144,7 @@ def test_smallest_angle_parings():
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         eventWise.selected_index = 0
-        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, None)
+        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [])
         assert len(found) == 0
     # try a regular event
     params = {}
@@ -219,17 +160,17 @@ def test_smallest_angle_parings():
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         eventWise.selected_index = 0
-        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, 5)
+        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [0, 1, 2])
         assert len(found) == 1
         assert set(found[0]) == {0, 2}
-        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, 20)
+        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [1, 2])
         assert len(found) == 0
     params['Jet_MTags'] = [awkward.fromiter([[0], [5], [1], [7]])]
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
         eventWise.selected_index = 0
-        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, 0)
+        found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [0, 1, 2, 3])
         assert len(found) == 2
         found = [set(pair) for pair in found]
         assert {0, 1} in found
@@ -251,6 +192,7 @@ def test_all_smallest_angles():
     params['Jet_Rapidity'] = [[]]
     params['Jet_MTags'] = [[]]
     params['Jet_Child1'] = [[]]
+    params['Jet_Parent'] = [[]]
     # event 1 has just 1 jet - no contribution
     params['Jet_RootInputIdx'] += [[[0]]]
     params['Jet_InputIdx'] += [[[0, 1, 2]]]
@@ -263,6 +205,7 @@ def test_all_smallest_angles():
     params['Jet_Rapidity'] += [[[1, 1, 1]]]
     params['Jet_MTags'] += [[[1]]]
     params['Jet_Child1'] += [[[1, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0]]]
     # event 2 has one untagged and one tagged jet - no contribution
     params['Jet_RootInputIdx'] += [[[0], [3]]]
     params['Jet_InputIdx'] += [[[0, 1, 2], [3, 4, 5]]]
@@ -275,7 +218,8 @@ def test_all_smallest_angles():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_MTags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
-    prep_params = {key: [awkward.fromiter(e) for e in v]for key, v in params.items()}
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
+    prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in no masses
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
@@ -295,6 +239,7 @@ def test_all_smallest_angles():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1]]]
     params['Jet_MTags'] += [[[1], [], [4]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7]]]
     expected_masses = [15.]
     # event 4 has two untagged and three tagged jets - two closest tagged jets should combine
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [9], [12]]]
@@ -308,6 +253,7 @@ def test_all_smallest_angles():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]]]
     params['Jet_MTags'] += [[[1], [], [4], [10, 11], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [10, -1, -1], [13, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9], [12, -1, 12]]]
     expected_masses += [np.sqrt(11**2 - 3*4)]
     # event 5 has one untagged and four tagged jets - all tagged jets will combine
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [9], [12]]]
@@ -321,8 +267,9 @@ def test_all_smallest_angles():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]]]
     params['Jet_MTags'] += [[[1], [3], [4], [10, 11], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [10, -1, -1], [13, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9], [12, -1, 12]]]
     expected_masses += [np.sqrt(20**2 - 3*4), np.sqrt(11**2 - 3*4)]
-    prep_params = {key: [awkward.fromiter(e) for e in v]for key, v in params.items()}
+    prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
@@ -346,6 +293,7 @@ def test_all_jet_masses():
     params['Jet_Rapidity'] = [[]]
     params['Jet_MTags'] = [[]]
     params['Jet_Child1'] = [[]]
+    params['Jet_Parent'] = [[]]
     expected_masses = [0.]
     # event 1 has just 1 jet
     params['Jet_RootInputIdx'] += [[[0]]]
@@ -359,6 +307,7 @@ def test_all_jet_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1]]]
     params['Jet_MTags'] += [[[1]]]
     params['Jet_Child1'] += [[[1, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0]]]
     expected_masses += [np.sqrt(97)]
     # event 2 has just 1 jet but it is untagged - should be 0
     params['Jet_RootInputIdx'] += [[[0]]]
@@ -372,6 +321,7 @@ def test_all_jet_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1]]]
     params['Jet_MTags'] += [[[]]]
     params['Jet_Child1'] += [[[1, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0]]]
     expected_masses += [0.]
     # event 3 has one untagged and one tagged jet
     params['Jet_RootInputIdx'] += [[[0], [3]]]
@@ -385,6 +335,7 @@ def test_all_jet_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_MTags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     expected_masses += [np.sqrt(10**2 - 3)]
     # event 4 has one untagged and two tagged jets
     params['Jet_RootInputIdx'] += [[[0], [3], [7]]]
@@ -398,7 +349,8 @@ def test_all_jet_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1]]]
     params['Jet_MTags'] += [[[1], [], [4]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1]]]
-    prep_params = {key: [awkward.fromiter(e) for e in v]for key, v in params.items()}
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7]]]
+    prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     expected_masses += [15.]
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
@@ -423,6 +375,7 @@ def test_all_PT_pairs():
     params['Jet_Rapidity'] = [[]]
     params['Jet_MTags'] = [[]]
     params['Jet_Child1'] = [[]]
+    params['Jet_Parent'] = [[]]
     # 0 1, 0 2, 0 3, 1 2, 1 3, 2 3
     expected_order = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
     expected = [[] for _ in expected_order]
@@ -438,6 +391,7 @@ def test_all_PT_pairs():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_MTags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     # event 2 has one untagged and two tagged jets - only the 0 1 pair
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [9]]]
     params['Jet_InputIdx'] += [[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]]
@@ -450,6 +404,7 @@ def test_all_PT_pairs():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [10, 10, 10]]]
     params['Jet_MTags'] += [[[1], [], [4], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [11, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9]]]
     expected[expected_order.index((0, 1))].append(15)
     # event 3 has five tagged jet - the 4 with highest PT will contribute to every combination
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [10], [13]]]
@@ -463,6 +418,7 @@ def test_all_PT_pairs():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [1, 1, 1], [-1, -1, -1]]]
     params['Jet_MTags'] += [[[1], [2], [4], [5, 6], [10]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [-1, 11, -1], [-1, 14, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9], [12, -1, 12]]]
     # PT order is 2, 0, 1, 4
     expected[expected_order.index((0, 1))].append(15)
     mass = np.sqrt(15**2 - 1)
@@ -475,7 +431,7 @@ def test_all_PT_pairs():
     expected[expected_order.index((1, 3))].append(mass)
     mass = np.sqrt(16**2 - 4**2 - 1)
     expected[expected_order.index((2, 3))].append(mass)
-    prep_params = {key: [awkward.fromiter(e) for e in v]for key, v in params.items()}
+    prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
@@ -505,6 +461,7 @@ def test_all_doubleTagged_jets():
     params['Jet_Rapidity'] = [[]]
     params['Jet_MTags'] = [[]]
     params['Jet_Child1'] = [[]]
+    params['Jet_Parent'] = [[]]
     # event 1 has one double tagged jet blow the pt cut and one tagged jet - no entries
     params['Jet_RootInputIdx'] += [[[0], [3]]]
     params['Jet_InputIdx'] += [[[0, 1, 2], [3, 4, 5]]]
@@ -517,6 +474,7 @@ def test_all_doubleTagged_jets():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_MTags'] += [[[1, 2], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     # event 2 has one single tagged and two double tagged jets - two entiries
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [9]]]
     params['Jet_InputIdx'] += [[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]]
@@ -529,14 +487,16 @@ def test_all_doubleTagged_jets():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [10, 10, 10]]]
     params['Jet_MTags'] += [[[1, 12], [1], [4, 5], [3]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [11, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9]]]
     expected = sorted([np.sqrt(10**2 - 3), np.sqrt(5**2 - 3)])
-    prep_params = {key: [awkward.fromiter(e) for e in v]for key, v in params.items()}
+    prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**prep_params)
         masses = MassPeaks.all_doubleTagged_jets(eventWise, jet_name, 2)
         tst.assert_allclose(sorted(masses), expected)
+
 
 def test_descendants_masses():
     light_pid = 25

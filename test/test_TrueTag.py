@@ -167,6 +167,14 @@ def test_add_tags_particles():
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
+        # try with append falst
+        tag_angle = 8.
+        hyperparameter_content, content =\
+                TrueTag.add_tags(eventWise, jet_name, tag_angle,
+                                 overwrite=True, append=False)
+        assert hyperparameter_content[jet_name + "_TagAngle"] == tag_angle
+        # as we didn't append the eventWise content should have stayed the same
+        assert jet_name + "_Tags" not in eventWise.columns
         # the add tags method will call the add_tag_particles
         tag_angle = 10.
         TrueTag.add_tags(eventWise, jet_name, tag_angle, append=True)
@@ -188,17 +196,6 @@ def test_add_tags_particles():
         assert len(eventWise.Jet_Tags.flatten()) == 1
         assert eventWise.Jet_Tags[0][0] == 2
         assert content[jet_name + "_Tags"][1][0][0] == 2
-        # try with a jet pt cut that excludes the closest jet
-        tag_angle = 8.
-        hyperparameter_content, content =\
-                TrueTag.add_tags(eventWise, jet_name, tag_angle,
-                                 overwrite=True, append=False,
-                                 jet_pt_cut=4.)
-        assert hyperparameter_content[jet_name + "_TagAngle"] == tag_angle
-        assert len(content[jet_name + "_4Tags"].flatten().flatten()) == 1
-        assert content[jet_name + "_4Tags"][1][1][0] == 2
-        # as we didn't append the eventWise content should have stayed the same
-        assert jet_name + "_4Tags" not in eventWise.columns
 
 
 def test_percent_pos():

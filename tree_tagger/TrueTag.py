@@ -190,7 +190,7 @@ def add_tag_particles(eventWise, silent=False):
     eventWise.append(**content)
 
 
-def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, min_tracks=None, silent=False, append=True, overwrite=False):
+def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, silent=False, append=True, overwrite=False):
     """
     Calculate and allocate the tags in the traditional way, using add_tag_particles. 
 
@@ -208,11 +208,6 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     batch_length: int
         max number of events to process
         (Default value = 100)
-    jet_pt_cut : float
-        Minimum pt value for a jet to be considered for tagging.
-        If None, then no mimumum is applied.
-        If not none then value is included in parameter name in eventWise.
-        (Default value = None)
     min_tracks : int
         the minimum number of track for a jet to eb considered for tagging.
         If None then max_angle is drawn from Constants.py
@@ -242,12 +237,8 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
     if max_angle is None:
         max_angle = Constants.max_tagangle
     eventWise.selected_index = None
-    if jet_pt_cut is not None:
-        name = jet_name+f"_{int(jet_pt_cut)}Tags"
-        namePID = jet_name+f"_{int(jet_pt_cut)}TagPIDs"
-    else:
-        name = jet_name + "_Tags"
-        namePID = jet_name+f"_TagPIDs"
+    name = jet_name + "_Tags"
+    namePID = jet_name+f"_TagPIDs"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
     if "TagIndex" not in eventWise.columns:
         add_tag_particles(eventWise, silent=silent)
@@ -294,10 +285,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, jet_pt_cut=None, 
         else:
             # note this actually counts num pesudojets, but for more than 2 that is sufficient
             num_tracks = Components.apply_array_func(len, getattr(eventWise, jet_name+"_PT")).flatten()
-            if jet_pt_cut is None:
-                valid_jets = np.where(num_tracks > min_tracks-0.1)[0]
-            else:
-                valid_jets = np.where(np.logical_and(jet_pt > jet_pt_cut, num_tracks > min_tracks-0.1))[0]
+            valid_jets = np.where(num_tracks > min_tracks-0.1)[0]
         jets_tags = [[] for _ in jet_pt]
         if len(tags) > 0 and len(valid_jets) > 0:
             # there may not be any of the particles we wish to tag in the event

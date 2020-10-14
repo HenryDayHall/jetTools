@@ -339,49 +339,6 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     return content
 
 
-def filter_jets(eventWise, jet_name, min_jetpt=None, min_ntracks=None):
-    eventWise.selected_index = None
-    # decided how the pt will be filtered
-    if min_jetpt is None:
-        # by default all cuts at 30 GeV
-        lead_jet_min_pt = other_jet_min_pt = Constants.min_pt
-        # look in the eventWise for the light higgs
-        flat_pids = eventWise.MCPID.flatten()
-        light_higgs_pid = 25
-        if light_higgs_pid in flat_pids:  # if we are in a light higgs setup lower cuts
-            higgs_idx = flat_pids.tolist().index(light_higgs_pid)
-            light_higgs_mass = eventWise.Generated_mass.flatten()[higgs_idx]
-            if light_higgs_mass < 120.:
-                lead_jet_min_pt = Constants.lowlead_min_pt
-                other_jet_min_pt = Constants.lowother_min_pt
-    else:
-        lead_jet_min_pt = other_jet_min_pt = min_jetpt
-    if min_ntracks is None:
-        min_ntracks = Constants.min_ntracks
-    # apply the pt filter
-    jet_idxs = []
-    jet_parent = getattr(eventWise, jet_name + "_Parent")
-    jet_pt = getattr(eventWise, jet_name + "_PT")[jet_parent == -1]
-    jet_child1 = getattr(eventWise, jet_name + "_Child1")
-    empty = awkward.fromiter([])
-    for pts, child1s in zip(jet_pt, jet_child1):
-        pts = pts.flatten()
-        try:
-            lead_jet = np.argmax(pts)
-        except ValueError:  # no pts
-            jet_idxs.append(empty)
-            continue
-        if pts[lead_jet] > lead_jet_min_pt:
-            pt_passes = np.where(pts > other_jet_min_pt)[0].tolist()
-        else:
-            jet_idxs.append(empty)
-            continue
-        long_enough = awkward.fromiter((i for i, children in zip(pt_passes, child1s[pt_passes])
-                                        if sum(children == -1) >= min_ntracks))
-        jet_idxs.append(long_enough)
-    return awkward.fromiter(jet_idxs)
-
-
 def remove_scores(eventWise):
     suffixes_to_remove = ["DistancePT", "DistancePhi", "DistanceRapidity", "QualityWidth",
                           "QualityFraction", "PercentFound", "BGMassRatio", "SignalMassRatio"]
@@ -437,7 +394,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             # now the mc truth based scores
             if "DetectableTag_Idx" not in eventWise.columns:
                 TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
-            jet_idxs = filter_jets(eventWise, name)
+            jet_idxs = FormJets.filter_jets(eventWise, name)
             content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
         # get the mask for seperate jets
         mask_name = name + "_SeperateMask"

@@ -23,6 +23,7 @@ def test_sorted_masses():
     params['Jet_Rapidity'] = [[]]
     params['Jet_MTags'] = [[]]
     params['Jet_Child1'] = [[]]
+    params['Jet_Parent'] = [[]]
     # 0 1, 0 2, 0 3, 1 2, 1 3, 2 3
     # only intrested in 0 1
     expected = []
@@ -38,6 +39,7 @@ def test_sorted_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_MTags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     # event 2 has one untagged and two tagged jets - only the 0 1 pair
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [9]]]
     params['Jet_InputIdx'] += [[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]]
@@ -50,6 +52,7 @@ def test_sorted_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [10, 10, 10]]]
     params['Jet_MTags'] += [[[1], [], [4], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [11, -1, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9]]]
     expected.append(13)
     # event 3 has five tagged jet - the 4 with highest PT will contribute to every combination
     params['Jet_RootInputIdx'] += [[[0], [3], [7], [10], [13]]]
@@ -63,9 +66,10 @@ def test_sorted_masses():
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [1, 1, 1], [-1, -1, -1]]]
     params['Jet_MTags'] += [[[1], [2], [4], [5, 6], [10]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [-1, 11, -1], [-1, 14, -1]]]
+    params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 10, 10], [13, -1, 13]]]
     # PT order is 2, 0, 1, 4
     expected.append(15)
-    prep_params = {key: [awkward.fromiter(e) for e in v]for key, v in params.items()}
+    prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v]) for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")

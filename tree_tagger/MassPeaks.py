@@ -8,50 +8,7 @@ from ipdb import set_trace as st
 from tree_tagger import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
 
 
-
-def filter(eventWise, jet_name, jet_idxs, track_cut=None, min_jet_PT=None):
-    """
-    Return a subset of a list of jet indices, in a particular event,
-    that match the required criteria
-
-    Parameters
-    ----------
-    eventWise : EventWise
-        dataset containing the jets
-    jet_name : str
-        prefix of the jet's variables in the eventWise
-    jet_idxs : array like of int
-        the indices of the jets in this event to be considered
-    track_cut : int
-        required minimum number of tracks for the jet to be selected
-        if None the value s taken from Constants.py
-         (Default value = None)
-    min_jet_PT : float
-        required minimum jet PT for the jet to be selected
-        if None the value s taken from Constants.py
-         (Default value = None)
-
-    Returns
-    -------
-    valid : array like of ints
-        the subset of jet_idxs that pass criteria
-
-    """
-    if track_cut is None:
-        track_cut = Constants.min_ntracks
-    if min_jet_PT is None:
-        min_jet_PT = Constants.min_jetpt
-    assert eventWise.selected_index is not None
-    input_name = jet_name + '_InputIdx'
-    root_name = jet_name + '_RootInputIdx'
-    children = getattr(eventWise, jet_name+'_Child1')[jet_idxs]
-    valid = np.where([np.sum(c == -1) >= track_cut for c in children])[0]
-    pt = eventWise.match_indices(jet_name+'_PT', root_name, input_name)[jet_idxs[valid]]
-    valid = valid[pt.flatten() > min_jet_PT]
-    return jet_idxs[valid]
-
-
-def order_tagged_jets(eventWise, jet_name, ranking_variable="PT", jet_pt_cut=None, track_cut=None):
+def order_tagged_jets(eventWise, jet_name, filtered_event_idxs, ranking_variable="PT"):
     """
     Find the indices required to put only the valid jets into
     accending order as determined by some parameter.
@@ -66,14 +23,8 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT", jet_pt_cut=Non
         The name of the variable by which or order
         Should exist per consitiuent in the jet
          (Default value = "PT")
-    track_cut : int
-        required minimum number of tracks for the jet to be used
-        if None the value s taken from Constants.py
-         (Default value = None)
-    jet_pt_cut : float
-        required minimum jet PT for the jet to be used
-        if None the value s taken from Constants.py
-         (Default value = None)
+    filtered_event_idxs : listlike of int
+        the indices of the jets that pass filters
 
     Returns
     -------
@@ -82,8 +33,10 @@ def order_tagged_jets(eventWise, jet_name, ranking_variable="PT", jet_pt_cut=Non
 
     """
     assert eventWise.selected_index is not None
-    tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_MTags')])[0]
-    tagged_idxs = filter(eventWise, jet_name, tagged_idxs, track_cut, jet_pt_cut)
+    tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+                            if len(t) > 0 and i in filtered_event_idxs])
+    if len(tagged_idxs) == 0:
+        return tagged_idxs
     input_name = jet_name + '_InputIdx'
     root_name = jet_name + '_RootInputIdx'
     ranking_values = eventWise.match_indices(jet_name+'_'+ranking_variable, root_name, input_name).flatten()
@@ -113,6 +66,10 @@ def combined_jet_mass(eventWise, jet_name, jet_idxs):
     assert eventWise.selected_index is not None
     input_name = jet_name + '_InputIdx'
     root_name = jet_name + '_RootInputIdx'
+    try:
+        jet_idxs = list(jet_idxs)
+    except TypeError:
+        pass
     px = eventWise.match_indices(jet_name+'_Px', root_name, input_name)[jet_idxs].flatten()
     py = eventWise.match_indices(jet_name+'_Py', root_name, input_name)[jet_idxs].flatten()
     pz = eventWise.match_indices(jet_name+'_Pz', root_name, input_name)[jet_idxs].flatten()
@@ -174,7 +131,7 @@ def inverse_condensed_indices(idx, n):
         return None
 
 
-def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
+def smallest_angle_parings(eventWise, jet_name, filtered_event_idxs):
     """
     In a single event greedly pair the jets that are tagged and
     have the smallest angular distances.
@@ -186,9 +143,8 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
         dataset containing the jets
     jet_name : str
         prefix of the jet's variables in the eventWise
-    jet_pt_cut : float
-        required minimum jet PT for the jet to be selected
-        if None the value s taken from Constants.py
+    filtered_event_idxs : listlike of int
+        the indices of the jets that pass filters
 
     Returns
     -------
@@ -198,8 +154,8 @@ def smallest_angle_parings(eventWise, jet_name, jet_pt_cut):
 
     """
     assert eventWise.selected_index is not None
-    tagged_idxs = np.where([len(t) > 0 for t in getattr(eventWise, jet_name + '_MTags')])[0]
-    tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
+    tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+                            if len(t) > 0 and i in filtered_event_idxs])
     num_tags = len(tagged_idxs)
     if num_tags < 2:
         return []
@@ -246,11 +202,12 @@ def all_smallest_angles(eventWise, jet_name, jet_pt_cut):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     pair_masses = []
+    filtered_idxs = FormJets.filter_jets(eventWise, jet_name, jet_pt_cut)
     for event_n in range(n_events):
         if event_n % 10 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        pairs = smallest_angle_parings(eventWise, jet_name, jet_pt_cut)
+        pairs = smallest_angle_parings(eventWise, jet_name, filtered_idxs[event_n])
         if len(pairs) == 0:
             continue
         for pair in pairs:
@@ -282,13 +239,14 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, require_seperate=False)
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     all_masses = []
+    filtered_idxs = FormJets.filter_jets(eventWise, jet_name, jet_pt_cut)
     for event_n in range(n_events):
         if event_n % 100 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        tagged_jets = np.where([len(t) for t in getattr(eventWise, jet_name + "_MTags")])[0]
-        tagged_jets = filter(eventWise, jet_name, tagged_jets, track_cut=2, min_jet_PT=jet_pt_cut)
-        all_masses.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
+        tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+                                if len(t) > 0 and i in filtered_idxs[event_n]])
+        all_masses.append(combined_jet_mass(eventWise, jet_name, tagged_idxs))
     return all_masses
 
 
@@ -361,8 +319,7 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     """
     eventWise.selected_index = None
     if jet_name + "_MTags" not in eventWise.columns:
-        # jet_pt_cut = None becuase we don't want to cut before tagging
-        TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf, jet_pt_cut=None)
+        TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf)
         TrueTag.add_mass_share(eventWise, jet_name, np.inf)
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     # becuase we will use these to take indices from a numpy array they need to be lists 
@@ -371,11 +328,12 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     pair_masses = [[] for _ in pairs]
     all_masses = []
     multi_tagged_masses = []
+    filtered_idxs = FormJets.filter_jets(eventWise, jet_name, jet_pt_cut, track_cut).tolist()
     for event_n in range(n_events):
         if event_n % 100 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        sorted_idx = order_tagged_jets(eventWise, jet_name, "PT", jet_pt_cut, track_cut)
+        sorted_idx = order_tagged_jets(eventWise, jet_name, filtered_idxs[event_n], "PT")
         # this is accending order, we need decending
         sorted_idx = sorted_idx[::-1]
         n_jets = len(sorted_idx)
@@ -760,12 +718,13 @@ def all_doubleTagged_jets(eventWise, jet_name, jet_pt_cut=None):
     eventWise.selected_index = None
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     masses = []
+    filtered_idxs = FormJets.filter_jets(eventWise, jet_name, jet_pt_cut).tolist()
     for event_n in range(n_events):
         if event_n % 10 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        tagged_idxs = np.where([len(t) == 2 for t in getattr(eventWise, jet_name + '_MTags')])[0]
-        tagged_idxs = filter(eventWise, jet_name, tagged_idxs, min_jet_PT=jet_pt_cut)
+        tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+                                if len(t) == 2 and i in filtered_idxs[event_n]])
         if len(tagged_idxs) == 0:
             continue
         for idx in tagged_idxs:
