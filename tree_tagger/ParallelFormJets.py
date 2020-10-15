@@ -415,50 +415,6 @@ def recombine_eventWise(eventWise_path):
     return new_eventWise
 
 
-
-# Spectral best ----------------------
-
-certain_Spectral = dict(ExpofPTFormat='Luclus',
-                        AffinityType='exponent2',
-                        StoppingCondition='beamparticle',
-                        )
-
-cetrain_akt_Spectral = {'ExpofPTMultiplier':-1, **certain_Spectral}
-cetrain_kt_Spectral = {'ExpofPTMultiplier':1, **certain_Spectral}
-cetrain_ca_Spectral = {'ExpofPTMultiplier':0, **certain_Spectral}
-
-
-scan_Best1 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
-                  ExpofPTMultiplier = [0, -0.3, -1.],
-                  AffinityCutoff = [('knn', 3), None],
-                  AffinityType = ['inverse', 'exponent2'],
-                  NumEigenvectors = [8, np.inf])
-fix_Best1a = dict(ExpofPTFormat='Luclus',
-                 ExpofPTPosition='eigenspace',
-                 PhyDistance='angular',
-                 Laplacien='unnormalised',
-                 Eigenspace='normalised',
-                 StoppingCondition='standard')
-
-fix_Best1b = dict(ExpofPTFormat='Luclus',
-                 ExpofPTPosition='eigenspace',
-                 PhyDistance='angular',
-                 Laplacien='unnormalised',
-                 Eigenspace='unnormalised',
-                 StoppingCondition='standard')
-
-scan_Best2 = dict(DeltaR = np.linspace(0.01, 0.05, 5),
-                  ExpofPTMultiplier = [-0.7, -1.],
-                  AffinityCutoff = [('knn', 3), None],
-                  NumEigenvectors = [2, 4, np.inf],
-                  Eigenspace=['unnormalised', 'normalised'])
-fix_Best2 = dict(ExpofPTFormat='Luclus',
-                  AffinityType='linear',
-                  ExpofPTPosition='eigenspace',
-                  PhyDistance='angular',
-                  Laplacien='unnormalised',
-                  StoppingCondition='standard')
-
 # Spectral mean normed eigenspace -------------------------
 scan_SpectralMean1 = dict(DeltaR = np.linspace(0.1, 0.9, 5),
                           ExpofPTMultiplier = [0.0, 0.2, 0.4],
@@ -500,25 +456,18 @@ fix_SpectralMean1d = dict(
                           StoppingCondition = 'standard')
 
 # spectral full ------------------------
-scan_SpectralFull1 = dict(
-                          ExpofPTMultiplier = [0.1, 0.0, -0.1, -0.2],
-                          AffinityCutoff = [None, ('distance', 7), ('distance', 5)],
+scan_SpectralFull = dict(
+                          ExpofPTMultiplier = [0.2, 0.0, -1.],
+                          AffinityCutoff = [None, ('knn', 3), ('distance', 5)],
                           Laplacien = ['unnormalised', 'symmetric'],
-                          AffinityType = ['exponent2', 'exponent'],
+                          Eigenspace = ['normalised', 'unnormalised'],
+                          PhyDistance = ['angular', 'taxicab'],
                         )
-fix_SpectralFull1a = dict(DeltaR=0.5,
+fix_SpectralFull = dict(DeltaR=0.5,
+                          AffinityType = 'exponent2',
                           NumEigenvectors = 4,
                          ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'eigenspace',
-                          PhyDistance = 'angular',
-                          Eigenspace = 'unnormalised',
-                          StoppingCondition = 'beamparticle')
-fix_SpectralFull1b = dict(DeltaR=0.5,
-                          NumEigenvectors = 4,
-                          Eigenspace = 'normalised',
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'eigenspace',
-                          PhyDistance = 'angular',
+                         ExpofPTPosition = 'input',
                           StoppingCondition = 'beamparticle')
 # Traditional -----------------------------
 
@@ -526,51 +475,27 @@ scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5),
                         PhyDistance=['invarient', 'angular', 'Luclus'])
 
-
 scan_Traditional1 = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5))
 
-
 fix_Traditional1 = dict(PhyDistance='taxicab')
 
-
+# Indicator -------------------------------
 scan_Indicator = dict(
-                      JumpEigenFactor=np.linspace(0, 50, 6),
-                      ExpofPTMultiplier=np.linspace(-1, 1, 5),
-                      AffinityType=['exponent', 'exponent2'],
-                      BaseJump=np.linspace(0.01, 0.2, 3),
-                      AffinityCutoff = [None] + [('distance', d) for d in np.linspace(1, 5, 3)],
+                      ExpofPTMultiplier=np.linspace(-1, 0, 3),
+                      BaseJump=np.linspace(0.01, 0.11, 6),
+                      AffinityCutoff = [None, ('distance', 3)],
                          )
-fix_Indicator1 = dict(
+fix_Indicator = dict(
+                      JumpEigenFactor=10.,
+                      AffinityType='exponent',
                      Laplacien='unnormalised',
+                     Eigenspace='unnormalised',
+                     ExpofPTFormat='Luclus',
                      ExpofPTPosition='input',
                      NumEigenvectors=np.inf,
-                     PhyDistance='Luclus',
+                     PhyDistance='angular',
                      )
-
-fix_Indicator2 = dict(
-                     Laplacien='symmetric',
-                     ExpofPTPosition='input',
-                     NumEigenvectors=np.inf,
-                     PhyDistance='Luclus',
-                     )
-
-
-# writeup scan3 ---------------
-scan_writeup3 = dict(
-                     DeltaR=[0.3, 0.7],
-                     ExpofPTMultiplier = [1., 0., -1.],
-                     AffinityCutoff = [None, ('knn', 3), ('distance', 5)],
-                     ExpofPTPosition = ['input', 'eigenspace'],
-                     )
-fix_writeup3 = dict(
-                    NumEigenvectors = 4,
-                    AffinityType='exponent2',
-                    Eigenspace = 'normalised',
-                    ExpofPTFormat = 'Luclus',
-                    PhyDistance = 'angular',
-                    StoppingCondition = 'beamparticle'
-                    )
 
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """

@@ -520,9 +520,13 @@ def filter_table(*args):
     args = nan_filter_table(*args)
     print(f"Length after nan filter = {len(args[-1])}")
     table = args[-1]
-    if len(table) > 200:
-        args = quality_filter_table(*args)
-        print(f"Length after quality filter = {len(args[-1])}")
+    #if len(table) > 200:
+    #    args = quality_filter_table(*args)
+    #    print(f"Length after quality filter = {len(args[-1])}")
+    # remove spectral mean
+    mask = filter_matching(args[0], table, exact={'jet_class':'SpectralMean'})
+    table = table[~mask]
+    args = [*args[:-1], table]
     return args
 
 
@@ -558,33 +562,6 @@ def nan_filter_table(all_cols, variable_cols, score_cols, table):
     return all_cols, variable_cols, score_cols, table
 
 
-def quality_filter_table_old(all_cols, variable_cols, score_cols, table):
-    # require at least 0.1 PercentFound
-    percent_found = table[:, all_cols.index("AvePercentFound")]
-    table = table[percent_found > 0.1]
-    # require that rapidity distance be no more than 0.4
-    rapidity_distance = table[:, all_cols.index("AveDistanceRapidity")]
-    table = table[rapidity_distance < 0.4]
-    # require that phi distance be no more than 1.
-    phi_distance = table[:, all_cols.index("AveDistancePhi")]
-    table = table[phi_distance < 1.]
-    # require that PT distance be no more than 15.
-    pt_distance = table[:, all_cols.index("AveDistancePT")]
-    table = table[pt_distance < 15.]
-    # require average BG mass ratio under 10k
-    bg_mass_ratio = table[:, all_cols.index("AveBGMassRatio")]
-    table = table[bg_mass_ratio < 1e4]
-    # require that average Siganl ratio be over 0.1
-    sig_mass_ratio = table[:, all_cols.index("AveSignalMassRatio")]
-    table = table[sig_mass_ratio > 0.1]
-    # require that quality fractio be under 600
-    quality_fraction = table[:, all_cols.index("QualityFraction")]
-    table = table[np.logical_or(quality_fraction < 600, ~np.isnan(quality_fraction.tolist()))]
-    # require that quality width be under 0.1
-    quality_width = table[:, all_cols.index("QualityWidth")]
-    table = table[np.logical_or(quality_width < 0.1, ~np.isnan(quality_width.tolist()))]
-    return all_cols, variable_cols, score_cols, table
-
 
 def quality_filter_table(all_cols, variable_cols, score_cols, table):
     signal_gap = table[:, all_cols.index("AveDistanceSignal")]
@@ -603,7 +580,7 @@ def filter_standard_akt(all_cols, variable_cols, score_cols, table):
 
 
 def filter_matching(all_cols, table, exact=None, approx=None):
-    mask = np.full(len(table), False, dtype=bool)
+    mask = np.full(len(table), True, dtype=bool)
     if exact is not None:
         for name in exact:
             column = [row[all_cols.index(name)] == exact[name] for row in table]
@@ -616,7 +593,7 @@ def filter_matching(all_cols, table, exact=None, approx=None):
 
 
 
-def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=None):
+def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_standard_akt, zoom=False):
     ax = plt.gca()
     cluster_comparison = isinstance(eventWise_paths, list)
     if cluster_comparison:
@@ -646,8 +623,8 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=None):
                                  dtype=float)
         percent_found = getattr(eventWise, jet_name + "_PercentFound")
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
-    if cluster_comparison:
-        mask = np.logical_and(signal_gap < 33, background_gap < 33)
+    if cluster_comparison and zoom:
+        mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
         if sum(mask)>4:
             signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
@@ -1035,7 +1012,33 @@ if __name__ == '__main__':
         elif path:
             print(f"Error {path} not awkd or folder. ")
     
-    if InputTools.yesNo_question("Score an eventWise? "):
+    if InputTools.yesNo_question("Plot something? "):
+        save_prefix = InputTools.get_dir_name("Save prefix? (empty to display) ").strip()
+        if not save_prefix:
+            save_prefix = None
+        again = True
+        while again:
+            plots = ["scores", "score corrilations", "input corrilations", "class bests",
+                     "mass gaps"]
+            to_plot = InputTools.list_complete("What to plot? ", plots).strip()
+            if to_plot == "scores":
+                plot_scores(ew_paths, save_prefix)
+            elif to_plot == "score corrilations":
+                score_corrilation(ew_paths, save_prefix)
+            elif to_plot == "input corrilations":
+                input_corrilation(ew_paths, save_prefix)
+            elif to_plot == "class bests":
+                plot_class_bests(ew_paths, save_prefix)
+                plt.show()
+                input()
+            elif to_plot == "mass gaps":
+                zoom = InputTools.yesNo_question("Zoom? ")
+                plot_mass_gaps(ew_paths, highlight_fn=filter_standard_akt, zoom=zoom)
+                plt.show()
+                input()
+            again = InputTools.yesNo_question("Plot something else? ")
+            plt.close()
+    elif InputTools.yesNo_question("Score an eventWise? "):
         duration = InputTools.get_time("How long to run for? (negative for inf) ")
         print(f"Running for {duration/(60**2):.2f} hours")
         overwrite = InputTools.yesNo_question("Overwrite previous scores? ")
@@ -1046,26 +1049,5 @@ if __name__ == '__main__':
         else:
             end_time = time.time() + duration
             multiprocess_append_scores(ew_paths, end_time=end_time, overwrite=overwrite)
-    elif InputTools.yesNo_question("Plot something? "):
-        save_prefix = InputTools.get_dir_name("Save prefix? (empty to display) ").strip()
-        if not save_prefix:
-            save_prefix = None
-        again = True
-        while again:
-            if InputTools.yesNo_question("Plot scores? "):
-                plot_scores(ew_paths, save_prefix)
-            elif InputTools.yesNo_question("Plot score corrilations? "):
-                score_corrilation(ew_paths, save_prefix)
-            elif InputTools.yesNo_question("Plot input corrilations? "):
-                input_corrilation(ew_paths, save_prefix)
-            elif InputTools.yesNo_question("Plot class bests? "):
-                plot_class_bests(ew_paths, save_prefix)
-                plt.show()
-                input()
-            elif InputTools.yesNo_question("Plot mass gaps? "):
-                plot_mass_gaps(ew_paths, highlight_fn=filter_standard_akt)
-                plt.show()
-                input()
-            again = InputTools.yesNo_question("Plot something else? ")
 
 
