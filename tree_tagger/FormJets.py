@@ -1061,6 +1061,30 @@ class PseudoJet:
         floats_eq = np.allclose(self._floats, other._floats)
         return ints_eq and floats_eq
 
+    def _merge_complete_jet(self, input_indices):
+        """
+        Merge multple pseudojets to form a new pseudojet, moving the
+        formed pseudojet to the back of the ints/floats lists
+
+        Parameters
+        ----------
+        input_indices : list of list of int
+            input indices identifying the pseudojets to merge
+
+        """
+        # for now just merge in pairs
+        local_indices = sorted([self.idx_from_inpIdx(i) for i in input_indices])
+        replace = local_indices[0]
+        for remove in local_indices[:0:-1]:
+            self._merge_pseudojets(replace, remove, 0)
+        self._remove_pseudojet(replace)
+
+    def _remove_background(self, background_indices):
+        # for now just merge in pairs
+        local_indices = sorted([self.idx_from_inpIdx(i) for i in background_indices])
+        for remove in local_indices[:0:-1]:
+            self._remove_pseudojet(remove)
+
 
 class Traditional(PseudoJet):
     """ Jet clustering in the style of kt/anti-kt/cambridge-acchen """
@@ -1324,6 +1348,79 @@ class Traditional(PseudoJet):
         new_pseudojet.currently_avalible = 0
         new_pseudojet._calculate_roots()
         return new_pseudojet
+
+
+class IterativeCone(PseudoJet):
+    default_params = {'DeltaR': .8, 'SeedThreshold': 1.}
+    permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
+                       'SeedThreshold': Constants.numeric_classes['pdn']}
+    def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
+        self._set_hyperparams(self.default_params, dict_jet_params, kwargs)
+        if dict_jet_params is not None:
+            kwargs['dict_jet_params'] = dict_jet_params
+        self.deltaR2 = self.DeltaR**2
+        super().__init__(eventWise, **kwargs)
+    
+    def _step_assign_parents(self):
+        """ Take a single step to join pseudojets """
+        # find the seed
+        next_seed = self._select_seed()
+        if next_seed < 0:
+            # we are done
+            # everything else is considered bg
+            background_indices = self.InputIdx[:self.currently_avalible]
+            self._remove_background(background_indices)
+        # otherwise start a cone iteration
+        shift = 1.
+        cone_phi = self._floats[next_seed][self._Phi_col]
+        cone_rapidity = self._floats[next_seed][self._Rapidity_col]
+        cone_energy = np.inf  # this will have to be calculated at least twice anyway
+        while shift > 0.01:
+            local_indices = self._find_cone_content(cone_phi, cone_rapidity)
+            new_cone_energy, cone_phi, cone_rapidity = self._get_cone_kinematics(local_indices)
+            shift = 2*(new_cone_energy - cone_energy)/(cone_energy + new_cone_energy)
+            cone_energy = new_cone_energy
+        cone_indices = self.InputIdx[local_indices]
+        self._merge_complete_jet(cone_indices)
+        return None
+
+    def _get_cone_content(self, cone_phi, cone_rapidity):
+        # N.B self.Phi would not work as it only gives end points
+        # and lacks order gaentees
+        phis = np.fromiter((row[self._Phi_col] for row in self._floats[self.currently_avalible]),
+                           dtype=float)
+        phi_distance = Components.angular_distance(phis, cone_phi)
+        raps = np.fromiter((row[self._Rapidity_col] for row in self._floats[self.currently_avalible]),
+                           dtype=float)
+        rapidity_distance = np.abs(raps - cone_rapidity)
+        in_range = rapidity_distance**2 + phi_distance**2 < self.deltaR2
+        local_indices = np.where(in_range)
+        return local_indices
+    
+    def _get_cone_kinematics(self, local_indices):
+        px = py = pz = e = 0
+        for i in local_indices:
+            row = self._floats[i]
+            px += row[self._Px_col]
+            py += row[self._Py_col]
+            pz += row[self._Pz_col]
+            e += row[self._Energy_col]
+        phi, pt = Components.pxpy_to_phipt(px, py)
+        rapidity = Components.ptpze_to_rapidity(pt, pz, e)
+        return e, phi, rapidity
+
+    def _calculate_distances(self):
+        """ Use this to set up the calculation"""
+        pass
+
+    def _select_seed(self):
+        """Pick a seed particle """
+        max_local_idx = np.argmax([row[self._PT_col] for row in
+                                   self._floats[self.currently_avalible]])
+        if self._floats[max_local_idx][self._PT_col] > self.SeedThreshold:
+            return max_local_idx
+        else:
+            return -1
 
 
 class Spectral(PseudoJet):
@@ -2162,24 +2259,6 @@ class Indicator(Spectral):
         for input_indices in array_input_indices:
             self._merge_complete_jet(input_indices)
             # no need to move the other indices, they are inputidxs, they are not order sensative
-
-    def _merge_complete_jet(self, input_indices):
-        """
-        Merge multple pseudojets to form a new pseudojet, moving the
-        formed pseudojet to the back of the ints/floats lists
-
-        Parameters
-        ----------
-        input_indices : list of list of int
-            input indices identifying the pseudojets to merge
-
-        """
-        # for now just merge in pairs
-        local_indices = sorted([self.idx_from_inpIdx(i) for i in input_indices])
-        replace = local_indices[0]
-        for remove in local_indices[:0:-1]:
-            self._merge_pseudojets(replace, remove, 0)
-        self._remove_pseudojet(replace)
 
     # TODO, make tests for this, when your done making changes
     def _step_assign_parents(self):

@@ -484,8 +484,9 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave
         print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
         return False
     print("All processes ended")
-    remaining_paths = eventWise_paths[-len(args):]
+    remaining_paths = eventWise_paths[:-len(args)]
     print(f"Num remaining jobs {len(remaining_paths)}")
+    print(remaining_paths)
     return True
 
 # plotting code
