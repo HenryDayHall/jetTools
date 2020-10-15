@@ -435,10 +435,11 @@ def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, assign
 def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
     if additional_jet_params is None:
         additional_jet_params = {}
-    physical_distance_measures = ["angular", "invarient", "normed"]
-    exp_of_pt_pos = ["input", "eigenspace"]
-    exponents = [-1, -0.5, 0, 0.5, 1]
-    deltaR = [0, 0.5, 1]
+    # for efficiency group physical distance, exp of pt pos and exp of pt format
+    grouped_checks = [("angular", "input", "min"), ("invarient", "input", "Luclus"),
+                      ("normed", "eigenspace", "min"), ("taxicab", "eigenspace", "Luclus")]
+    exponents = [-1, 0, 0.5, 1]
+    deltaR = [0, 0.5, 1.]
     #          pt  rap phi e  linear.... join_dist
     floats1 = [1., 0., 0., 2., np.nan, np.nan, np.nan, -1]
     SimpleClusterSamples.fill_linear(floats1)
@@ -450,35 +451,35 @@ def apply_internal(jet_class, *internal_tests, additional_jet_params=None):
     # some tests should still work with one or zero float lines
     one_tests = [test for test in internal_tests if test.valid_one]
     zero_tests = [test for test in internal_tests if test.valid_zero]
-    for measure in physical_distance_measures:
-        for pos in exp_of_pt_pos:
-            for exp in exponents:
-                for dr in deltaR:
-                    jet_params = {"PhyDistance": measure, "ExpofPTPosition": pos,
-                                  "ExpofPTMultiplier": exp, "DeltaR": dr,
-                                  **additional_jet_params}
-                    # run tests with no inputs
-                    try:
-                        jets = make_simple_jets(np.array([]).reshape((0, 0)),
-                                                jet_params, jet_class=jet_class)
-                    except AssertionError:
-                        # maybe truying to make an invalid parameter combination
-                        continue
-                    else:
-                        for internal_test in zero_tests:
+    for measure, pos, form in grouped_checks:
+        for exp in exponents:
+            for dr in deltaR:
+                jet_params = {"PhyDistance": measure, "ExpofPTPosition": pos,
+                              "ExpofPTMultiplier": exp, "DeltaR": dr,
+                              "ExpofPTFormat": form,
+                              **additional_jet_params}
+                # run tests with no inputs
+                try:
+                    jets = make_simple_jets(np.array([]).reshape((0, 0)),
+                                            jet_params, jet_class=jet_class)
+                except AssertionError:
+                    # maybe truying to make an invalid parameter combination
+                    continue
+                else:
+                    for internal_test in zero_tests:
+                        internal_test(jets, jet_params)
+                for floatsA in all_floats:
+                    # run tests with one input
+                    jets = make_simple_jets(np.array([floatsA]), jet_params, jet_class=jet_class)
+                    for internal_test in one_tests:
+                        internal_test(jets, jet_params)
+                    for floatsB in all_floats:
+                        # run tests with two inputs
+                        floats = np.array([floatsA, floatsB])
+                        jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
+                        # run the tests
+                        for internal_test in internal_tests:
                             internal_test(jets, jet_params)
-                    for floatsA in all_floats:
-                        # run tests with one input
-                        jets = make_simple_jets(np.array([floatsA]), jet_params, jet_class=jet_class)
-                        for internal_test in one_tests:
-                            internal_test(jets, jet_params)
-                        for floatsB in all_floats:
-                            # run tests with two inputs
-                            floats = np.array([floatsA, floatsB])
-                            jets = make_simple_jets(floats, jet_params, jet_class=jet_class)
-                            # run the tests
-                            for internal_test in internal_tests:
-                                internal_test(jets, jet_params)
 
 
 # PseudoJet ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -677,6 +678,57 @@ def test_local_obs_idx():
     ints[1, jets._Child2_col] = 3
     jets._ints = ints.tolist()
     tst.assert_allclose(sorted(jets.local_obs_idx()), [0, 2, 3])
+
+
+def test_merge_complete_jet():
+    n_rows = 8
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Traditional)
+    ints = np.array(jets._ints)
+    assert jets.currently_avalible == n_rows
+    assert len(jets._ints) == n_rows
+    assert len(jets._floats) == n_rows
+    merge_idxs = [4,2,1]
+    unmerged = [i for i in range(n_rows) if i not in merge_idxs]
+    merge_input_idxs = [jets.idx_from_inpIdx(i) for i in merge_idxs]
+    jets._merge_complete_jet(merge_input_idxs)
+    # check that things that shouldn't move didnt
+    new_ints = np.array(jets._ints[:jets.currently_avalible])
+    new_floats = np.array(jets._floats[:jets.currently_avalible])
+    SimpleClusterSamples.match_ints_floats(ints[unmerged], floats[unmerged], new_ints, new_floats,
+                                           compare_distance=False)
+    # check that the cluster was formed
+    assert jets.currently_avalible == n_rows - len(merge_idxs)
+    assert len(jets.root_jetInputIdxs) == 1
+    # the children of the root should be only and all the merged items
+    children = jets.get_decendants(True, jetInputIdx=jets.root_jetInputIdxs[0])
+    assert set(children) == set(merge_input_idxs)
+
+
+def test_remove_background():
+    n_rows = 8
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Traditional)
+    ints = np.array(jets._ints)
+    background_idx = [4,2,1]
+    not_background = [i for i in range(n_rows) if i not in background_idx]
+    background_input_idxs = [jets.idx_from_inpIdx(i) for i in background_idx]
+    jets._remove_background(background_idx)
+    # check that things that shouldn't move didnt
+    new_ints = np.array(jets._ints[:jets.currently_avalible])
+    new_floats = np.array(jets._floats[:jets.currently_avalible])
+    SimpleClusterSamples.match_ints_floats(ints[not_background], floats[not_background],
+                                           new_ints, new_floats,
+                                           compare_distance=False)
+    # check that the background was removed
+    assert jets.currently_avalible == n_rows - len(background_idx)
+    assert len(jets.root_jetInputIdxs) == len(background_idx)
+    # each background obect forms it's own jet
+    assert set(jets.root_jetInputIdxs) == set(background_input_idxs)
 
 # Traditional ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1108,33 +1160,6 @@ def test_SP_recalculate_one():
 
 #def internal_Splitting_step_assign_parents():
 #    pass  # TODO
-
-
-def test_merge_complete_jet():
-    n_rows = 8
-    floats = np.random.random((n_rows, 8))
-    for row in floats:
-        SimpleClusterSamples.fill_angular(row)
-    jets = make_simple_jets(floats, {}, FormJets.Splitting)
-    ints = np.array(jets._ints)
-    assert jets.currently_avalible == n_rows
-    assert len(jets._ints) == n_rows
-    assert len(jets._floats) == n_rows
-    merge_idxs = [4,2,1]
-    unmerged = [i for i in range(n_rows) if i not in merge_idxs]
-    merge_input_idxs = [jets.idx_from_inpIdx(i) for i in merge_idxs]
-    jets._merge_complete_jet(merge_input_idxs)
-    # check that things that shouldn't move didnt
-    new_ints = np.array(jets._ints[:jets.currently_avalible])
-    new_floats = np.array(jets._floats[:jets.currently_avalible])
-    SimpleClusterSamples.match_ints_floats(ints[unmerged], floats[unmerged], new_ints, new_floats,
-                                           compare_distance=False)
-    # check that the cluster was formed
-    assert jets.currently_avalible == n_rows - len(merge_idxs)
-    assert len(jets.root_jetInputIdxs) == 1
-    # the children of the root should be only and all the merged items
-    children = jets.get_decendants(True, jetInputIdx=jets.root_jetInputIdxs[0])
-    assert set(children) == set(merge_input_idxs)
 
 
 def test_merge_complete_jets():

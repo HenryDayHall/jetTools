@@ -1082,7 +1082,7 @@ class PseudoJet:
     def _remove_background(self, background_indices):
         # for now just merge in pairs
         local_indices = sorted([self.idx_from_inpIdx(i) for i in background_indices])
-        for remove in local_indices[:0:-1]:
+        for remove in local_indices[::-1]:
             self._remove_pseudojet(remove)
 
 
