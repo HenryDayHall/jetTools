@@ -473,7 +473,7 @@ fix_SpectralFull = dict(DeltaR=0.5,
 
 scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5),
-                        PhyDistance=['invarient', 'angular', 'Luclus'])
+                        PhyDistance=['taxicab', 'angular'])
 
 scan_Traditional1 = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5))
