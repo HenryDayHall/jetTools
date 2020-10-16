@@ -1436,6 +1436,10 @@ class IterativeCone(PseudoJet):
         for iterative cone there is no real setup, but some object that
         the functions expect must eb created"""
         self._distances2 = np.empty((self.currently_avalible, self.currently_avalible))
+
+    def _recalculate_one(self, remove_index, replace_index):
+        """ Needed for interface consistancy """
+        pass
         
 
     def _select_seed(self):

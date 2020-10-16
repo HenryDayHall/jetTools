@@ -784,7 +784,7 @@ def test_select_seed():
     floats = np.random.random((n_rows, 8))
     for row in floats:
         SimpleClusterSamples.fill_angular(row)
-    jets = make_simple_jets(floats, {}, FormJets.IterativeCone)
+    jets = make_simple_jets(floats, {'SeedThreshold':0}, FormJets.IterativeCone)
     seed = jets._select_seed()
     assert seed == 0
     # two rows, pick the seed with the higher PT
