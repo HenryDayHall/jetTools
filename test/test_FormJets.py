@@ -926,6 +926,15 @@ def test_IterativeCone_step_assign_parents():
         assert jets.currently_avalible < n_rows and jets.currently_avalible > 0.
         assert len(jets.root_jetInputIdxs) > 0
 
+def test_IterativeCone_init():
+    # check it is possible to create IterativeCone jets
+    # with various numbers of inputs
+    for n_rows in range(3):
+        floats = np.random.random((n_rows, 8))
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row)
+        jets = make_simple_jets(floats, {}, FormJets.IterativeCone, assign=True)
+
 # Spectral ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # wait until spectral to test this becuase the cutoff is the most complex parameter

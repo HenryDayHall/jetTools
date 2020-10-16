@@ -1383,6 +1383,7 @@ class IterativeCone(PseudoJet):
             # everything else is considered bg
             background_indices = self.InputIdx[:self.currently_avalible]
             self._remove_background(background_indices)
+            return
         # otherwise start a cone iteration
         shift = 1.
         cone_phi = self._floats[next_seed][self._Phi_col]
@@ -1390,13 +1391,13 @@ class IterativeCone(PseudoJet):
         cone_pt = self._floats[next_seed][self._Rapidity_col]
         cone_energy = np.inf  # this will have to be calculated at least twice anyway
         while shift > 0.01:
-            local_indices = self._find_cone_content(cone_phi, cone_rapidity, cone_pt)
+            local_indices = self._get_cone_content(cone_phi, cone_rapidity, cone_pt)
             new_cone_energy, cone_phi, cone_rapidity, cone_pt = self._get_cone_kinematics(local_indices)
             shift = 2*(new_cone_energy - cone_energy)/(cone_energy + new_cone_energy)
             cone_energy = new_cone_energy
         cone_indices = self.InputIdx[local_indices]
         self._merge_complete_jet(cone_indices)
-        return None
+        return
 
     def _get_cone_content(self, cone_phi, cone_rapidity, cone_pt):
         # N.B self.Phi would not work as it only gives end points
@@ -1431,8 +1432,11 @@ class IterativeCone(PseudoJet):
         return e, phi, rapidity, pt
 
     def _calculate_distances(self):
-        """ Use this to set up the calculation"""
-        pass
+        """ Use this to set up the calculation,
+        for iterative cone there is no real setup, but some object that
+        the functions expect must eb created"""
+        self._distances2 = np.empty((self.currently_avalible, self.currently_avalible))
+        
 
     def _select_seed(self):
         """Pick a seed particle """
