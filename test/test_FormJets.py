@@ -775,7 +775,138 @@ def test_Traditional_internal():
     # testing Pseudojet functions, but creating Spectral jets
     # as Pseudojet should not be directly created and Traditional lack support for all options
     apply_internal(FormJets.Traditional, internal_recalculate_one)
-    
+
+# IterativeCone ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def test_select_seed():
+    # one row should always pick that seed
+    n_rows = 1
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.IterativeCone)
+    seed = jets._select_seed()
+    assert seed == 0
+    # two rows, pick the seed with the higher PT
+    n_rows = 2
+    floats = np.random.random((n_rows, 8))
+    floats[0, 4:7] = 1
+    floats[1, 4:7] = 10
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'SeedThreshold':0}, FormJets.IterativeCone)
+    seed = jets._select_seed()
+    assert seed == 1
+    n_rows = 2
+    floats = np.random.random((n_rows, 8))
+    floats[0, 4:7] = 1
+    floats[1, 4:7] = -10
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'SeedThreshold':0}, FormJets.IterativeCone)
+    seed = jets._select_seed()
+    assert seed == 1
+    # if the PT is below the seed threshold return -1
+    n_rows = 2
+    floats = np.random.random((n_rows, 8))
+    floats[0, 4:7] = 1
+    floats[1, 4:7] = 2
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'SeedThreshold':10}, FormJets.IterativeCone)
+    seed = jets._select_seed()
+    assert seed == -1
+    # with two equal PT select any one
+    n_rows = 2
+    floats = np.random.random((n_rows, 8))
+    floats[0, 4:7] = 2
+    floats[1, 4:7] = 2
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'SeedThreshold':1}, FormJets.IterativeCone)
+    seed = jets._select_seed()
+    assert seed in [0, 1]
+
+
+def test_get_cone_kinematics():
+    n_rows = 5
+    floats = np.random.random((n_rows, 8))
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.IterativeCone)
+    # no content should result in zeros 
+    e, phi, rapidity, pt = jets._get_cone_kinematics([])
+    tst.assert_allclose([e, pt], 0)
+    # one particle should have that particles attributes
+    e, phi, rapidity, pt = jets._get_cone_kinematics([0])
+    tst.assert_allclose(floats[0, [jets._Energy_col,
+                                   jets._Phi_col,
+                                   jets._Rapidity_col,
+                                   jets._PT_col]], [e, phi, rapidity, pt])
+    # twp particles shoud result in their combined attributes
+    e, phi, rapidity, pt = jets._get_cone_kinematics([0, 1])
+    tst.assert_allclose(np.sum(floats[[0, 1], jets._Energy_col]), e)
+
+
+def test_get_cone_content():
+    # one row, this particle is either in or out
+    n_rows = 1
+    floats = np.random.random((n_rows, 8))
+    #    pt, rapidity, phi, e = floats[0:4]
+    floats[:, [0, 3]] = 1.
+    floats[:, [1, 2]] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_linear(row)
+    jets = make_simple_jets(floats, {"DeltaR": 1.}, FormJets.IterativeCone)
+    content = jets._get_cone_content(0, 0, 1.)
+    assert len(content) == 1
+    assert 0 in content
+    # pointing the other way
+    content = jets._get_cone_content(np.pi, 0., 1)
+    assert len(content) == 0
+    # two particles together
+    n_rows = 2
+    floats = np.random.random((n_rows, 8))
+    #    pt, rapidity, phi, e = floats[0:4]
+    floats[:, [0, 3]] = 1.
+    floats[:, [1, 2]] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_linear(row)
+    jets = make_simple_jets(floats, {"DeltaR": 1.}, FormJets.IterativeCone)
+    content = jets._get_cone_content(0, 0, 1.)
+    assert len(content) == 2
+    assert 0 in content
+    assert 1 in content
+    # pointing the other way
+    content = jets._get_cone_content(np.pi, 0., 1)
+    assert len(content) == 0
+    # two particles oposite eachother
+    floats[:, [0, 3]] = 1.
+    floats[:, [1, 2]] = 0.
+    floats[1, 2] = np.pi
+    for row in floats:
+        SimpleClusterSamples.fill_linear(row)
+    jets = make_simple_jets(floats, {"DeltaR": 1.}, FormJets.IterativeCone)
+    content = jets._get_cone_content(0, 0, 1.)
+    assert len(content) == 1
+    assert 0 in content
+    # pointing the other way
+    content = jets._get_cone_content(np.pi, 0., 1)
+    assert len(content) == 1
+    assert 1 in content
+    # particle at the edge of the radius
+    floats[:, [0, 3]] = 1.
+    floats[:, [1, 2]] = 0.
+    floats[1, 2] = 0.9
+    floats[0, 1] = 0.9
+    for row in floats:
+        SimpleClusterSamples.fill_linear(row)
+    jets = make_simple_jets(floats, {"DeltaR": 1.}, FormJets.IterativeCone)
+    content = jets._get_cone_content(0, 0, 1.)
+    assert len(content) == 2
+    assert 0 in content
+    assert 1 in content
+
 # Spectral ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # wait until spectral to test this becuase the cutoff is the most complex parameter
@@ -829,40 +960,41 @@ def test_write_event():
 
 # TODO add test for removing correct eigenvector when there are seperated graph components
 def test_calculate_eigenspace_distances():
-    n_rows = 4
-    dr = 0.8
-    # test that two seperated clusters results in an eigenvectors that seperates them
-    floats = np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                       [1., 0., np.pi-0.1, 1., -1., 0., 0., 0.],
-                       [1., 0., np.pi, 1., -1., 0., 0., 0.]])
-    for row in floats:
-        SimpleClusterSamples.fill_angular(row)
-    jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
-                                     'AffinityCutoff': ('distance', 0.2),
-                                     'NumEigenvectors': 1,
-                                     'DeltaR': dr}, FormJets.Spectral)
-    # check that there is an eigenvector with the pattern [x, y, y]
-    assert jets._eigenspace.shape[1] == 1
-    eigenvector = jets._eigenspace[:, 0]
-    assert not np.isclose(eigenvector[0], eigenvector[1])
-    assert np.isclose(eigenvector[1], eigenvector[2])
-    # try again with 2 in ech group
-    floats = np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                       [1., 0., 0.1, 1., 1.+0.1, 0., 0., 0.],
-                       [1., 0., np.pi-0.1, 1., -1.+0.1, 0., 0., 0.],
-                       [1., 0., np.pi, 1., -1., 0., 0., 0.]])
-    for row in floats:
-        SimpleClusterSamples.fill_angular(row)
-    jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
-                                     'AffinityCutoff': ('distance', 0.2),
-                                     'NumEigenvectors': 1,
-                                     'DeltaR': dr}, FormJets.Spectral)
-    # check that there is an eigenvector with the pattern [x, x, y, y]
-    assert jets._eigenspace.shape[1] == 1
-    eigenvector = jets._eigenspace[:, 0]
-    assert not np.isclose(eigenvector[0], eigenvector[2])
-    assert np.isclose(eigenvector[0], eigenvector[1])
-    assert np.isclose(eigenvector[2], eigenvector[3])
+    for jet_class in [FormJets.Spectral, FormJets.Indicator]:
+        n_rows = 4
+        dr = 0.8
+        # test that two seperated clusters results in an eigenvectors that seperates them
+        floats = np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
+                           [1., 0., np.pi-0.1, 1., -1., 0., 0., 0.],
+                           [1., 0., np.pi, 1., -1., 0., 0., 0.]])
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row)
+        jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
+                                         'AffinityCutoff': ('distance', 0.2),
+                                         'NumEigenvectors': 1,
+                                         'DeltaR': dr}, jet_class)
+        # check that there is an eigenvector with the pattern [x, y, y]
+        assert jets._eigenspace.shape[1] == 1
+        eigenvector = jets._eigenspace[:, 0]
+        assert not np.isclose(eigenvector[0], eigenvector[1])
+        assert np.isclose(eigenvector[1], eigenvector[2])
+        # try again with 2 in ech group
+        floats = np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
+                           [1., 0., 0.1, 1., 1.+0.1, 0., 0., 0.],
+                           [1., 0., np.pi-0.1, 1., -1.+0.1, 0., 0., 0.],
+                           [1., 0., np.pi, 1., -1., 0., 0., 0.]])
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row)
+        jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
+                                         'AffinityCutoff': ('distance', 0.2),
+                                         'NumEigenvectors': 1,
+                                         'DeltaR': dr}, jet_class)
+        # check that there is an eigenvector with the pattern [x, x, y, y]
+        assert jets._eigenspace.shape[1] == 1
+        eigenvector = jets._eigenspace[:, 0]
+        assert not np.isclose(eigenvector[0], eigenvector[2])
+        assert np.isclose(eigenvector[0], eigenvector[1])
+        assert np.isclose(eigenvector[2], eigenvector[3])
     # test some random combinations
     for i in range(5):
         floats = np.random.random((n_rows, 8))
@@ -1182,6 +1314,23 @@ def test_conductance_check():
                                                          condictance_set_idx[2])
     assert condictance_set_idx[2] in to_remove
     assert new_conductance > 0
+
+
+# Indicator ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def test_Indicator_step_assign_parents():
+    # check results have correct form
+    n_rows = 8
+    floats = np.random.random((n_rows, 8))
+    # set distance to 0
+    floats[:, -1] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {}, FormJets.Indicator)
+    assert jets.currently_avalible == n_rows
+    assert len(jets._ints) == n_rows
+    assert len(jets._floats) == n_rows
+    jets._step_assign_parents()
+    assert jets.currently_avalible == 0
 
 
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

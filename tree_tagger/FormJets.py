@@ -1351,14 +1351,27 @@ class Traditional(PseudoJet):
 
 
 class IterativeCone(PseudoJet):
-    default_params = {'DeltaR': .8, 'SeedThreshold': 1.}
+    default_params = {'DeltaR': .8, 'SeedThreshold': 1., 'ExpofPTFormat': 'min', 
+                      'ExpofPTMultiplier': 0, 'PhyDistance': 'angular'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
+                       'ExpofPTFormat': ['min', 'Luclus'],
+                       'ExpofPTMultiplier': Constants.numeric_classes['rn'],
+                       'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'SeedThreshold': Constants.numeric_classes['pdn']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         self._set_hyperparams(self.default_params, dict_jet_params, kwargs)
+        # check for nonsense in the kwargs or dict_jet_params
+        pos = kwargs.get('ExpofPTPosition', 'input')
+        if dict_jet_params is not None:
+            pos = dict_jet_params.get('ExpofPTPosition', pos)
+        assert pos == 'input'  # don't just silently swallow nonsense
+        # then set the right thing anyway
+        self.ExpofPTPosition = 'input'
         if dict_jet_params is not None:
             kwargs['dict_jet_params'] = dict_jet_params
         self.deltaR2 = self.DeltaR**2
+        # fake particle for calculations
+        self._cone_particle = np.empty(len(self.float_columns), dtype=float)
         super().__init__(eventWise, **kwargs)
     
     def _step_assign_parents(self):
@@ -1374,30 +1387,38 @@ class IterativeCone(PseudoJet):
         shift = 1.
         cone_phi = self._floats[next_seed][self._Phi_col]
         cone_rapidity = self._floats[next_seed][self._Rapidity_col]
+        cone_pt = self._floats[next_seed][self._Rapidity_col]
         cone_energy = np.inf  # this will have to be calculated at least twice anyway
         while shift > 0.01:
-            local_indices = self._find_cone_content(cone_phi, cone_rapidity)
-            new_cone_energy, cone_phi, cone_rapidity = self._get_cone_kinematics(local_indices)
+            local_indices = self._find_cone_content(cone_phi, cone_rapidity, cone_pt)
+            new_cone_energy, cone_phi, cone_rapidity, cone_pt = self._get_cone_kinematics(local_indices)
             shift = 2*(new_cone_energy - cone_energy)/(cone_energy + new_cone_energy)
             cone_energy = new_cone_energy
         cone_indices = self.InputIdx[local_indices]
         self._merge_complete_jet(cone_indices)
         return None
 
-    def _get_cone_content(self, cone_phi, cone_rapidity):
+    def _get_cone_content(self, cone_phi, cone_rapidity, cone_pt):
         # N.B self.Phi would not work as it only gives end points
         # and lacks order gaentees
-        phis = np.fromiter((row[self._Phi_col] for row in self._floats[self.currently_avalible]),
-                           dtype=float)
-        phi_distance = Components.angular_distance(phis, cone_phi)
-        raps = np.fromiter((row[self._Rapidity_col] for row in self._floats[self.currently_avalible]),
-                           dtype=float)
-        rapidity_distance = np.abs(raps - cone_rapidity)
-        in_range = rapidity_distance**2 + phi_distance**2 < self.deltaR2
-        local_indices = np.where(in_range)
+        self._cone_particle[:] = 0.
+        self._cone_particle[[self._Phi_col,
+                             self._Rapidity_col,
+                             self._PT_col]] = [cone_phi, cone_rapidity, cone_pt]
+        distances2 = self.physical_distance2(self._cone_particle,
+                                             self._floats[:self.currently_avalible])
+        #phis = np.fromiter((row[self._Phi_col] for row in self._floats[self.currently_avalible]),
+        #                   dtype=float)
+        #phi_distance = Components.angular_distance(phis, cone_phi)
+        #raps = np.fromiter((row[self._Rapidity_col] for row in self._floats[self.currently_avalible]),
+        #                   dtype=float)
+        #rapidity_distance = np.abs(raps - cone_rapidity)
+        local_indices = np.where(distances2.flatten() < self.deltaR2)[0]
         return local_indices
     
     def _get_cone_kinematics(self, local_indices):
+        if len(local_indices) == 0:
+            return 0., 0., 0., 0.
         px = py = pz = e = 0
         for i in local_indices:
             row = self._floats[i]
@@ -1407,7 +1428,7 @@ class IterativeCone(PseudoJet):
             e += row[self._Energy_col]
         phi, pt = Components.pxpy_to_phipt(px, py)
         rapidity = Components.ptpze_to_rapidity(pt, pz, e)
-        return e, phi, rapidity
+        return e, phi, rapidity, pt
 
     def _calculate_distances(self):
         """ Use this to set up the calculation"""
@@ -1416,7 +1437,7 @@ class IterativeCone(PseudoJet):
     def _select_seed(self):
         """Pick a seed particle """
         max_local_idx = np.argmax([row[self._PT_col] for row in
-                                   self._floats[self.currently_avalible]])
+                                   self._floats[:self.currently_avalible]])
         if self._floats[max_local_idx][self._PT_col] > self.SeedThreshold:
             return max_local_idx
         else:
@@ -2184,7 +2205,6 @@ class Indicator(Spectral):
         # a graph laplacien can be calculated
         np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
 
-    # TODO, make tests for this, when your done making changes
     def _calculate_eigenspace(self):
         """
         Calculate the embedding of the currently_avalible pseudojets in eignspace
