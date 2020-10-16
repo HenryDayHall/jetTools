@@ -1147,7 +1147,43 @@ def test_SP_recalculate_one():
     assert jets._distances2.shape == (n_rows, n_rows)
     # check they moved
     assert not np.allclose(jets._eigenspace, old_eigenspace)
-    
+
+
+def test_conductance_check():
+    # set stopping condition to conductance
+    # creates; _conductance_sets = current jet groupings
+    #          _set_input_idx = input idxs
+    #          _initial_affinity = affinities between all inital objects
+    #          _total_affinity = total intial affinity
+    n_rows = 3
+    floats = np.random.random((n_rows, 8))
+    # set first two particles to same
+    floats[:2, 4:7] = 1
+    # last partile oposite
+    floats[-1, 4:7] = -1
+    # set distance to 0
+    floats[:, -1] = 0.
+    for row in floats:
+        SimpleClusterSamples.fill_angular(row)
+    jets = make_simple_jets(floats, {'StoppingCondition': 'conductance'}, FormJets.Spectral)
+    # find the indices of the conductance sets
+    condictance_set_idx = [jets._conductance_sets.index({i}) for i in range(n_rows)]
+    # the first two should tend to merge
+    to_remove, new_conductance = jets._conductance_check(condictance_set_idx[0],
+                                                         condictance_set_idx[1])
+    assert len(to_remove) == 0
+    assert new_conductance > 0
+    # any combination involving the third shoudl tend to remove the third
+    to_remove, new_conductance = jets._conductance_check(condictance_set_idx[0],
+                                                         condictance_set_idx[2])
+    assert condictance_set_idx[2] in to_remove
+    assert new_conductance > 0
+    to_remove, new_conductance = jets._conductance_check(condictance_set_idx[1],
+                                                         condictance_set_idx[2])
+    assert condictance_set_idx[2] in to_remove
+    assert new_conductance > 0
+
+
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # TODO when this has stabalised make distance and eigenspace tests
 #def internal_Splitting_calculate_distances():

@@ -1495,7 +1495,9 @@ class Spectral(PseudoJet):
                 self._current_conductance = np.ones(self.n_inputs).tolist()
                 self._total_affinity = np.sum(self._initial_affinity)
             else:
-                self._current_conductance = 1/np.sum(self._initial_affinity, axis=0)
+                # the more connected to the rest of the graph
+                # the higher the conductance
+                self._current_conductance = np.sum(self._initial_affinity, axis=0)
         if assign:
             self.assign_parents()
 
