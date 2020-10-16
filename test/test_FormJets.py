@@ -907,6 +907,25 @@ def test_get_cone_content():
     assert 0 in content
     assert 1 in content
 
+
+def test_IterativeCone_step_assign_parents():
+    # check results have correct form
+    n_rows = 8
+    for _ in range(3):
+        floats = np.random.random((n_rows, 8))
+        # set distance to 0
+        floats[:, -1] = 0.
+        for row in floats:
+            SimpleClusterSamples.fill_angular(row)
+        jets = make_simple_jets(floats, {}, FormJets.Spectral)
+        assert jets.currently_avalible == n_rows
+        assert len(jets._ints) == n_rows
+        assert len(jets._floats) == n_rows
+        jets._step_assign_parents()
+        # some number of tracks should be removed
+        assert jets.currently_avalible < n_rows and jets.currently_avalible > 0.
+        assert len(jets.root_jetInputIdxs) > 0
+
 # Spectral ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # wait until spectral to test this becuase the cutoff is the most complex parameter
