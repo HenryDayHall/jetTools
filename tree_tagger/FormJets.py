@@ -3185,7 +3185,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
 
 
 # track which classes in this module are cluster classes
-cluster_classes = ["Traditional", "Spectral", "Splitting", "SpectralFull", "SpectralMean", "Indicator"]
+cluster_classes = ["Traditional", "IterativeCone", "Spectral", "Splitting", "SpectralFull", "SpectralMean", "Indicator"]
 # track which things are valid inputs to multiapply
 multiapply_input = {"Fast": run_FastJet, "Home": Traditional}
 for name in cluster_classes:
