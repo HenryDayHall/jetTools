@@ -1,10 +1,21 @@
 from tree_tagger import Components, PDGNames, InputTools, FormJets
+import multiprocessing
+import time
+import os
 from ipdb import set_trace as st
 import collections
 from matplotlib import pyplot as plt
 import numpy as np
 import awkward
-import scipy.spatial
+import scipy.spatial, scipy.stats
+
+
+def calculate_ks_values(eventWises):
+    jet_names = FormJets.get_jet_names(eventWise[0])
+    ks_values = {}
+    for name in jet_names:
+        pass
+
 
 
 def get_low_pt_mask(eventWise, jet_name=None, low_pt=10.):
@@ -60,6 +71,7 @@ def awkward_to_2d(array, depth=1):
     for _ in range(depth):
         array = array.flatten()
     return np.array(array.tolist()).reshape((-1, 1))
+
 
 def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10., append=False):
     if jet_name is None:
@@ -132,6 +144,72 @@ def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10., append=F
         return new_content
 
 
+def append_all(path, end_time, low_pt=10.):
+    eventWise = Components.EventWise.from_file(path)
+    new_content = {}
+    jet_names = FormJets.get_jet_names(eventWise)
+    n_jets = len(jet_names)
+    for i, jet_name in enumerate(jet_names):
+        if (i+1) % 10 == 0:  # reload to preserve ram
+            eventWise.append(**new_content)
+            new_content = {}
+            eventWise = Components.EventWise.from_file(path)
+        if time.time() > end_time:
+            break
+        print(f'{i/n_jets:%}', end='\r', flush=True)
+        new_c = append_pairwise_IRC_variables(eventWise, jet_name, low_pt)
+        new_content.update(new_c)
+        new_c = append_flat_IRC_variables(eventWise, jet_name, low_pt)
+        new_content.update(new_c)
+    eventWise.append(**new_content)
+    print(f"\nDone {eventWise.save_name}\n", flush=True)
+
+
+def multiprocess_append(eventWise_paths, end_time, leave_one_free=True):
+    n_paths = len(eventWise_paths)
+    # cap this out at 20, more seems to create a performance hit
+    n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
+    if n_threads < 1:
+        n_threads = 1
+    wait_time = 24*60*60 # in seconds
+    # note that the longest wait will be n_cores time this time
+    print("Running on {} threads".format(n_threads))
+    job_list = []
+    # now each segment makes a worker
+    args = [(path, end_time) for path in eventWise_paths]
+    # set up some initial jobs
+    for _ in range(n_threads):
+        job = multiprocessing.Process(target=append_all, args=args.pop())
+        job.start()
+        job_list.append(job)
+    processed = 0
+    for dataset_n in range(n_paths):
+        job = job_list[dataset_n]
+        job.join(wait_time)
+        processed += 1
+        # check if we shoudl stop
+        if end_time - time.time() < wait_time/10:
+            break
+        if args:  # make a new job
+            job = multiprocessing.Process(target=append_all, args=args.pop())
+            job.start()
+            job_list.append(job)
+    # check they all stopped
+    stalled = [job.is_alive() for job in job_list]
+    if np.any(stalled):
+        # stop everything
+        for job in job_list:
+            job.terminate()
+            job.join()
+        print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
+        return False
+    print("All processes ended")
+    remaining_paths = eventWise_paths[:-len(args)]
+    print(f"Num remaining jobs {len(remaining_paths)}")
+    print(remaining_paths)
+    return True
+
+
 def plot_hists(eventWises, jet_name, low_pt=10.):
     eventWise_name = ["NLO" if 'nlo' in eventWise.save_name.lower() else "LO"
                       for eventWise in eventWises]
@@ -153,8 +231,6 @@ def plot_hists(eventWises, jet_name, low_pt=10.):
     fig.tight_layout()
 
 
-
-
 def plot_hist(variable_name, names, low_pt, values, low_pt_values, ax1, ax2):
     ax1.hist(values, histtype='step', label=names)
     ax1.set_xlabel(variable_name)
@@ -162,7 +238,6 @@ def plot_hist(variable_name, names, low_pt, values, low_pt_values, ax1, ax2):
     ax2.hist(low_pt_values, histtype='step', label=names)
     ax2.set_xlabel(variable_name)
     ax2.set_ylabel(f"PT < {low_pt} Frequency")
-
 
 
 # identical ordering
@@ -241,30 +316,28 @@ def plot_ordered_grid(eventWise1, eventWise2):
     fig.tight_layout()
 
 if __name__ == '__main__':
-    eventWises = []
+    paths = []
     while True:
-        name = InputTools.get_file_name(f"Eventwise {len(eventWises)+1} to compare; ", '.awkd').strip()
+        name = InputTools.get_file_name(f"Eventwise {len(paths)+1} to compare; ", '.awkd').strip()
         if name:
-            eventWises.append(Components.EventWise.from_file(name))
+            paths.append(name)
         else:
             break
-    jet_names = FormJets.get_jet_names(eventWises[0])
-    n_jets = len(jet_names)
     options = ["prepare", "plot"]
     chosen = InputTools.list_complete("What would you like to do? ", options).strip()
     if chosen == "prepare":
-        for eventWise in eventWises:
-            new_content = {}
-            for i, jet_name in enumerate(jet_names):
-                print(f'{i/n_jets:%}', end='\r', flush=True)
-                new_c = append_pairwise_IRC_variables(eventWise, jet_name)
-                new_content.update(new_c)
-                new_c = append_flat_IRC_variables(eventWise, jet_name)
-                new_content.update(new_c)
-            eventWise.append(**new_content)
-            print(f"\nDone {eventWise.save_name}\n", flush=True)
+        duration = InputTools.get_time("How long to work for? (negative for infinite) ")
+        if duration < 0:
+            duration = np.inf
+        end_time = time.time() + duration
+        if len(paths) > 1:
+            multiprocess_append(paths, end_time)
+        else:
+            append_all(paths[0], end_time)
     elif chosen == "plot":
+        jet_names = FormJets.get_jet_names(eventWises[0])
         jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
+        eventWises = [Components.EventWise.from_file(name) for path in paths]
         plot_hists(eventWises, jet_name)
         input()
 
