@@ -149,7 +149,13 @@ def append_all(path, end_time, low_pt=10.):
     new_content = {}
     jet_names = FormJets.get_jet_names(eventWise)
     n_jets = len(jet_names)
+    start_columns = eventWise.columns
     for i, jet_name in enumerate(jet_names):
+        # prevent overwites
+        found = next((name for name in start_columns if name.startswith(jet_name + "IRC")),
+                     False)
+        if found:
+            continue
         if (i+1) % 10 == 0:  # reload to preserve ram
             eventWise.append(**new_content)
             new_content = {}
