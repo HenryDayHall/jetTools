@@ -1,4 +1,4 @@
-from tree_tagger import Components, PDGNames, InputTools
+from tree_tagger import Components, PDGNames, InputTools, FormJets
 from ipdb import set_trace as st
 import collections
 from matplotlib import pyplot as plt
@@ -12,26 +12,35 @@ def get_low_pt_mask(eventWise, jet_name=None, low_pt=10.):
     if jet_name is None:
         low_pt_mask = eventWise.PT[eventWise.Is_leaf] < low_pt
         jet_roots = None
+        root_pt = None
     else:
         jet_roots = getattr(eventWise, jet_name + "_Parent") == -1
-        low_pt_mask = getattr(eventWise, jet_name + "_PT")[jet_roots] < low_pt
-    return low_pt_mask, jet_roots
+        # no idea why this won't work
+        #low_pt_mask = getattr(eventWise, jet_name + "_PT")[jet_roots] < low_pt
+        jet_pt = getattr(eventWise, jet_name + "_PT")
+        root_pt = awkward.fromiter([pt[root] for pt, root in zip(jet_pt, jet_roots)])
+        low_pt_mask = root_pt < low_pt
+    return low_pt_mask, jet_roots, root_pt
 
 
-def append_flat_IRC_variables(eventWise, jet_name=None, low_pt=10.):
+def append_flat_IRC_variables(eventWise, jet_name=None, low_pt=10., append=False):
     if jet_name is None:
         jet_str = ""
     else:
         jet_str = jet_name
     leaf_variables = ["PT", "Rapidity"]
-    low_pt_mask, jet_roots = get_low_pt_mask(eventWise, jet_name, low_pt)
+    low_pt_mask, jet_roots, root_pt = get_low_pt_mask(eventWise, jet_name, low_pt)
     # kinamtic
     new_content = {}
     for var in leaf_variables:
         if jet_name is None:
             values = getattr(eventWise, var)[eventWise.Is_leaf].flatten()
+        elif var == "PT":
+            values = root_pt.flatten()
         else:
-            values = getattr(eventWise, jet_name + "_" + var)[jet_roots].flatten()
+            values = awkward.fromiter([v[root] for v, root in
+                                       zip(getattr(eventWise, jet_name+"_"+var), jet_roots)])
+            values = values.flatten()
         if var == "PT":
             var = "logPT"
             values = np.log(values[values > 0])
@@ -41,7 +50,10 @@ def append_flat_IRC_variables(eventWise, jet_name=None, low_pt=10.):
             low_pt_values = values[low_pt_mask.flatten()].tolist()
         new_content[jet_str + "IRC_" +var] = values
         new_content[jet_str + "IRCLowPT_" +var] = low_pt_values
-    eventWise.append(**new_content)
+    if append:
+        eventWise.append(**new_content)
+    else:
+        return new_content
 
 
 def awkward_to_2d(array, depth=1):
@@ -49,28 +61,27 @@ def awkward_to_2d(array, depth=1):
         array = array.flatten()
     return np.array(array.tolist()).reshape((-1, 1))
 
-def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10.):
+def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10., append=False):
     if jet_name is None:
         jet_str = ""
     else:
         jet_str = jet_name
     new_content = {}
     # find the low PT area
-    low_pt_mask, jet_roots = get_low_pt_mask(eventWise, jet_name, low_pt)
+    low_pt_mask, jet_roots, root_pt = get_low_pt_mask(eventWise, jet_name, low_pt)
     # PT
     if jet_name is None:
         values = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
                   eventWise.PT[eventWise.Is_leaf]]
     else:
-        values = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in
-                  getattr(eventWise, jet_name + "_PT")[jet_roots]]
+        values = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in root_pt]
     values = awkward.fromiter(values).flatten().tolist()
     if jet_name is None:
         low_pt_values = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
                          eventWise.PT[eventWise.Is_leaf][low_pt_mask]]
     else:
         low_pt_values = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in
-                         getattr(eventWise, jet_name + "_PT")[jet_roots][low_pt_mask]]
+                         root_pt[low_pt_mask]]
     low_pt_values = awkward.fromiter(low_pt_values).flatten().tolist()
     new_content[jet_str + "IRCPariwise_PT"] = values
     new_content[jet_str + "IRCPariwiseLowPT_PT"] = low_pt_values
@@ -79,29 +90,35 @@ def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10.):
         rapidity = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
                     eventWise.Rapidity[eventWise.Is_leaf]]
     else:
-        rapidity = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in
-                    getattr(eventWise, jet_name + "_Rapidity")[jet_roots]]
+        jet_rapidity = getattr(eventWise, jet_name + "_Rapidity")
+        rapidity = [scipy.spatial.distance.pdist(awkward_to_2d(rap[root])) for rap, root in
+                    zip(jet_rapidity, jet_roots)]
     rapidity = awkward.fromiter(rapidity)
     if jet_name is None:
         low_pt_rapidity = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
                            eventWise.Rapidity[eventWise.Is_leaf][low_pt_mask]]
     else:
-        low_pt_rapidity = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in
-                           getattr(eventWise, jet_name + "_Rapidity")[jet_roots][low_pt_mask]]
+        low_pt_rapidity = [scipy.spatial.distance.pdist(awkward_to_2d(rap[root][low]))
+                           for rap, root, low in
+                           zip(jet_rapidity, jet_roots, low_pt_mask)]
     low_pt_rapidity = awkward.fromiter(low_pt_rapidity)
     if jet_name is None:
-        phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance) for event in
+        phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance)
+               for event in
                eventWise.Phi[eventWise.Is_leaf]]
     else:
-        phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance) for event in
-               getattr(eventWise, jet_name + "_Phi")[jet_roots]]
+        jet_phi = getattr(eventWise, jet_name + "_Phi")
+        phi = [scipy.spatial.distance.pdist(awkward_to_2d(ph[root]), metric=Components.angular_distance)
+               for ph, root in
+               zip(jet_phi, jet_roots)]
     phi = awkward.fromiter(phi)
     if jet_name is None:
         low_pt_phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance) for event in
                       eventWise.Phi[eventWise.Is_leaf][low_pt_mask] if len(event)]
     else:
-        low_pt_phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance) for event in
-                      getattr(eventWise, jet_name + "_Phi")[jet_roots][low_pt_mask]]
+        low_pt_phi = [scipy.spatial.distance.pdist(awkward_to_2d(ph[root][low]), metric=Components.angular_distance)
+                      for ph, root, low in
+                      zip(jet_phi, jet_roots, low_pt_mask)]
     low_pt_phi = awkward.fromiter(low_pt_phi)
     values = np.sqrt(awkward.fromiter(rapidity)**2 + awkward.fromiter(phi)**2)
     low_pt_values = np.sqrt(awkward.fromiter(low_pt_rapidity)**2 + awkward.fromiter(low_pt_phi)**2)
@@ -109,7 +126,32 @@ def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10.):
     values = values.flatten().tolist()
     new_content[jet_str + "IRCPariwise_DeltaR"] = values
     new_content[jet_str + "IRCPariwiseLowPT_DeltaR"] = low_pt_values
-    eventWise.append(**new_content)
+    if append:
+        eventWise.append(**new_content)
+    else:
+        return new_content
+
+
+def plot_hists(eventWises, jet_name, low_pt=10.):
+    eventWise_name = ["NLO" if 'nlo' in eventWise.save_name.lower() else "LO"
+                      for eventWise in eventWises]
+    content_prefix = jet_name + "IRC"
+    contents = [name for name in eventWises[0].columns if name.startswith(content_prefix)]
+    pairs = [(name, name.replace('LowPT_', '_')) for name in contents if
+             'LowPT_' in name and name.replace('LowPT_', '_') in contents]
+    assert len(pairs)*2 == len(contents)
+    # make the axis
+    fig, ax_arr = plt.subplots(len(pairs), 2)
+    ax_list = ax_arr.tolist()
+    for name, low_pt_name in pairs:
+        variable_name = name[len(content_prefix):].replace('_', ' ').strip()
+        values = [getattr(eventWise, name) for eventWise in eventWises]
+        low_pt_values = [getattr(eventWise, low_pt_name) for eventWise in eventWises]
+        ax1, ax2 = ax_list.pop()
+        plot_hist(variable_name, eventWise_name, low_pt, values, low_pt_values, ax1, ax2)
+    ax2.legend()
+    fig.tight_layout()
+
 
 
 
@@ -206,9 +248,24 @@ if __name__ == '__main__':
             eventWises.append(Components.EventWise.from_file(name))
         else:
             break
-    append_pairwise_IRC_variables(eventWises[0], "AntiKTp8")
-    #plot_hists(eventWises)
-    #plt.show()
-    #input()
+    jet_names = FormJets.get_jet_names(eventWises[0])
+    n_jets = len(jet_names)
+    options = ["prepare", "plot"]
+    chosen = InputTools.list_complete("What would you like to do? ", options).strip()
+    if chosen == "prepare":
+        for eventWise in eventWises:
+            new_content = {}
+            for i, jet_name in enumerate(jet_names):
+                print(f'{i/n_jets:%}', end='\r', flush=True)
+                new_c = append_pairwise_IRC_variables(eventWise, jet_name)
+                new_content.update(new_c)
+                new_c = append_flat_IRC_variables(eventWise, jet_name)
+                new_content.update(new_c)
+            eventWise.append(**new_content)
+            print(f"\nDone {eventWise.save_name}\n", flush=True)
+    elif chosen == "plot":
+        jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
+        plot_hists(eventWises, jet_name)
+        input()
 
 
