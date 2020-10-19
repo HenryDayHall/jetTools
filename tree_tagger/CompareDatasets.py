@@ -1,4 +1,5 @@
 from tree_tagger import Components, PDGNames, InputTools, FormJets
+import ast
 import multiprocessing
 import time
 import os
@@ -10,12 +11,12 @@ import awkward
 import scipy.spatial, scipy.stats
 
 
-def calculate_ks_values(path1, path2):
+def calculate_ks_values(path1, path2, save_name=None):
     eventWise1 = Components.EventWise.from_file(path1)
     jet_names = FormJets.get_jet_names(eventWise1)
     ks_values = {}
     p_values = {}
-    for name in jet_names:
+    for jet_name in jet_names:
         # reload to reduce data in ram
         eventWise1 = Components.EventWise.from_file(path1)
         eventWise2 = Components.EventWise.from_file(path2)
@@ -24,12 +25,77 @@ def calculate_ks_values(path1, path2):
         contents = [name for name in eventWise1.columns if name.startswith(content_prefix)
                     and name in eventWise2.columns]
         for content in contents:
-            data1 = getattr(eventWise1, content)
-            data2 = getattr(eventWise2, content)
+            data1 = getattr(eventWise1, content).flatten()
+            data2 = getattr(eventWise2, content).flatten()
             ks, p = scipy.stats.ks_2samp(data1, data2)
             ks_values[content] = ks
             p_values[content] = p
+    if save_name is not None:
+        with open(save_name, 'w') as save_file:
+            save_file.write(str(ks_values) + '\n' + str(p_values))
     return ks_values, p_values
+
+
+def tabulate_ks_dict(ks_values, jet_classes=None, variable_types=None, existing_table=None):
+    if jet_classes is None:
+        jet_classes = []
+        variable_types = []
+        existing_table = []
+    for key in ks_values:
+        # get the class name
+        jet_class = ""
+        variable_type = ""
+        part = 0
+        for c in key:
+            if c.isdigit():
+                part += 1
+            elif part == 0:
+                jet_class += c
+            else:
+                variable_type += c
+        if jet_class not in jet_classes:
+            jet_classes.append(jet_class)
+            for i, var in enumerate(variable_types):
+                existing_table[i].append([])
+        if variable_type not in variable_types:
+            variable_types.append(variable_type)
+            existing_table.append([[] for _ in jet_classes])
+        row = variable_types.index(variable_type)
+        col = jet_classes.index(jet_class)
+        existing_table[row][col].append(ks_values[key])
+    return jet_classes, variable_types, existing_table
+
+
+
+def plot_ks_values(list_ks_values):
+    jet_classes = []
+    variable_types = []
+    table = []
+    for ks_values in list_ks_values:
+        # if needed read in file
+        if isinstance(ks_values, str):
+            with open(ks_values, 'r') as save_file:
+                line = save_file.readline()
+            ks_values = ast.literal_eval(line)
+            assert isinstance(ks_values, dict)
+        # get the class name
+        jet_classes, variable_types, table = tabulate_ks_dict(ks_values,
+                                                              jet_classes,
+                                                              variable_types,
+                                                              table)
+    pairs = [(name, name.replace('LowPT_', '_')) for name in variable_types if
+             'LowPT_' in name and name.replace('LowPT_', '_') in variable_types]
+    fig, ax_arr = plt.subplots(len(pairs), 2)
+    fig.suptitle("Kolmogrov-Smirnov scores between LO and NLO data")
+    for pair, axs in zip(pairs, ax_arr):
+        for var_type, ax in zip(pair, axs):
+            row = variable_types.index(var_type)
+            class_values = table[row]
+            ax.hist(class_values, label=jet_classes, histtype='step')
+            ax.set_ylabel("Frequency")
+            ax.set_xlabel(var_type)
+    ax.legend()
+
 
 
 def get_low_pt_mask(eventWise, jet_name=None, low_pt=10.):
@@ -245,9 +311,8 @@ def plot_hists(eventWises, jet_name, low_pt=10.):
     ax_list = ax_arr.tolist()
     for name, low_pt_name in pairs:
         variable_name = name[len(content_prefix):].replace('_', ' ').strip()
-        values = [getattr(eventWise, name).tolist() for eventWise in eventWises]
-        low_pt_values = [getattr(eventWise, low_pt_name).tolist() for eventWise in eventWises]
-        st()
+        values = [getattr(eventWise, name).flatten().tolist() for eventWise in eventWises]
+        low_pt_values = [getattr(eventWise, low_pt_name).flatten().tolist() for eventWise in eventWises]
         ax1, ax2 = ax_list.pop()
         plot_hist(variable_name, eventWise_name, low_pt, values, low_pt_values, ax1, ax2)
     ax2.legend()
@@ -346,7 +411,7 @@ if __name__ == '__main__':
             paths.append(name)
         else:
             break
-    options = ["prepare", "plot"]
+    options = ["prepare", "plot", "ks"]
     chosen = InputTools.list_complete("What would you like to do? ", options).strip()
     if chosen == "prepare":
         duration = InputTools.get_time("How long to work for? (negative for infinite) ")
@@ -363,5 +428,13 @@ if __name__ == '__main__':
         jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
         plot_hists(eventWises, jet_name)
         input()
+    elif chosen == "ks":
+        ks_name = InputTools.get_file_name("Name a file to save the ks scores in; ",
+                                           '.txt').strip()
+        ks_values, p_values = calculate_ks_values(paths[0], paths[1], ks_name)
+        plot_ks_values([ks_values])
+
+
+
 
 
