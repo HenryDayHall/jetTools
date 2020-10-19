@@ -10,12 +10,26 @@ import awkward
 import scipy.spatial, scipy.stats
 
 
-def calculate_ks_values(eventWises):
-    jet_names = FormJets.get_jet_names(eventWise[0])
+def calculate_ks_values(path1, path2):
+    eventWise1 = Components.EventWise.from_file(path1)
+    jet_names = FormJets.get_jet_names(eventWise1)
     ks_values = {}
+    p_values = {}
     for name in jet_names:
-        pass
-
+        # reload to reduce data in ram
+        eventWise1 = Components.EventWise.from_file(path1)
+        eventWise2 = Components.EventWise.from_file(path2)
+        # get contents
+        content_prefix = jet_name + "IRC"
+        contents = [name for name in eventWise1.columns if name.startswith(content_prefix)
+                    and name in eventWise2.columns]
+        for content in contents:
+            data1 = getattr(eventWise1, content)
+            data2 = getattr(eventWise2, content)
+            ks, p = scipy.stats.ks_2samp(data1, data2)
+            ks_values[content] = ks
+            p_values[content] = p
+    return ks_values, p_values
 
 
 def get_low_pt_mask(eventWise, jet_name=None, low_pt=10.):
@@ -157,6 +171,7 @@ def append_all(path, end_time, low_pt=10.):
         if found:
             continue
         if (i+1) % 10 == 0:  # reload to preserve ram
+            new_content = {key: awkward.fromiter(value) for key, value in new_content.items()}
             eventWise.append(**new_content)
             new_content = {}
             eventWise = Components.EventWise.from_file(path)
@@ -167,6 +182,7 @@ def append_all(path, end_time, low_pt=10.):
         new_content.update(new_c)
         new_c = append_flat_IRC_variables(eventWise, jet_name, low_pt)
         new_content.update(new_c)
+    new_content = {key: awkward.fromiter(value) for key, value in new_content.items()}
     eventWise.append(**new_content)
     print(f"\nDone {eventWise.save_name}\n", flush=True)
 
@@ -229,8 +245,9 @@ def plot_hists(eventWises, jet_name, low_pt=10.):
     ax_list = ax_arr.tolist()
     for name, low_pt_name in pairs:
         variable_name = name[len(content_prefix):].replace('_', ' ').strip()
-        values = [getattr(eventWise, name) for eventWise in eventWises]
-        low_pt_values = [getattr(eventWise, low_pt_name) for eventWise in eventWises]
+        values = [getattr(eventWise, name).tolist() for eventWise in eventWises]
+        low_pt_values = [getattr(eventWise, low_pt_name).tolist() for eventWise in eventWises]
+        st()
         ax1, ax2 = ax_list.pop()
         plot_hist(variable_name, eventWise_name, low_pt, values, low_pt_values, ax1, ax2)
     ax2.legend()
@@ -341,9 +358,9 @@ if __name__ == '__main__':
         else:
             append_all(paths[0], end_time)
     elif chosen == "plot":
+        eventWises = [Components.EventWise.from_file(path) for path in paths]
         jet_names = FormJets.get_jet_names(eventWises[0])
         jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
-        eventWises = [Components.EventWise.from_file(name) for path in paths]
         plot_hists(eventWises, jet_name)
         input()
 
