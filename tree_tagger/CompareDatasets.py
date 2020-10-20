@@ -11,11 +11,32 @@ import awkward
 import scipy.spatial, scipy.stats
 
 
-def calculate_ks_values(path1, path2, save_name=None):
+def subsample_dissdiff(data1, data2, diff_function, n_subsamples=3):
+    # start be making subsamples
+    n_subsamples = int(np.min([len(data1)/3, len(data2)/3, n_subsamples]))
+    sub_sum = 0
+    for split_point in np.linspace(0, len(data1), n_subsamples, endpoint=False, dtype=int)[1:]:
+        sub_sum += diff_function(data1[:split_point], data1[split_point:])
+    for split_point in np.linspace(0, len(data2), n_subsamples, endpoint=False, dtype=int)[1:]:
+        sub_sum += diff_function(data2[:split_point], data2[split_point:])
+    dissdiff = 2*n_subsamples*diff_function(data1, data2)/sub_sum
+    return dissdiff
+
+
+def subsample_kss(data1, data2):
+    diff_function = lambda d1, d2: scipy.stats.ks_2samp(d1, d2)[0]
+    return subsample_dissdiff(data1, data2, diff_function)
+
+
+def subsample_es(data1, data2):
+    diff_function = lambda d1, d2: scipy.stats.epps_singleton_2samp(d1, d2)[1]
+    return subsample_dissdiff(data1, data2, diff_function)
+
+
+def calculate_dissdiff_values(path1, path2, save_name=None):
     eventWise1 = Components.EventWise.from_file(path1)
     jet_names = FormJets.get_jet_names(eventWise1)
-    ks_values = {}
-    p_values = {}
+    dissdiff_values = {}
     for jet_name in jet_names:
         # reload to reduce data in ram
         eventWise1 = Components.EventWise.from_file(path1)
@@ -27,21 +48,22 @@ def calculate_ks_values(path1, path2, save_name=None):
         for content in contents:
             data1 = getattr(eventWise1, content).flatten()
             data2 = getattr(eventWise2, content).flatten()
-            ks, p = scipy.stats.ks_2samp(data1, data2)
-            ks_values[content] = ks
-            p_values[content] = p
+            if len(data1)*len(data2) == 0:
+                continue
+            #dissdiff_values[content] = scipy.stats.ks_2samp(data1, data2)[0]
+            dissdiff_values[content] = subsample_es(data1, data2)
     if save_name is not None:
         with open(save_name, 'w') as save_file:
-            save_file.write(str(ks_values) + '\n' + str(p_values))
-    return ks_values, p_values
+            save_file.write(str(dissdiff_values))
+    return dissdiff_values
 
 
-def tabulate_ks_dict(ks_values, jet_classes=None, variable_types=None, existing_table=None):
+def tabulate_dissdiff_dict(dissdiff_values, jet_classes=None, variable_types=None, existing_table=None):
     if jet_classes is None:
         jet_classes = []
         variable_types = []
         existing_table = []
-    for key in ks_values:
+    for key in dissdiff_values:
         # get the class name
         jet_class = ""
         variable_type = ""
@@ -62,40 +84,51 @@ def tabulate_ks_dict(ks_values, jet_classes=None, variable_types=None, existing_
             existing_table.append([[] for _ in jet_classes])
         row = variable_types.index(variable_type)
         col = jet_classes.index(jet_class)
-        existing_table[row][col].append(ks_values[key])
+        value = np.nan if dissdiff_values[key] is None else dissdiff_values[key]
+        existing_table[row][col].append(value)
     return jet_classes, variable_types, existing_table
 
 
-
-def plot_ks_values(list_ks_values):
+def plot_dissdiff_values(list_dissdiff_values, score_name=None):
+    if score_name is None:
+        if '_ks' in list_dissdiff_values[0]:
+            score_name = "Kolmogrov-Smirnov" 
+        elif '_es' in list_dissdiff_values[0]:
+            score_name = "Epps-Singleton"
+        else:
+            score_name = "Score"
+        if '_normed' in list_dissdiff_values[0]:
+            score_name += " normed"
+        else:
+            score_name += " unnormed"
     jet_classes = []
     variable_types = []
     table = []
-    for ks_values in list_ks_values:
+    for dissdiff_values in list_dissdiff_values:
         # if needed read in file
-        if isinstance(ks_values, str):
-            with open(ks_values, 'r') as save_file:
+        if isinstance(dissdiff_values, str):
+            with open(dissdiff_values, 'r') as save_file:
                 line = save_file.readline()
-            ks_values = ast.literal_eval(line)
-            assert isinstance(ks_values, dict)
+            dissdiff_values = ast.literal_eval(line)
+            assert isinstance(dissdiff_values, dict)
         # get the class name
-        jet_classes, variable_types, table = tabulate_ks_dict(ks_values,
+        jet_classes, variable_types, table = tabulate_dissdiff_dict(dissdiff_values,
                                                               jet_classes,
                                                               variable_types,
                                                               table)
     pairs = [(name, name.replace('LowPT_', '_')) for name in variable_types if
              'LowPT_' in name and name.replace('LowPT_', '_') in variable_types]
     fig, ax_arr = plt.subplots(len(pairs), 2)
-    fig.suptitle("Kolmogrov-Smirnov scores between LO and NLO data")
+    fig.suptitle(f"{score_name} between LO and NLO data")
     for pair, axs in zip(pairs, ax_arr):
         for var_type, ax in zip(pair, axs):
             row = variable_types.index(var_type)
             class_values = table[row]
-            ax.hist(class_values, label=jet_classes, histtype='step')
+            ax.hist(class_values, label=jet_classes, density=True, histtype='step')
             ax.set_ylabel("Frequency")
             ax.set_xlabel(var_type)
     ax.legend()
-
+    fig.subplots_adjust(top=0.95, bottom=0.08, left=0.08, right=0.95, hspace=0.4, wspace=0.21)
 
 
 def get_low_pt_mask(eventWise, jet_name=None, low_pt=10.):
@@ -411,7 +444,7 @@ if __name__ == '__main__':
             paths.append(name)
         else:
             break
-    options = ["prepare", "plot", "ks"]
+    options = ["prepare", "plot", "dissdiff"]
     chosen = InputTools.list_complete("What would you like to do? ", options).strip()
     if chosen == "prepare":
         duration = InputTools.get_time("How long to work for? (negative for infinite) ")
@@ -428,11 +461,11 @@ if __name__ == '__main__':
         jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
         plot_hists(eventWises, jet_name)
         input()
-    elif chosen == "ks":
-        ks_name = InputTools.get_file_name("Name a file to save the ks scores in; ",
+    elif chosen == "dissdiff":
+        dissdiff_name = InputTools.get_file_name("Name a file to save the dissdiff scores in; ",
                                            '.txt').strip()
-        ks_values, p_values = calculate_ks_values(paths[0], paths[1], ks_name)
-        plot_ks_values([ks_values])
+        dissdiff_values = calculate_dissdiff_values(paths[0], paths[1], dissdiff_name)
+        plot_dissdiff_values([dissdiff_values])
 
 
 

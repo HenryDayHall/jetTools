@@ -33,7 +33,7 @@ def order_tagged_jets(eventWise, jet_name, filtered_event_idxs, ranking_variable
 
     """
     assert eventWise.selected_index is not None
-    tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+    tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_Tags'))
                             if len(t) > 0 and i in filtered_event_idxs])
     if len(tagged_idxs) == 0:
         return tagged_idxs
@@ -154,7 +154,7 @@ def smallest_angle_parings(eventWise, jet_name, filtered_event_idxs):
 
     """
     assert eventWise.selected_index is not None
-    tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+    tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_Tags'))
                             if len(t) > 0 and i in filtered_event_idxs])
     num_tags = len(tagged_idxs)
     if num_tags < 2:
@@ -244,7 +244,7 @@ def all_jet_masses(eventWise, jet_name, jet_pt_cut=None, require_seperate=False)
         if event_n % 100 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+        tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_Tags'))
                                 if len(t) > 0 and i in filtered_idxs[event_n]])
         all_masses.append(combined_jet_mass(eventWise, jet_name, tagged_idxs))
     return all_masses
@@ -318,7 +318,7 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
 
     """
     eventWise.selected_index = None
-    if jet_name + "_MTags" not in eventWise.columns:
+    if jet_name + "_Tags" not in eventWise.columns:
         TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf)
         TrueTag.add_mass_share(eventWise, jet_name, np.inf)
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
@@ -376,7 +376,7 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
     """
     eventWise.selected_index = None
     if tag_type is None:
-        tag_type = "_MTags"
+        tag_type = "_Tags"
     tag_name = jet_name + tag_type
     n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
     # becuase we will use these to take indices from a numpy array they need to be lists 
@@ -723,7 +723,7 @@ def all_doubleTagged_jets(eventWise, jet_name, jet_pt_cut=None):
         if event_n % 10 == 0:
             print(f"{event_n/n_events:.1%}", end='\r')
         eventWise.selected_index = event_n
-        tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_MTags'))
+        tagged_idxs = np.array([i for i, t in enumerate(getattr(eventWise, jet_name + '_Tags'))
                                 if len(t) == 2 and i in filtered_idxs[event_n]])
         if len(tagged_idxs) == 0:
             continue

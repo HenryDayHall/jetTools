@@ -253,7 +253,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
         tagmass = getattr(eventWise, jet_name + "_TagMass")
         tag_idxs = eventWise.BQuarkIdx
         matched_jets = [[] for _ in event_tags]
-        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_MTags")):
+        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_Tags")):
             if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
                 continue  # jet not sutable or has no tags
             # if we get here the jet has at least one tag on it and is in the required list
@@ -371,8 +371,8 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
         if not silent:
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # check if we need to mass tag
-        if name + "_MTags" not in eventWise.columns:
-            TrueTag.add_mass_share(eventWise, name, np.inf, True, True)
+        if name + "_Tags" not in eventWise.columns:
+            TrueTag.add_tags(eventWise, name, 0.8, np.inf)
         # pick up some content
         content_here = {}
         if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
