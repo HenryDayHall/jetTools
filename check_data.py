@@ -24,6 +24,7 @@ def check_path(path):
         working = False
         local_jets = -1
         scored_jets = -1
+        git_message = ""
     else:
         scored_jets = len([name for name in ew.hyperparameter_columns
                            if name.endswith("SeperateAveSignalMassRatio")])
