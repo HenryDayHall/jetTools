@@ -148,6 +148,7 @@ def test_add_tags_particles():
     params['Children'] = [awkward.fromiter([])]
     params['Parents'] = [awkward.fromiter([])]
     params['MCPID'] = [awkward.fromiter([])]
+    params['DetectableTag_Roots'] = [awkward.fromiter([])]
     # event 1
     params['Jet_InputIdx'] += [awkward.fromiter([[0, 1, 2], [3, 4, 5]])]
     params['Jet_RootInputIdx'] += [awkward.fromiter([[0], [4]])]
@@ -162,6 +163,7 @@ def test_add_tags_particles():
     params['Parents'] += [awkward.fromiter([[], [], [1], [1], [], [2, 3], [3], [6],[6],[6],[]])]
     #                                     0   1  2  3  4  5   6  7   8
     params['MCPID'] += [awkward.fromiter([4, -5, 5, 44, 2, 1, -5, -1, 7, 11, 12])]
+    params['DetectableTag_Roots'] += [awkward.fromiter([[2]])]
     params['X'] = [[], []]
     expected = [[], [2]]
     with TempTestDir("tst") as dir_name:
@@ -181,11 +183,6 @@ def test_add_tags_particles():
         hyperparameter_content, content =\
                 TrueTag.add_tags(eventWise, jet_name, tag_angle, overwrite=False, append=False)
         assert hyperparameter_content[jet_name + "_TagAngle"] == tag_angle
-        # check the tag particles
-        eventWise.selected_index = 0
-        tst.assert_allclose(eventWise.TagIndex, expected[0])
-        eventWise.selected_index = 1
-        tst.assert_allclose(eventWise.TagIndex, expected[1])
         # check the tagged jets
         eventWise.selected_index = 0
         tst.assert_allclose(eventWise.Jet_Tags.tolist(), [])
@@ -196,6 +193,13 @@ def test_add_tags_particles():
         assert len(eventWise.Jet_Tags.flatten()) == 1
         assert eventWise.Jet_Tags[0][0] == 2
         assert content[jet_name + "_Tags"][1][0][0] == 2
+        # add tag particles  ~ colud be a sperate test really....
+        TrueTag.add_tag_particles(eventWise)
+        # check the tag particles
+        eventWise.selected_index = 0
+        tst.assert_allclose(eventWise.TagIndex, expected[0])
+        eventWise.selected_index = 1
+        tst.assert_allclose(eventWise.TagIndex, expected[1])
 
 
 def test_percent_pos():

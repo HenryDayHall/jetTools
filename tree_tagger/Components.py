@@ -413,7 +413,10 @@ class EventWise:
                     return self._loaded_contents[attr_name][self.selected_index]
                 return self._loaded_contents[attr_name]
             except KeyError:  # it hasn't been loaded
-                self._loaded_contents[attr_name] = self._column_contents[attr_name][:]
+                try:
+                    self._loaded_contents[attr_name] = self._column_contents[attr_name][:]
+                except TypeError:  # cannot be indexed
+                    self._loaded_contents[attr_name] = self._column_contents[attr_name]
                 return getattr(self, attr_name)
             except AttributeError: # we dont have a loaded dict yet
                 self._loaded_contents = {}

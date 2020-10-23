@@ -18,7 +18,7 @@ def test_order_tagged_jets():
     jet_name = "Jet"
     params['Jet_InputIdx'] = []
     params['Jet_RootInputIdx'] = []
-    params['Jet_MTags'] = []
+    params['Jet_Tags'] = []
     params['Jet_PT'] = []
     params['Jet_Child1'] = []
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
@@ -33,7 +33,7 @@ def test_order_tagged_jets():
     params = {}
     params['Jet_InputIdx'] = [[0, 1, 2], [3, 4, 5], [7, 8, 9]]
     params['Jet_RootInputIdx'] = [[0], [4], [7]]
-    params['Jet_MTags'] = [[0], [1], []]
+    params['Jet_Tags'] = [[0], [1], []]
     params['Jet_PT'] = [[60, 10, 40], [100, 40, 50], [40, 40, 40]]
     params['Jet_Bobble'] = [[-5, 1, 1], [0, 0, -10], [12, 20, 40]]
     params['Jet_Child1'] = [[1, -1, -1], [-1, 5, -1], [-1, -1, 7]]
@@ -136,7 +136,7 @@ def test_smallest_angle_parings():
     params['Jet_Phi'] = []
     params['Jet_PT'] = []
     params['Jet_Rapidity'] = []
-    params['Jet_MTags'] = []
+    params['Jet_Tags'] = []
     params['Jet_Energy'] = []
     params['Jet_Child1'] = []
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
@@ -154,7 +154,7 @@ def test_smallest_angle_parings():
     params['Jet_PT'] = [[10, 10, 10], [40, 50, 50], [40, 0, 0], [1, 7]]
     params['Jet_Rapidity'] = [[0, 0, 0], [100, 0, 50], [70, 0, 0], [0, 5]]
     params['Jet_Child1'] = [[1, -1, -1], [-1, 5, -1], [-1, -1, 7], [-1, -1]]
-    params['Jet_MTags'] = [[0], [], [1], []]
+    params['Jet_Tags'] = [[0], [], [1], []]
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
@@ -165,7 +165,7 @@ def test_smallest_angle_parings():
         assert set(found[0]) == {0, 2}
         found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [1, 2])
         assert len(found) == 0
-    params['Jet_MTags'] = [awkward.fromiter([[0], [5], [1], [7]])]
+    params['Jet_Tags'] = [awkward.fromiter([[0], [5], [1], [7]])]
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(dir_name, "tmp.awkd")
         eventWise.append(**params)
@@ -190,7 +190,7 @@ def test_all_smallest_angles():
     params['Jet_Phi'] = [[]]
     params['Jet_PT'] = [[]]
     params['Jet_Rapidity'] = [[]]
-    params['Jet_MTags'] = [[]]
+    params['Jet_Tags'] = [[]]
     params['Jet_Child1'] = [[]]
     params['Jet_Parent'] = [[]]
     # event 1 has just 1 jet - no contribution
@@ -203,7 +203,7 @@ def test_all_smallest_angles():
     params['Jet_Phi'] += [[[0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1]]]
-    params['Jet_MTags'] += [[[1]]]
+    params['Jet_Tags'] += [[[1]]]
     params['Jet_Child1'] += [[[1, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0]]]
     # event 2 has one untagged and one tagged jet - no contribution
@@ -216,7 +216,7 @@ def test_all_smallest_angles():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
-    params['Jet_MTags'] += [[[1], []]]
+    params['Jet_Tags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
@@ -237,7 +237,7 @@ def test_all_smallest_angles():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3]]]
     params['Jet_PT'] += [[[1, 1, 1], [1, 1, 1], [1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1]]]
-    params['Jet_MTags'] += [[[1], [], [4]]]
+    params['Jet_Tags'] += [[[1], [], [4]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7]]]
     expected_masses = [15.]
@@ -251,7 +251,7 @@ def test_all_smallest_angles():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [3, 3, 3], [3, 3, 3]]]
     params['Jet_PT'] += [[[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]]]
-    params['Jet_MTags'] += [[[1], [], [4], [10, 11], []]]
+    params['Jet_Tags'] += [[[1], [], [4], [10, 11], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [10, -1, -1], [13, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9], [12, -1, 12]]]
     expected_masses += [np.sqrt(11**2 - 3*4)]
@@ -265,7 +265,7 @@ def test_all_smallest_angles():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [3, 3, 3], [3, 3, 3]]]
     params['Jet_PT'] += [[[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]]]
-    params['Jet_MTags'] += [[[1], [3], [4], [10, 11], []]]
+    params['Jet_Tags'] += [[[1], [3], [4], [10, 11], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [10, -1, -1], [13, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9], [12, -1, 12]]]
     expected_masses += [np.sqrt(20**2 - 3*4), np.sqrt(11**2 - 3*4)]
@@ -291,7 +291,7 @@ def test_all_jet_masses():
     params['Jet_Phi'] = [[]]
     params['Jet_PT'] = [[]]
     params['Jet_Rapidity'] = [[]]
-    params['Jet_MTags'] = [[]]
+    params['Jet_Tags'] = [[]]
     params['Jet_Child1'] = [[]]
     params['Jet_Parent'] = [[]]
     expected_masses = [0.]
@@ -305,7 +305,7 @@ def test_all_jet_masses():
     params['Jet_Phi'] += [[[0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1]]]
-    params['Jet_MTags'] += [[[1]]]
+    params['Jet_Tags'] += [[[1]]]
     params['Jet_Child1'] += [[[1, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0]]]
     expected_masses += [np.sqrt(97)]
@@ -319,7 +319,7 @@ def test_all_jet_masses():
     params['Jet_Phi'] += [[[0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1]]]
-    params['Jet_MTags'] += [[[]]]
+    params['Jet_Tags'] += [[[]]]
     params['Jet_Child1'] += [[[1, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0]]]
     expected_masses += [0.]
@@ -333,7 +333,7 @@ def test_all_jet_masses():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1], [1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
-    params['Jet_MTags'] += [[[1], []]]
+    params['Jet_Tags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     expected_masses += [np.sqrt(10**2 - 3)]
@@ -347,7 +347,7 @@ def test_all_jet_masses():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3]]]
     params['Jet_PT'] += [[[1, 1, 1], [1, 1, 1], [1, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1]]]
-    params['Jet_MTags'] += [[[1], [], [4]]]
+    params['Jet_Tags'] += [[[1], [], [4]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7]]]
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
@@ -373,7 +373,7 @@ def test_all_PT_pairs():
     params['Jet_Phi'] = [[]]
     params['Jet_PT'] = [[]]
     params['Jet_Rapidity'] = [[]]
-    params['Jet_MTags'] = [[]]
+    params['Jet_Tags'] = [[]]
     params['Jet_Child1'] = [[]]
     params['Jet_Parent'] = [[]]
     # 0 1, 0 2, 0 3, 1 2, 1 3, 2 3
@@ -389,7 +389,7 @@ def test_all_PT_pairs():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1], [2, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
-    params['Jet_MTags'] += [[[1], []]]
+    params['Jet_Tags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     # event 2 has one untagged and two tagged jets - only the 0 1 pair
@@ -402,7 +402,7 @@ def test_all_PT_pairs():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [1, 3, 3]]]
     params['Jet_PT'] += [[[4, 5, 4], [10, 10, 10], [1, 1, 1], [7, 7, 7]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [10, 10, 10]]]
-    params['Jet_MTags'] += [[[1], [], [4], []]]
+    params['Jet_Tags'] += [[[1], [], [4], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [11, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9]]]
     expected[expected_order.index((0, 1))].append(15)
@@ -416,7 +416,7 @@ def test_all_PT_pairs():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [0, 0, 0], [3, 3, 3]]]
     params['Jet_PT'] += [[[2.5, 2, 2], [2, 2, 2], [3, 3, 3], [1, 1, 4], [2, 1.5, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [1, 1, 1], [-1, -1, -1]]]
-    params['Jet_MTags'] += [[[1], [2], [4], [5, 6], [10]]]
+    params['Jet_Tags'] += [[[1], [2], [4], [5, 6], [10]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [-1, 11, -1], [-1, 14, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9], [12, -1, 12]]]
     # PT order is 2, 0, 1, 4
@@ -459,7 +459,7 @@ def test_all_doubleTagged_jets():
     params['Jet_Phi'] = [[]]
     params['Jet_PT'] = [[]]
     params['Jet_Rapidity'] = [[]]
-    params['Jet_MTags'] = [[]]
+    params['Jet_Tags'] = [[]]
     params['Jet_Child1'] = [[]]
     params['Jet_Parent'] = [[]]
     # event 1 has one double tagged jet blow the pt cut and one tagged jet - no entries
@@ -472,7 +472,7 @@ def test_all_doubleTagged_jets():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1], [2, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
-    params['Jet_MTags'] += [[[1, 2], []]]
+    params['Jet_Tags'] += [[[1, 2], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     # event 2 has one single tagged and two double tagged jets - two entiries
@@ -485,7 +485,7 @@ def test_all_doubleTagged_jets():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [1, 3, 3]]]
     params['Jet_PT'] += [[[4, 5, 4], [10, 10, 10], [11, 11, 11], [7, 7, 7]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [10, 10, 10]]]
-    params['Jet_MTags'] += [[[1, 12], [1], [4, 5], [3]]]
+    params['Jet_Tags'] += [[[1, 12], [1], [4, 5], [3]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [11, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9]]]
     expected = sorted([np.sqrt(10**2 - 3), np.sqrt(5**2 - 3)])

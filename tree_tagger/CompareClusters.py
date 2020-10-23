@@ -269,6 +269,7 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                 # this is the particle index of the tag with greatest massshare in the jet
                 tag_idx = tag_idxs[tag_position]
             # which group does the tag belong to
+            # this is hitting stopiteration?
             group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
             matched_jets[group_position].append(jet_n)
         mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
@@ -328,10 +329,9 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     bg_mass_in = np.sqrt(awkward.fromiter(bg_mass2_in))
     content[jet_name + "_BGMassRatio"] = bg_mass_in/eventWise.DetectableBG_Mass
     content[jet_name + "_PercentFound"] = awkward.fromiter(percent_found)
-    signal_distance = np.abs(tag_mass_in - eventWise.DetectableBG_Mass)
-    background_distance = np.abs(tag_mass_in - np.sqrt(awkward.fromiter(all_mass2_in)))
+    signal_distance = np.abs(tag_mass_in - eventWise.DetectableTag_Mass)
     content[jet_name + "_DistanceSignal"] = signal_distance
-    content[jet_name + "_DistanceBG"] = background_distance
+    content[jet_name + "_DistanceBG"] = bg_mass_in
     content[jet_name + "_SeperateJets"] = awkward.fromiter(seperate_jets)
     content[jet_name + "_SeperateMask"] = awkward.fromiter(mask)
     if append:
@@ -624,7 +624,8 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_standard_
         percent_found = getattr(eventWise, jet_name + "_PercentFound")
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison and zoom:
-        mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
+        #mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
+        mask = (signal_gap < 36)*(background_gap < 20)
         if sum(mask)>4:
             signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]

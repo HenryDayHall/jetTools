@@ -44,7 +44,7 @@ def order_tagged_jets(eventWise, jet_name, filtered_event_idxs, ranking_variable
     return tagged_idxs[order]
 
 
-def combined_jet_mass(eventWise, jet_name, jet_idxs):
+def combined_jet_mass(eventWise, jet_name, jet_idxs, signal_background='both'):
     """
     calcualte the invarient mass of a combination of jets
 
@@ -64,16 +64,34 @@ def combined_jet_mass(eventWise, jet_name, jet_idxs):
 
     """
     assert eventWise.selected_index is not None
-    input_name = jet_name + '_InputIdx'
-    root_name = jet_name + '_RootInputIdx'
     try:
         jet_idxs = list(jet_idxs)
     except TypeError:
         pass
-    px = eventWise.match_indices(jet_name+'_Px', root_name, input_name)[jet_idxs].flatten()
-    py = eventWise.match_indices(jet_name+'_Py', root_name, input_name)[jet_idxs].flatten()
-    pz = eventWise.match_indices(jet_name+'_Pz', root_name, input_name)[jet_idxs].flatten()
-    e = eventWise.match_indices(jet_name+'_Energy', root_name, input_name)[jet_idxs].flatten()
+    if signal_background == 'both':  # jsut use the jet roots
+        input_name = jet_name + '_InputIdx'
+        root_name = jet_name + '_RootInputIdx'
+        px = eventWise.match_indices(jet_name+'_Px', root_name, input_name)[jet_idxs].flatten()
+        py = eventWise.match_indices(jet_name+'_Py', root_name, input_name)[jet_idxs].flatten()
+        pz = eventWise.match_indices(jet_name+'_Pz', root_name, input_name)[jet_idxs].flatten()
+        e = eventWise.match_indices(jet_name+'_Energy', root_name, input_name)[jet_idxs].flatten()
+    else:  # either signal or background
+        # need to start by getting jet inputs
+        source_idx = eventWise.JetInputs_SourceIdx
+        jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jet_idxs].flatten()
+        # convert to source_idxs
+        jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
+        jet_inputs = set(source_idx[jet_inputs])
+        if signal_background == 'signal': 
+            use_indices = jet_inputs.intersection(eventWise.DetectableTag_Leaves.flatten())
+        elif signal_background == 'background':
+            use_indices = jet_inputs - set(eventWise.DetectableTag_Leaves.flatten())
+        else:
+            raise ValueError(f"{signal_background} not recognised, should be 'both', 'signal' or 'background'")
+        px = eventWise.Px[use_indices]
+        py = eventWise.Py[use_indices]
+        pz = eventWise.Pz[use_indices]
+        e = eventWise.Energy[use_indices]
     # need to clip the sum to prevent v small masses coming out nan
     mass = np.sqrt(np.clip(np.sum(e)**2 - np.sum(px)**2 - np.sum(py)**2 - np.sum(pz)**2,
                            0., None))
@@ -346,7 +364,7 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     return all_masses, pairs, pair_masses
 
 
-def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag_type=None, require_seperate=True):
+def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag_type=None, require_seperate=True, signal_background='both'):
     """
     Gather all jets tagged by b-quarks from the same light higgs.
 
@@ -425,7 +443,8 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
                     # check for either tag
                     jet_idxs = [i for i, t in enumerate(tags) if tag_1 in t or tag_2 in t]
                     if len(jet_idxs) == 2 or not require_seperate:
-                        masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs))
+                        masses.append(combined_jet_mass(eventWise, jet_name, jet_idxs,
+                                                        signal_background))
         mass1 = mass2 = 0
         if len(masses) == 2:
             mass2, mass1 = sorted(masses)
@@ -436,7 +455,106 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
     return four_tags, pair1, pair2
 
 
-def plot_correct_pairs(eventWise, jet_names, show=True):
+def plot_correct_scatter_axis(ax, jet_names, true_masses, recoed_masses, colours):
+    scatter_params = dict(alpha=0.2, lw=0.)
+    # decide on jet_shapes
+    jet_shapes = {'SpectralMean': '^', 'SpectralFull': 'v', 'Indicator': 'X', 'Traditional': 'o', 'Other': 'd'}
+    shapes = [next(jet_shapes[key] for key in jet_shapes if key in name)
+              for name in jet_names]
+    for i, name in enumerate(jet_names):
+        # get the average distancee
+        average_distance = np.nanmean(np.abs(true_masses - recoed_masses[i]))
+        ax.scatter(recoed_masses[i], true_masses,
+                   color=colours[i], marker=shapes[i],
+                   **scatter_params)
+        # again for the legend
+        ax.scatter([], [],
+                   color=colours[i], marker=shapes[i],
+                   label=f"{name},\nave inaccuracy={average_distance:.1f}GeV")
+    # get the current upper limits
+    x_min, x_max = ax.get_xlim()
+    # plot a diagonal
+    ax.plot([0, x_max], [0, x_max], alpha=.5, ls='--')
+    ax.set_xlim(0, x_max)
+    ax.set_ylim(0, None)
+    # label axis
+    ax.set_xlabel("Reconstructed Mass (GeV)")
+    ax.set_ylabel("True Mass (GeV)")
+    ax.legend()
+
+
+def plot_correct_means_axis(ax, jet_names, true_masses, recoed_masses, colours):
+    scatter_params = dict(alpha=0.2, lw=0.)
+    hist_params = dict(alpha=0.2)
+    # plot the missed jets as a histogram
+    for i, name in enumerate(jet_names):
+        ax.hist(true_masses[np.isnan(recoed_masses[i])], label=name+" missed jets",
+                            color=colours[i],
+                            **hist_params)
+    # make the lines on the top
+    max_x = np.max([max(r) for r in recoed_masses])
+    xs = np.linspace(0, max_x, 30)
+    window_width = max_x/20
+
+    for i, name in enumerate(jet_names):
+        exists = ~np.isnan(recoed_masses[i])*~np.isnan(true_masses)
+        recoed = recoed_masses[i][exists]
+        true = true_masses[exists]
+        # make a sliding window
+        averages = []
+        lower = []
+        upper = []
+        print(f"Calculating sliding window for {name}")
+        for x in xs:
+            values = true[np.abs(recoed - x) < window_width]
+            if len(values) == 0:
+                mean, low, high = np.nan
+            else:
+                mean = np.mean(values)
+                low, high = np.quantile(values, (0.1, 0.9))
+            averages.append(mean)
+            lower.append(low)
+            upper.append(high)
+        ax.plot(xs, averages, color=colours[i], label=name + " mean")
+        ax.plot(xs, lower, ls='.', color=colours[i], label=name + " 0.1 quantile")
+        ax.plot(xs, upper, ls='.', color=colours[i], label=name + " 0.9 quantile")
+    # get the current upper limits
+    x_min, x_max = ax.get_xlim()
+    # plot a diagonal
+    ax.plot([0, x_max], [0, x_max], alpha=.5, ls='--')
+    ax.set_xlim(0, x_max)
+    ax.set_ylim(0, None)
+    # label axis
+    ax.set_xlabel("Reconstructed Mass (GeV)")
+    ax.set_ylabel("True Mass (GeV)")
+    ax.legend()
+
+
+def plot_correct_hist_axis(ax, jet_names, true_masses, recoed_masses, colours):
+    max_value = np.nanmax(true_masses)*1.2
+    hist_params = dict(range=(0, max_value), bins=50)
+    # decide on linestyles
+    jet_linestyles = {'SpectralMean': '-.', 'SpectralFull': 'dotted', 'Indicator': '--', 'Traditional': '-', 'Other': '-'}
+    linestyles = [next(jet_linestyles[key] for key in jet_linestyles if key in name)
+              for name in jet_names]
+    # plot the true values
+    true_masses = true_masses[np.isfinite(true_masses)]
+    ax.hist(true_masses, color='grey', label='Visible mass', alpha=0.4, **hist_params)
+    # now plot the recod values
+    hist_params['histtype'] = 'step'
+    for i, name in enumerate(jet_names):
+        mask = np.isnan(recoed_masses[i])
+        num_missed = np.sum(mask)
+        ax.hist(recoed_masses[i][~mask], label=f"{name}, {num_missed} missing",
+                color=colours[i], ls=linestyles[i],
+                **hist_params)
+    ax.set_xlim(0, max_value)
+    ax.set_xlabel("Mass GeV")
+    ax.set_ylabel("Raw Counts")
+    ax.legend()
+
+
+def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal_background='both'):
     """
     Plot all possible pairings of jets by PT order.
 
@@ -448,6 +566,12 @@ def plot_correct_pairs(eventWise, jet_names, show=True):
         prefix of the jet's variables in the eventWise
     
     """
+    if plot_type == 'hist':
+        ax_function = plot_correct_hist_axis
+    elif plot_type == 'scatter':
+        ax_function = plot_correct_scatter_axis
+    else:
+        ax_function = plot_correct_means_axis
     fig, ax_array = plt.subplots(1, 3)
     # get lobal inputs
     eventWise.selected_index = None
@@ -456,131 +580,46 @@ def plot_correct_pairs(eventWise, jet_names, show=True):
     # prepare the hist parameters
     cmap = matplotlib.cm.get_cmap('tab10')
     colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
-    hist_params = dict(bins=40, density=False, histtype='step')
-    other_params = dict(bins=40, density=False, histtype='stepfilled', color='gray', alpha=0.8)
     # get the jet data
     four_tag_masses = []
     pair1_masses = []
     pair2_masses = []
     for name in jet_names:
-        four_masses, pair1, pair2 = all_h_combinations(eventWise, name)
+        print(f"calculating pair masses for {name}")
+        four_masses, pair1, pair2 = all_h_combinations(eventWise, name,
+                                                       signal_background=signal_background)
+        four_masses = np.array(four_masses, dtype=float)
+        pair1 = np.array(pair1, dtype=float)
+        pair2 = np.array(pair2, dtype=float)
+        # turn zeros to nan as these are missed particles
+        four_masses[four_masses==0] = np.nan
+        pair1[pair1==0] = np.nan
+        pair2[pair2==0] = np.nan
         four_tag_masses.append(four_masses)
         pair1_masses.append(pair1)
         pair2_masses.append(pair2)
 
-    hist_params['range'] = other_params['range'] = np.nanmin(heavy), np.nanmax(heavy) + 20
+    if signal_background == 'both':
+        fig.subptitle('Using whole jet mass')
+    elif signal_background == 'signal':
+        fig.subptitle('Using only signal mass in jets')
+    elif signal_background == 'background':
+        fig.subptitle('Using only background mass in jets')
     ax_array[0].set_title(f"Heavy higgs")
-    ax_array[0].hist(heavy, label="heavy decendants", **other_params)
-    for i, name in enumerate(jet_names):
-        linewidth = 1+i/2
-        alpha = 1-i/(len(jet_names)+1)
-        ax_array[0].hist(four_tag_masses[i], label=name, linewidth=linewidth, alpha=alpha,
-                         color=colours[i], **hist_params)
-    ax_array[0].set_xlabel("Mass (GeV)")
-    ax_array[0].set_ylabel(f"Counts in {n_events}")
-    ax_array[0].legend()
-    ax_array[0].set_xlim(hist_params['range'])
+    ax_function(ax_array[0], jet_names, heavy, four_tag_masses, colours)
 
     ax_array[1].set_title(f"Better observed light higgs")
-    hist_params['range'] = other_params['range'] = np.nanmin(light1), np.nanmax(light1) + 10
-    ax_array[1].hist(light1, label="light decendants", **other_params)
-    for i, name in enumerate(jet_names):
-        linewidth = 1+i/2
-        alpha = 1-i/(len(jet_names)+1)
-        ax_array[1].hist(pair1_masses[i], label=name, linewidth=linewidth, alpha=alpha,
-                         color=colours[i], **hist_params)
-    ax_array[1].set_xlabel("Mass (GeV)")
-    ax_array[1].set_ylabel(f"Counts in {n_events}")
-    ax_array[1].legend()
-    ax_array[1].set_xlim(hist_params['range'])
+    ax_function(ax_array[1], jet_names, light1, pair1_masses, colours)
 
     ax_array[2].set_title(f"Less observed light higgs")
-    hist_params['range'] = other_params['range'] = np.nanmin(light2), np.nanmax(light2) + 10
-    ax_array[2].hist(light2, label="light decendants", **other_params)
-    for i, name in enumerate(jet_names):
-        linewidth = 1+i/2
-        alpha = 1-i/(len(jet_names)+1)
-        ax_array[2].hist(pair2_masses[i], label=name, linewidth=linewidth, alpha=alpha,
-                         color=colours[i], **hist_params)
-    ax_array[2].set_xlabel("Mass (GeV)")
-    ax_array[2].set_ylabel(f"Counts in {n_events}")
-    ax_array[2].legend()
-    ax_array[2].set_xlim(hist_params['range'])
-    if show:
-        plt.show()
-    return four_tag_masses, pair1_masses, pair2_masses
-
-
-def plot_scatter_correct_pairs(eventWise, jet_names, show=True):
-    """
-    Plot all possible pairings of jets by PT order.
-
-    Parameters
-    ----------
-    eventWise : EventWise
-        dataset containing the jets
-    jet_name : str
-        prefix of the jet's variables in the eventWise
-    
-    """
-    fig, ax_array = plt.subplots(1, 3)
-    # get lobal inputs
-    eventWise.selected_index = None
-    heavy, light1, light2 = descendants_masses(eventWise)
-    n_events = len(getattr(eventWise, jet_names[0]+'_InputIdx'))
-    # prepare the hist parameters
-    cmap = matplotlib.cm.get_cmap('tab10')
-    colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
-    #hist_params = dict(bins=40, density=False, histtype='step')
-    #other_params = dict(bins=40, density=False, histtype='stepfilled', color='gray', alpha=0.8)
-    # get the jet data
-    four_tag_masses = []
-    pair1_masses = []
-    pair2_masses = []
-    for name, colour in zip(colours, jet_names):
-        four_masses, pair1, pair2 = all_h_combinations(eventWise, name)
-        four_tag_masses.append(four_masses)
-        pair1_masses.append(pair1)
-        pair2_masses.append(pair2)
-
-    hist_params['range'] = other_params['range'] = np.nanmin(heavy), np.nanmax(heavy) + 20
-    ax_array[0].set_title(f"Heavy higgs")
-    ax_array[0].hist(heavy, label="heavy decendants", **other_params)
-    for i, name in enumerate(jet_names):
-        linewidth = 1+i/2
-        alpha = 1-i/(len(jet_names)+1)
-        ax_array[0].hist(four_tag_masses[i], label=name, linewidth=linewidth, alpha=alpha,
-                         color=colours[i], **hist_params)
-    ax_array[0].set_xlabel("Mass (GeV)")
-    ax_array[0].set_ylabel(f"Counts in {n_events}")
-    ax_array[0].legend()
-    ax_array[0].set_xlim(hist_params['range'])
-
-    ax_array[1].set_title(f"Better observed light higgs")
-    hist_params['range'] = other_params['range'] = np.nanmin(light1), np.nanmax(light1) + 10
-    ax_array[1].hist(light1, label="light decendants", **other_params)
-    for i, name in enumerate(jet_names):
-        linewidth = 1+i/2
-        alpha = 1-i/(len(jet_names)+1)
-        ax_array[1].hist(pair1_masses[i], label=name, linewidth=linewidth, alpha=alpha,
-                         color=colours[i], **hist_params)
-    ax_array[1].set_xlabel("Mass (GeV)")
-    ax_array[1].set_ylabel(f"Counts in {n_events}")
-    ax_array[1].legend()
-    ax_array[1].set_xlim(hist_params['range'])
-
-    ax_array[2].set_title(f"Less observed light higgs")
-    hist_params['range'] = other_params['range'] = np.nanmin(light2), np.nanmax(light2) + 10
-    ax_array[2].hist(light2, label="light decendants", **other_params)
-    for i, name in enumerate(jet_names):
-        linewidth = 1+i/2
-        alpha = 1-i/(len(jet_names)+1)
-        ax_array[2].hist(pair2_masses[i], label=name, linewidth=linewidth, alpha=alpha,
-                         color=colours[i], **hist_params)
-    ax_array[2].set_xlabel("Mass (GeV)")
-    ax_array[2].set_ylabel(f"Counts in {n_events}")
-    ax_array[2].legend()
-    ax_array[2].set_xlim(hist_params['range'])
+    ax_function(ax_array[2], jet_names, light2, pair2_masses, colours)
+    fig.subplots_adjust(top=0.93,
+                        bottom=0.1,
+                        left=0.08,
+                        right=0.97,
+                        hspace=0.2,
+                        wspace=0.2)
+    fig.set_size_inches(10, 5)
     if show:
         plt.show()
     return four_tag_masses, pair1_masses, pair2_masses
@@ -837,8 +876,21 @@ if __name__ == '__main__':
     ew = Components.EventWise.from_file(best_name)
     jet_names = FormJets.get_jet_names(ew)
     
+    if len(jet_names) > 4:
+        sel_jet_names = []
+        next_name = True
+        while next_name:
+            next_name = InputTools.list_complete(f"Add jet {len(sel_jet_names)+1} to plot; (blank to stop, 'all' for all) ", jet_names).strip()
+            if next_name == 'all':
+                break
+            elif next_name == '':
+                jet_names = sel_jet_names
+            else:
+                sel_jet_names.append(next_name)
     #plot_PT_pairs(ew, jet_names, True)
-    plot_correct_pairs(ew, jet_names, True)
+    options = ['means', 'hist', 'scatter']
+    choice = InputTools.list_complete("Which kind of plot? ", options).strip()
+    plot_correct_pairs(ew, jet_names, True, choice)
     input()
 
 

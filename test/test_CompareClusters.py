@@ -83,7 +83,7 @@ def test_get_detectable_comparisons():
     # Energy Px Py Pz
     # Jet_Parent, Jet_TagMass, Jet_InputIdx
     # Jet_Energy, Jet_Px, Jet_Py, Jet_Pz
-    # Jet_MTags
+    # Jet_Tags
     # will create Jet_DistanceRapidity Jet_DistancePT Jet_DistancePhi
     # Jet_SignalMassRatio Jet_BGMassRatio Jet_PercentFound
     # an empty event should be nan
@@ -107,7 +107,7 @@ def test_get_detectable_comparisons():
     params["Jet_Parent"] = [awkward.fromiter([])]
     params["Jet_TagMass"] = [awkward.fromiter([])]
     params["Jet_InputIdx"] = [awkward.fromiter([])]
-    params["Jet_MTags"] = [awkward.fromiter([])]
+    params["Jet_Tags"] = [awkward.fromiter([])]
     expected_distances = [[[], [], []]]
     expected_sig = [[]]
     expected_bg = [[]]
@@ -132,7 +132,7 @@ def test_get_detectable_comparisons():
     params["Jet_Parent"] += [awkward.fromiter([])]
     params["Jet_TagMass"] += [awkward.fromiter([])]
     params["Jet_InputIdx"] += [awkward.fromiter([])]
-    params["Jet_MTags"] += [awkward.fromiter([])]
+    params["Jet_Tags"] += [awkward.fromiter([])]
     expected_distances += [[[np.nan, np.nan], [np.nan, np.nan], [np.nan, np.nan]]]
     expected_sig += [[np.nan, np.nan]]
     expected_bg += [[np.nan, np.nan]]
@@ -160,13 +160,13 @@ def test_get_detectable_comparisons():
     params["Jet_TagMass"] += [awkward.fromiter([[1., 0.], [0., 1.]])] * repeat
     params["Jet_InputIdx"] += [awkward.fromiter([[1, 2, 10], [3], [40, 4, 5]])] * repeat
     # a perfect event should return a perfect score
-    params["Jet_MTags"] += [awkward.fromiter([[3], [4], []])]
+    params["Jet_Tags"] += [awkward.fromiter([[3], [4], []])]
     expected_distances += [[[0, 0], [0, 0], [0, 0]]]
     expected_sig += [[1, 1]]
     expected_bg += [[0., 0.]]
     expected_percent += [1.]
     # a perfectly imperfect event should return the worst score
-    params["Jet_MTags"] += [awkward.fromiter([[], [], [3]])]
+    params["Jet_Tags"] += [awkward.fromiter([[], [], [3]])]
     
     # detectable tag is at [5, 0, 1, 3], matched jet is at [12, 4, 0, 1]
     (tag_phi, jet_phi), (tag_pt, jet_pt) = Components.pxpy_to_phipt(np.array([0., 4.]),
@@ -185,7 +185,7 @@ def test_get_detectable_comparisons():
     expected_bg += [[mass_jet3/total_bg, 0.]]
     expected_percent += [0.5]
     # a mixed event returns a score that can be calculated
-    params["Jet_MTags"] += [awkward.fromiter([[], [4], [3]])]
+    params["Jet_Tags"] += [awkward.fromiter([[], [4], [3]])]
     expected_distances += [[[phi_distance, 0], [abs(tag_pt-jet_pt), 0],
                             [abs(jet_rapidity-tag_rapidity), 0]]]
     expected_sig += [[0, 1]]
@@ -193,7 +193,7 @@ def test_get_detectable_comparisons():
     expected_percent += [1.]
     # in an event where a jet has tags from two diferent shower clusters it should
     # be assocated witht he one where it has greates inheritance
-    params["Jet_MTags"] += [awkward.fromiter([[], [4, 3], []])]
+    params["Jet_Tags"] += [awkward.fromiter([[], [4, 3], []])]
     # the other one will simply be unfound
     expected_distances += [[[np.nan, 0], [np.nan, 0],
                             [np.nan, 0]]]

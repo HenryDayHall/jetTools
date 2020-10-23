@@ -192,7 +192,8 @@ def add_tag_particles(eventWise, silent=False):
 
 def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, silent=False, append=True, overwrite=False):
     """
-    Calculate and allocate the tags in the traditional way, using add_tag_particles. 
+    Calculate and allocate the tags in the traditional way, using add_detectable_fourvector
+    as we only wish to tag with particles that are in principle detectable. 
 
     Parameters
     ----------
@@ -240,8 +241,8 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, 
     name = jet_name + "_Tags"
     namePID = jet_name+f"_TagPIDs"
     n_events = len(getattr(eventWise, jet_name+"_Energy", []))
-    if "TagIndex" not in eventWise.columns:
-        add_tag_particles(eventWise, silent=silent)
+    if "DetectableTag_Roots" not in eventWise.columns:
+        add_detectable_fourvector(eventWise, silent=silent)
     if overwrite:
         jet_tags = []
         jet_tagpids = []
@@ -276,7 +277,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, 
             break
         eventWise.selected_index = event_n
         # get the tags
-        tags = eventWise.TagIndex
+        tags = eventWise.DetectableTag_Roots.flatten()
         # get the valiables to cut on
         jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
         if len(jet_pt) == 0:
@@ -395,6 +396,19 @@ def get_root_rest_energies(root_idxs, energies, pxs, pys, pzs):
     energies = np.sqrt(masses2 + pxs**2 + pys**2 + pzs**2)
     return energies
 
+# probelem in iridis_Scan_Indicator2.awkd
+# probelem in iridis_MC_SpectralFull2.awkd
+# probelem in heavyHiggs1_MC_SpectralFull4.awkd
+#'megaIgnore/iridis_MC_Indicator2.awkd',
+# 'megaIgnore/iridis_MC_SpectralMean2.awkd',
+#  'megaIgnore/iridis_MC_SpectralMean.awkd',
+#   'megaIgnore/iridis_MC_Splitting3.awkd',
+#    'megaIgnore/heavyHiggs1_MC_SpectralFull3.awkd',
+#     'megaIgnore/iridis_Scan_Indicator1.awkd',
+#      'megaIgnore/best_v2.awkd',
+#       'megaIgnore/iridis_MC_Indicator.awkd',
+#        'megaIgnore/heavyHiggs1_MC_SpectralMean.awkd']
+#
 
 def add_inheritance(eventWise, jet_name, batch_length=100, silent=False, append=True):
     """
@@ -582,7 +596,7 @@ def add_mass_share(eventWise, jet_name, batch_length=100, silent=False, append=T
         return content
 
 
-def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
+def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx", silent=False):
     """
     Add a list of detectable four vectors for the tags, 
     as present in the JetInputs.
@@ -599,6 +613,8 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx"):
     """
     eventWise.selected_index = None
     name = "DetectableTag"
+    if "BQuarkIdx" not in eventWise.columns and tag_name=="BQuarkIdx":
+        FormShower.append_b_idxs(eventWise, silent=silent, append=True)
     tag_particles = getattr(eventWise, tag_name)
     # the leaves are the bits that are detected, the roots are the tag particles
     # group roots with common leaves

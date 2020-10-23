@@ -21,7 +21,7 @@ def test_sorted_masses():
     params['Jet_Phi'] = [[]]
     params['Jet_PT'] = [[]]
     params['Jet_Rapidity'] = [[]]
-    params['Jet_MTags'] = [[]]
+    params['Jet_Tags'] = [[]]
     params['Jet_Child1'] = [[]]
     params['Jet_Parent'] = [[]]
     # 0 1, 0 2, 0 3, 1 2, 1 3, 2 3
@@ -37,7 +37,7 @@ def test_sorted_masses():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0]]]
     params['Jet_PT'] += [[[1, 1, 1], [2, 1, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1]]]
-    params['Jet_MTags'] += [[[1], []]]
+    params['Jet_Tags'] += [[[1], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3]]]
     # event 2 has one untagged and two tagged jets - only the 0 1 pair
@@ -50,7 +50,7 @@ def test_sorted_masses():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [1, 3, 3]]]
     params['Jet_PT'] += [[[2, 5, 4], [10, 10, 10], [1, 1, 1], [7, 7, 7]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [10, 10, 10]]]
-    params['Jet_MTags'] += [[[1], [], [4], []]]
+    params['Jet_Tags'] += [[[1], [], [4], []]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [11, -1, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 9, 9]]]
     expected.append(13)
@@ -64,7 +64,7 @@ def test_sorted_masses():
     params['Jet_Phi'] += [[[0, 0, 0], [0, 0, 0], [3, 3, 3], [0, 0, 0], [3, 3, 3]]]
     params['Jet_PT'] += [[[2.5, 2, 2], [2, 2, 2], [3, 3, 3], [1, 1, 4], [2, 1.5, 1]]]
     params['Jet_Rapidity'] += [[[1, 1, 1], [1, 1, 1], [-1, -1, -1], [1, 1, 1], [-1, -1, -1]]]
-    params['Jet_MTags'] += [[[1], [2], [4], [5, 6], [10]]]
+    params['Jet_Tags'] += [[[1], [2], [4], [5, 6], [10]]]
     params['Jet_Child1'] += [[[1, -1, -1], [4, -1, -1], [-1, 8, -1], [-1, 11, -1], [-1, 14, -1]]]
     params['Jet_Parent'] += [[[-1, 0, 0], [-1, 3, 3], [7, -1, 7], [-1, 10, 10], [13, -1, 13]]]
     # PT order is 2, 0, 1, 4
