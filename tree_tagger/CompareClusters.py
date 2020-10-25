@@ -192,7 +192,7 @@ def add_bg_mass(eventWise):
     eventWise.append(DetectableBG_Mass = awkward.fromiter(all_bg_mass))
 
 
-def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
+def per_event_detectables(eventWise, jet_name, jet_idxs):
     """
     
 
@@ -231,6 +231,9 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     rapidity_in = [[] for _ in range(n_events)]
     phi_in = [[] for _ in range(n_events)]
     pt_in = [[] for _ in range(n_events)]
+    tag_rapidity_in = [[] for _ in range(n_events)]
+    tag_phi_in = [[] for _ in range(n_events)]
+    tag_pt_in = [[] for _ in range(n_events)]
     mask = [[] for _ in range(n_events)]
     # the fraction of the tags that have been connected to some jet
     percent_found = np.zeros(n_events)
@@ -306,17 +309,35 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
                                                    np.sum(py[jet_inputs]))
                 rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[jet_inputs]),
                                                         np.sum(energy[jet_inputs]))
+                # then for just the tagged parts
+                tag_phi, tag_pt = Components.pxpy_to_phipt(np.sum(px[tag_in_jet]),
+                                                   np.sum(py[tag_in_jet]))
+                tag_rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[tag_in_jet]),
+                                                        np.sum(energy[tag_in_jet]))
             else:
                 # no jets in this group
                 tag_mass2 = bg_mass2 = all_mass2 = 0
                 phi = pt = rapidity = np.nan
+                tag_phi = tag_pt = tag_rapidity = np.nan
             tag_mass2_in[event_n].append(tag_mass2)
             all_mass2_in[event_n].append(all_mass2)
             bg_mass2_in[event_n].append(bg_mass2)
             phi_in[event_n].append(phi)
             pt_in[event_n].append(pt)
             rapidity_in[event_n].append(rapidity)
+            tag_phi_in[event_n].append(tag_phi)
+            tag_pt_in[event_n].append(tag_pt)
+            tag_rapidity_in[event_n].append(tag_rapidity)
     eventWise.selected_index = None
+    to_return = [tag_mass2_in, all_mass2_in, bg_mass2_in, rapidity_in, phi_in, pt_in, mask,
+                 tag_rapidity_in, tag_phi_in, tag_pt_in, percent_found, seperate_jets]
+    return to_return
+
+
+def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
+    tag_mass2_in, all_mass2_in, bg_mass2_in, rapidity_in, phi_in, pt_in, mask,\
+            _, _, _, percent_found, seperate_jets, \
+            = per_event_detectables(eventWise, jet_name, jet_idxs)
     content = {}
     rapidity_distance = awkward.fromiter(rapidity_in) - eventWise.DetectableTag_Rapidity
     pt_distance = awkward.fromiter(pt_in) - eventWise.DetectableTag_PT
@@ -337,6 +358,8 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     if append:
         eventWise.append(**content)
     return content
+
+
 
 
 def remove_scores(eventWise):
@@ -442,7 +465,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     eventWise.append(**new_contents)
 
 
-def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave_one_free=True):
+def multiprocess_append_scores(eventWise_paths, dijet_mass, end_time, overwrite=False, leave_one_free=True):
     n_paths = len(eventWise_paths)
     # cap this out at 20, more seems to create a performance hit
     n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
@@ -453,7 +476,7 @@ def multiprocess_append_scores(eventWise_paths, end_time, overwrite=False, leave
     print("Running on {} threads".format(n_threads))
     job_list = []
     # now each segment makes a worker
-    args = [(path, None, end_time, None, overwrite, True)
+    args = [(path, dijet_mass, end_time, None, overwrite, True)
             for path in eventWise_paths]
     #args = [(path,) for path in eventWise_paths]
     # set up some initial jobs
@@ -579,6 +602,11 @@ def filter_standard_akt(all_cols, variable_cols, score_cols, table):
     return filter_matching(all_cols, table, exact, approx)
 
 
+def filter_traditional(all_cols, variable_cols, score_cols, table):
+    exact = {"jet_class": "Traditional"}
+    return filter_matching(all_cols, table, exact)
+
+
 def filter_matching(all_cols, table, exact=None, approx=None):
     mask = np.full(len(table), True, dtype=bool)
     if exact is not None:
@@ -593,7 +621,7 @@ def filter_matching(all_cols, table, exact=None, approx=None):
 
 
 
-def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_standard_akt, zoom=False):
+def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_traditional, zoom=False):
     ax = plt.gca()
     cluster_comparison = isinstance(eventWise_paths, list)
     if cluster_comparison:
@@ -625,14 +653,15 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_standard_
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison and zoom:
         #mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
-        mask = (signal_gap < 36)*(background_gap < 20)
+        mask = (signal_gap < 3.)*(background_gap < 10)
         if sum(mask)>4:
             signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
             PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
     max_colour = max(1.5, np.max(seperate_jets))
     points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=max_colour)
-    ax.scatter(signal_gap[highlight], background_gap[highlight], c='k', marker='o', s=10*np.sqrt(percent_found)+0.3)
+    ax.scatter(signal_gap[highlight], background_gap[highlight], c=(0,0,0,0),
+               marker='o', s=10*np.sqrt(percent_found)+0.3, edgecolor=(0,0,0,1))
     cbar = plt.colorbar(points)
     cbar.set_label("Seperate $b$-jets per event")
     ax.set_xlabel("Average signal loss (GeV)")
@@ -1001,7 +1030,7 @@ if __name__ == '__main__':
             ew_paths.append(path)
         elif os.path.isdir(path):
             inside = [os.path.join(path, name) for name in os.listdir(path)
-                      if name.endswith("awkd") and name.startswith("iridis")]
+                      if name.endswith("awkd") and name.startswith("heavy")]
             ew_paths += inside
             #inside = [os.path.join(path, name) for name in os.listdir(path)
             #          if name.endswith("awkd")]
@@ -1043,12 +1072,15 @@ if __name__ == '__main__':
         duration = InputTools.get_time("How long to run for? (negative for inf) ")
         print(f"Running for {duration/(60**2):.2f} hours")
         overwrite = InputTools.yesNo_question("Overwrite previous scores? ")
+        dijet_mass = InputTools.get_literal("What is the dijet mass? ", float)
         if duration < 0:
             duration = np.inf
         if len(ew_paths) == 1:
-            append_scores(ew_paths[0], duration=duration, overwrite=overwrite)
+            append_scores(ew_paths[0], dijet_mass=dijet_mass,
+                          duration=duration, overwrite=overwrite)
         else:
             end_time = time.time() + duration
-            multiprocess_append_scores(ew_paths, end_time=end_time, overwrite=overwrite)
+            multiprocess_append_scores(ew_paths, dijet_mass=dijet_mass,
+                                       end_time=end_time, overwrite=overwrite)
 
 

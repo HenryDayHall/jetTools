@@ -485,14 +485,14 @@ def plot_correct_scatter_axis(ax, jet_names, true_masses, recoed_masses, colours
 
 def plot_correct_means_axis(ax, jet_names, true_masses, recoed_masses, colours):
     scatter_params = dict(alpha=0.2, lw=0.)
-    hist_params = dict(alpha=0.2)
+    hist_params = dict(alpha=0.2, orientation='horizontal')
     # plot the missed jets as a histogram
     for i, name in enumerate(jet_names):
         ax.hist(true_masses[np.isnan(recoed_masses[i])], label=name+" missed jets",
                             color=colours[i],
                             **hist_params)
     # make the lines on the top
-    max_x = np.max([max(r) for r in recoed_masses])
+    max_x = np.nanmax([np.nanmax(r) for r in recoed_masses])
     xs = np.linspace(0, max_x, 30)
     window_width = max_x/20
 
@@ -508,7 +508,7 @@ def plot_correct_means_axis(ax, jet_names, true_masses, recoed_masses, colours):
         for x in xs:
             values = true[np.abs(recoed - x) < window_width]
             if len(values) == 0:
-                mean, low, high = np.nan
+                mean, low, high = np.nan, np.nan, np.nan
             else:
                 mean = np.mean(values)
                 low, high = np.quantile(values, (0.1, 0.9))
@@ -516,8 +516,8 @@ def plot_correct_means_axis(ax, jet_names, true_masses, recoed_masses, colours):
             lower.append(low)
             upper.append(high)
         ax.plot(xs, averages, color=colours[i], label=name + " mean")
-        ax.plot(xs, lower, ls='.', color=colours[i], label=name + " 0.1 quantile")
-        ax.plot(xs, upper, ls='.', color=colours[i], label=name + " 0.9 quantile")
+        ax.plot(xs, lower, ls='dotted', color=colours[i], label=name + " 0.1 quantile")
+        ax.plot(xs, upper, ls='dotted', color=colours[i], label=name + " 0.9 quantile")
     # get the current upper limits
     x_min, x_max = ax.get_xlim()
     # plot a diagonal
@@ -527,7 +527,7 @@ def plot_correct_means_axis(ax, jet_names, true_masses, recoed_masses, colours):
     # label axis
     ax.set_xlabel("Reconstructed Mass (GeV)")
     ax.set_ylabel("True Mass (GeV)")
-    ax.legend()
+    #ax.legend()
 
 
 def plot_correct_hist_axis(ax, jet_names, true_masses, recoed_masses, colours):
@@ -600,11 +600,11 @@ def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal
         pair2_masses.append(pair2)
 
     if signal_background == 'both':
-        fig.subptitle('Using whole jet mass')
+        fig.suptitle('Using whole jet mass')
     elif signal_background == 'signal':
-        fig.subptitle('Using only signal mass in jets')
+        fig.suptitle('Using only signal mass in jets')
     elif signal_background == 'background':
-        fig.subptitle('Using only background mass in jets')
+        fig.suptitle('Using only background mass in jets')
     ax_array[0].set_title(f"Heavy higgs")
     ax_function(ax_array[0], jet_names, heavy, four_tag_masses, colours)
 
@@ -613,6 +613,7 @@ def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal
 
     ax_array[2].set_title(f"Less observed light higgs")
     ax_function(ax_array[2], jet_names, light2, pair2_masses, colours)
+    ax_array[2].legend()
     fig.subplots_adjust(top=0.93,
                         bottom=0.1,
                         left=0.08,

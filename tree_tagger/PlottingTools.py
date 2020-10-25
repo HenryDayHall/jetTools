@@ -3,7 +3,7 @@ from ipdb import set_trace as st
 import numpy as np
 import os
 
-def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, font_size=12, additional_text=None):
+def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, font_size=12, additional_text=None, skip_scores=True):
     """
     
 
@@ -39,6 +39,10 @@ def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, f
         trim = len(prefix)
         properties_dict = {name[trim:]: getattr(eventWise, name) for name in eventWise.hyperparameter_columns
                            if name.startswith(prefix)}
+        if skip_scores:
+            score_starts = ["Ave", "Seperate", "Quality"]
+            properties_dict = {name: value for name, value in properties_dict.items()
+                               if not np.any([name.startswith(s) for s in score_starts])}
         text += f"In file {eventWise.save_name}\n"
     elif properties_dict is not None:
         jet_name = properties_dict.get('jet_name', "Unnamed")
