@@ -13,17 +13,17 @@ import scipy.spatial, scipy.stats
 
 def subsample_dissdiff(data1, data2, diff_function, n_subsamples=3):
     # start be making subsamples
-    n_subsamples = int(np.min([len(data1)/3, len(data2)/3, n_subsamples]))
+    n_subsamples = int(np.min([len(data1)/5, len(data2)/5, n_subsamples]))
     sub_sum = 0
-    for split_point in np.linspace(0, len(data1), n_subsamples, endpoint=False, dtype=int)[1:]:
+    for split_point in np.linspace(0, len(data1), n_subsamples, dtype=int)[1:-1]:
         sub_sum += diff_function(data1[:split_point], data1[split_point:])
-    for split_point in np.linspace(0, len(data2), n_subsamples, endpoint=False, dtype=int)[1:]:
+    for split_point in np.linspace(0, len(data2), n_subsamples, dtype=int)[1:-1]:
         sub_sum += diff_function(data2[:split_point], data2[split_point:])
     dissdiff = 2*n_subsamples*diff_function(data1, data2)/sub_sum
     return dissdiff
 
 
-def subsample_kss(data1, data2):
+def subsample_ks(data1, data2):
     diff_function = lambda d1, d2: scipy.stats.ks_2samp(d1, d2)[0]
     return subsample_dissdiff(data1, data2, diff_function)
 
@@ -48,10 +48,13 @@ def calculate_dissdiff_values(path1, path2, save_name=None):
         for content in contents:
             data1 = getattr(eventWise1, content).flatten()
             data2 = getattr(eventWise2, content).flatten()
-            if len(data1)*len(data2) == 0:
+            if min(len(data1), len(data2)) < 5:
                 continue
-            #dissdiff_values[content] = scipy.stats.ks_2samp(data1, data2)[0]
-            dissdiff_values[content] = subsample_es(data1, data2)
+            try:
+                dissdiff_values[content] = scipy.stats.ks_2samp(data1, data2)[0]
+                #dissdiff_values[content] = subsample_ks(data1, data2)
+            except ZeroDivisionError:
+                pass
     if save_name is not None:
         with open(save_name, 'w') as save_file:
             save_file.write(str(dissdiff_values))
@@ -336,6 +339,8 @@ def plot_hists(eventWises, jet_name, low_pt=10.):
                       for eventWise in eventWises]
     content_prefix = jet_name + "IRC"
     contents = [name for name in eventWises[0].columns if name.startswith(content_prefix)]
+    if len(contents) == 0:
+        raise KeyError(f"{jet_name} IRC variables not found")
     pairs = [(name, name.replace('LowPT_', '_')) for name in contents if
              'LowPT_' in name and name.replace('LowPT_', '_') in contents]
     assert len(pairs)*2 == len(contents)
@@ -343,13 +348,20 @@ def plot_hists(eventWises, jet_name, low_pt=10.):
     fig, ax_arr = plt.subplots(len(pairs), 2)
     ax_list = ax_arr.tolist()
     for name, low_pt_name in pairs:
-        variable_name = name[len(content_prefix):].replace('_', ' ').strip()
+        variable_name = name[len(content_prefix):].replace('LowPT_', ' ').strip()
         values = [getattr(eventWise, name).flatten().tolist() for eventWise in eventWises]
         low_pt_values = [getattr(eventWise, low_pt_name).flatten().tolist() for eventWise in eventWises]
         ax1, ax2 = ax_list.pop()
         plot_hist(variable_name, eventWise_name, low_pt, values, low_pt_values, ax1, ax2)
     ax2.legend()
-    fig.tight_layout()
+    fig.suptitle(jet_name)
+    fig.set_size_inches(6, 8)
+    fig.subplots_adjust(top=0.911,
+            bottom=0.071,
+            left=0.171,
+            right=0.976,
+            hspace=0.5,
+            wspace=0.5)
 
 
 def plot_hist(variable_name, names, low_pt, values, low_pt_values, ax1, ax2):
@@ -460,6 +472,7 @@ if __name__ == '__main__':
         jet_names = FormJets.get_jet_names(eventWises[0])
         jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
         plot_hists(eventWises, jet_name)
+        plt.show()
         input()
     elif chosen == "dissdiff":
         dissdiff_name = InputTools.get_file_name("Name a file to save the dissdiff scores in; ",

@@ -360,8 +360,6 @@ def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     return content
 
 
-
-
 def remove_scores(eventWise):
     suffixes_to_remove = ["DistancePT", "DistancePhi", "DistanceRapidity", "QualityWidth",
                           "QualityFraction", "PercentFound", "BGMassRatio", "SignalMassRatio"]

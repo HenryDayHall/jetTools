@@ -826,7 +826,7 @@ class EventWise:
                           per_event_component, part_name="progress",
                           **kwargs)
 
-    def split(self, lower_bounds, upper_bounds, per_event_component="Energy", part_name="part", **kwargs):
+    def split(self, lower_bounds, upper_bounds=None, per_event_component="Energy", part_name="part", **kwargs):
         """
         Split an eventWise into specified parts, each one containing
         the same columns but a subset of the events.
@@ -889,15 +889,24 @@ class EventWise:
                           if len(self._column_contents[c]) == n_events]
         assert to_check.issubset(per_event_cols)
         new_contents = []
-        for lower, upper in zip(lower_bounds, upper_bounds):
-            if lower > upper:
-                raise ValueError(f"lower bound {lower} greater than upper bound {upper}")
-            if lower == upper:
-                # append none as a placeholder
-                new_contents.append(None)
-            else:
-                new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
-                new_contents.append(new_content)
+        if upper_bounds is None:  # treat lower bounds as a list of indices
+            for index_list in lower_bounds:
+                if len(index_list) == 0:
+                    # append none as a placeholder
+                    new_contents.append(None)
+                else:
+                    new_content = {k: self._column_contents[k][index_list] for k in per_event_cols}
+                    new_contents.append(new_content)
+        else:
+            for lower, upper in zip(lower_bounds, upper_bounds):
+                if lower > upper:
+                    raise ValueError(f"lower bound {lower} greater than upper bound {upper}")
+                if lower == upper:
+                    # append none as a placeholder
+                    new_contents.append(None)
+                else:
+                    new_content = {k: self._column_contents[k][lower:upper] for k in per_event_cols}
+                    new_contents.append(new_content)
         # if no dupes only put the unchanged content in the first event
         no_dups = kwargs.get('no_dups', True)
         all_paths = []

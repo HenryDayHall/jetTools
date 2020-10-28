@@ -1460,7 +1460,8 @@ class Spectral(PseudoJet):
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent', 'AffinityCutoff': None,
                       'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
-                      'PhyDistance': 'angular', 'StoppingCondition': 'standard'}
+                      'PhyDistance': 'angular', 'EigDistance': 'euclidien',
+                      'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
                        'ExpofPTFormat': ['min', 'Luclus'],
@@ -1470,6 +1471,7 @@ class Spectral(PseudoJet):
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric'],
                        'Eigenspace': ['unnormalised', 'normalised'],
+                       'EigDistance': ['euclidien', 'spherical'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'StoppingCondition': ['standard', 'beamparticle', 'conductance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -1511,6 +1513,7 @@ class Spectral(PseudoJet):
         if dict_jet_params is not None:
             kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
+        self.eigenspace_distance2 = self._define_eigenspace_distance()
         # make a version of the number of eigenvalues that
         # is garenteed to be finitie
         self._NumEigenvectors = int(np.nan_to_num(self.NumEigenvectors))
@@ -1660,17 +1663,7 @@ class Spectral(PseudoJet):
         if self.Eigenspace == 'normed':
             self._eigenspace /= self.eigenvalues[-1]
         # now treating the rows of this matrix as the new points get euclidien distances
-        self._distances2 = scipy.spatial.distance.squareform(
-                scipy.spatial.distance.pdist(eigenvectors,
-                metric='sqeuclidean'))
-        if self.ExpofPTPosition == 'eigenspace':
-            pt_col = self._PT_col
-            avalible_pt = self._starting_position[:, pt_col]
-            pt_factor = self.PT_factor(avalible_pt, avalible_pt.reshape((-1, 1)))
-            if self.beam_particle:
-                beam_PT_factor = self.beam_PT_factor(self._starting_position[:, pt_col])
-                pt_factor[-1] = pt_factor[:, -1] = beam_PT_factor
-            self._distances2 *= pt_factor
+        self._distances2 = self.eigenspace_distance2(eigenvectors, eigenvectors, self._starting_position, self._starting_position)
         # if the clustering is not going to stop at 1 we must put something in the diagonal
         if self.beam_particle or self.conductance:  # in he case of a beam particle we stop the clustering when
             # our particle reaches the beam particle
@@ -1941,6 +1934,95 @@ class Spectral(PseudoJet):
         # this is make into a class fuction becuase it will b needed elsewhere
         self.calculate_affinity = calculate_affinity
 
+    def _define_eigenspace_distance(self):
+        """
+        Define a function that measures distance in eigen space,
+        """
+        pt_col = self._PT_col
+        # set up a few more variables
+        exponent = self.ExpofPTMultiplier * 2
+        exponent_now = self.ExpofPTPosition == 'eigenspace'
+        deltaR2 = self.DeltaR**2
+        if self.EigDistance == 'euclidien':
+            def eigenspace_distance2(position_a, position_b, row_a, row_b):
+                """
+                Calculate the eigenspace distance between 2 particles.
+
+                Parameters
+                ----------
+                position_a : list of floats
+                    position of particle in eigenspace
+                position_b : list of floats
+                    position of particle in eigenspace
+                row_a : list of floats
+                    data about particle, in the order specified by the column attributes
+                row_b : list of floats
+                    data about particle, in the order specified by the column attributes
+
+                Returns
+                -------
+                : float
+                    the distance squared between the two particles
+
+                """
+                if len(position_a)*len(position_b) == 0:
+                    return np.empty((len(position_b), len(position_a)))
+                flat = position_b.ndim == 1
+                if flat:
+                    position_b = np.atleast_2d(position_b)  # sometimes position be is 1 point
+                # if this is failing try making position_a 2d like above
+                distance2 = scipy.spatial.distance.cdist(position_a, position_b,
+                                                          metric='sqeuclidean')
+
+                if exponent_now:
+                    row_a = np.array(row_a)
+                    row_b = np.array(row_b)
+                    distance2 *= self.PT_factor(row_a[..., [pt_col]], row_b[..., [pt_col]].T)
+                if flat:
+                    distance2 = distance2.flatten()
+                return distance2
+        elif self.EigDistance == 'spherical':
+            def eigenspace_distance2(position_a, position_b, row_a, row_b):
+                """
+                Calculate the eigenspace distance between 2 particles.
+
+                Parameters
+                ----------
+                position_a : list of floats
+                    position of particle in eigenspace
+                position_b : list of floats
+                    position of particle in eigenspace
+                row_a : list of floats
+                    data about particle, in the order specified by the column attributes
+                row_b : list of floats
+                    data about particle, in the order specified by the column attributes
+
+                Returns
+                -------
+                : float
+                    the distance squared between the two particles
+
+                """
+                if len(position_a)*len(position_b) == 0:
+                    return np.empty((len(position_b), len(position_a)))
+                flat = position_b.ndim == 1
+                if flat:
+                    position_b = np.atleast_2d(position_b)  # sometimes position be is 1 point
+                # if this is failing try making position_a 2d like above
+                cos = 1 - scipy.spatial.distance.cdist(position_a, position_b,
+                                                       metric='cosine')
+                distance2 = np.arccos(cos)
+                if exponent_now:
+                    row_a = np.array(row_a)
+                    row_b = np.array(row_b)
+                    distance2 *= self.PT_factor(row_a[..., [pt_col]], row_b[..., [pt_col]].T)
+                if flat:
+                    distance2 = distance2.flatten()
+                return distance2
+        else:
+            raise ValueError(f"Don't recognise {self.EigDistance} as an Eigenspace distance measure")
+        return eigenspace_distance2
+
     def _merge_pseudojets(self, pseudojet_index1, pseudojet_index2, distance2, conductance=None):
         """
         Merge two pseudojets to form a new pseudojet, moving the
@@ -2057,22 +2139,11 @@ class Spectral(PseudoJet):
         self._affinity = np.delete(self._affinity, (remove_index), axis=0)
         self._affinity = np.delete(self._affinity, (remove_index), axis=1)
         # and make its position in vector space
-        try:
-            new_position = np.dot(self._eigenspace.T, new_laplacien)
-        except:
-            st()
+        new_position = np.dot(self._eigenspace.T, new_laplacien)
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
-        new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
-        if self.ExpofPTPosition == 'eigenspace':
-            pt_col = self._PT_col
-            col = self._floats[replace_index]
-            avalible_pt = np.fromiter((row[pt_col] for row in avalible_floats),
-                                      dtype=float)
-            pt_factor = self.PT_factor(avalible_pt, col[pt_col])
-            if self.beam_particle:
-                pt_factor[-1] = self.beam_PT_factor(col[pt_col])
-            new_distances2 *= pt_factor
+        new_row = self._floats[replace_index]
+        new_distances2 = self.eigenspace_distance2(self._eigenspace, new_position, avalible_floats, new_row)
         if self.beam_particle or self.conductance:
             new_distances2[replace_index] = np.inf
         else:
@@ -2178,6 +2249,7 @@ class Indicator(Spectral):
         """
         self.StoppingCondition = 'standard'  # this is a property used by Spectral Jets
         self.DeltaR = 1.  # thsi si required for defining the unused beam distances in
+        self.EigDistance = 'euclidien'  # this si also required 
         # _define_physical_distance
         if dict_jet_params is not None:
             kwargs['dict_jet_params'] = dict_jet_params
@@ -2761,18 +2833,14 @@ class SpectralMean(Spectral):
         self._distances2 = np.delete(self._distances2, (remove_index), axis=0)
         self._distances2 = np.delete(self._distances2, (remove_index), axis=1)
         # and make its position in eigenspace
-        new_position = (self._eigenspace[[remove_index]] + self._eigenspace[[replace_index]])*0.5
+        new_position = (self._eigenspace[remove_index] + self._eigenspace[replace_index])*0.5
         # Changed -> simply delete the eigenspace line
         self._eigenspace = np.delete(self._eigenspace, remove_index, axis=0)
         self._eigenspace[replace_index] = new_position
         # get the new disntance in eigenspace
-        new_distances2 = np.sum((self._eigenspace - new_position)**2, axis=1)
-        if self.ExpofPTPosition == 'eigenspace':
-            pt_col = self._PT_col
-            replace_pt = self._floats[replace_index][pt_col]
-            avalible_pt = np.array(self._floats[:self.currently_avalible])[:, pt_col]
-            pt_factor = self.PT_factor(avalible_pt, replace_pt)
-            new_distances2[:self.currently_avalible] *= pt_factor
+        new_row = self._floats[replace_index]
+        avalible_floats = self._floats[:self.currently_avalible]
+        new_distances2 = self.eigenspace_distance2(self._eigenspace, new_position, avalible_floats, new_row)
         if self.beam_particle or self.conductance:
             new_distances2[replace_index] = np.inf
         else:

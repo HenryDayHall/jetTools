@@ -88,6 +88,9 @@ def combined_jet_mass(eventWise, jet_name, jet_idxs, signal_background='both'):
             use_indices = jet_inputs - set(eventWise.DetectableTag_Leaves.flatten())
         else:
             raise ValueError(f"{signal_background} not recognised, should be 'both', 'signal' or 'background'")
+        if not use_indices:
+            return 0.
+        use_indices = list(use_indices)
         px = eventWise.Px[use_indices]
         py = eventWise.Py[use_indices]
         pz = eventWise.Pz[use_indices]
@@ -413,7 +416,8 @@ def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag
         if len(flat_tags) == 4:
             tagged_jets = [i for i, t in enumerate(tags) if len(t)]
             if len(tagged_jets) == 4 or not require_seperate:
-                four_tags.append(combined_jet_mass(eventWise, jet_name, tagged_jets))
+                four_tags.append(combined_jet_mass(eventWise, jet_name, tagged_jets,
+                                                   signal_background))
             else:
                 four_tags.append(0.)
         else:
@@ -535,8 +539,9 @@ def plot_correct_hist_axis(ax, jet_names, true_masses, recoed_masses, colours):
     hist_params = dict(range=(0, max_value), bins=50)
     # decide on linestyles
     jet_linestyles = {'SpectralMean': '-.', 'SpectralFull': 'dotted', 'Indicator': '--', 'Traditional': '-', 'Other': '-'}
-    linestyles = [next(jet_linestyles[key] for key in jet_linestyles if key in name)
-              for name in jet_names]
+    linestyles = [next((jet_linestyles[key] for key in jet_linestyles if key in name),
+                       jet_linestyles['Other'])
+                  for name in jet_names]
     # plot the true values
     true_masses = true_masses[np.isfinite(true_masses)]
     ax.hist(true_masses, color='grey', label='Visible mass', alpha=0.4, **hist_params)
@@ -554,7 +559,8 @@ def plot_correct_hist_axis(ax, jet_names, true_masses, recoed_masses, colours):
     ax.legend()
 
 
-def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal_background='both'):
+def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal_background='both',
+        ax_array=None):
     """
     Plot all possible pairings of jets by PT order.
 
@@ -572,7 +578,10 @@ def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal
         ax_function = plot_correct_scatter_axis
     else:
         ax_function = plot_correct_means_axis
-    fig, ax_array = plt.subplots(1, 3)
+    if ax_array is None:
+        fig, ax_array = plt.subplots(1, 3)
+    else:
+        has_fig = False
     # get lobal inputs
     eventWise.selected_index = None
     heavy, light1, light2 = descendants_masses(eventWise)
@@ -598,15 +607,15 @@ def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal
         four_tag_masses.append(four_masses)
         pair1_masses.append(pair1)
         pair2_masses.append(pair2)
-
-    if signal_background == 'both':
-        fig.suptitle('Using whole jet mass')
-    elif signal_background == 'signal':
-        fig.suptitle('Using only signal mass in jets')
-    elif signal_background == 'background':
-        fig.suptitle('Using only background mass in jets')
     ax_array[0].set_title(f"Heavy higgs")
     ax_function(ax_array[0], jet_names, heavy, four_tag_masses, colours)
+
+    if signal_background == 'both':
+        ax_array[0].set_ylabel('Using whole jet mass')
+    elif signal_background == 'signal':
+        ax_array[0].set_ylabel('Using only signal mass in jets')
+    elif signal_background == 'background':
+        ax_array[0].set_ylabel('Using only background mass in jets')
 
     ax_array[1].set_title(f"Better observed light higgs")
     ax_function(ax_array[1], jet_names, light1, pair1_masses, colours)
@@ -614,13 +623,14 @@ def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal
     ax_array[2].set_title(f"Less observed light higgs")
     ax_function(ax_array[2], jet_names, light2, pair2_masses, colours)
     ax_array[2].legend()
-    fig.subplots_adjust(top=0.93,
-                        bottom=0.1,
-                        left=0.08,
-                        right=0.97,
-                        hspace=0.2,
-                        wspace=0.2)
-    fig.set_size_inches(10, 5)
+    if has_fig:
+        fig.subplots_adjust(top=0.93,
+                            bottom=0.1,
+                            left=0.08,
+                            right=0.97,
+                            hspace=0.2,
+                            wspace=0.2)
+        fig.set_size_inches(10, 5)
     if show:
         plt.show()
     return four_tag_masses, pair1_masses, pair2_masses
