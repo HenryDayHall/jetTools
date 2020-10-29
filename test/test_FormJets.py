@@ -1032,22 +1032,31 @@ def test_calculate_eigenspace_distances():
             SimpleClusterSamples.fill_angular(row)
         invarient_mass = SimpleClusterSamples.get_invarient_mass(dict(floats=floats))
         for ltype in ('unnormalised', 'symmetric'):
-            for exp_mul, exp_pos in [(-1, 'input'), (-1, 'eigenspace'), (0, 'eigenspace'), (.5, 'eigenspace')]:
-                jets = make_simple_jets(floats, {'Laplacien': ltype,
-                                                 'ExpofPTPosition': exp_pos,
-                                                 'ExpofPTMultiplier': exp_mul,
-                                                 'DeltaR': dr}, FormJets.Spectral)
-                # check that distance obtained from this is correct
-                distances2 = np.array([[np.sum((row-col)**2) for row in jets._eigenspace]
-                                      for col in jets._eigenspace])
-                if exp_pos == 'eigenspace':
-                    pts = np.fromiter((row[jets._PT_col] for row in jets._floats), dtype=float)
-                    factors = np.array([[min(pt1**(2*exp_mul), pt2**(2*exp_mul)) for pt1 in pts]
-                                        for pt2 in pts])
-                    factors *= invarient_mass**(-2*exp_mul)
-                    distances2 *= factors
-                np.fill_diagonal(distances2, dr**2)
-                tst.assert_allclose(jets._distances2, distances2)
+            for distype in ('euclidien', 'spherical'):
+                for exp_mul, exp_pos in [(-1, 'input'), (-1, 'eigenspace'), (0, 'eigenspace'), (.5, 'eigenspace')]:
+                    jets = make_simple_jets(floats, {'Laplacien': ltype,
+                                                     'ExpofPTPosition': exp_pos,
+                                                     'ExpofPTMultiplier': exp_mul,
+                                                     'DeltaR': dr,
+                                                     'EigDistance': distype}, FormJets.Spectral)
+                    # check that distance obtained from this is correct
+                    if distype == 'euclidien':
+                        distances2 = np.array([[np.sum((row-col)**2) for row in jets._eigenspace]
+                                              for col in jets._eigenspace])
+                    elif distype == 'spherical':
+                        warnings.filterwarnings('ignore')
+                        distances2 = np.array([[np.arccos(np.sum(row*col)/
+                                                          (np.linalg.norm(row)*np.linalg.norm(col)))
+                                                for row in jets._eigenspace]
+                                              for col in jets._eigenspace])
+                    if exp_pos == 'eigenspace':
+                        pts = np.fromiter((row[jets._PT_col] for row in jets._floats), dtype=float)
+                        factors = np.array([[min(pt1**(2*exp_mul), pt2**(2*exp_mul)) for pt1 in pts]
+                                            for pt2 in pts])
+                        factors *= invarient_mass**(-2*exp_mul)
+                        distances2 *= factors
+                    np.fill_diagonal(distances2, dr**2)
+                    tst.assert_allclose(jets._distances2, distances2)
             # check that the eigenvectors and the eigenvalues have the correct relationship
             # with the laplacien
             # this only needs to be done once for each laplacien type,
