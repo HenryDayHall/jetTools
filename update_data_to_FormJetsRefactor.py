@@ -28,22 +28,25 @@ for i, name in enumerate(file_names):
     # add parameters to datasets
     # change Luclus to angular and add Luclus
     new_hyper = {}
+    #for name in FormJets.get_jet_names(eventWise):
+    #    if name + "_ExpofPTFormat" not in eventWise.hyperparameter_columns:
+    #        is_luclus = getattr(eventWise, name+"_PhyDistance") == 'Luclus'
+    #        if is_luclus:
+    #            new_hyper[name+"_PhyDistance"] = 'angular'
+    #            new_hyper[name+"_ExpofPTFormat"] = 'Luclus'
+    #        else:
+    #            new_hyper[name+"_ExpofPTFormat"] = 'min'
+    #    if name + "_Eigenspace" not in eventWise.hyperparameter_columns:
+    #        new_hyper[name+"_Eigenspace"] = 'unnormalised'
+    #    try:
+    #        if getattr(eventWise, name + "_AffinityType") == 'angular':
+    #            # broken :(
+    #            new_hyper[name + "_AffinityType"] = 'unknown'
+    #    except AttributeError:
+    #        pass  # probably a traditional jet
     for name in FormJets.get_jet_names(eventWise):
-        if name + "_ExpofPTFormat" not in eventWise.hyperparameter_columns:
-            is_luclus = getattr(eventWise, name+"_PhyDistance") == 'Luclus'
-            if is_luclus:
-                new_hyper[name+"_PhyDistance"] = 'angular'
-                new_hyper[name+"_ExpofPTFormat"] = 'Luclus'
-            else:
-                new_hyper[name+"_ExpofPTFormat"] = 'min'
-        if name + "_Eigenspace" not in eventWise.hyperparameter_columns:
-            new_hyper[name+"_Eigenspace"] = 'unnormalised'
-        try:
-            if getattr(eventWise, name + "_AffinityType") == 'angular':
-                # broken :(
-                new_hyper[name + "_AffinityType"] = 'unknown'
-        except AttributeError:
-            pass  # probably a traditional jet
+        if name + "_EigDistance" not in eventWise.hyperparameter_columns:
+            new_hyper[name + "_EigDistance"] = 'euclidien'
     if new_hyper:
         eventWise.append_hyperparameters(**new_hyper)
 
