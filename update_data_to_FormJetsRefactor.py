@@ -2,7 +2,7 @@
 import os
 from tree_tagger import Components, FormJets
 # grab the datasets
-dir_name = "megaIgnore"
+dir_name = "megaIgnore/best_scans1"
 file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name) if name.endswith('.awkd')]
 #file_names = ["best.awkd"]
 num_names = len(file_names)

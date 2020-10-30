@@ -1469,7 +1469,7 @@ class Spectral(PseudoJet):
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt'],
                        'Eigenspace': ['unnormalised', 'normalised'],
                        'EigDistance': ['euclidien', 'spherical'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
@@ -1526,6 +1526,18 @@ class Spectral(PseudoJet):
             if self.Laplacien == 'symmetric':
                 self._current_conductance = np.ones(self.n_inputs).tolist()
                 self._total_affinity = np.sum(self._initial_affinity)
+            elif self.Laplacien == 'energy':
+                inital_energy = np.fromiter((row[self._Energy_col] for row in
+                                             self._floats[:self.currently_avalible]),
+                                            dtype=float)
+                self._current_conductance = np.sum(self._initial_affinity, axis=0)/inital_energy
+                self._total_energy = np.sum(inital_energy)
+            elif self.Laplacien == 'pt':
+                inital_pt = np.fromiter((row[self._PT_col] for row in
+                                             self._floats[:self.currently_avalible]),
+                                            dtype=float)
+                self._current_conductance = np.sum(self._initial_affinity, axis=0)/inital_pt
+                self._total_pt = np.sum(inital_pt)
             else:
                 # the more connected to the rest of the graph
                 # the higher the conductance
@@ -1549,6 +1561,12 @@ class Spectral(PseudoJet):
             denominator = np.sum(self._initial_affinity[inside])
             denominator = min(denominator,
                               self._total_affinity-denominator)
+        elif self.Laplacien == 'energy':
+            denominator = np.sum([row[self._Energy_col] for row in self._floats[inside]]) 
+            denominator = min(denominator, self._total_energy)
+        elif self.Laplacien == 'pt':
+            denominator = np.sum([row[self._PT_col] for row in self._floats[inside]]) 
+            denominator = min(denominator, self._total_pt)
         elif self.Laplacien == 'unnormalised':
             denominator = min(len(inside), len(outside))
         new_conductance = numerator/denominator
@@ -1616,16 +1634,23 @@ class Spectral(PseudoJet):
             self.currently_avalible = 0
             return
         diagonal = np.diag(np.sum(self._affinity, axis=1))
-        if self.Laplacien == 'unnormalised':
-            laplacien = diagonal - self._affinity
-        elif self.Laplacien == 'symmetric':
-            laplacien = diagonal - self._affinity
-            self.alt_diag = np.diag(diagonal)**(-0.5)
-            self.alt_diag[np.diag(diagonal) == 0] = 0.
+        laplacien = diagonal - self._affinity
+        if self.Laplacien != 'unnormalised':
+            # going to multiply by a normalising factor
+            if self.Laplacien == 'symmetric':
+                factor = diagonal
+            elif self.Laplacien == 'energy':
+                factor = np.fromiter((row[self._Energy_col] for row in self._floats[:self.currently_avalible]),
+                                       dtype=float)
+            elif self.Laplacien == 'pt':
+                factor = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]),
+                                       dtype=float)
+            else:
+                raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
+            self.alt_diag = np.diag(factor)**(-0.5)
+            self.alt_diag[np.diag(factor) == 0] = 0.
             diag_alt_diag = np.diag(self.alt_diag)
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
-        else:
-            raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = \
@@ -2129,9 +2154,14 @@ class Spectral(PseudoJet):
         new_laplacien = -self.calculate_affinity(new_distances2)
         new_laplacien[replace_index] = 0.  # need to blank this before summing the laplacien
         new_laplacien[replace_index] = new_diagonal = -np.sum(new_laplacien)
-        if self.Laplacien == 'symmetric':
+        if self.Laplacien != 'unnormalised':
             self.alt_diag = np.delete(self.alt_diag, remove_index)
-            new_alt_diag = new_diagonal**(-0.5)
+            if self.Laplacien == 'symmetric':
+                new_alt_diag = new_diagonal**(-0.5)
+            elif self.Laplacien == 'energy':
+                new_alt_diag = self._floats[replace_index][self._Energy_col]**(-0.5)
+            elif self.Laplacien == 'pt':
+                new_alt_diag = self._floats[replace_index][self._PT_col]**(-0.5)
             self.alt_diag[replace_index] = new_alt_diag
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
         # remove from the eigenspace and the affinity
@@ -2214,7 +2244,7 @@ class Indicator(Spectral):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'BaseJump': Constants.numeric_classes['pdn'],
                        'JumpEigenFactor': Constants.numeric_classes['rn']}
@@ -2298,16 +2328,23 @@ class Indicator(Spectral):
             self.currently_avalible = 0
             return
         diagonal = np.diag(np.sum(self._affinity, axis=1))
-        if self.Laplacien == 'unnormalised':
-            laplacien = diagonal - self._affinity
-        elif self.Laplacien == 'symmetric':
-            laplacien = diagonal - self._affinity
-            self.alt_diag = np.diag(diagonal)**(-0.5)
-            self.alt_diag[np.diag(diagonal) == 0] = 0.
+        laplacien = diagonal - self._affinity
+        if self.Laplacien != 'unnormalised':
+            # going to multiply by a normalising factor
+            if self.Laplacien == 'symmetric':
+                factor = diagonal
+            elif self.Laplacien == 'energy':
+                factor = np.fromiter((row[self._Energy_col] for row in self._floats[:self.currently_avalible]),
+                                       dtype=float)
+            elif self.Laplacien == 'pt':
+                factor = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]),
+                                       dtype=float)
+            else:
+                raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
+            self.alt_diag = np.diag(factor)**(-0.5)
+            self.alt_diag[np.diag(factor) == 0] = 0.
             diag_alt_diag = np.diag(self.alt_diag)
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
-        else:
-            raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
         # get the eigenvectors (we know the smallest will be identity)
         try:
             eigenvalues, eigenvectors = scipy.linalg.eigh(laplacien,
@@ -2541,7 +2578,7 @@ class Splitting(Indicator):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'MaxCutScore': Constants.numeric_classes['pdn']}
 
@@ -2590,8 +2627,15 @@ class Splitting(Indicator):
                 denominator = abs(count_left - post_flip*n_trials)
                 if flip_point is None and post_flip:
                     flip_point = count_left
-            elif self.Laplacien == 'symmetric':  # ncut style
-                denominator = np.sum(self._affinity[in_group])
+            else:
+                if self.Laplacien == 'symmetric':  # ncut style
+                    denominator = np.sum(self._affinity[in_group])
+                elif self.Laplacien == 'energy':
+                    denominator = np.sum([row[self._Energy_col] for row in self._floats[in_group]])
+                elif self.Laplacien == 'pt':
+                    denominator = np.sum([row[self._PT_col] for row in self._floats[in_group]])
+                else:
+                    raise NotImplementedError
                 if not post_flip:  # calculation not easly generalised
                     # compare to the affinity in the remaing avalible objects
                     if denominator > 0.5*sum_avalible_affinity:
@@ -3810,16 +3854,6 @@ if __name__ == '__main__':
     #traditional_jet_params = dict(DeltaR=.8, ExpofPTMultiplier=0, ExpofPTFormat='min')
     #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
     #pseudojets.plt_assign_parents()
-    #spectral_jet_params = dict(DeltaR=0.4, ExpofPTMultiplier=0.2,
-    #                           ExpofPTPosition='eigenspace',
-    #                           NumEigenvectors=6,
-    #                           Laplacien='symmetric',
-    #                           AffinityType='exponent2',
-    #                           AffinityCutoff=None,
-    #                           #AffinityCutoff=('knn', 4),
-    #                           StoppingCondition='standard',
-    #                           PhyDistance='Luclus',
-    #                           jet_name="SpectralFull")
 
     c_class = SpectralFull
     spectral_jet_params = dict(ExpofPTMultiplier=0,

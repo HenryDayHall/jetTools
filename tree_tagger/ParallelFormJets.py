@@ -414,47 +414,6 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
-
-# Spectral mean normed eigenspace -------------------------
-scan_SpectralMean1 = dict(DeltaR = np.linspace(0.1, 0.9, 5),
-                          ExpofPTMultiplier = [0.0, 0.2, 0.4],
-                          AffinityCutoff = [None, ('knn', 3)],
-                          Laplacien = ['unnormalised', 'symmetric'],
-                        )
-fix_SpectralMean1a = dict(
-                          NumEigenvectors = 4,
-                          AffinityType = 'exponent2',
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'input',
-                          Eigenspace = 'normalised',
-                          PhyDistance = 'taxicab',
-                          StoppingCondition = 'beamparticle')
-fix_SpectralMean1b = dict(
-                          NumEigenvectors = 4,
-                          AffinityType = 'exponent2',
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'input',
-                          Eigenspace = 'normalised',
-                          PhyDistance = 'taxicab',
-                          StoppingCondition = 'standard')
-fix_SpectralMean1c = dict(
-                          NumEigenvectors = 4,
-                          AffinityType = 'exponent2',
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'input',
-                          Eigenspace = 'normalised',
-                          PhyDistance = 'angular', 
-                          StoppingCondition = 'beamparticle')
-
-fix_SpectralMean1d = dict(
-                          NumEigenvectors = 4,
-                          AffinityType = 'exponent2',
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'input',
-                          Eigenspace = 'normalised',
-                          PhyDistance = 'angular', 
-                          StoppingCondition = 'standard')
-
 # spectral full ------------------------
 scan_SpectralFull = dict(
                           ExpofPTMultiplier = [0.2, 0.1, 0.0, -1.],
@@ -463,12 +422,19 @@ scan_SpectralFull = dict(
                           Eigenspace = ['normalised', 'unnormalised'],
                           PhyDistance = ['angular', 'taxicab'],
                         )
-fix_SpectralFull = dict(DeltaR=0.5,
+fix_SpectralFulleuclidian = dict(DeltaR=0.5,
                           AffinityType = 'exponent2',
                           NumEigenvectors = 4,
                          ExpofPTFormat = 'Luclus',
                          ExpofPTPosition = 'input',
                          EigDistance='euclidien',
+                          StoppingCondition = 'beamparticle')
+fix_SpectralFullspherical = dict(DeltaR=0.5,
+                          AffinityType = 'exponent2',
+                          NumEigenvectors = 4,
+                         ExpofPTFormat = 'Luclus',
+                         ExpofPTPosition = 'input',
+                         EigDistance='spherical',
                           StoppingCondition = 'beamparticle')
 # Traditional -----------------------------
 
