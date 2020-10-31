@@ -418,7 +418,7 @@ def recombine_eventWise(eventWise_path):
 scan_SpectralFull = dict(
                           ExpofPTMultiplier = [0.2, 0.1, 0.0, -1.],
                           AffinityCutoff = [None, ('knn', 3), ('distance', 5)],
-                          Laplacien = ['unnormalised', 'symmetric'],
+                          Laplacien = ['energy', 'pt'],
                           Eigenspace = ['normalised', 'unnormalised'],
                           PhyDistance = ['angular', 'taxicab'],
                         )

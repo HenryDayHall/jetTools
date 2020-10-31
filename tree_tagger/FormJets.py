@@ -1638,17 +1638,21 @@ class Spectral(PseudoJet):
         if self.Laplacien != 'unnormalised':
             # going to multiply by a normalising factor
             if self.Laplacien == 'symmetric':
-                factor = diagonal
+                factor = np.diag(diagonal)
             elif self.Laplacien == 'energy':
                 factor = np.fromiter((row[self._Energy_col] for row in self._floats[:self.currently_avalible]),
                                        dtype=float)
+                if self.beam_particle:
+                    factor = np.concatenate((factor, [1]))
             elif self.Laplacien == 'pt':
                 factor = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]),
                                        dtype=float)
+                if self.beam_particle:
+                    factor = np.concatenate((factor, [1]))
             else:
                 raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
-            self.alt_diag = np.diag(factor)**(-0.5)
-            self.alt_diag[np.diag(factor) == 0] = 0.
+            self.alt_diag = factor**(-0.5)
+            self.alt_diag[factor == 0] = 0.
             diag_alt_diag = np.diag(self.alt_diag)
             laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
         # get the eigenvectors (we know the smallest will be identity)
@@ -3860,11 +3864,11 @@ if __name__ == '__main__':
                                ExpofPTPosition='input',
                                ExpofPTFormat='Luclus',
                                NumEigenvectors=7,
-                               StoppingCondition='standard',
+                               StoppingCondition='beamparticle',
                                #BaseJump=0.05,
                                #JumpEigenFactor=10,
                                #MaxCutScore=0.2, 
-                               Laplacien='symmetric',
+                               Laplacien='energy',
                                Eigenspace='normed',
                                AffinityType='exponent2',
                                #AffinityCutoff=('distance', 1),
@@ -3874,7 +3878,8 @@ if __name__ == '__main__':
     #c_class = SpectralMean
     #check_hyperparameters(c_class, spectral_jet_params)
     #cluster_multiapply(eventWise, c_class, spectral_jet_params, "TestJet", 10)
-    #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+    jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+    jets.assign_parents()
     #jets.plt_assign_parents()
     plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
     plt.show()
