@@ -331,7 +331,6 @@ def plot_all(eventWise, prefix, jet_names=None):
     input()
 
 
-
 if __name__ == '__main__':
     eventWise = "megaIgnore/best_v2.awkd"
     plot_all(eventWise, "images/summary/best_v2")

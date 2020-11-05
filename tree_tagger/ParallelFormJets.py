@@ -436,6 +436,21 @@ fix_SpectralFullspherical = dict(DeltaR=0.5,
                          ExpofPTPosition = 'input',
                          EigDistance='spherical',
                           StoppingCondition = 'beamparticle')
+fix_SpectralFull = dict( AffinityType = 'exponent2',
+                         ExpofPTPosition = 'input',
+                         EigDistance='euclidien',
+                         Laplacien='energy',
+                          StoppingCondition = 'beamparticle')
+# chechpoint only ------------------------
+scan_checkpoint = dict(
+                       ExpofPTMultiplier = np.arange(-1, 1, 0.1),
+                       AffinityCutoff = [('knn', i) for i in range(2, 5)] + [None],
+                       PhyDistance = ['angular', 'taxicab'],
+                       ExpofPTFormat=['min', 'Luclus']
+                       )
+
+fix_checkpoint = dict( ExpofPTPosition = 'input',
+                       AffinityType='exponent')
 # Traditional -----------------------------
 
 scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
@@ -634,7 +649,7 @@ def random_parameters(jet_class=None, desired_parameters=None, omit_parameters=N
         elif key == 'ExpofPTMultiplier':
             params[key] = np.around(np.random.uniform(-1., 1.), 1)
         elif key == 'NumEigenvectors':
-            params[key] = np.random.randint(1, 10)
+            params[key] = np.random.randint(2, 10)
         elif key == 'MaxCutScore':
             params[key] = np.around(np.random.uniform(0.2, 1.), 1)
         elif key == 'BaseJump':
@@ -707,5 +722,5 @@ if __name__ == '__main__':
         names = FormJets.cluster_classes
         jet_class = InputTools.list_complete("Jet class? ", names).strip()
         #monte_carlo(eventWise_path, end_time, jet_class=jet_class)
-        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=cetrain_akt_Spectral)
+        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=fix_SpectralFull)
 

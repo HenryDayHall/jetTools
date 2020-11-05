@@ -140,7 +140,8 @@ class PseudoJet:
         self.beam_distance2, self.physical_distance2 = self._define_physical_distance()
         # keep track of how many clusters don't yet have a parent
         self.currently_avalible = self._get_currently_avalible()
-        self._calculate_distances()
+        checkpoints = kwargs.get('checkpoints', None)
+        self._calculate_distances(checkpoints=checkpoints)
         if kwargs.get("assign", False):
             self.assign_parents()
 
@@ -811,7 +812,7 @@ class PseudoJet:
             self.JetList.append(jet)
         return self.JetList
 
-    def _calculate_distances(self):
+    def _calculate_distances(self, checkpoints=None):
         """ Calculate all distances between avalible pseudojets """
         # this is caluculating all the distances
         raise NotImplementedError
@@ -1135,20 +1136,26 @@ class Traditional(PseudoJet):
             kwargs['dict_jet_params'] = dict_jet_params
         super().__init__(eventWise, **kwargs)
 
-    def _calculate_distances(self):
+    def _calculate_distances(self, checkpoints=None):
         """ Calculate all distances between avalible pseudojets """
         # this is caluculating all the distances
         avalible_floats = self._floats[:self.currently_avalible]
-        self._distances2 = self.physical_distance2(avalible_floats, avalible_floats)
-        infinite_distance = np.isinf(self._distances2)
-        if np.any(infinite_distance):
-            # soft radation may create undesirable infinities
-            soft_radiation = np.fromiter((row[self._PT_col] == 0 for row in avalible_floats),
-                                         dtype=bool)
-            # if this has occured make them 0
-            self._distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
-        # finally, add the diagonals
-        np.fill_diagonal(self._distances2, self.beam_distance2(avalible_floats))
+        checkpoint_name = 'physical_distances2'
+        if checkpoints is not None and checkpoint_name in checkpoints:
+            self._distances2 = checkpoints[checkpoint_name]
+        else:
+            self._distances2 = self.physical_distance2(avalible_floats, avalible_floats)
+            infinite_distance = np.isinf(self._distances2)
+            if np.any(infinite_distance):
+                # soft radation may create undesirable infinities
+                soft_radiation = np.fromiter((row[self._PT_col] == 0 for row in avalible_floats),
+                                             dtype=bool)
+                # if this has occured make them 0
+                self._distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
+            # finally, add the diagonals
+            np.fill_diagonal(self._distances2, self.beam_distance2(avalible_floats))
+            if checkpoints is not None:
+                checkpoints[checkpoint_name] = self._distances2
 
     def _recalculate_one(self, remove_index, replace_index):
         """
@@ -1431,7 +1438,7 @@ class IterativeCone(PseudoJet):
         rapidity = Components.ptpze_to_rapidity(pt, pz, e)
         return e, phi, rapidity, pt
 
-    def _calculate_distances(self):
+    def _calculate_distances(self, checkpoints=None):
         """ Use this to set up the calculation,
         for iterative cone there is no real setup, but some object that
         the functions expect must eb created"""
@@ -1578,7 +1585,7 @@ class Spectral(PseudoJet):
             to_remove.append(idx_b)
         return to_remove, new_conductance
 
-    def _calculate_distances(self):
+    def _calculate_distances(self, checkpoints=None):
         """ Calculate all distances between avalible pseudojets """
         # if there is a beam particle need to get the distance to the beam particle too
         n_distances = self.currently_avalible + self.beam_particle
@@ -1586,39 +1593,52 @@ class Spectral(PseudoJet):
             self._distances2 = np.zeros((1, 1))
             self._affinity = np.array([[]])
             return
-        # to start with create a 'normal' distance measure
-        # this can be based on any of the three algorithms
-        # for speed, make local variables
-        pt_col = self._PT_col
-        # future calculatins will depend on the starting positions
-        self._starting_position = np.array(self._floats[:self.currently_avalible])
+        checkpoint_name = 'physical_distances2'
+        if checkpoints is not None and  checkpoint_name in checkpoints:
+            physical_distances2 = checkpoints['physical_distances2']
+        else:
+            # to start with create a 'normal' distance measure
+            # this can be based on any of the three algorithms
+            # for speed, make local variables
+            pt_col = self._PT_col
+            # future calculatins will depend on the starting positions
+            self._starting_position = np.array(self._floats[:self.currently_avalible])
+            physical_distances2 = self.physical_distance2(self._starting_position,
+                                                          self._starting_position)
+            infinite_distance = np.isinf(physical_distances2)
+            if np.any(infinite_distance):
+                # soft radation may create undesirable infinities
+                soft_radiation = self._starting_position[:, pt_col] == 0
+                # if this has occured make them 0
+                physical_distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
+            np.fill_diagonal(physical_distances2, 0.)
+            if checkpoints is not None:
+                checkpoints[checkpoint_name] = physical_distances2
         if self.beam_particle:
             # the beam particles dosn't have a real location,
             # but to preserve the dimensions of future calculations, add it in
             self._starting_position = np.vstack((self._starting_position,
                                                  np.ones(len(self.float_columns))))
             # it is added to the end so as to maintain the indices
-
-
-        physical_distances2 = self.physical_distance2(self._starting_position,
-                                                      self._starting_position)
-        infinite_distance = np.isinf(physical_distances2)
-        if np.any(infinite_distance):
-            # soft radation may create undesirable infinities
-            soft_radiation = self._starting_position[:, pt_col] == 0
-            # if this has occured make them 0
-            physical_distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
-
-        if self.beam_particle:
+            # add a row and column to the physical_distances2
+            physical_distances2 = np.vstack((np.hstack((physical_distances2, 
+                                                        np.empty((self.currently_avalible,
+                                                                  1)))),
+                                            np.zeros(self.currently_avalible+1)))
             # the last row and column should give the distance of each particle to the beam
             physical_distances2[-1, :] = self.beam_distance2(self._starting_position).squeeze()
             physical_distances2[:, -1] = physical_distances2[-1, :]
-        np.fill_diagonal(physical_distances2, 0.)
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation
-        self._affinity = self.calculate_affinity(physical_distances2)
-        # a graph laplacien can be calculated
-        np.fill_diagonal(self._affinity, 0.)  # the self._affinity may have problems on the diagonal
+        checkpoint_name = 'affinity'
+        if checkpoints is not None and checkpoint_name in checkpoints:
+            self._affinity = checkpoints[checkpoint_name]
+        else:
+            self._affinity = self.calculate_affinity(physical_distances2)
+            # a graph laplacien can be calculated
+            np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
+            if checkpoints is not None:
+                checkpoints[checkpoint_name] = self._affinity
 
     def _calculate_eigenspace(self):
         """
@@ -2231,6 +2251,19 @@ class Spectral(PseudoJet):
         return removed
 
 
+class CheckpointsOnly(Spectral):
+    """ By removing functionality from Spectral we create a
+    class that will only generate checpoints """
+    def assign_parents(self):
+        """ Disable this"""
+        self.currently_avalible = 0
+        self.root_jetInputIdxs = list(self.InputIdx)
+
+    def write_event(cls, pseudojets, jet_name=None, event_index=None, eventWise=None):
+        """ Also disable this class"""
+        pass
+
+
 class Indicator(Spectral):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
@@ -2290,7 +2323,7 @@ class Indicator(Spectral):
         super().__init__(eventWise, **kwargs)
 
     # TODO, make tests for this, when your done making changes
-    def _calculate_distances(self):
+    def _calculate_distances(self, checkpoints=None):
         """ Calculate all distances between avalible pseudojets """
         n_distances = self.currently_avalible
         # this clusterign mechanism doesn't actually use distances,
@@ -2299,25 +2332,37 @@ class Indicator(Spectral):
         if n_distances < 2:
             self._affinity = np.empty((0, 0))
             return
-        # to start with create a 'normal' distance measure
-        # this can be based on any of the three algorithms
-        pt_col = self._PT_col
-        avalible_floats = self._floats[:self.currently_avalible]
-        physical_distances2 = self.physical_distance2(avalible_floats, avalible_floats)
-        infinite_distance = np.isinf(physical_distances2)
-        if np.any(infinite_distance):
-            # soft radation may create undesirable infinities
-            soft_radiation = np.fromiter((row[pt_col] == 0 for row in avalible_floats),
-                                         dtype=bool)
-            # if this has occured make them 0
-            physical_distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
-        # finally, add the diagonals
-        np.fill_diagonal(physical_distances2, 0.)
+        checkpoint_name = 'physical_distances2'
+        if checkpoints is not None and  checkpoint_name in checkpoints:
+            physical_distances2 = checkpoints['physical_distances2']
+        else:
+            # to start with create a 'normal' distance measure
+            # this can be based on any of the three algorithms
+            pt_col = self._PT_col
+            avalible_floats = self._floats[:self.currently_avalible]
+            physical_distances2 = self.physical_distance2(avalible_floats, avalible_floats)
+            infinite_distance = np.isinf(physical_distances2)
+            if np.any(infinite_distance):
+                # soft radation may create undesirable infinities
+                soft_radiation = np.fromiter((row[pt_col] == 0 for row in avalible_floats),
+                                             dtype=bool)
+                # if this has occured make them 0
+                physical_distances2[np.logical_and(soft_radiation, infinite_distance)] = 0
+            # finally, add the diagonals
+            np.fill_diagonal(physical_distances2, 0.)
+            if checkpoints is not None:
+                checkpoints[checkpoint_name] = physical_distances2
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation, which we will need
-        self._affinity = self.calculate_affinity(physical_distances2)
-        # a graph laplacien can be calculated
-        np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
+        checkpoint_name = 'affinity'
+        if checkpoints is not None and checkpoint_name in checkpoints:
+            self._affinity = checkpoints[checkpoint_name]
+        else:
+            self._affinity = self.calculate_affinity(physical_distances2)
+            # a graph laplacien can be calculated
+            np.fill_diagonal(self._affinity, 0.)  # the affinity may have problems on the diagonal
+            if checkpoints is not None:
+                checkpoints[checkpoint_name] = self._affinity
 
     def _calculate_eigenspace(self):
         """
@@ -3212,8 +3257,102 @@ def _run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_t
     return output_lines
 
 
+def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
+                                  jet_params, default_params=None):
+    checkpoints = {}
+    if default_params is not None:
+        # make a new dict to avoid altering the orriginal
+        # update to be sure the jet params override the defaults
+        all_jet_params = {**default_params}
+        all_jet_params.update(jet_params)
+        jet_params = all_jet_params
+    # first look for PhyDistance
+    desired = jet_params['PhyDistance']
+    possible = [name.split('_', 1)[0] for name, value in checkpoint_hyper.items()
+                if name.endswith('PhyDistance') and value == desired]
+    # based on the position of the PT exponent may need to filter
+    if jet_params['ExpofPTPosition'] == 'input':
+        desired = jet_params['ExpofPTFormat']
+        possible = [name for name in possible
+                    if checkpoint_hyper[name+'_ExpofPTFormat'] == desired]
+        # then we also need the right multiplier
+        desired = jet_params['ExpofPTMultiplier']
+        possible = [name for name in possible
+                    if np.isclose(checkpoint_hyper[name+'_ExpofPTMultiplier'], desired)]
+    # reaching this stage means that one checkpoint can be taken
+    if possible:
+        checkpoint_name = 'physical_distances2'
+        this_name = next(name for name in checkpoint_content
+                         if name.endswith(checkpoint_name)
+                         and name.split('_', 1)[0] in possible)
+        checkpoints[checkpoint_name] = checkpoint_content[this_name]
+    else:
+        return checkpoints
+    # now check affinity cutoff
+    desired = jet_params['AffinityCutoff']
+    if desired is None:
+        possible = [name for name in possible
+                    if checkpoint_hyper[name + '_AffinityCutoff'] is None]
+    else:
+        possible = [name for name in possible
+                    if checkpoint_hyper[name + '_AffinityCutoff'][0] == desired[0]
+                    and np.isclose(checkpoint_hyper[name + '_AffinityCutoff'][1], desired[1])]
+    # chech if the stopping ondition matches, becuase beam particle adds a row
+    desired = jet_params['StoppingCondition']
+    possible = [name for name in possible
+                if checkpoint_hyper[name+'_StoppingCondition'] == desired]
+    # finnaly check the form of the affinity
+    desired = jet_params['AffinityType']
+    possible = [name for name in possible
+                if checkpoint_hyper[name+'_AffinityType'] == desired]
+    if possible:
+        checkpoint_name = 'affinity'
+        this_name = next(name for name in checkpoint_content
+                         if name.endswith(checkpoint_name)
+                         and name.split('_', 1)[0] in possible)
+        checkpoints[checkpoint_name] = checkpoint_content[this_name]
+    return checkpoints
+
+
+def update_checkpoint_dict(checkpoint_content, checkpoint_hyper, jet, checkpoint):
+    has_changed = False
+    event_num = jet.eventWise.selected_index
+    jet_name = jet.jet_name
+    # add the jets parameters
+    my_params = jet.create_param_dict()
+    new_hyper = {jet_name + '_' + name: my_params[name] for name in my_params}
+    checkpoint_hyper.update(new_hyper)
+    # add it to the right part of the eventWise
+    for variable in checkpoint:
+        name = jet_name + "_Cpt_" + variable
+        found = list(checkpoint_content.get(name, []))
+        while len(found) <= event_num:
+            found.append(None)
+        if found[event_num] is None:
+            found[event_num] = checkpoint[variable]
+            checkpoint_content[name] = found
+            has_changed = True
+    return has_changed
+
+
+def retrive_checkpoint_dict(eventWise_list):
+    checkpoint_hyper = {}
+    checkpoint_content = {}
+    for eventWise in eventWise_list:
+        if isinstance(eventWise, str):
+            eventWise = Components.EventWise.from_file(eventWise)
+        jet_names = {name.split('_Cpt_', 1)[0] for name in eventWise if '_Cpt_' in name}
+        for name in jet_names:
+            checkpoint_hyper.update(get_jet_params(eventWise, name))
+            content = {c_name: getattr(eventWise, c_name) for c_name in eventWise.columns
+                       if c_name.startswith(name + '_Cpt_')}
+            checkpoint_content.update(content)
+    return checkpoint_hyper, checkpoint_content
+
+
 def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
-                       jet_name=None, batch_length=100, silent=False):
+                       jet_name=None, batch_length=100, silent=False,
+                       checkpoint_hyper=None, checkpoint_content=None):
     """
     Apply a clustering algorithm to many events.
 
@@ -3249,6 +3388,12 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
             if algorithm == cluster_algorithm:
                 jet_name = name
                 break
+    new_checkpoints = False
+    if checkpoint_content is None:
+        checkpoint_content = {}
+        checkpoint_hyper = {}
+    checkpoints = identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
+                                                dict_jet_params, cluster_algorithm.default_params)
     additional_parameters = {}
     additional_parameters["jet_name"] = jet_name
     if cluster_algorithm == run_FastJet:
@@ -3284,8 +3429,14 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
         eventWise.selected_index = event_n
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
+        # look for checkpoints
+        check_here = {k:v[event_n] for k, v in checkpoints.items()
+                      if len(v) > event_n and v[event_n] is not None}
         jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
+                                 checkpoints=check_here,
                                  **additional_parameters)
+        new_checkpoints += update_checkpoint_dict(checkpoint_content, checkpoint_hyper,
+                                                  jets, check_here)
         if has_eigenvalues:
             eigenvalues.append(awkward.fromiter(jets.eigenvalues))
         jets = jets.split()
@@ -3294,6 +3445,9 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
             checked = True
         updated_dict = jet_class.create_updated_dict(jets, jet_name, event_n, eventWise, updated_dict)
     updated_dict = {name: awkward.fromiter(updated_dict[name]) for name in updated_dict}
+    if new_checkpoints:
+        checkpoint_content = {k: awkward.fromiter(v) for k, v in checkpoint_content.items()}
+        updated_dict.update(checkpoint_content)
     if has_eigenvalues:
         updated_dict[jet_name + "_Eigenvalues"] = awkward.fromiter(eigenvalues)
     eventWise.append(**updated_dict)
@@ -3301,7 +3455,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
 
 
 # track which classes in this module are cluster classes
-cluster_classes = ["Traditional", "IterativeCone", "Spectral", "Splitting", "SpectralFull", "SpectralMean", "Indicator"]
+cluster_classes = ["Traditional", "IterativeCone", "Spectral", "CheckpointsOnly", "Splitting", "SpectralFull", "SpectralMean", "Indicator"]
 # track which things are valid inputs to multiapply
 multiapply_input = {"Fast": run_FastJet, "Home": Traditional}
 for name in cluster_classes:

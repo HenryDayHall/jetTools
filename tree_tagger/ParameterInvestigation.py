@@ -5,7 +5,7 @@ from collections import OrderedDict
 from ipdb import set_trace as st
 import os
 import numpy as np
-from tree_tagger import FormJets, FormShower, PlottingTools, Components, InputTools
+from tree_tagger import FormJets, FormShower, PlottingTools, Components, InputTools, TrueTag
 import scipy.spatial
 import scipy.stats
 import sklearn.metrics
@@ -194,6 +194,7 @@ def closest_relative(eventWise):
     return labels
 
 
+
 # Plotting tools  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Physical distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -283,10 +284,10 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
     new_hyper = {}
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        for i, (name, params) in enumerate(zip(jet_names, jet_param_list)):
+        for jet_n, (name, params) in enumerate(zip(jet_names, jet_param_list)):
             if time.time() > end_time:
                 break
-            print(f"{i/num_configureations:.1%} {name}" + " "*10, end='\r', flush=True)
+            print(f"{jet_n/num_configureations:.1%} {name}" + " "*10, end='\r', flush=True)
             # add the hyper parameters
             for key in params:
                 new_hyper[name+'_'+key] = params[key]
@@ -309,10 +310,10 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore')
                     ranks = []; aucs = []
-                    for i, dis in enumerate(distances):
-                        relevent = dis[:, either[i]]
-                        rel = either_relatives[i].flatten()
-                        lab = ~either_labels[i].flatten()
+                    for event_n, dis in enumerate(distances):
+                        relevent = dis[:, either[event_n]]
+                        rel = either_relatives[event_n].flatten()
+                        lab = ~either_labels[event_n].flatten()
                         ranks.append([scipy.stats.spearmanr(metric.flatten(), rel)[0]
                                       for metric in relevent])
                         try:
@@ -322,7 +323,7 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
                             aucs.append([np.nan for metric in relevent])
                 new_content[rank_name] = awkward.fromiter(ranks)
                 new_content[auc_name] = awkward.fromiter(aucs)
-            if (i+5)%save_interval == 0 and new_content:
+            if (jet_n+5)%save_interval == 0 and new_content:
                 eventWise.append_hyperparameters(**new_hyper)
                 new_hyper = {}
                 eventWise.append(**new_content)
@@ -334,6 +335,67 @@ def append_phys_metrics(eventWise, jet_names, jet_param_list, duration=np.inf):
             del distances
     eventWise.append(**new_content)
     eventWise.append_hyperparameters(**new_hyper)
+
+
+def append_affinity_input_metrics(eventWise, duration=np.inf):
+    """
+    Intended to give spearmans rank on the affinity input of jets
+    from check point data.
+
+    Parameters
+    ----------
+    eventWise :
+        
+    duration :
+         (Default value = np.inf)
+
+    Returns
+    -------
+
+    """
+    if isinstance(eventWise, str):
+        eventWise_path = eventWise
+        eventWise = Components.EventWise.from_file(eventWise_path)
+    else:
+        eventWise_path = os.path.join(eventWise.dir_name, eventWise.save_name)
+    end_time = time.time() + duration
+    print("Making global data")
+    if "JetInputs_ShowerDistance" not in eventWise.columns:
+        relatives = closest_relative(eventWise)
+        eventWise.append(JetInputs_ShowerDistance=awkward.fromiter(relatives))
+    else:
+        relatives = eventWise.JetInputs_ShowerDistance
+        relatives = [np.array(rel, dtype=int) for rel in relatives.tolist()]
+    eventWise.selected_index = None
+    # find the jets with assocated checkpoints
+    jet_names = {name.split('_', 1)[0] for name in eventWise.columns if '_Cpt_affinity' in name}
+    num_configureations = len(jet_names)
+    save_interval = 5
+    print("Done with global data")
+    new_content = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for jet_n, name in enumerate(jet_names):
+            if time.time() > end_time:
+                break
+            print(f"{jet_n/num_configureations:.1%} {name}" + " "*10, end='\r', flush=True)
+            # get the affinities
+            affinities = getattr(eventWise, name + '_Cpt_affinity')
+            # create the scores
+            rank_name = name + "_DistanceAffinityRank"
+            if rank_name not in eventWise.columns:
+                ranks = [scipy.stats.spearmanr(aff.flatten(), np.exp(-rel).flatten())
+                         for aff, rel in zip(affinities, relatives)]
+                new_content[rank_name] = awkward.fromiter(ranks)
+            if (jet_n+5)%save_interval == 0 and new_content:
+                eventWise.append(**new_content)
+                new_content = {}
+                # delete and reload the eventWise
+                del eventWise
+                eventWise = Components.EventWise.from_file(eventWise_path)
+            # to keep memory requirments down, del everything
+    eventWise.append(**new_content)
+
 
 # doesn't really work great
 def plot_phys_event(eventWise, event_num, metric_names=None, jet_names=None):
@@ -459,6 +521,52 @@ def plot_phys_overall(eventWise, *jet_names):
              rotation_mode="anchor")
 
     fig.set_size_inches(9, 7*num_scores)
+
+
+# Denominators ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+def get_group_sums(eventWise, metric='affinity', jet_name=None):
+    """
+    Get the value of a denominator for each criteria
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        Data set containing particle data.
+
+    Returns
+    -------
+    labels : list of numpy arrays of bools
+        for each 
+
+    """
+    sums = []
+    eventWise.selected_index = None
+    if "DetectableTag_Leaves" not in eventWise.columns:
+        TrueTag.add_detectable_fourvector(eventWise)
+    for event_n in range(len(eventWise.X)):
+        eventWise.selected_index = event_n
+        groups = eventWise.DetectableTag_Leaves
+        if metric == 'affinity':
+            # need to convert to jet indices
+            source_list = eventWise.JetInputs_SourceIdx.tolist()
+            for group in groups:
+                rows = [source_list.index(i) for i in group]
+                affinities = 
+
+
+        jet_inputs = eventWise.JetInputs_SourceIdx
+        n_inputs = len(jet_inputs)
+        local = np.full((n_inputs, n_inputs), False, dtype=bool)
+        for b in eventWise.BQuarkIdx:
+            decendants = FormShower.descendant_idxs(eventWise, b)
+            is_decendent = np.fromiter((p in decendants for p in jet_inputs),
+                                       dtype=bool)
+            local += np.expand_dims(is_decendent, 0) * np.expand_dims(is_decendent, 1)
+        labels.append(local)
+    return labels
+
 
 
 # Eigenspace distance ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1109,6 +1217,7 @@ def cutoff_jets():
         jet_names.append(jet_name)
         jet_params.append(parameters)
     return jet_names, jet_params
+
 
 
 if __name__ == '__main__':

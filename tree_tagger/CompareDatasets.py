@@ -25,39 +25,71 @@ def subsample_dissdiff(data1, data2, diff_function, n_subsamples=3):
 
 def subsample_ks(data1, data2):
     diff_function = lambda d1, d2: scipy.stats.ks_2samp(d1, d2)[0]
-    return subsample_dissdiff(data1, data2, diff_function)
+    return subsample_dissdiff(data1, data2, diff_function), None
 
 
 def subsample_es(data1, data2):
     diff_function = lambda d1, d2: scipy.stats.epps_singleton_2samp(d1, d2)[1]
-    return subsample_dissdiff(data1, data2, diff_function)
+    return subsample_dissdiff(data1, data2, diff_function), None
 
 
-def calculate_dissdiff_values(path1, path2, save_name=None):
+def probablility_vectors(data1, data2, bins=20):
+    all_data = np.concatenate((data1, data2))
+    data_range = (np.nanmin(all_data), np.nanmax(all_data))
+    probs1, _ = np.histogram(data1, bins=bins, range=data_range)
+    probs1 = probs1/np.sum(probs1)
+    probs2, _ = np.histogram(data2, bins=bins, range=data_range)
+    probs2 = probs2/np.sum(probs2)
+    return probs1, probs2
+    
+
+def jensen_shannon(data1, data2):
+    probs1, probs2 = probablility_vectors(data1, data2)
+    return scipy.spatial.distance.jensenshannon(probs1, probs2), None
+
+def kullback_Leibler(data1, data2):
+    probs1, probs2 = probablility_vectors(data1, data2)
+    return scipy.stats.entropy(probs1, probs2), None
+
+metric_dict = {'js': jensen_shannon, 'kl': kullback_Leibler,
+               'es': scipy.stats.epps_singleton_2samp,
+               'ks': scipy.stats.ks_2samp, 'ksu': subsample_ks}
+metric_names = {'js': 'Jensen-Shannon', 'kl': 'Kullback-Leibler',
+                'es': 'Epps-Singleton',
+                'ks': "Kolmogrov-Smirnov"}
+
+def calculate_dissdiff_values(path1, path2, save_name=None, metric_name='js'):
     eventWise1 = Components.EventWise.from_file(path1)
     jet_names = FormJets.get_jet_names(eventWise1)
     dissdiff_values = {}
+    metric = metric_dict[metric_name]
+    desired_endings = ["IRC_DeltaR", "IRC_JetMass", "IRC_relativePT"]
     for jet_name in jet_names:
         # reload to reduce data in ram
         eventWise1 = Components.EventWise.from_file(path1)
         eventWise2 = Components.EventWise.from_file(path2)
         # get contents
         content_prefix = jet_name + "IRC"
-        contents = [name for name in eventWise1.columns if name.startswith(content_prefix)
-                    and name in eventWise2.columns]
+        contents = [jet_name + end for end in desired_endings
+                    if jet_name + end in eventWise1.columns]
         for content in contents:
             data1 = getattr(eventWise1, content).flatten()
             data2 = getattr(eventWise2, content).flatten()
+            # remove nans
+            data1 = data1[np.isfinite(data1)]
+            data2 = data2[np.isfinite(data2)]
             if min(len(data1), len(data2)) < 5:
                 continue
             try:
-                dissdiff_values[content] = scipy.stats.ks_2samp(data1, data2)[0]
-                #dissdiff_values[content] = subsample_ks(data1, data2)
+                dissdiff_values[content] = metric(data1, data2)[0]
             except ZeroDivisionError:
                 pass
     if save_name is not None:
-        with open(save_name, 'w') as save_file:
-            save_file.write(str(dissdiff_values))
+        name1 = eventWise1.save_name[:-5].replace('_', '')
+        name2 = eventWise2.save_name[:-5].replace('_', '')
+        file_name = f"IRC_meta_dicts/{metric_name}_{name1}_{name2}.txt"
+    with open(save_name, 'w') as save_file:
+        save_file.write(str(dissdiff_values))
     return dissdiff_values
 
 
@@ -92,18 +124,7 @@ def tabulate_dissdiff_dict(dissdiff_values, jet_classes=None, variable_types=Non
     return jet_classes, variable_types, existing_table
 
 
-def plot_dissdiff_values(list_dissdiff_values, score_name=None):
-    if score_name is None:
-        if '_ks' in list_dissdiff_values[0]:
-            score_name = "Kolmogrov-Smirnov" 
-        elif '_es' in list_dissdiff_values[0]:
-            score_name = "Epps-Singleton"
-        else:
-            score_name = "Score"
-        if '_normed' in list_dissdiff_values[0]:
-            score_name += " normed"
-        else:
-            score_name += " unnormed"
+def read_dissdiffs(list_dissdiff_values, output=None):
     jet_classes = []
     variable_types = []
     table = []
@@ -114,22 +135,37 @@ def plot_dissdiff_values(list_dissdiff_values, score_name=None):
                 line = save_file.readline()
             dissdiff_values = ast.literal_eval(line)
             assert isinstance(dissdiff_values, dict)
+        if output is not None:
+            output.append(dissdiff_values)
         # get the class name
         jet_classes, variable_types, table = tabulate_dissdiff_dict(dissdiff_values,
-                                                              jet_classes,
-                                                              variable_types,
-                                                              table)
-    pairs = [(name, name.replace('LowPT_', '_')) for name in variable_types if
-             'LowPT_' in name and name.replace('LowPT_', '_') in variable_types]
-    fig, ax_arr = plt.subplots(len(pairs), 2)
+                                                                    jet_classes,
+                                                                    variable_types,
+                                                                    table)
+    return jet_classes, variable_types, table
+
+
+def plot_dissdiff_values(list_dissdiff_values, score_name=None):
+    if score_name is None:
+        for key in metric_names:
+            if '_' + key in list_dissdiff_values[0]:
+                score_name = metric_names[key]
+                break
+        else:
+            score_name = "Score"
+        if '_normed' in list_dissdiff_values[0]:
+            score_name += " normed"
+        else:
+            score_name += " unnormed"
+    jet_classes, variable_types, table = read_dissdiffs(list_dissdiff_values)
+    fig, ax_arr = plt.subplots(len(variable_types), 1)
     fig.suptitle(f"{score_name} between LO and NLO data")
-    for pair, axs in zip(pairs, ax_arr):
-        for var_type, ax in zip(pair, axs):
-            row = variable_types.index(var_type)
-            class_values = table[row]
-            ax.hist(class_values, label=jet_classes, density=True, histtype='step')
-            ax.set_ylabel("Frequency")
-            ax.set_xlabel(var_type)
+    for var_type, ax in zip(variable_types, ax_arr):
+        row = variable_types.index(var_type)
+        class_values = table[row]
+        ax.hist(class_values, label=jet_classes, density=True, histtype='step')
+        ax.set_ylabel("Frequency")
+        ax.set_xlabel(var_type)
     ax.legend()
     fig.subplots_adjust(top=0.95, bottom=0.08, left=0.08, right=0.95, hspace=0.4, wspace=0.21)
 
@@ -150,33 +186,23 @@ def get_low_pt_mask(eventWise, jet_name=None, low_pt=10.):
     return low_pt_mask, jet_roots, root_pt
 
 
-def append_flat_IRC_variables(eventWise, jet_name=None, low_pt=10., append=False):
+def append_flat_IRC_variables(eventWise, jet_name=None, append=False):
     if jet_name is None:
-        jet_str = ""
+        return  # cannot caculate mass for the event
     else:
         jet_str = jet_name
-    leaf_variables = ["PT", "Rapidity"]
-    low_pt_mask, jet_roots, root_pt = get_low_pt_mask(eventWise, jet_name, low_pt)
-    # kinamtic
+    # jet mass
     new_content = {}
-    for var in leaf_variables:
-        if jet_name is None:
-            values = getattr(eventWise, var)[eventWise.Is_leaf].flatten()
-        elif var == "PT":
-            values = root_pt.flatten()
-        else:
-            values = awkward.fromiter([v[root] for v, root in
-                                       zip(getattr(eventWise, jet_name+"_"+var), jet_roots)])
-            values = values.flatten()
-        if var == "PT":
-            var = "logPT"
-            values = np.log(values[values > 0])
-            low_pt_values = values[values < np.log(low_pt)]
-            values = values.tolist()
-        else:
-            low_pt_values = values[low_pt_mask.flatten()].tolist()
-        new_content[jet_str + "IRC_" +var] = values
-        new_content[jet_str + "IRCLowPT_" +var] = low_pt_values
+    eventWise.selected_index = None
+    jet_roots = getattr(eventWise, jet_name + "_Parent") == -1
+    pts = awkward.fromiter([p[r] for p, r in 
+                            zip(getattr(eventWise, jet_name + "_PT"), jet_roots)]).flatten()
+    pzs = awkward.fromiter([p[r] for p, r in 
+                            zip(getattr(eventWise, jet_name + "_Pz"), jet_roots)]).flatten()
+    es = awkward.fromiter([e[r] for e, r in 
+                           zip(getattr(eventWise, jet_name + "_Energy"), jet_roots)]).flatten()
+    values = np.sqrt(es**2 - pts**2 - pzs**2)
+    new_content[jet_str + "IRC_JetMass"] = values
     if append:
         eventWise.append(**new_content)
     else:
@@ -189,30 +215,33 @@ def awkward_to_2d(array, depth=1):
     return np.array(array.tolist()).reshape((-1, 1))
 
 
-def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10., append=False):
+def append_pairwise_IRC_variables(eventWise, jet_name=None, append=False):
+    jet_roots = getattr(eventWise, jet_name + "_Parent") == -1
     if jet_name is None:
         jet_str = ""
     else:
         jet_str = jet_name
     new_content = {}
-    # find the low PT area
-    low_pt_mask, jet_roots, root_pt = get_low_pt_mask(eventWise, jet_name, low_pt)
     # PT
     if jet_name is None:
-        values = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
-                  eventWise.PT[eventWise.Is_leaf]]
+        pts = [scipy.spatial.distance.pdist(event.reshape(-1, 1), metric=min)
+               for event in eventWise.PT[eventWise.Is_leaf]]
+        angles = [1-scipy.spatial.distance.pdist(np.stack((px, py)).T, metric='cosine')
+                  for px, py in
+                  zip(eventWise.Px[eventWise.Is_leaf], eventWise.Py[eventWise.Is_leaf])]
+        values = awkward.fromiter([angle*pt for angle, pt in zip(angles, pts)])
     else:
-        values = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in root_pt]
+        jet_pxs = getattr(eventWise, jet_name + "_Px")
+        jet_pys = getattr(eventWise, jet_name + "_Py")
+        jet_pts = getattr(eventWise, jet_name + "_PT")
+        pts = [scipy.spatial.distance.pdist(event.flatten().reshape((-1, 1)), metric=min)
+               for event in jet_pts]
+        angles = [1-scipy.spatial.distance.pdist(np.stack((px.flatten(), py.flatten())).T,
+                                                 metric='cosine')
+                  for px, py in zip(jet_pxs, jet_pys)]
+        values = awkward.fromiter([angle*pt for angle, pt in zip(angles, pts)])
     values = awkward.fromiter(values).flatten().tolist()
-    if jet_name is None:
-        low_pt_values = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
-                         eventWise.PT[eventWise.Is_leaf][low_pt_mask]]
-    else:
-        low_pt_values = [scipy.spatial.distance.pdist(awkward_to_2d(event)) for event in
-                         root_pt[low_pt_mask]]
-    low_pt_values = awkward.fromiter(low_pt_values).flatten().tolist()
-    new_content[jet_str + "IRCPariwise_PT"] = values
-    new_content[jet_str + "IRCPariwiseLowPT_PT"] = low_pt_values
+    new_content[jet_str + "IRC_relativePT"] = values
     # delta R
     if jet_name is None:
         rapidity = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
@@ -223,14 +252,6 @@ def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10., append=F
                     zip(jet_rapidity, jet_roots)]
     rapidity = awkward.fromiter(rapidity)
     if jet_name is None:
-        low_pt_rapidity = [scipy.spatial.distance.pdist(event.reshape(-1, 1)) for event in
-                           eventWise.Rapidity[eventWise.Is_leaf][low_pt_mask]]
-    else:
-        low_pt_rapidity = [scipy.spatial.distance.pdist(awkward_to_2d(rap[root][low]))
-                           for rap, root, low in
-                           zip(jet_rapidity, jet_roots, low_pt_mask)]
-    low_pt_rapidity = awkward.fromiter(low_pt_rapidity)
-    if jet_name is None:
         phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance)
                for event in
                eventWise.Phi[eventWise.Is_leaf]]
@@ -240,27 +261,16 @@ def append_pairwise_IRC_variables(eventWise, jet_name=None, low_pt=10., append=F
                for ph, root in
                zip(jet_phi, jet_roots)]
     phi = awkward.fromiter(phi)
-    if jet_name is None:
-        low_pt_phi = [scipy.spatial.distance.pdist(awkward_to_2d(event), metric=Components.angular_distance) for event in
-                      eventWise.Phi[eventWise.Is_leaf][low_pt_mask] if len(event)]
-    else:
-        low_pt_phi = [scipy.spatial.distance.pdist(awkward_to_2d(ph[root][low]), metric=Components.angular_distance)
-                      for ph, root, low in
-                      zip(jet_phi, jet_roots, low_pt_mask)]
-    low_pt_phi = awkward.fromiter(low_pt_phi)
     values = np.sqrt(awkward.fromiter(rapidity)**2 + awkward.fromiter(phi)**2)
-    low_pt_values = np.sqrt(awkward.fromiter(low_pt_rapidity)**2 + awkward.fromiter(low_pt_phi)**2)
-    low_pt_values = low_pt_values.flatten().tolist()
     values = values.flatten().tolist()
-    new_content[jet_str + "IRCPariwise_DeltaR"] = values
-    new_content[jet_str + "IRCPariwiseLowPT_DeltaR"] = low_pt_values
+    new_content[jet_str + "IRC_DeltaR"] = values
     if append:
         eventWise.append(**new_content)
     else:
         return new_content
 
 
-def append_all(path, end_time, low_pt=10.):
+def append_all(path, end_time, overwrite=False):
     eventWise = Components.EventWise.from_file(path)
     new_content = {}
     jet_names = FormJets.get_jet_names(eventWise)
@@ -270,7 +280,7 @@ def append_all(path, end_time, low_pt=10.):
         # prevent overwites
         found = next((name for name in start_columns if name.startswith(jet_name + "IRC")),
                      False)
-        if found:
+        if found and not overwrite:
             continue
         if (i+1) % 10 == 0:  # reload to preserve ram
             new_content = {key: awkward.fromiter(value) for key, value in new_content.items()}
@@ -280,16 +290,16 @@ def append_all(path, end_time, low_pt=10.):
         if time.time() > end_time:
             break
         print(f'{i/n_jets:%}', end='\r', flush=True)
-        new_c = append_pairwise_IRC_variables(eventWise, jet_name, low_pt)
-        new_content.update(new_c)
-        new_c = append_flat_IRC_variables(eventWise, jet_name, low_pt)
+        #new_c = append_pairwise_IRC_variables(eventWise, jet_name)
+        #new_content.update(new_c)
+        new_c = append_flat_IRC_variables(eventWise, jet_name)
         new_content.update(new_c)
     new_content = {key: awkward.fromiter(value) for key, value in new_content.items()}
     eventWise.append(**new_content)
     print(f"\nDone {eventWise.save_name}\n", flush=True)
 
 
-def multiprocess_append(eventWise_paths, end_time, leave_one_free=True):
+def multiprocess_append(eventWise_paths, end_time, overwrite=False, leave_one_free=True):
     n_paths = len(eventWise_paths)
     # cap this out at 20, more seems to create a performance hit
     n_threads = np.min((multiprocessing.cpu_count()-leave_one_free, 20, n_paths))
@@ -300,7 +310,7 @@ def multiprocess_append(eventWise_paths, end_time, leave_one_free=True):
     print("Running on {} threads".format(n_threads))
     job_list = []
     # now each segment makes a worker
-    args = [(path, end_time) for path in eventWise_paths]
+    args = [(path, end_time, overwrite) for path in eventWise_paths]
     # set up some initial jobs
     for _ in range(n_threads):
         job = multiprocessing.Process(target=append_all, args=args.pop())
@@ -334,43 +344,43 @@ def multiprocess_append(eventWise_paths, end_time, leave_one_free=True):
     return True
 
 
-def plot_hists(eventWises, jet_name, low_pt=10.):
+def plot_catagory(eventWises, jet_name, ax_arr=None):
     eventWise_name = ["NLO" if 'nlo' in eventWise.save_name.lower() else "LO"
                       for eventWise in eventWises]
-    content_prefix = jet_name + "IRC"
-    contents = [name for name in eventWises[0].columns if name.startswith(content_prefix)]
-    if len(contents) == 0:
-        raise KeyError(f"{jet_name} IRC variables not found")
-    pairs = [(name, name.replace('LowPT_', '_')) for name in contents if
-             'LowPT_' in name and name.replace('LowPT_', '_') in contents]
-    assert len(pairs)*2 == len(contents)
+    desired_endings = ["IRC_DeltaR", "IRC_JetMass", "IRC_relativePT"]
     # make the axis
-    fig, ax_arr = plt.subplots(len(pairs), 2)
+    if ax_arr is None:
+        fig, ax_arr = plt.subplots(len(desired_endings), 1)
+        set_spaceing = True
+    else:
+        ax_arr[0].set_title(jet_name)
+        set_spaceing = False
     ax_list = ax_arr.tolist()
-    for name, low_pt_name in pairs:
-        variable_name = name[len(content_prefix):].replace('LowPT_', ' ').strip()
+    for end in desired_endings:
+        name = jet_name + end
+        variable_name = end[4:]
         values = [getattr(eventWise, name).flatten().tolist() for eventWise in eventWises]
-        low_pt_values = [getattr(eventWise, low_pt_name).flatten().tolist() for eventWise in eventWises]
-        ax1, ax2 = ax_list.pop()
-        plot_hist(variable_name, eventWise_name, low_pt, values, low_pt_values, ax1, ax2)
-    ax2.legend()
-    fig.suptitle(jet_name)
-    fig.set_size_inches(6, 8)
-    fig.subplots_adjust(top=0.911,
-            bottom=0.071,
-            left=0.171,
-            right=0.976,
-            hspace=0.5,
-            wspace=0.5)
+        if end == "IRC_relativePT":
+            values = np.log(np.abs(awkward.fromiter(values)))
+            variable_name = "log(|relativePT|)"
+        ax = ax_list.pop()
+        plot_hist(variable_name, eventWise_name, values, ax)
+    ax.legend()
+    if set_spaceing:
+        fig.suptitle(jet_name)
+        fig.set_size_inches(6, 8)
+        fig.subplots_adjust(top=0.911,
+                bottom=0.071,
+                left=0.171,
+                right=0.976,
+                hspace=0.5,
+                wspace=0.5)
 
 
-def plot_hist(variable_name, names, low_pt, values, low_pt_values, ax1, ax2):
-    ax1.hist(values, histtype='step', label=names)
-    ax1.set_xlabel(variable_name)
-    ax1.set_ylabel("Frequency")
-    ax2.hist(low_pt_values, histtype='step', label=names)
-    ax2.set_xlabel(variable_name)
-    ax2.set_ylabel(f"PT < {low_pt} Frequency")
+def plot_hist(variable_name, names, values, ax):
+    ax.hist(values, histtype='step', label=names, density=True)
+    ax.set_xlabel(variable_name)
+    ax.set_ylabel("Normed Frequency")
 
 
 # identical ordering
@@ -463,15 +473,16 @@ if __name__ == '__main__':
         if duration < 0:
             duration = np.inf
         end_time = time.time() + duration
+        overwrite = InputTools.yesNo_question("Overwrite existing? ")
         if len(paths) > 1:
-            multiprocess_append(paths, end_time)
+            multiprocess_append(paths, end_time, overwrite)
         else:
-            append_all(paths[0], end_time)
+            append_all(paths[0], end_time, overwrite)
     elif chosen == "plot":
         eventWises = [Components.EventWise.from_file(path) for path in paths]
         jet_names = FormJets.get_jet_names(eventWises[0])
         jet_name = InputTools.list_complete("Which jet? ", jet_names).strip()
-        plot_hists(eventWises, jet_name)
+        plot_catagory(eventWises, jet_name)
         plt.show()
         input()
     elif chosen == "dissdiff":
