@@ -446,10 +446,13 @@ scan_checkpoint = dict(
                        ExpofPTMultiplier = np.arange(-1, 1, 0.1),
                        AffinityCutoff = [('knn', i) for i in range(2, 5)] + [None],
                        PhyDistance = ['angular', 'taxicab'],
-                       ExpofPTFormat=['min', 'Luclus']
                        )
 
-fix_checkpoint = dict( ExpofPTPosition = 'input',
+fix_checkpointLuclus = dict( ExpofPTPosition = 'input',
+                       ExpofPTFormat='Luclus',
+                       AffinityType='exponent')
+fix_checkpointmin = dict( ExpofPTPosition = 'input',
+                       ExpofPTFormat='min',
                        AffinityType='exponent')
 # Traditional -----------------------------
 
