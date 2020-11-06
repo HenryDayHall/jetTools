@@ -1181,7 +1181,6 @@ def internal_calculate_affinity(jets, param_dict):
     if np.inf in expected:  # fix internal approximations
         jets._affinity[jets._affinity > 10^100] = np.inf
     tst.assert_allclose(jets._affinity, expected, atol=0.0001, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
-    expected
 internal_calculate_affinity.valid_one = True
 internal_calculate_affinity.valid_zero = True
 

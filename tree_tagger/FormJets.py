@@ -1624,10 +1624,11 @@ class Spectral(PseudoJet):
             physical_distances2 = np.vstack((np.hstack((physical_distances2, 
                                                         np.empty((self.currently_avalible,
                                                                   1)))),
-                                            np.zeros(self.currently_avalible+1)))
+                                            np.empty(self.currently_avalible+1)))
             # the last row and column should give the distance of each particle to the beam
             physical_distances2[-1, :] = self.beam_distance2(self._starting_position).squeeze()
             physical_distances2[:, -1] = physical_distances2[-1, :]
+            physical_distances2[-1, -1] = 0.  # ensure the diagonal is 0.
         # now we are in posessio of a standard distance matrix for all points,
         # we can make an affinity calculation
         checkpoint_name = 'affinity'
