@@ -1033,7 +1033,11 @@ class EventWise:
         pickle_strs = {}  # when checking for dups
         for fragment_n, fragment in enumerate(fragments):
             path = os.path.join(dir_name, fragment)
-            content_here = awkward.load(path)
+            try:
+                content_here = awkward.load(path)
+            except Exception:
+                print(f"Problem in {path}, skipping")
+                continue
             # check hyperparameters match and add as needed
             found_hcols = set(content_here.get("hyperparameter_column_order", []))
             if hyperparameter_columns and found_hcols:  # check they are the same here

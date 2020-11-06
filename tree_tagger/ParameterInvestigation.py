@@ -553,7 +553,7 @@ def get_group_sums(eventWise, metric='affinity', jet_name=None):
             source_list = eventWise.JetInputs_SourceIdx.tolist()
             for group in groups:
                 rows = [source_list.index(i) for i in group]
-                affinities = 
+                affinities = None
 
 
         jet_inputs = eventWise.JetInputs_SourceIdx
