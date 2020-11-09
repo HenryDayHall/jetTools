@@ -384,7 +384,7 @@ def append_affinity_input_metrics(eventWise, duration=np.inf):
             # create the scores
             rank_name = name + "_DistanceAffinityRank"
             if rank_name not in eventWise.columns:
-                ranks = [scipy.stats.spearmanr(aff.flatten(), np.exp(-rel).flatten())[0]
+                ranks = [np.nan if aff is None else scipy.stats.spearmanr(aff.flatten(), np.exp(-rel).flatten())[0]
                          for aff, rel in zip(affinities, relatives)]
                 new_content[rank_name] = awkward.fromiter(ranks)
             if (jet_n+5)%save_interval == 0 and new_content:
