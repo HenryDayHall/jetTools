@@ -618,7 +618,7 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx", silent=False):
     tag_particles = getattr(eventWise, tag_name)
     # the leaves are the bits that are detected, the roots are the tag particles
     # group roots with common leaves
-    leaves = []; roots = []
+    leaves = []; roots = []; invisible = []
     px = []; py = []; pz = []; energy = []
     for i, tag_idxs in enumerate(tag_particles):
         eventWise.selected_index = i
@@ -627,13 +627,17 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx", silent=False):
         all_px = eventWise.Px
         all_py = eventWise.Py
         all_pz = eventWise.Pz
-        per_tag = []
+        per_tag_detectables = []
+        per_tag_undetectables = []
         for tag in tag_idxs:
             tag_decendants = FormShower.descendant_idxs(eventWise, tag)
             detectables = shower_inputs.intersection(tag_decendants)
-            per_tag.append(detectables)
+            undetectables = tag_decendants - detectables
+            per_tag_detectables.append(detectables)
+            per_tag_undetectables.append(undetectables)
         # now work out what overlaps
         leaves.append([])
+        invisible.append([])
         roots.append([])
         energy.append([])
         px.append([])
@@ -644,22 +648,25 @@ def add_detectable_fourvector(eventWise, tag_name="BQuarkIdx", silent=False):
             position = next(i for i, free in enumerate(unallocated) if free)
             unallocated[position] = False
             # start from the first free tag
-            seed = per_tag[position]
+            seed = per_tag_detectables[position]
             # make a mask of what will be grouped with
             if not seed:  # this tag is undetectable
                 continue
-            group_with = [g for g, other in enumerate(per_tag)
+            group_with = [g for g, other in enumerate(per_tag_detectables)
                           if not seed.isdisjoint(other)]
             unallocated[group_with] = False
             roots[-1].append(tag_idxs[group_with].tolist())
-            detectables = sorted(set().union(*(per_tag[g] for g in group_with)))
+            detectables = sorted(set().union(*(per_tag_detectables[g] for g in group_with)))
+            undetectables = sorted(set().union(*(per_tag_undetectables[g] for g in group_with)))
             leaves[-1].append(detectables)
+            invisible[-1].append(undetectables)
             # now find the kinematics
             energy[-1].append(np.sum(all_energy[detectables]))
             px[-1].append(np.sum(all_px[detectables]))
             py[-1].append(np.sum(all_py[detectables]))
             pz[-1].append(np.sum(all_pz[detectables]))
     params = {name+"_Leaves": awkward.fromiter(leaves),
+              "UndetectableTag_Leaves": awkward.fromiter(invisible),
               name+"_Roots": awkward.fromiter(roots),
               name+"_Energy": awkward.fromiter(energy),
               name+"_Px": awkward.fromiter(px),

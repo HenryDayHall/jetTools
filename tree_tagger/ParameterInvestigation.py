@@ -384,7 +384,7 @@ def append_affinity_input_metrics(eventWise, duration=np.inf):
             # create the scores
             rank_name = name + "_DistanceAffinityRank"
             if rank_name not in eventWise.columns:
-                ranks = [scipy.stats.spearmanr(aff.flatten(), np.exp(-rel).flatten())
+                ranks = [scipy.stats.spearmanr(aff.flatten(), np.exp(-rel).flatten())[0]
                          for aff, rel in zip(affinities, relatives)]
                 new_content[rank_name] = awkward.fromiter(ranks)
             if (jet_n+5)%save_interval == 0 and new_content:
@@ -525,47 +525,6 @@ def plot_phys_overall(eventWise, *jet_names):
 
 # Denominators ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-def get_group_sums(eventWise, metric='affinity', jet_name=None):
-    """
-    Get the value of a denominator for each criteria
-
-    Parameters
-    ----------
-    eventWise : EventWise
-        Data set containing particle data.
-
-    Returns
-    -------
-    labels : list of numpy arrays of bools
-        for each 
-
-    """
-    sums = []
-    eventWise.selected_index = None
-    if "DetectableTag_Leaves" not in eventWise.columns:
-        TrueTag.add_detectable_fourvector(eventWise)
-    for event_n in range(len(eventWise.X)):
-        eventWise.selected_index = event_n
-        groups = eventWise.DetectableTag_Leaves
-        if metric == 'affinity':
-            # need to convert to jet indices
-            source_list = eventWise.JetInputs_SourceIdx.tolist()
-            for group in groups:
-                rows = [source_list.index(i) for i in group]
-                affinities = None
-
-
-        jet_inputs = eventWise.JetInputs_SourceIdx
-        n_inputs = len(jet_inputs)
-        local = np.full((n_inputs, n_inputs), False, dtype=bool)
-        for b in eventWise.BQuarkIdx:
-            decendants = FormShower.descendant_idxs(eventWise, b)
-            is_decendent = np.fromiter((p in decendants for p in jet_inputs),
-                                       dtype=bool)
-            local += np.expand_dims(is_decendent, 0) * np.expand_dims(is_decendent, 1)
-        labels.append(local)
-    return labels
 
 
 
