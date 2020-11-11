@@ -3260,6 +3260,8 @@ def _run_applyfastjet(input_lines, DeltaR, algorithm_num, program_path="./tree_t
 
 def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
                                   jet_params, default_params=None):
+    if checkpoint_content is None:
+        return None  # we don't actually want this
     checkpoints = {}
     if default_params is not None:
         # make a new dict to avoid altering the orriginal
@@ -3317,6 +3319,8 @@ def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
 
 def update_checkpoint_dict(checkpoint_content, checkpoint_hyper, jet, checkpoint):
     has_changed = False
+    if checkpoint is None:
+        return has_changed
     event_num = jet.eventWise.selected_index
     jet_name = jet.jet_name
     # add the jets parameters
@@ -3390,11 +3394,9 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
                 jet_name = name
                 break
     new_checkpoints = False
-    if checkpoint_content is None:
-        checkpoint_content = {}
-        checkpoint_hyper = {}
     checkpoints = identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
                                                 dict_jet_params, cluster_algorithm.default_params)
+    check_here = None
     additional_parameters = {}
     additional_parameters["jet_name"] = jet_name
     if cluster_algorithm == run_FastJet:
@@ -3431,8 +3433,9 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
         if len(eventWise.JetInputs_PT) == 0:
             continue  # there are no observables
         # look for checkpoints
-        check_here = {k:v[event_n] for k, v in checkpoints.items()
-                      if len(v) > event_n and v[event_n] is not None}
+        if checkpoints is not None:
+            check_here = {k:v[event_n] for k, v in checkpoints.items()
+                          if len(v) > event_n and v[event_n] is not None}
         jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
                                  checkpoints=check_here,
                                  **additional_parameters)

@@ -454,6 +454,13 @@ fix_checkpointLuclus = dict( ExpofPTPosition = 'input',
 fix_checkpointmin = dict( ExpofPTPosition = 'input',
                        ExpofPTFormat='min',
                        AffinityType='exponent')
+
+scan_checkpoint_final = dict(
+                            AffinityCutoff=[None] + [('distance', x) for x in np.linspace(1., 5., 11)],
+                            AffinityType=['linear', 'inverse', 'exponent', 'exponent2'],
+                            )
+fix_checkpoint_final = dict(ExpofPTPosition='eigenspace',
+                            PhyDistance='taxicab')
 # Traditional -----------------------------
 
 scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),

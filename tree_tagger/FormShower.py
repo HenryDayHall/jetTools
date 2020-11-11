@@ -358,19 +358,23 @@ def get_showers(eventWise, exclude_pids=True):
     
     """
     if exclude_pids is True:
-        exclude_pids = [2212, 25, 35]
-    elif exclude_pids is None:
-        exclude_pids = []
-    # remove any stop pids
-    mask = [p not in exclude_pids for p in eventWise.MCPID]
-    particle_idxs = np.where(mask)[0]
-    parent_ids = eventWise.Parents[mask]
-    child_ids = eventWise.Children[mask]
+        exclude_pids = [25, 35]
+        # problem, protons can actually appear later on in the shower, if they want
+        mask = []
+        for i, p in enumerate(eventWise.MCPID):
+            if p == 2122 and len(eventWise.Parents[i]) == 0:
+                mask.append(False)
+            else:
+                mask.append(p in exclude_pids)
+        mask = [p not in exclude_pids  for p in eventWise.MCPID]
+    else:
+        if exclude_pids is None:
+            exclude_pids = []
+        mask = [p not in exclude_pids for p in eventWise.MCPID]
+    particle_idxs = np.where(mask)[0] # this messes up the indexing 
+    parent_ids = eventWise.Parents[mask]  # these refer to particle_idxs
+    child_ids = eventWise.Children[mask]  # not neat indices
     pids = eventWise.MCPID[mask]
-    # check that worked
-    remaining_pids = set(pids)
-    for exclude in exclude_pids:
-        assert exclude not in remaining_pids
     # now where possible convert labels to names
     pdg = PDGNames.IDConverter()
     labels = np.array([pdg[x] for x in pids])
@@ -380,25 +384,21 @@ def get_showers(eventWise, exclude_pids=True):
     showers = []
     root_gids = get_roots(particle_idxs, parent_ids)
     list_particle_idxs = list(particle_idxs)
-    for i, root_gid in enumerate(root_gids):
+    for root_gid in root_gids:
         root_idx = list_particle_idxs.index(root_gid)
-        shower_indices = [root_idx]
-        to_follow = [root_idx]
-        while len(to_follow) > 0:
-            next_gen = []
-            for index in to_follow:
-                # be careful not to include forbiden particles
-                next_gen += [list_particle_idxs.index(child) for child in child_ids[index]
-                             if child in particle_idxs]
-            # prevent loops
-            next_gen = list(set(next_gen))
-            next_gen = [i for i in next_gen if i not in shower_indices]
-            shower_indices += next_gen
-            to_follow = next_gen
+        shower_indices = []
+        stack = [root_idx]
+        while stack:
+            next_idx = stack.pop()
+            if next_idx in shower_indices:
+                continue  # prevents looping
+            shower_indices.append(next_idx)
+            stack += [list_particle_idxs.index(child) for child in child_ids[next_idx]
+                      if child in particle_idxs]
         assert len(set(shower_indices)) == len(shower_indices)
         new_shower = Shower(particle_idxs[shower_indices],
-                            [parent_ids[s] for s in shower_indices], 
-                            [child_ids[s] for s in shower_indices],
+                            parent_ids[shower_indices].tolist(),
+                            child_ids[shower_indices].tolist(),
                             labels[shower_indices])
         showers.append(new_shower)
     return showers
