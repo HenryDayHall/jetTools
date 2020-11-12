@@ -580,6 +580,7 @@ def plot_correct_pairs(eventWise, jet_names, show=True, plot_type='hist', signal
         ax_function = plot_correct_means_axis
     if ax_array is None:
         fig, ax_array = plt.subplots(1, 3)
+        has_fig = True
     else:
         has_fig = False
     # get lobal inputs

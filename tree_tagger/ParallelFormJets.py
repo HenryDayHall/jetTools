@@ -414,6 +414,19 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
+# perfect -----------------------------
+scan_perfect = dict(
+                          AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
+                          DeltaR = np.arange(0.1, 2, 0.4),
+                          Eigenspace = ['normalised', 'unnormalised'],
+                          PhyDistance = ['angular', 'taxicab'],
+                        )
+fix_perfect = dict( AffinityType = 'exponent2',
+                          ExpofPTMultiplier = 0.,
+                          Laplacien = 'perfect',
+                         ExpofPTPosition = 'input',
+                         EigDistance='euclidien',
+                          StoppingCondition = 'beamparticle')
 # spectral full ------------------------
 scan_SpectralFull = dict(
                           ExpofPTMultiplier = [0.2, 0.1, 0.0, -1.],

@@ -84,6 +84,9 @@ class PseudoJet:
         self.jet_parameters = kwargs.get('dict_jet_params', {})
         self.int_columns = [c.replace('Pseudojet', self.jet_name) for c in self.int_columns]
         self.float_columns = [c.replace('Pseudojet', self.jet_name) for c in self.float_columns]
+        # this is ugly, TODO remove
+        if 'Laplacien' in self.jet_parameters and self.Laplacien == 'perfect':
+            self.float_columns.append(self.jet_name + "_PerfectDenominator")
         self.from_PseudoRapidity = from_PseudoRapidity
         if self.from_PseudoRapidity:
             idx = next(i for i, c in enumerate(self.float_columns) if c.endswith("_Rapidity"))
@@ -128,7 +131,11 @@ class PseudoJet:
                                       eventWise.JetInputs_Px,
                                       eventWise.JetInputs_Py,
                                       eventWise.JetInputs_Pz,
-                                      np.zeros(self.n_inputs))).T.tolist()
+                                      np.zeros(self.n_inputs))).T
+            # this is ugly, TODO remove
+            if 'Laplacien' in self.jet_parameters and self.Laplacien == 'perfect':
+                self._floats = np.hstack((self._floats, self.eventWise.JetInputs_PerfectDenominator.reshape((-1, 1))))
+            self._floats = self._floats.tolist()
             # as we go note the root notes of the pseudojets
             self.root_jetInputIdxs = []
         # define the physical distance measure
@@ -611,6 +618,8 @@ class PseudoJet:
                 arrays[name.replace('PseudoJet', jet_name)][event_index].append(ints[:, col_num])
             floats = awkward.fromiter(jet._floats)
             for col_num, name in enumerate(jet.float_columns):
+                if "_PerfectDenominator" in name:
+                    continue
                 arrays[name.replace('PseudoJet', jet_name)][event_index].append(floats[:, col_num])
         return arrays
 
@@ -1476,7 +1485,7 @@ class Spectral(PseudoJet):
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'Eigenspace': ['unnormalised', 'normalised'],
                        'EigDistance': ['euclidien', 'spherical'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
@@ -1545,6 +1554,12 @@ class Spectral(PseudoJet):
                                             dtype=float)
                 self._current_conductance = np.sum(self._initial_affinity, axis=0)/inital_pt
                 self._total_pt = np.sum(inital_pt)
+            elif self.Laplacien == 'perfect':
+                inital_per = np.fromiter((row[self._PerfectDenominator_col] for row in
+                                             self._floats[:self.currently_avalible]),
+                                            dtype=float)
+                self._current_conductance = np.sum(self._initial_affinity, axis=0)/inital_per
+                self._total_per = np.sum(inital_per)
             else:
                 # the more connected to the rest of the graph
                 # the higher the conductance
@@ -1573,6 +1588,10 @@ class Spectral(PseudoJet):
             denominator = min(denominator, self._total_energy)
         elif self.Laplacien == 'pt':
             denominator = np.sum([row[self._PT_col] for row in self._floats[inside]]) 
+            denominator = min(denominator, self._total_pt)
+        elif self.Laplacien == 'perfect':
+            denominator = np.sum([row[self._PerfectDenominator_col] for row
+                                  in self._floats[inside]]) 
             denominator = min(denominator, self._total_pt)
         elif self.Laplacien == 'unnormalised':
             denominator = min(len(inside), len(outside))
@@ -1667,6 +1686,12 @@ class Spectral(PseudoJet):
                     factor = np.concatenate((factor, [1]))
             elif self.Laplacien == 'pt':
                 factor = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]),
+                                       dtype=float)
+                if self.beam_particle:
+                    factor = np.concatenate((factor, [1]))
+            elif self.Laplacien == 'perfect':
+                factor = np.fromiter((row[self._PerfectDenominator_col] for row
+                                      in self._floats[:self.currently_avalible]),
                                        dtype=float)
                 if self.beam_particle:
                     factor = np.concatenate((factor, [1]))
@@ -2187,6 +2212,8 @@ class Spectral(PseudoJet):
                 new_alt_diag = self._floats[replace_index][self._Energy_col]**(-0.5)
             elif self.Laplacien == 'pt':
                 new_alt_diag = self._floats[replace_index][self._PT_col]**(-0.5)
+            elif self.Laplacien == 'perfect':
+                new_alt_diag = self._floats[replace_index][self._PerfectDenominator_col]**(-0.5)
             self.alt_diag[replace_index] = new_alt_diag
             new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
         # remove from the eigenspace and the affinity
@@ -2282,7 +2309,7 @@ class Indicator(Spectral):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'BaseJump': Constants.numeric_classes['pdn'],
                        'JumpEigenFactor': Constants.numeric_classes['rn']}
@@ -2388,6 +2415,10 @@ class Indicator(Spectral):
                                        dtype=float)
             elif self.Laplacien == 'pt':
                 factor = np.fromiter((row[self._PT_col] for row in self._floats[:self.currently_avalible]),
+                                       dtype=float)
+            elif self.Laplacien == 'perfect':
+                factor = np.fromiter((row[self._PerfectDenominator_col] for
+                                      row in self._floats[:self.currently_avalible]),
                                        dtype=float)
             else:
                 raise NotImplementedError(f"Don't have a laplacien {self.Laplacien}")
@@ -2628,7 +2659,7 @@ class Splitting(Indicator):
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'MaxCutScore': Constants.numeric_classes['pdn']}
 
@@ -2684,6 +2715,8 @@ class Splitting(Indicator):
                     denominator = np.sum([row[self._Energy_col] for row in self._floats[in_group]])
                 elif self.Laplacien == 'pt':
                     denominator = np.sum([row[self._PT_col] for row in self._floats[in_group]])
+                elif self.Laplacien == 'perfect':
+                    denominator = np.sum([row[self._PerfectDenominator_col] for row in self._floats[:self.currently_avalible]])
                 else:
                     raise NotImplementedError
                 if not post_flip:  # calculation not easly generalised
