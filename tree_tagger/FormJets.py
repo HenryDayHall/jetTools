@@ -3693,8 +3693,8 @@ def check_for_jet(eventWise, parameters, name_start=None, pottentials=None):
         pottentials = [name for name, value in zip(pottentials, values)
                        if isinstance(value, discreet_types) and value == parameters[key]]
     while len(pottentials) > 1 and continuous_parameters:
-        required = parameters[key]
         key = continuous_parameters.pop()
+        required = parameters[key]
         values = [getattr(eventWise, name+'_'+key) for name in pottentials]
         if isinstance(required, tuple):
             pottentials = [name for name, value in zip(pottentials, values)

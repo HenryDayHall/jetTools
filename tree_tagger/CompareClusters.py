@@ -567,9 +567,9 @@ def nan_filter_table(all_cols, variable_cols, score_cols, table):
     if np.any(nan_mask):
         # drop any rows where any score_cols are nan
         score_nan = nan_mask[:, [all_cols.index(name) for name in score_cols]]
-        any_nan = np.any(score_nan, axis=1)
-        table = table[~any_nan]
-        nan_mask = nan_mask[~any_nan]
+        all_nan = np.all(score_nan, axis=1)
+        table = table[~all_nan]
+        nan_mask = nan_mask[~all_nan]
         # then drop any cols where all values are np.nan
         drop_cols = np.fromiter((np.all(nan_mask[:, i]) for i, name in enumerate(all_cols)),
                                 dtype=bool)

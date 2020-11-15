@@ -417,16 +417,19 @@ def recombine_eventWise(eventWise_path):
 # perfect -----------------------------
 scan_perfect = dict(
                           AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
-                          DeltaR = np.arange(0.1, 2, 0.4),
+                          DeltaR = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1., 1.6],
                           Eigenspace = ['normalised', 'unnormalised'],
-                          PhyDistance = ['angular', 'taxicab'],
+                        AffinityType = ['exponent', 'exponent2']
                         )
-fix_perfect = dict( AffinityType = 'exponent2',
+fix_perfect = dict( 
+                        AffinityType = 'exponent2',
+                          PhyDistance = 'angular',
                           ExpofPTMultiplier = 0.,
                           Laplacien = 'perfect',
+                          NumEigenvectors = 2,
                          ExpofPTPosition = 'input',
                          EigDistance='euclidien',
-                          StoppingCondition = 'beamparticle')
+                          StoppingCondition = 'standard')
 # spectral full ------------------------
 scan_SpectralFull = dict(
                           ExpofPTMultiplier = [0.2, 0.1, 0.0, -1.],
