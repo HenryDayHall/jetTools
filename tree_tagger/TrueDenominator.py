@@ -19,29 +19,16 @@ def sort_overlap(visibles, roots, eventWise):
     momentums = np.vstack((eventWise.Px[roots], eventWise.Py[roots], eventWise.Rapidity[roots])).T
     all_visibles = sorted(set(visibles.flatten()))
     new_visibles = [[] for _ in roots]
-    all_angles = np.full((len(roots), len(all_visibles)), np.inf)
-    assigned = np.full(len(all_visibles), False)
     for i, vis in enumerate(all_visibles):
         in_showers = [n_s for n_s, shower in enumerate(visibles) if vis in shower]
         if len(in_showers) == 1:
             new_visibles[in_showers[0]].append(vis)
-            assigned[i] = True
             continue
         p = np.array([eventWise.Px[vis], eventWise.Py[vis], eventWise.Rapidity[vis]])
         abs_p = np.sqrt(np.sum(p**2))
         abs_m = np.sqrt(np.sum(momentums[in_showers]**2, axis=1))
         cos_angle = np.sum(p*momentums[in_showers], axis=1)/(abs_p*abs_m)
-        all_angles[in_showers, i] = cos_angle
-    while not np.all(assigned):
-        order = np.argsort([len(n) for n in new_visibles])
-        for shower_n in order:
-            angles = all_angles[shower_n]
-            if np.any(np.isfinite(angles)):
-                add_i = np.argmin(angles)
-                assigned[add_i] = True
-                all_angles[:, add_i] = np.inf
-                new_visibles[shower_n].append(all_visibles[add_i])
-                break
+        new_visibles[in_showers[np.argmax(cos_angle)]].append(vis)
     new_visibles = awkward.fromiter(new_visibles)
     assert len(set(new_visibles.flatten())) == len(new_visibles.flatten())
     assert len(all_visibles) == len(new_visibles.flatten())
