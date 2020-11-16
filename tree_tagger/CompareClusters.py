@@ -10,7 +10,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, FormShower, JetQuality, PlottingTools
+from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, JetQuality, PlottingTools
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -189,10 +189,10 @@ def add_bg_mass(eventWise):
         all_bg_mass[event_n] = np.sum(eventWise.Energy[bg])**2 - np.sum(eventWise.Px[bg])**2 -\
                                np.sum(eventWise.Py[bg])**2 - np.sum(eventWise.Pz[bg])**2
     all_bg_mass = np.sqrt(all_bg_mass)
-    eventWise.append(DetectableBG_Mass = awkward.fromiter(all_bg_mass))
+    eventWise.append(DetectableBG_Mass=awkward.fromiter(all_bg_mass))
 
 
-def per_event_detectables(eventWise, jet_name, jet_idxs):
+def per_event_detectables(eventWise, jet_name, jet_idxs, tag_dict):
     """
     
 
@@ -222,6 +222,10 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
     eventWise.selected_index = None
     tag_groups = eventWise.DetectableTag_Roots
     n_events = len(tag_groups)
+    if tag_dict is None:
+        tag_mass = getattr(eventWise, jet_name + "_TagMass")
+    else:
+        tag_mass = tag_dict.get(jet_name + "_TagMass")
     # we assume the tagger behaves perfectly
     # for all jets allocated to each tag group
     # calcualte total contained values
@@ -253,7 +257,6 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
         pz = eventWise.Pz
         source_idx = eventWise.JetInputs_SourceIdx
         parent_idxs = getattr(eventWise, jet_name + "_Parent")
-        tagmass = getattr(eventWise, jet_name + "_TagMass")
         tag_idxs = eventWise.BQuarkIdx
         matched_jets = [[] for _ in event_tags]
         for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_Tags")):
@@ -268,7 +271,7 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
                 # chose the tag with the greatest tagmass
                 # dimension 0 of tagmass is which jet
                 # dimension 1 of tagmass is which tag
-                tag_position = np.argmax(tagmass[jet_n])
+                tag_position = np.argmax(tag_mass[event_n][jet_n])
                 # this is the particle index of the tag with greatest massshare in the jet
                 tag_idx = tag_idxs[tag_position]
             # which group does the tag belong to
@@ -334,10 +337,10 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
     return to_return
 
 
-def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
+def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False, tag_dict=None):
     tag_mass2_in, all_mass2_in, bg_mass2_in, rapidity_in, phi_in, pt_in, mask,\
             _, _, _, percent_found, seperate_jets, \
-            = per_event_detectables(eventWise, jet_name, jet_idxs)
+            = per_event_detectables(eventWise, jet_name, jet_idxs, tag_dict)
     content = {}
     rapidity_distance = awkward.fromiter(rapidity_in) - eventWise.DetectableTag_Rapidity
     pt_distance = awkward.fromiter(pt_in) - eventWise.DetectableTag_PT
@@ -383,7 +386,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
     new_contents = {}
     names = FormJets.get_jet_names(eventWise)
     num_names = len(names)
-    save_interval = 10
+    save_interval = 20
     if end_time is None:
         end_time = duration + time.time()
     if "DetectableTag_Idx" not in eventWise.columns:
@@ -393,7 +396,15 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # check if we need to mass tag
         if name + "_Tags" not in eventWise.columns:
-            TrueTag.add_tags(eventWise, name, 0.8, np.inf)
+            hyper, content = TrueTag.add_tags(eventWise, name, 0.8, np.inf, append=False)
+            new_contents.update(content)
+            new_hyperparameters.update(hyper)
+        # check if we need to mass tag
+        if name + "_TagMass" not in eventWise.columns:
+            tag_content = TrueTag.add_mass_share(eventWise, name, batch_length=np.inf, append=False)
+            new_contents.update(tag_content)
+        else:
+            tag_content = None
         # pick up some content
         content_here = {}
         if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
@@ -413,10 +424,8 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             if not silent:
                 print("Adding scores")
             # now the mc truth based scores
-            if "DetectableTag_Idx" not in eventWise.columns:
-                TrueTag.add_mass_share(eventWise, name, batch_length=np.inf)
             jet_idxs = FormJets.filter_jets(eventWise, name)
-            content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
+            content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False, tag_dict=tag_content))
         # get the mask for seperate jets
         mask_name = name + "_SeperateMask"
         try:
