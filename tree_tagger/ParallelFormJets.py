@@ -422,7 +422,6 @@ scan_perfect = dict(
                         AffinityType = ['exponent', 'exponent2']
                         )
 fix_perfect = dict( 
-                        AffinityType = 'exponent2',
                           PhyDistance = 'angular',
                           ExpofPTMultiplier = 0.,
                           Laplacien = 'perfect',
@@ -430,6 +429,22 @@ fix_perfect = dict(
                          ExpofPTPosition = 'input',
                          EigDistance='euclidien',
                           StoppingCondition = 'standard')
+# sum ---------------------------------
+scan_sum = dict(
+                AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
+                DeltaR = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1., 1.6],
+                Eigenspace = ['normalised', 'unnormalised'],
+                Laplacien = ['unnormalised', 'symmetric', 'pt']
+                )
+fix_sum = dict( 
+                CombineSize='sum',
+               AffinityType = 'exponent',
+                 PhyDistance = 'angular',
+                 ExpofPTMultiplier = 0.,
+                 NumEigenvectors = 4,
+                ExpofPTPosition = 'input',
+                EigDistance='euclidien',
+                 StoppingCondition = 'standard')
 # spectral full ------------------------
 scan_SpectralFull = dict(
                           ExpofPTMultiplier = [0.2, 0.1, 0.0, -1.],
