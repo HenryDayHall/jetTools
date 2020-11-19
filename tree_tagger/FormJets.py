@@ -1577,7 +1577,14 @@ class Spectral(PseudoJet):
                              dtype=float)
             return es
         if self.Laplacien == 'symmetric':
-            return np.sum(self._affinity[:, indices], axis=0)
+            try:
+                return np.sum(self._affinity[:, indices], axis=0)
+            except IndexError as e:
+                if len(self._affinity.flatten()) == 0:
+                    return np.zeros(1)
+                text = f"jet_params = {self.jet_parameters}, affinity = {self._affinity}, indices = {indices}"
+                print(text)
+                raise e
         if self.Laplacien == 'perfect':
             try:
                 return self.eventWise.JetInputs_PerfectDenominator[indices]
@@ -4073,6 +4080,7 @@ if __name__ == '__main__':
                                    #AffinityCutoff=('distance', 1),
                                    AffinityCutoff=None,
                                    PhyDistance='angular')
+        spectral_jet_params = {'AffinityCutoff': None, 'DeltaR': 0.01, 'Laplacien': 'symmetric', 'Eigenspace': 'normalised', 'CombineSize': 'sum', 'AffinityType': 'exponent', 'PhyDistance': 'angular', 'ExpofPTMultiplier': 0.0, 'NumEigenvectors': 4, 'ExpofPTPosition': 'input', 'EigDistance': 'euclidien', 'StoppingCondition': 'standard', 'ExpofPTFormat': 'min'}
 
         #c_class = SpectralMean
         #check_hyperparameters(c_class, spectral_jet_params)
