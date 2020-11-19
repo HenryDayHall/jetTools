@@ -1233,6 +1233,7 @@ def add_rapidity(eventWise, base_name=None):
         prefix for inputs to calculation
         (Default value = '')
     """
+    eventWise.selected_index = None
     if base_name is None:
         # find all the things with an angular property
         pt_cols = [c[:-3] for c in eventWise.columns if c.endswith("PT")]
@@ -1279,6 +1280,7 @@ def add_thetas(eventWise, basename=None):
         if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
     """
+    eventWise.selected_index = None
     contents = {}
     if basename is None:
         # find all the things with an angular property
@@ -1338,6 +1340,7 @@ def add_pseudorapidity(eventWise, basename=None):
         if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
     """
+    eventWise.selected_index = None
     contents = {}
     if basename is None:
         # find all the things with theta
@@ -1488,6 +1491,7 @@ def add_PT(eventWise, basename=None):
         if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
     """
+    eventWise.selected_index = None
     contents = {}
     if basename is None:
         # find all the things with px, py
@@ -1520,6 +1524,7 @@ def add_phi(eventWise, basename=None):
         if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
     """
+    eventWise.selected_index = None
     contents = {}
     if basename is None:
         # find all the things with px, py
@@ -1552,6 +1557,7 @@ def add_mass(eventWise, basename=None):
         if None will calculate for all prefixes assocated with sutable inputs
         (Default value = None)
     """
+    eventWise.selected_index = None
     contents = {}
     if basename is None:
         # find all the things with e, px, py, pz

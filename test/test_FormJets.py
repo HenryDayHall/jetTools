@@ -69,31 +69,31 @@ class SimpleClusterSamples:
     unitless = True   # do we work with a unitless version of distance
     empty_inp = {'ints': np.array([]).reshape((-1, 5)), 'floats': np.array([]).reshape((-1, 8))}
     one_inp = {'ints': np.array([[0, -1, -1, -1, -1]]),
-               'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.]])}
+               'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0., 0.]])}
     two_degenerate = {'ints': np.array([[0, -1, -1, -1, -1],
                                         [1, -1, -1, -1, -1]]),
-                      'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                                          [1., 0., 0., 1., 1., 0., 0., 0.]])}
+                      'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0., 0.],
+                                          [1., 0., 0., 1., 1., 0., 0., 0., 1.]])}
     degenerate_join = {'ints': np.array([[0, 2, -1, -1, -1],
                                          [1, 2, -1, -1, -1],
                                          [2, -1, 0, 1, 0]]),
-                       'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                                           [1., 0., 0., 1., 1., 0., 0., 0.],
-                                           [2., 0., 0., 2., 2., 0., 0., 0.]])}
+                       'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0., 0.],
+                                           [1., 0., 0., 1., 1., 0., 0., 0., 1.],
+                                           [2., 0., 0., 2., 2., 0., 0., 0., 1.]])}
     two_close = {'ints': np.array([[0, -1, -1, -1, -1],
                                    [1, -1, -1, -1, -1]]),
-                 'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                                     [1., 0., 0.1, 1., np.cos(0.1), np.sin(0.1), 0., 0.]])}
+                 'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0., 1.],
+                                     [1., 0., 0.1, 1., np.cos(0.1), np.sin(0.1), 0., 0., 1.]])}
     close_join = {'ints': np.array([[0, 2, -1, -1, -1],
                                     [1, 2, -1, -1, -1],
                                     [2, -1, 0, 1, 0]]),
-                  'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                                      [1., 0., 0.1, 1., np.cos(0.1), np.sin(0.1), 0., 0.],
-                                      [2.*np.cos(0.05), 0., 0.05, 2., 1. + np.cos(0.1), np.sin(0.1), 0., 0.1]])}
+                  'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0., 1.],
+                                      [1., 0., 0.1, 1., np.cos(0.1), np.sin(0.1), 0., 0., 1.],
+                                      [2.*np.cos(0.05), 0., 0.05, 2., 1. + np.cos(0.1), np.sin(0.1), 0., 0.1, 2.]])}
     two_oposite = {'ints': np.array([[0, -1, -1, -1, -1],
                                      [1, -1, -1, -1, -1]]),
-                   'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0.],
-                                       [1., 0., np.pi, 1., -1., 0., 0., 0.]])}
+                   'floats': np.array([[1., 0., 0., 1., 1., 0., 0., 0., 0.],
+                                       [1., 0., np.pi, 1., -1., 0., 0., 0., 0.]])}
     @classmethod
     def get_invarient_mass(cls, inputs):
         invarient_mass = 1.
@@ -112,8 +112,8 @@ class SimpleClusterSamples:
         max_pi = 100.
         two = {'ints': np.array([[0, -1, -1, -1, -1],
                                  [1, -1, -1, -1, -1]]),
-               'floats': np.array([[0., 0., 0., 0., randoms[0]*max_pi, randoms[1]*max_pi, randoms[2]*max_pi, 0.],
-                                   [0., 0., 0., 0., randoms[3]*max_pi, randoms[4]*max_pi, randoms[5]*max_pi, 0.]])}
+               'floats': np.array([[0., 0., 0., 0., randoms[0]*max_pi, randoms[1]*max_pi, randoms[2]*max_pi, 0., 0.],
+                                   [0., 0., 0., 0., randoms[3]*max_pi, randoms[4]*max_pi, randoms[5]*max_pi, 0., 0.]])}
         cls.fill_angular(two['floats'][0])
         cls.fill_angular(two['floats'][1])
         return cls.outcome(config, two)
@@ -219,15 +219,19 @@ class SimpleClusterSamples:
         return order
 
     @classmethod
-    def match_ints_floats(cls, ints1, floats1, ints2, floats2, compare_distance=True, distance_modifier=1.):
+    def match_ints_floats(cls, ints1, floats1, ints2, floats2, compare_distance=True, compare_size=True, distance_modifier=1.):
         ints_order = cls.match_ints(ints1, ints2)
         floats1 = np.array(floats1)[ints_order]
         floats2 = np.array(floats2)
-        if not compare_distance:
-            floats1 = floats1[:, :-1]
-            floats2 = floats2[:, :-1]
-        else:
-            floats2[:, -1] *= distance_modifier
+        if compare_size:
+            tst.assert_allclose(floats1[:, -1], floats2[:, -1],
+                                atol=0.0005, err_msg="Sizes don't match")
+        if compare_distance:
+            floats2[:, -2] *= distance_modifier
+            tst.assert_allclose(floats1[:, -2], floats2[:, -2],
+                                atol=0.0005, err_msg="Distances don't match")
+        floats1 = floats1[:, :-2]
+        floats2 = floats2[:, :-2]
         tst.assert_allclose(floats1, floats2, atol=0.0005, err_msg="Floats don't match")
 
 
@@ -243,7 +247,7 @@ def set_JetInputs(eventWise, floats):
     eventWise.append(**contents)
 
 
-def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
+def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False, compare_size=False):
     # for the randomly places components, accept some error for floating point
     n_random_tries = 20
     n_acceptable_fails = 1
@@ -259,17 +263,19 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
         assert len(jets) == 0
         # one track should return one pseudojet
         one_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
-                                           ints = SimpleClusterSamples.one_inp['ints'],
-                                           floats = SimpleClusterSamples.one_inp['floats'])
+                                        ints=SimpleClusterSamples.one_inp['ints'],
+                                        floats=SimpleClusterSamples.one_inp['floats'])
         SimpleClusterSamples.match_ints_floats(one_pseudojet._ints, one_pseudojet._floats,
                                                SimpleClusterSamples.one_inp['ints'],
                                                SimpleClusterSamples.one_inp['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         jets = one_pseudojet.split()
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
                                                SimpleClusterSamples.one_inp['ints'],
                                                SimpleClusterSamples.one_inp['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         # two tracks degenerate should join
         two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
@@ -278,12 +284,14 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.degenerate_join['ints'],
                                                SimpleClusterSamples.degenerate_join['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         jets = two_pseudojet.split()
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
                                                SimpleClusterSamples.degenerate_join['ints'],
                                                SimpleClusterSamples.degenerate_join['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         # two tracks close together should join
         modifier = SimpleClusterSamples.get_invarient_mass(SimpleClusterSamples.two_close)**-(2*config['ExpofPTMultiplier'])
@@ -293,13 +301,16 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.close_join['ints'],
                                                SimpleClusterSamples.close_join['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance,
                                                distance_modifier=modifier)
+            
         jets = two_pseudojet.split()
         assert len(jets) == 1
         SimpleClusterSamples.match_ints_floats(jets[0]._ints, jets[0]._floats,
                                                SimpleClusterSamples.close_join['ints'],
                                                SimpleClusterSamples.close_join['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         # two tracks far apart should not join
         two_pseudojet = make_pseudojets(empty_ew, config['DeltaR'], config['ExpofPTMultiplier'],
@@ -308,6 +319,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
         SimpleClusterSamples.match_ints_floats(two_pseudojet._ints, two_pseudojet._floats,
                                                SimpleClusterSamples.two_oposite['ints'],
                                                SimpleClusterSamples.two_oposite['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         jets = two_pseudojet.split()
         assert len(jets) == 2
@@ -316,6 +328,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
         SimpleClusterSamples.match_ints_floats(regroup_ints, regroup_floats,
                                                SimpleClusterSamples.two_oposite['ints'],
                                                SimpleClusterSamples.two_oposite['floats'],
+                                               compare_size=compare_size,
                                                compare_distance=compare_distance)
         # split two tracks in phi
         phis = np.linspace(-np.pi, np.pi, 11)
@@ -329,6 +342,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
             if len(end_ints) == len(expected_end['ints']):
                 SimpleClusterSamples.match_ints_floats(pseudojets._ints, pseudojets._floats,
                                                        end_ints, end_floats,
+                                                       compare_size=compare_size,
                                                        compare_distance=compare_distance)
             else:
                 assert False, f"phi={phi} to 0. didn't behave as expected"
@@ -351,6 +365,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False):
             if len(end_ints) == len(expected_end['ints']):
                 SimpleClusterSamples.match_ints_floats(end_ints, end_floats,
                                                        expected_end['ints'], expected_end['floats'],
+                                                       compare_size=False,
                                                        compare_distance=False)
             else:
                 st()
@@ -416,6 +431,7 @@ def test_Traditional():
             expected_summaries = list(expected) + [pseudorapidity, theta]
             found_summaries = np.array([jet.PT, jet.Rapidity, jet.Phi, jet.Energy,
                                         jet.Px, jet.Py, jet.Pz, jet.JoinDistance,
+                                        jet.Size,
                                         jet.Pseudorapidity, jet.Theta])
             tst.assert_allclose(expected_summaries, found_summaries)
 
@@ -590,11 +606,16 @@ def internal_combine(jets, param_dict):
     combined_floats = np.sum(float_array, axis=0)
     SimpleClusterSamples.fill_angular(combined_floats, change_energy=False)
     distance2 = 1
-    combined_floats[-1] = distance2
+    combined_floats[jets._JoinDistance_col] = distance2
     combined_ints = [max(jets.InputIdx) + 1, -1, i0, i1, max(jets.Rank) + 1]
+
     found_ints, found_floats = jets._combine(i0, i1, distance2)
-    SimpleClusterSamples.match_ints_floats([combined_ints], [combined_floats],
-                                           [found_ints], [found_floats])
+    try:
+        SimpleClusterSamples.match_ints_floats([combined_ints], [combined_floats],
+                                               [found_ints], [found_floats], compare_size=False)
+    except:
+        st()
+        pass
 internal_combine.valid_one = False
 internal_combine.valid_zero = False
 
@@ -609,7 +630,7 @@ def test_Pseudojet_internal():
                    internal_combine)
     
 
-def test_calculate_roots():
+def test_set_roots():
     ints = np.zeros((4, 5), dtype=int)
     floats = np.zeros((4, 8))
     jets = make_simple_jets(floats, {}, FormJets.Spectral)
@@ -617,7 +638,7 @@ def test_calculate_roots():
     ints[:, jets._Parent_col] = (1, -1, 5, 1)
     jets._ints = ints.tolist()
     jets.currently_avalible = 0  # need to set to 0 in order to calculate roots
-    jets._calculate_roots()
+    jets._set_roots()
     tst.assert_allclose(jets.root_jetInputIdxs, [1, 2])
 
 
@@ -682,7 +703,9 @@ def test_local_obs_idx():
 
 def test_merge_complete_jet():
     n_rows = 8
-    floats = np.random.random((n_rows, 8))
+    floats = np.random.random((n_rows, 9))
+    # set the sizes to 1
+    floats[:, -1] = 1.
     for row in floats:
         SimpleClusterSamples.fill_angular(row)
     jets = make_simple_jets(floats, {}, FormJets.Traditional)
@@ -709,7 +732,7 @@ def test_merge_complete_jet():
 
 def test_remove_background():
     n_rows = 8
-    floats = np.random.random((n_rows, 8))
+    floats = np.random.random((n_rows, 9))
     for row in floats:
         SimpleClusterSamples.fill_angular(row)
     jets = make_simple_jets(floats, {}, FormJets.Traditional)
@@ -723,7 +746,7 @@ def test_remove_background():
     new_floats = np.array(jets._floats[:jets.currently_avalible])
     SimpleClusterSamples.match_ints_floats(ints[not_background], floats[not_background],
                                            new_ints, new_floats,
-                                           compare_distance=False)
+                                           compare_distance=False, compare_size=False)
     # check that the background was removed
     assert jets.currently_avalible == n_rows - len(background_idx)
     assert len(jets.root_jetInputIdxs) == len(background_idx)
@@ -741,7 +764,7 @@ def internal_recalculate_one(jets, param_dict):
     jets._floats += float_array.tolist()
     jets.currently_avalible = jets._get_currently_avalible()
     # calculate the distances
-    jets._calculate_distances()
+    jets._set_distances()
     start_distances = np.copy(jets._distances2)
     # now mess with one float rows
     change = 1
@@ -987,7 +1010,7 @@ def test_write_event():
 
 
 # TODO add test for removing correct eigenvector when there are seperated graph components
-def test_calculate_eigenspace_distances():
+def test_set_eigenspace_distances():
     for jet_class in [FormJets.Spectral, FormJets.Indicator]:
         n_rows = 4
         dr = 0.8
@@ -1076,9 +1099,11 @@ def test_calculate_eigenspace_distances():
 def test_merge_remove_pseudojets():
     n_rows = 4
     ints = np.zeros((n_rows, 5), dtype=int) -1
-    floats = np.random.random((n_rows, 8))
+    floats = np.random.random((n_rows, 9))
     # set distance to 0
-    floats[:, -1] = 0.
+    floats[:, -2] = 0.
+    # set size to 1
+    floats[:, -1] = 1.
     for row in floats:
         SimpleClusterSamples.fill_angular(row)
     jets = make_simple_jets(floats, {}, FormJets.Spectral)
@@ -1098,10 +1123,10 @@ def test_merge_remove_pseudojets():
     jets._merge_pseudojets(i0, i1, distance2)
     # it is expected that the lower index with contain the new jet
     SimpleClusterSamples.match_ints_floats([jets._ints[i0]], [jets._floats[i0]],
-                                           [new_ints], [new_floats])
+                                           [new_ints], [new_floats], compare_size=False)
     # the old ones should now be at the end
     SimpleClusterSamples.match_ints_floats(jets._ints[-2:], jets._floats[-2:],
-                                           ints[[i0,i1]], floats[[i0, i1]])
+                                           ints[[i0,i1]], floats[[i0, i1]], compare_size=False)
     assert len(jets) == len(ints) + 1
     # the recalculated eigenspace position is out of scope for this test
     # that will be tested in _combine
@@ -1120,7 +1145,7 @@ def test_merge_remove_pseudojets():
     tst.assert_allclose(old_eigenspace[3:], jets._eigenspace[2:])
 
 
-def internal_calculate_affinity(jets, param_dict):
+def internal_set_affinity(jets, param_dict):
     # not neded right now as no ties
     # this function does not deal with tie breaking
     # which is reansomable, since ties are artificial
@@ -1132,7 +1157,7 @@ def internal_calculate_affinity(jets, param_dict):
     #jets._floats = floats.tolist()
     ## then recalculate the distances
     #jets.currently_avalible = len(floats)
-    #jets._calculate_distances()
+    #jets._set_distances()
     # and procede with a comparison calculation
     distances2 = jets.physical_distance2(jets._floats, jets._floats)
     if len(distances2) < 1:
@@ -1181,8 +1206,8 @@ def internal_calculate_affinity(jets, param_dict):
     if np.inf in expected:  # fix internal approximations
         jets._affinity[jets._affinity > 10^100] = np.inf
     tst.assert_allclose(jets._affinity, expected, atol=0.0001, err_msg=f"Unexpected affinity for jets;\n{param_dict}\n Found distances\n {distances}")
-internal_calculate_affinity.valid_one = True
-internal_calculate_affinity.valid_zero = True
+internal_set_affinity.valid_one = True
+internal_set_affinity.valid_zero = True
 
 
 def test_step_assign_parents():
@@ -1226,10 +1251,10 @@ def test_Spectral_internal_linear():
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
                                      AffinityCutoff=affinity_cutoff)
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
     
 def test_Spectral_internal_exponent():
@@ -1240,10 +1265,10 @@ def test_Spectral_internal_exponent():
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
                                      AffinityCutoff=affinity_cutoff)
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
     
 def test_Spectral_internal_exponent2():
@@ -1254,10 +1279,10 @@ def test_Spectral_internal_exponent2():
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
                                      AffinityCutoff=affinity_cutoff)
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
     
 def test_Spectral_internal_inverse():
@@ -1268,10 +1293,10 @@ def test_Spectral_internal_inverse():
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
                                      AffinityCutoff=affinity_cutoff)
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
-        apply_internal(FormJets.Spectral, internal_calculate_affinity,
+        apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
     
 
@@ -1371,11 +1396,11 @@ def test_Indicator_step_assign_parents():
 
 # Splitting ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # TODO when this has stabalised make distance and eigenspace tests
-#def internal_Splitting_calculate_distances():
+#def internal_Splitting_set_distances():
 #    pass  # TODO
 
 
-#def internal_Splitting_calculate_eigenspace():
+#def internal_Splitting_set_eigenspace():
 #    pass  # TODO
 
 
@@ -1407,8 +1432,8 @@ def test_merge_complete_jets():
 
 #def test_Splitting_internal():
 #    apply_internal(FormJets.Splitting,
-#                   internal_Splitting_calculate_distances,
-#                   internal_Splitting_calculate_eigenspace,
+#                   internal_Splitting_set_distances,
+#                   internal_Splitting_set_eigenspace,
 #                   internal_Splitting_step_assign_parents)
 
 # SpectralMean ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1648,7 +1673,7 @@ def test_create_JetInputs():
     with TempTestDir("create_JetInputs") as dir_name:
         name = "test.awkd"
         columns = [name[len("Pseudojet_"):] for name in FormJets.PseudoJet.float_columns
-                   if "Distance" not in name]
+                   if "Distance" not in name and "Size" not in name]
         columns_unchanged = [c for c in columns]  # because the ew will change the columns list
         floats = SimpleClusterSamples.two_oposite['floats']
         contents = {name: awkward.fromiter([x]) for name, x in zip(columns, floats.T)}

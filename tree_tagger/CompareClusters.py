@@ -192,7 +192,7 @@ def add_bg_mass(eventWise):
     eventWise.append(DetectableBG_Mass=awkward.fromiter(all_bg_mass))
 
 
-def per_event_detectables(eventWise, jet_name, jet_idxs, tag_dict):
+def per_event_detectables(eventWise, jet_name, jet_idxs):
     """
     
 
@@ -222,10 +222,7 @@ def per_event_detectables(eventWise, jet_name, jet_idxs, tag_dict):
     eventWise.selected_index = None
     tag_groups = eventWise.DetectableTag_Roots
     n_events = len(tag_groups)
-    if tag_dict is None:
-        tag_mass = getattr(eventWise, jet_name + "_TagMass")
-    else:
-        tag_mass = tag_dict.get(jet_name + "_TagMass")
+    tag_mass = getattr(eventWise, jet_name + "_TagMass")
     # we assume the tagger behaves perfectly
     # for all jets allocated to each tag group
     # calcualte total contained values
@@ -337,10 +334,10 @@ def per_event_detectables(eventWise, jet_name, jet_idxs, tag_dict):
     return to_return
 
 
-def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False, tag_dict=None):
+def get_detectable_comparisons(eventWise, jet_name, jet_idxs, append=False):
     tag_mass2_in, all_mass2_in, bg_mass2_in, rapidity_in, phi_in, pt_in, mask,\
             _, _, _, percent_found, seperate_jets, \
-            = per_event_detectables(eventWise, jet_name, jet_idxs, tag_dict)
+            = per_event_detectables(eventWise, jet_name, jet_idxs)
     content = {}
     rapidity_distance = awkward.fromiter(rapidity_in) - eventWise.DetectableTag_Rapidity
     pt_distance = awkward.fromiter(pt_in) - eventWise.DetectableTag_PT
@@ -391,6 +388,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
         end_time = duration + time.time()
     if "DetectableTag_Idx" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise)
+    print("Initial loop for tagging")
     for i, name in enumerate(names):
         if not silent:
             print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
@@ -403,8 +401,25 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
         if name + "_TagMass" not in eventWise.columns:
             tag_content = TrueTag.add_mass_share(eventWise, name, batch_length=np.inf, append=False)
             new_contents.update(tag_content)
-        else:
-            tag_content = None
+        if not os.path.exists('continue') or time.time() > end_time:
+            eventWise.append_hyperparameters(**new_hyperparameters)
+            eventWise.append(**new_contents)
+            return
+        if (i+1)%save_interval == 0 and new_contents:
+            eventWise.append_hyperparameters(**new_hyperparameters)
+            eventWise.append(**new_contents)
+            new_hyperparameters = {}
+            new_contents = {}
+            # at each save interval also load the eventWise afresh
+            eventWise = Components.EventWise.from_file(eventWise_path)
+    eventWise.append_hyperparameters(**new_hyperparameters)
+    eventWise.append(**new_contents)
+    new_hyperparameters = {}
+    new_contents = {}
+    print("Scoring loop")
+    for i, name in enumerate(names):
+        if not silent:
+            print(f"\n{i/num_names:.1%}\t{name}\n" + " "*10, flush=True)
         # pick up some content
         content_here = {}
         if name + "_QualityWidth" not in eventWise.hyperparameter_columns or overwrite:
@@ -425,7 +440,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 print("Adding scores")
             # now the mc truth based scores
             jet_idxs = FormJets.filter_jets(eventWise, name)
-            content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False, tag_dict=tag_content))
+            content_here.update(get_detectable_comparisons(eventWise, name, jet_idxs, False))
         # get the mask for seperate jets
         mask_name = name + "_SeperateMask"
         try:
@@ -455,19 +470,17 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
                 new_averages[key.replace('_', '_SeperateAve')] = filtered_value
         new_contents.update(content_here)
         new_hyperparameters.update(new_averages)
-        if not os.path.exists('continue'):
+        if not os.path.exists('continue') or time.time() > end_time:
             eventWise.append_hyperparameters(**new_hyperparameters)
             eventWise.append(**new_contents)
             return
-        if (i+1)%save_interval == 0:
+        if (i+1)%save_interval == 0 and new_contents:
             eventWise.append_hyperparameters(**new_hyperparameters)
             eventWise.append(**new_contents)
             new_hyperparameters = {}
             new_contents = {}
             # at each save interval also load the eventWise afresh
             eventWise = Components.EventWise.from_file(eventWise_path)
-        if time.time() > end_time:
-            break
     eventWise.append_hyperparameters(**new_hyperparameters)
     eventWise.append(**new_contents)
 
