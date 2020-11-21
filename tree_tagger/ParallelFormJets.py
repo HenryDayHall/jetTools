@@ -417,17 +417,18 @@ def recombine_eventWise(eventWise_path):
 # perfect -----------------------------
 scan_perfect = dict(
                           AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
-                          DeltaR = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1., 1.6],
-                          Eigenspace = ['normalised', 'unnormalised'],
-                        AffinityType = ['exponent', 'exponent2']
+                          DeltaR = [0.2, 0.4, 0.6, 1.],
                         )
 fix_perfect = dict( 
+                          Eigenspace = 'normalised',
+                        AffinityType = 'exponent2',
                           PhyDistance = 'angular',
                           ExpofPTMultiplier = 0.,
                           Laplacien = 'perfect',
-                          NumEigenvectors = 2,
+                          NumEigenvectors = np.inf,
                          ExpofPTPosition = 'input',
                          EigDistance='euclidien',
+                         CombineSize='sum',
                           StoppingCondition = 'standard')
 # sum ---------------------------------
 scan_sum = dict(

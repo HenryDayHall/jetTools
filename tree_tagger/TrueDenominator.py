@@ -34,17 +34,37 @@ def sort_overlap(visibles, roots, eventWise):
     assert len(all_visibles) == len(new_visibles.flatten())
     return new_visibles
     
+
               
 def make_weights(visibles, eventWise):
     idx_order = eventWise.JetInputs_SourceIdx.tolist()
     weights = np.full_like(idx_order, np.nan, dtype=float)
+    all_indices = visibles.flatten().tolist()
     for shower in visibles:
         if len(shower) == 0:
             continue
-        weight = 1/len(shower)
+        total_mass = np.sqrt(max(0,
+                             np.sum(eventWise.Energy[shower])**2 -
+                             np.sum(eventWise.Px[shower])**2 -
+                             np.sum(eventWise.Py[shower])**2 -
+                             np.sum(eventWise.Pz[shower])**2))
+        shower_idxs = [idx_order.index(i) for i in shower]
+        if total_mass == 0:
+            weights[shower_idxs] = 1/len(shower_idxs)
+            continue
+        shower = list(shower)
         #print(f"{weight}; {shower}")
-        for i in shower:
-            weights[idx_order.index(i)] = weight
+        for i, idx in zip(shower, shower_idxs):
+            other_indices = [s for s in shower if s != i]
+            # prevent nan masses
+            mass = np.sqrt(max(0,
+                           np.sum(eventWise.Energy[other_indices])**2 -
+                           np.sum(eventWise.Px[other_indices])**2 -
+                           np.sum(eventWise.Py[other_indices])**2 -
+                           np.sum(eventWise.Pz[other_indices])**2))
+            weights[idx] = (total_mass - mass)/total_mass
+        # normalise the set
+        weights[shower_idxs] = weights[shower_idxs]/np.sum(weights[shower_idxs])
     assert not np.any(np.isnan(weights))
     return weights
 
@@ -95,7 +115,7 @@ def solution_to_jet(eventWise, idealised_jet_clusters=None, jet_name=None):
 
 
 if __name__ == '__main__':
-    path = InputTools.get_dir_name("Name eventWise file: ").strip()
+    path = InputTools.get_file_name("Name eventWise file: ", '.awkd').strip()
     if path:
         eventWise = Components.EventWise.from_file(path)
         append_solution_and_weights(eventWise)

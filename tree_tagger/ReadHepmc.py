@@ -9,32 +9,32 @@ import csv
 
 class Hepmc(Components.EventWise):
     """ """
+    self.event_information_cols = ["Event_n", "N_multi_particle_inter",
+                                   "Event_scale", "Alpha_QCD", "Alpha_QED",
+                                   "Signal_process_id", "Barcode_for_signal_process",
+                                   "N_vertices_in_event", "Barcode_beam_particle1",
+                                   "Barcode_beam_particle2", "Len_random_state_list",
+                                   "Random_state_ints", "Len_weight_list",
+                                   "Weight_list"]
+    self.weight_cols = ["N_weight_names",  # must == "len_weight_list"
+                        "Weight_names"]
+    self.units_cols = ["Momentum", "Length"]
+    self.cross_section_cols = ["Cross_section_pb", "Cross_section_error_pb"]
+    self.vertex_cols  = ["Vertex_barcode", "Id", "X", "Y", "Z", "Ctau",
+                         "N_orphans", "N_out", "N_vertex_weights"]
+    self.vertex_convertions  = [int, int, float, float, float, float,
+                                int, int, int]
+    # parents and children hold list indices
+    self.particle_cols = ["Particle_barcode", "MCPID", "Px", "Py", "Pz", "Energy", "Generated_mass",
+                          "Status_code", "Polarization_theta", "Polarization_phi",
+                          "End_vertex_barcode", "N_flow_codes", "Flow_codes", "Antiflow_codes",
+                          "Start_vertex_barcode",
+                          "Parents", "Children", "Is_root", "Is_leaf"]
+    self.particle_convertions = [int, int, float, float, float, float, float,
+                                 int, int, float,
+                                 int, int]  # cannot include the list of flow codes
+                                 # so do't include anythng after them
     def __init__(self, dir_name, save_name, start=0, stop=np.inf, **kwargs):
-        self.event_information_cols = ["Event_n", "N_multi_particle_inter",
-                                       "Event_scale", "Alpha_QCD", "Alpha_QED",
-                                       "Signal_process_id", "Barcode_for_signal_process",
-                                       "N_vertices_in_event", "Barcode_beam_particle1",
-                                       "Barcode_beam_particle2", "Len_random_state_list",
-                                       "Random_state_ints", "Len_weight_list",
-                                       "Weight_list"]
-        self.weight_cols = ["N_weight_names",  # must == "len_weight_list"
-                            "Weight_names"]
-        self.units_cols = ["Momentum", "Length"]
-        self.cross_section_cols = ["Cross_section_pb", "Cross_section_error_pb"]
-        self.vertex_cols  = ["Vertex_barcode", "Id", "X", "Y", "Z", "Ctau",
-                             "N_orphans", "N_out", "N_vertex_weights"]
-        self.vertex_convertions  = [int, int, float, float, float, float,
-                                    int, int, int]
-        # parents and children hold list indices
-        self.particle_cols = ["Particle_barcode", "MCPID", "Px", "Py", "Pz", "Energy", "Generated_mass",
-                              "Status_code", "Polarization_theta", "Polarization_phi",
-                              "End_vertex_barcode", "N_flow_codes", "Flow_codes", "Antiflow_codes",
-                              "Start_vertex_barcode",
-                              "Parents", "Children", "Is_root", "Is_leaf"]
-        self.particle_convertions = [int, int, float, float, float, float, float,
-                                     int, int, float,
-                                     int, int]  # cannot include the list of flow codes
-                                     # so do't include anythng after them
         expected_columns = self.event_information_cols + self.weight_cols + self.units_cols + \
                            self.cross_section_cols + self.vertex_cols + self.particle_cols
         if 'columns' in kwargs: 

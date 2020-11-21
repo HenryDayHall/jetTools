@@ -602,14 +602,21 @@ class PseudoJet:
             save_columns += float_columns
             save_columns += int_columns
             eventWise.selected_index = None
-            arrays = {name: list(getattr(eventWise, name, [])) for name in save_columns}
+            arrays = {name: getattr(eventWise, name, []) for name in save_columns}
+            for name in arrays:
+                if not isinstance(arrays[name], list):
+                    arrays[name] = arrays[name].tolist()
         # check there are enough event rows
         for name in arrays:
             while len(arrays[name]) <= event_index:
                 arrays[name].append([])
         for jet in pseudojets:
             assert jet.eventWise == pseudojets[0].eventWise
-            arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
+            try:
+                arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
+            except:
+                st()
+                arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
             for col_num, name in enumerate(jet.int_columns):

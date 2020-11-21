@@ -1,10 +1,12 @@
 """ a script to update all datasets in the top level of megaIgnore to acount ro recent changes from FormTreesRefactor branch """
 import os
+import awkward
 from tree_tagger import Components, FormJets
 # grab the datasets
+file_names = []
 dir_name = "megaIgnore/best_scans1"
-file_names = [os.path.join(dir_name, name) for name in os.listdir(dir_name) if name.endswith('.awkd')]
-#file_names = ["best.awkd"]
+for dir_name in ["megaIgnore/best_scans1", "megaIgnore", "megaIgnore/best_scans2", "megaIgnore/traditional", "megaIgnore/writeup1_scans", "megaIgnore/writeup2_scans"]:
+    file_names += [os.path.join(dir_name, name) for name in os.listdir(dir_name) if name.endswith('.awkd')]
 num_names = len(file_names)
 
 
@@ -44,11 +46,19 @@ for i, name in enumerate(file_names):
     #            new_hyper[name + "_AffinityType"] = 'unknown'
     #    except AttributeError:
     #        pass  # probably a traditional jet
+    #for name in FormJets.get_jet_names(eventWise):
+    #    if name + "_EigDistance" not in eventWise.hyperparameter_columns:
+    #        new_hyper[name + "_EigDistance"] = 'euclidien'
+    #if new_hyper:
+    #    eventWise.append_hyperparameters(**new_hyper)
+    new_content = {}
     for name in FormJets.get_jet_names(eventWise):
-        if name + "_EigDistance" not in eventWise.hyperparameter_columns:
-            new_hyper[name + "_EigDistance"] = 'euclidien'
-    if new_hyper:
-        eventWise.append_hyperparameters(**new_hyper)
+        if name + "_Size" not in eventWise.columns:
+            fake_size = awkward.fromiter([[[-1 for track in jet] for jet in event]
+                                          for event in getattr(eventWise, name + "_Energy")])
+            new_content[name + "_Size"] = fake_size
+    eventWise.append(**new_content)
+    
 
         
 
