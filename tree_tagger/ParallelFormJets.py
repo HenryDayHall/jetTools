@@ -417,7 +417,7 @@ def recombine_eventWise(eventWise_path):
 # perfect -----------------------------
 scan_perfect = dict(
                           AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
-                          DeltaR = [0.2, 0.4, 0.6, 1.],
+                          DeltaR = [1., 1.05, 1.1, 1.15, 1.2],
                         )
 fix_perfect = dict( 
                           Eigenspace = 'normalised',
