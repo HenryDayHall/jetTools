@@ -417,11 +417,11 @@ def recombine_eventWise(eventWise_path):
 # perfect -----------------------------
 scan_perfect = dict(
                           AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
-                          DeltaR = [1.5, 1.6, 1.8, 1.95],
+                          DeltaR = [1.2, 1.5, 1.8, 2., 2.5, 3.],
                         )
 fix_perfect = dict( 
                           Eigenspace = 'normalised',
-                        AffinityType = 'exponent2',
+                        AffinityType = 'exponent',
                           PhyDistance = 'angular',
                           ExpofPTMultiplier = 0.,
                           Laplacien = 'perfect',
