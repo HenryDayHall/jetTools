@@ -19,7 +19,6 @@ TRUTH_LINEWIDTH = 1.0
 TRUTH_SIZE = 25.
 JET_ALPHA = 0.5
 
-
 def knn(distances, num_neighbours):
     order = np.argsort(np.argsort(distances, axis=0), axis=0)
     neighbours = order <= num_neighbours
@@ -1564,8 +1563,8 @@ class Spectral(PseudoJet):
     @property
     def eigenvectors(self):
         eigenvectors = self._eigenspace
-        if self.Eigenspace == 'normed':
-            eigenvectors *= self.eigenvalues
+        if self.Eigenspace == 'normalised':
+            eigenvectors /= np.array(self.eigenvalues[-1])**2
         return eigenvectors
 
     def _calculate_size(self, indices=None):
@@ -1734,10 +1733,11 @@ class Spectral(PseudoJet):
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
-        if self.Eigenspace == 'normed':
-            self._eigenspace /= self.eigenvalues[-1]
+        if self.Eigenspace == 'normalised':
+            norm_factor = np.array(self.eigenvalues[-1])
+            self._eigenspace /= norm_factor
         # now treating the rows of this matrix as the new points get euclidien distances
-        self._distances2 = self.eigenspace_distance2(eigenvectors, eigenvectors, self._starting_position, self._starting_position)
+        self._distances2 = self.eigenspace_distance2(self._eigenspace, self._eigenspace, self._starting_position, self._starting_position)
         # if the clustering is not going to stop at 1 we must put something in the diagonal
         if self.beam_particle or self.conductance:  # in he case of a beam particle we stop the clustering when
             # our particle reaches the beam particle
@@ -2271,6 +2271,122 @@ class Spectral(PseudoJet):
         else:
             self._merge_pseudojets(row, column, self._distances2[row, column])
         return removed
+
+    def plt_assign_parents(self):
+        """
+        Join pseudojets until all avalible psseudojets are taken.
+        Also plot the process
+        """
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+
+        num_eigdims = min(6, self._NumEigenvectors)
+        fig, ax_arr = plt.subplots(1, 1+int(np.ceil(num_eigdims/2)))
+        plt.ion()
+        plt.show()
+        real_ax = ax_arr[0]
+        eig_ax = [(ax, 2*i, (2*i+1)%num_eigdims) for i, ax in enumerate(ax_arr[1:])]
+        
+        # set up some colours
+        cmap = matplotlib.cm.get_cmap('Spectral')
+        jet_colours = {i: cmap(x) for i, x in
+                       zip(self.InputIdx, np.linspace(0, 1, self.currently_avalible))}
+
+
+        # draw the real axis
+        colours_now = [jet_colours[i] for i  in self.InputIdx]
+        real_ax.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
+        size_multipler = 10/np.mean(self.Size)
+        real_ax.scatter(self.Rapidity, self.Phi, self.Size*size_multipler, c=colours_now)
+        real_ax.set_ylabel(r"$\phi$ - barrel angle")
+        if self.from_PseudoRapidity:
+            real_ax.set_xlabel(r"$\eta$ - pseudo rapidity")
+        else:
+            real_ax.set_xlabel(r"Rapidity")
+        real_ax.set_title("Real space")
+        fig.tight_layout()
+        real_ax.set_facecolor('gray')
+        # draw each eigen axis:
+        # check the mean distance
+        mean_distance = np.nanmean(np.sqrt(
+            self._distances2[np.tril_indices_from(self._distances2, -1)]))
+        existing_scatters = []
+        ax_limits = []
+        for ax, dim1, dim2 in eig_ax:
+            existing_scatters.append(
+                    ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
+                               self.Size*size_multipler,
+                               c=colours_now))
+            ax.set_xlabel(f"dim {dim1}")
+            ax.set_ylabel(f"dim {dim2}")
+            ax.axis('equal')
+            limits = [*ax.get_xlim(), *ax.get_ylim()]
+            limits[0] = min(limits[0], -5)
+            limits[2] = min(limits[2], -5)
+            limits[1] = max(limits[1], 5)
+            limits[3] = max(limits[3], 5)
+            ax_limits.append(limits)
+        ax.set_title(f"Num eigenvectors = {self.NumEigenvectors}")
+        eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
+        print(f"mean distance = {mean_distance:.2f}")
+        plt.pause(0.05)#
+        input("Press enter to start pseudojeting")
+        step = 0
+        previously_avalible = self.currently_avalible
+        while self.currently_avalible > 0:
+            print(f"step = {step}")
+            step += 1
+            self._step_assign_parents()
+            if previously_avalible > self.currently_avalible:
+                try:
+                    n_entries = len(self.Rapidity)
+                except TypeError:
+                    n_entries = 1
+                # some change
+                for i, c1, c2 in zip(self.InputIdx, self.Child1, self.Child2):
+                    if c1 > 0:
+                        # inherit the colour of the first child
+                        colour = jet_colours[c2]
+                        # maek the parent match
+                        jet_colours[i] = jet_colours[c1] = colour
+                        # fix the colour of the other sibiling
+                        for i in self.get_decendants(lastOnly=False, jetInputIdx=c2):
+                            jet_colours[i] = colour
+                for i, p in zip(self.InputIdx, self.Parent):
+                    jet_colours[p] = jet_colours[i]
+                colours_now = [jet_colours[i] for i  in self.InputIdx]
+                # draw over the real axis
+                real_ax.clear()
+                real_ax.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
+                real_ax.scatter(self.Rapidity, self.Phi, self.Size*size_multipler,
+                                c=colours_now[:n_entries])
+                # check the mean distance
+                mean_distance = np.nanmean(np.sqrt(
+                    self._distances2[np.tril_indices_from(self._distances2, -1)]))
+                # delete items in the eigenspace axis
+                for (ax, dim1, dim2), limits in zip(eig_ax, ax_limits):
+                    ax.clear()
+                    try:
+                        existing_scatters.append(
+                                ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
+                                    self.Size[:self.currently_avalible]*size_multipler,
+                                           c=colours_now[:self.currently_avalible]))
+                    except IndexError:
+                        pass
+                    ax.set_xlabel(f"dim {dim1}")
+                    ax.set_ylabel(f"dim {dim2}")
+                    limits[0] = min(limits[0], ax.get_xlim()[0])
+                    limits[1] = max(limits[1], ax.get_xlim()[1])
+                    limits[2] = min(limits[2], ax.get_ylim()[0])
+                    limits[3] = max(limits[3], ax.get_ylim()[1])
+                    ax.axis(limits)
+                eig_ax[-1][0].set_title(f"Num eigenvectors = {self.NumEigenvectors}")
+                eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
+                print(f"mean distance = {mean_distance:.2f}")
+                existing_scatters = []
+                plt.pause(1.)
+        plt.pause(10)
+
 
 
 class CheckpointsOnly(Spectral):
@@ -4076,42 +4192,22 @@ if __name__ == '__main__':
         spectral_jet_params = dict(ExpofPTMultiplier=0,
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
-                                   NumEigenvectors=7,
-                                   StoppingCondition='beamparticle',
+                                   NumEigenvectors=np.inf,
+                                   StoppingCondition='standard',
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
-                                   Laplacien='energy',
-                                   Eigenspace='normed',
-                                   AffinityType='exponent2',
-                                   #AffinityCutoff=('distance', 1),
+                                   Laplacien='perfect',
+                                   DeltaR=2.0,
+                                   Eigenspace='normalised',
+                                   AffinityType='exponent',
+                                   CombineSize='sum',
+                                   #AffinityCutoff=('distance', 4),
                                    AffinityCutoff=None,
                                    PhyDistance='angular')
-        spectral_jet_params = {'AffinityCutoff': None, 'DeltaR': 0.01, 'Laplacien': 'symmetric', 'Eigenspace': 'normalised', 'CombineSize': 'sum', 'AffinityType': 'exponent', 'PhyDistance': 'angular', 'ExpofPTMultiplier': 0.0, 'NumEigenvectors': 4, 'ExpofPTPosition': 'input', 'EigDistance': 'euclidien', 'StoppingCondition': 'standard', 'ExpofPTFormat': 'min'}
-
-        #c_class = SpectralMean
-        #check_hyperparameters(c_class, spectral_jet_params)
-        #cluster_multiapply(eventWise, c_class, spectral_jet_params, "TestJet", 10)
-        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-        jets.assign_parents()
-        #jets.plt_assign_parents()
-        plot_realspace(eventWise, event_num, list_jets=[fast_jet_params, spectral_jet_params], list_jet_classes=[Traditional, c_class])
-        plt.show()
-        #for event_num in range(30):
-        #    try:
-        #        eventWise.selected_index = event_num
-        #        jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-        #        jets.plt_assign_parents(save_prefix=f"evt{event_num}")
-        #        #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-        #        #jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=1, steps_required=1)
-        #        #jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
-        #        #jets.plt_assign_parents(save_prefix=f"evt{event_num}", eigenvector_num=2, steps_required=1)
-        #        plot_realspace(eventWise, event_num, fast_jet_params, spectral_jet_params, comparitor_class=c_class)
-        #        name = f"images/splitting/evt{event_num}_compCAp8.png"
-        #        plt.savefig(name)
-        #    except Exception as e:
-        #        print(f" problems in event {event_num}")
-        #        print(e)
-        #    plt.close('all')
-        #eigengrid(eventWise, event_num, fast_jet_params, spectral_jet_params, c_class)
-
+        checkpoint_hyper = {}
+        checkpoint_content = {}
+        for i in range(event_num):
+            jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
+            jets.plt_assign_parents()
+        #cluster_multiapply(eventWise, SpectralFull, spectral_jet_params, "TestJet", np.inf, checkpoint_hyper, checkpoint_content)

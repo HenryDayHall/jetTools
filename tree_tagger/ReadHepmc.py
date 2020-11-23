@@ -16,6 +16,13 @@ class Hepmc(Components.EventWise):
                                    "Barcode_beam_particle2", "Len_random_state_list",
                                    "Random_state_ints", "Len_weight_list",
                                    "Weight_list"]
+    self.event_information_conversions = [int, int,
+                                          float, float, float,
+                                          int, int,
+                                          int, int,
+                                          int, int,
+                                          int, int, 
+                                          int]
     self.weight_cols = ["N_weight_names",  # must == "len_weight_list"
                         "Weight_names"]
     self.units_cols = ["Momentum", "Length"]
@@ -290,36 +297,18 @@ class Hepmc(Components.EventWise):
         
         """
         assert event_line[0][0] == 'E'
+        multi_item_pairs = {"Random_state_ints": "Len_random_state_list",
+                            "Weight_list": "Len_weight_list"}
         i = 1
-        self.prepared_contents["Event_n"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["N_multi_particle_inter"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Event_scale"][event_n] = float(event_line[i])
-        i += 1
-        self.prepared_contents["Alpha_QCD"][event_n] = float(event_line[i])
-        i += 1
-        self.prepared_contents["Alpha_QED"][event_n] = float(event_line[i])
-        i += 1
-        self.prepared_contents["Signal_process_id"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Barcode_for_signal_process"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["N_vertices_in_event"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Barcode_beam_particle1"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Barcode_beam_particle2"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Len_random_state_list"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Random_state_ints"][event_n] = [float(x) for x in
-                       event_line[i:i+self.prepared_contents["Len_random_state_list"][-1]]]
-        i += self.prepared_contents["Len_random_state_list"][-1]
-        self.prepared_contents["Len_weight_list"][event_n] = int(event_line[i])
-        i += 1
-        self.prepared_contents["Weight_list"][event_n] = [float(x) for x in
-                       event_line[i:i+self.prepared_contents["Len_weight_list"][-1]]]
+        for name, convert in zip(self.event_information_cols, self.event_information_converters):
+            if name in multi_item_pairs:
+                num_items = self.prepared_contents[multi_item_pairs[name]][event_n]
+                items = [convert(event_line[i + n]) for n in range(num_items)]
+                i += num_items
+                self.prepared_contents[name][event_n] = items
+            else:
+                self.prepared_contents[name][event_n] = convert(event_line[i])
+                i += 1
 
     def _process_header_line(self, event_n, header_line):
         """
