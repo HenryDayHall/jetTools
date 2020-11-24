@@ -2275,6 +2275,13 @@ class Spectral(PseudoJet):
         removed : int
             index of the pseudojet that is now at the back
         """
+        mean_distance = np.nanmean(np.sqrt(
+            self._distances2[np.tril_indices_from(self._distances2, -1)]))
+        if mean_distance > self.DeltaR:  # remove everything
+            while self.currently_avalible:
+                self._remove_pseudojet(0)
+            return 0
+        np.fill_diagonal(self._distances2, np.inf)
         beam_index = self.currently_avalible
         # now find the smallest distance
         row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
@@ -2444,7 +2451,6 @@ class Spectral(PseudoJet):
                 existing_scatters = []
                 plt.pause(0.01)
         input("Press enter to continue")
-
 
 
 class CheckpointsOnly(Spectral):
@@ -4252,7 +4258,7 @@ if __name__ == '__main__':
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
                                    Laplacien='symmetric',
-                                   DeltaR=2.,
+                                   DeltaR=1.3,
                                    Eigenspace='normalised',
                                    AffinityType='exponent',
                                    CombineSize='sum',

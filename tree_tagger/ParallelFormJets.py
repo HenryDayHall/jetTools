@@ -414,6 +414,22 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
+# hacky ------------------------
+scan_hacky = dict(
+                 DeltaR=[1.2, 1.25, 1.3, 1.35, 1.4],
+                 AffinityType=['exponent', 'exponent2'],
+                 AffinityCutoff=[None, ('distance', 3.), ('distance', 3.5)],
+                 )
+fix_hacky = dict(ExpofPTMultiplier=0,
+                 ExpofPTPosition='input',
+                 ExpofPTFormat='Luclus',
+                 NumEigenvectors=np.inf,
+                 StoppingCondition='standard',
+                 Laplacien='symmetric',
+                 Eigenspace='normalised',
+                 CombineSize='sum',
+                 EigDistance='abscos',
+                 PhyDistance='angular')
 # perfect -----------------------------
 scan_perfect = dict(
                           AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
