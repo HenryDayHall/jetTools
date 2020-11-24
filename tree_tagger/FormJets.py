@@ -1560,6 +1560,7 @@ class Spectral(PseudoJet):
     def eigenvectors(self):
         eigenvectors = self._eigenspace
         if self.Eigenspace == 'normalised':
+            norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**0.5
             eigenvectors /= np.array(self.eigenvalues[-1])**0.5
         return eigenvectors
 
@@ -1730,7 +1731,7 @@ class Spectral(PseudoJet):
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
         if self.Eigenspace == 'normalised':
-            norm_factor = np.array(self.eigenvalues[-1])**0.5
+            norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**0.5
             self._eigenspace /= norm_factor
         # now treating the rows of this matrix as the new points get euclidien distances
         self._distances2 = self.eigenspace_distance2(self._eigenspace, self._eigenspace, self._starting_position, self._starting_position)
@@ -2275,13 +2276,16 @@ class Spectral(PseudoJet):
         removed : int
             index of the pseudojet that is now at the back
         """
-        mean_distance = np.nanmean(np.sqrt(
-            self._distances2[np.tril_indices_from(self._distances2, -1)]))
-        if mean_distance > self.DeltaR:  # remove everything
-            while self.currently_avalible:
-                self._remove_pseudojet(0)
-            return 0
+        # hack ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        mean_distance = self._distances2[np.tril_indices_from(self._distances2, -1)]
+        if len(mean_distance):
+            mean_distance = np.nanmean(np.sqrt(mean_distance))
+            if mean_distance > self.DeltaR:  # remove everything
+                while self.currently_avalible:
+                    self._remove_pseudojet(0)
+                return 0
         np.fill_diagonal(self._distances2, np.inf)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`
         beam_index = self.currently_avalible
         # now find the smallest distance
         row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
