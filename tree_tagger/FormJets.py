@@ -611,11 +611,7 @@ class PseudoJet:
                 arrays[name].append([])
         for jet in pseudojets:
             assert jet.eventWise == pseudojets[0].eventWise
-            try:
-                arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
-            except:
-                st()
-                arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
+            arrays[jet_name + "_RootInputIdx"][event_index].append(awkward.fromiter(jet.root_jetInputIdxs))
             # if an array is deep it needs converting to an awkward array
             ints = awkward.fromiter(jet._ints)
             for col_num, name in enumerate(jet.int_columns):
@@ -1497,7 +1493,7 @@ class Spectral(PseudoJet):
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'Eigenspace': ['unnormalised', 'normalised'],
-                       'EigDistance': ['euclidien', 'spherical'],
+                       'EigDistance': ['euclidien', 'spherical', 'abscos'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'StoppingCondition': ['standard', 'beamparticle', 'conductance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -1564,7 +1560,7 @@ class Spectral(PseudoJet):
     def eigenvectors(self):
         eigenvectors = self._eigenspace
         if self.Eigenspace == 'normalised':
-            eigenvectors /= np.array(self.eigenvalues[-1])**2
+            eigenvectors /= np.array(self.eigenvalues[-1])**0.5
         return eigenvectors
 
     def _calculate_size(self, indices=None):
@@ -1734,7 +1730,7 @@ class Spectral(PseudoJet):
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
         if self.Eigenspace == 'normalised':
-            norm_factor = np.array(self.eigenvalues[-1])
+            norm_factor = np.array(self.eigenvalues[-1])**0.5
             self._eigenspace /= norm_factor
         # now treating the rows of this matrix as the new points get euclidien distances
         self._distances2 = self.eigenspace_distance2(self._eigenspace, self._eigenspace, self._starting_position, self._starting_position)
@@ -2055,6 +2051,45 @@ class Spectral(PseudoJet):
                 if flat:
                     distance2 = distance2.flatten()
                 return distance2
+        elif self.EigDistance == 'abscos':
+            def eigenspace_distance2(position_a, position_b, row_a, row_b):
+                """
+                Calculate the eigenspace distance between 2 particles.
+
+                Parameters
+                ----------
+                position_a : list of floats
+                    position of particle in eigenspace
+                position_b : list of floats
+                    position of particle in eigenspace
+                row_a : list of floats
+                    data about particle, in the order specified by the column attributes
+                row_b : list of floats
+                    data about particle, in the order specified by the column attributes
+
+                Returns
+                -------
+                : float
+                    the distance squared between the two particles
+
+                """
+                if len(position_a)*len(position_b) == 0:
+                    return np.empty((len(position_b), len(position_a)))
+                flat = position_b.ndim == 1
+                if flat:
+                    position_b = np.atleast_2d(position_b)  # sometimes position be is 1 point
+                # if this is failing try making position_a 2d like above
+                distance2 = np.abs(scipy.spatial.distance.cdist(position_a, position_b,
+                                                                metric='cosine'))
+
+                distance2 = np.arccos(1-distance2)
+                if exponent_now:
+                    row_a = np.array(row_a)
+                    row_b = np.array(row_b)
+                    distance2 *= self.PT_factor(row_a[..., [pt_col]], row_b[..., [pt_col]].T)
+                if flat:
+                    distance2 = distance2.flatten()
+                return distance2
         elif self.EigDistance == 'spherical':
             def eigenspace_distance2(position_a, position_b, row_a, row_b):
                 """
@@ -2277,26 +2312,45 @@ class Spectral(PseudoJet):
         Join pseudojets until all avalible psseudojets are taken.
         Also plot the process
         """
+        # if there is an existing plot, close it
+        plt.close()
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
 
         num_eigdims = min(6, self._NumEigenvectors)
-        fig, ax_arr = plt.subplots(1, 1+int(np.ceil(num_eigdims/2)))
+        fig, ax_arr = plt.subplots(1, 2+int(np.ceil(num_eigdims/2)))
         plt.ion()
         plt.show()
         real_ax = ax_arr[0]
-        eig_ax = [(ax, 2*i, (2*i+1)%num_eigdims) for i, ax in enumerate(ax_arr[1:])]
+        eig_ax = [(ax, 2*i, (2*i+1)%num_eigdims) for i, ax in enumerate(ax_arr[1:-1])]
+        truth_ax = ax_arr[-1]
+
+        # plot the truth
+        solution = self.eventWise.Solution
+        source = self.eventWise.JetInputs_SourceIdx
+        truth = np.fromiter((next(j for j, jet in enumerate(solution) if i in jet)
+                             for i in source), dtype=int)
+        truth_order = np.argsort(truth)
+        size_multipler = 8/np.mean(self.Size)
+        truth_ax.scatter(self.Rapidity, self.Phi, self.Size*size_multipler,
+                         c=truth, cmap='gist_rainbow')
+        truth_ax.set_ylabel(r"$\phi$ - barrel angle")
+        if self.from_PseudoRapidity:
+            truth_ax.set_xlabel(r"$\eta$ - pseudo rapidity")
+        else:
+            truth_ax.set_xlabel(r"Rapidity")
+        truth_ax.set_title("Ideal allocation")
+        truth_ax.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
         
         # set up some colours
-        cmap = matplotlib.cm.get_cmap('Spectral')
+        cmap = matplotlib.cm.get_cmap('gist_rainbow')
         jet_colours = {i: cmap(x) for i, x in
-                       zip(self.InputIdx, np.linspace(0, 1, self.currently_avalible))}
+                       zip(self.InputIdx[truth_order], np.linspace(0, 1, self.currently_avalible))}
 
 
         # draw the real axis
         colours_now = [jet_colours[i] for i  in self.InputIdx]
         real_ax.axis([-5, 5, -np.pi-0.5, np.pi+0.5])
-        size_multipler = 10/np.mean(self.Size)
         real_ax.scatter(self.Rapidity, self.Phi, self.Size*size_multipler, c=colours_now)
         real_ax.set_ylabel(r"$\phi$ - barrel angle")
         if self.from_PseudoRapidity:
@@ -2304,6 +2358,8 @@ class Spectral(PseudoJet):
         else:
             real_ax.set_xlabel(r"Rapidity")
         real_ax.set_title("Real space")
+        # reshape the figure
+        fig.set_size_inches(18, 5)
         fig.tight_layout()
         real_ax.set_facecolor('gray')
         # draw each eigen axis:
@@ -2321,10 +2377,10 @@ class Spectral(PseudoJet):
             ax.set_ylabel(f"dim {dim2}")
             ax.axis('equal')
             limits = [*ax.get_xlim(), *ax.get_ylim()]
-            limits[0] = min(limits[0], -5)
-            limits[2] = min(limits[2], -5)
-            limits[1] = max(limits[1], 5)
-            limits[3] = max(limits[3], 5)
+            limits[0] = min(limits[0], -1)
+            limits[2] = min(limits[2], -1)
+            limits[1] = max(limits[1], 1)
+            limits[3] = max(limits[3], 1)
             ax_limits.append(limits)
         ax.set_title(f"Num eigenvectors = {self.NumEigenvectors}")
         eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
@@ -2337,6 +2393,8 @@ class Spectral(PseudoJet):
             print(f"step = {step}")
             step += 1
             self._step_assign_parents()
+            if step % 3 == 0:
+                input()
             if previously_avalible > self.currently_avalible:
                 try:
                     n_entries = len(self.Rapidity)
@@ -2384,8 +2442,8 @@ class Spectral(PseudoJet):
                 eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
                 print(f"mean distance = {mean_distance:.2f}")
                 existing_scatters = []
-                plt.pause(1.)
-        plt.pause(10)
+                plt.pause(0.01)
+        input("Press enter to continue")
 
 
 
@@ -3890,11 +3948,7 @@ def plot_tags(eventWise, b_decendants=True, ax=None, detectables=True):
     assert eventWise.selected_index is not None
     if ax is None:
         ax = plt.gca()
-    try:
-        tag_phis = eventWise.Phi[eventWise.TagIndex]
-    except:
-        st()
-        tag_phis = eventWise.Phi[eventWise.TagIndex]
+    tag_phis = eventWise.Phi[eventWise.TagIndex]
     tag_rapidity = eventWise.Rapidity[eventWise.TagIndex]
     ax.scatter(tag_rapidity, tag_phis, marker='d', c=TRUTH_COLOUR)
     if detectables:
@@ -4197,17 +4251,20 @@ if __name__ == '__main__':
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
-                                   Laplacien='perfect',
-                                   DeltaR=2.0,
+                                   Laplacien='symmetric',
+                                   DeltaR=2.,
                                    Eigenspace='normalised',
                                    AffinityType='exponent',
                                    CombineSize='sum',
-                                   #AffinityCutoff=('distance', 4),
-                                   AffinityCutoff=None,
+                                   AffinityCutoff=('distance', 3.5),
+                                   EigDistance='abscos',
+                                   #AffinityCutoff=None,
                                    PhyDistance='angular')
         checkpoint_hyper = {}
         checkpoint_content = {}
         for i in range(event_num):
+            eventWise.selected_index = i
             jets = c_class(eventWise, assign=False, dict_jet_params=spectral_jet_params)
             jets.plt_assign_parents()
-        #cluster_multiapply(eventWise, SpectralFull, spectral_jet_params, "TestJet", np.inf, checkpoint_hyper, checkpoint_content)
+        #cluster_multiapply(eventWise, SpectralFull, spectral_jet_params, "TestJet", np.inf, checkpoint_hyper=checkpoint_hyper, checkpoint_content=checkpoint_content)
+        #eventWise.append(**checkpoint_content)
