@@ -1480,8 +1480,10 @@ class Spectral(PseudoJet):
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent', 'AffinityCutoff': None,
                       'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
+                      'EigNormFactor': 0.5,
                       'CombineSize': 'recalculate',
                       'PhyDistance': 'angular', 'EigDistance': 'euclidien',
+                      'Sigma': 1.,
                       'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
@@ -1493,9 +1495,11 @@ class Spectral(PseudoJet):
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'Eigenspace': ['unnormalised', 'normalised'],
+                       'EigNormFactor': Constants.numeric_classes['rn'],
                        'EigDistance': ['euclidien', 'spherical', 'abscos'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'StoppingCondition': ['standard', 'beamparticle', 'conductance']}
+                       'Sigma': Constants.numeric_classes['rn'],
+                       'StoppingCondition': ['standard', 'beamparticle', 'conductance', 'meandistance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
         Class constructor
@@ -1560,7 +1564,7 @@ class Spectral(PseudoJet):
     def eigenvectors(self):
         eigenvectors = self._eigenspace
         if self.Eigenspace == 'normalised':
-            norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**0.5
+            norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**self.EigNormFactor
             eigenvectors /= np.array(self.eigenvalues[-1])**0.5
         return eigenvectors
 
@@ -1731,7 +1735,7 @@ class Spectral(PseudoJet):
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
         if self.Eigenspace == 'normalised':
-            norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**0.5
+            norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**self.EigNormFactor
             self._eigenspace /= norm_factor
         # now treating the rows of this matrix as the new points get euclidien distances
         self._distances2 = self.eigenspace_distance2(self._eigenspace, self._eigenspace, self._starting_position, self._starting_position)
@@ -1746,6 +1750,7 @@ class Spectral(PseudoJet):
 
     def _define_calculate_affinity(self):
         """ Define functions to caluclate affinity from real distance """
+        sigma = self.Sigma
         if self.AffinityCutoff is not None:
             cutoff_type = self.AffinityCutoff[0]
             cutoff_param = self.AffinityCutoff[1]
@@ -1769,7 +1774,7 @@ class Spectral(PseudoJet):
                             the affinities
 
                         """
-                        affinity = np.exp(-(distances2**0.5))
+                        affinity = np.exp(-(distances2**0.5/sigma))
                         affinity[~knn(distances2, cutoff_param)] = 0
                         return affinity
                 elif self.AffinityType == 'exponent2':
@@ -1788,7 +1793,7 @@ class Spectral(PseudoJet):
                             the affinities
 
                         """
-                        affinity = np.exp(-(distances2))
+                        affinity = np.exp(-distances2/sigma)
                         affinity[~knn(distances2, cutoff_param)] = 0
                         return affinity
                 elif self.AffinityType == 'linear':  # this actually makes for relative distances
@@ -1854,7 +1859,7 @@ class Spectral(PseudoJet):
                             the affinities
 
                         """
-                        affinity = np.exp(-(distances2**0.5))
+                        affinity = np.exp(-(distances2**0.5)/sigma)
                         affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 elif self.AffinityType == 'exponent2':
@@ -1873,7 +1878,7 @@ class Spectral(PseudoJet):
                             the affinities
 
                         """
-                        affinity = np.exp(-(distances2))
+                        affinity = np.exp(-distances2/sigma)
                         affinity[distances2 > cutoff_param2] = 0
                         return affinity
                 elif self.AffinityType == 'linear':
@@ -1940,7 +1945,7 @@ class Spectral(PseudoJet):
                         the affinities
 
                     """
-                    affinity = np.exp(-(distances2**0.5))
+                    affinity = np.exp(-(distances2**0.5)/sigma)
                     return affinity
             elif self.AffinityType == 'exponent2':
                 def calculate_affinity(distances2):
@@ -1958,7 +1963,7 @@ class Spectral(PseudoJet):
                         the affinities
 
                     """
-                    affinity = np.exp(-(distances2))
+                    affinity = np.exp(-distances2/sigma)
                     return affinity
             elif self.AffinityType == 'linear':
                 def calculate_affinity(distances2):
@@ -2081,7 +2086,7 @@ class Spectral(PseudoJet):
                     position_b = np.atleast_2d(position_b)  # sometimes position be is 1 point
                 # if this is failing try making position_a 2d like above
                 distance2 = np.abs(scipy.spatial.distance.cdist(position_a, position_b,
-                                                                metric='cosine'))
+                                                                metric='cosine')) # arcos(abs(cosine(x)))
 
                 distance2 = np.arccos(1-distance2)
                 if exponent_now:
@@ -2276,16 +2281,15 @@ class Spectral(PseudoJet):
         removed : int
             index of the pseudojet that is now at the back
         """
-        # hack ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        mean_distance = self._distances2[np.tril_indices_from(self._distances2, -1)]
-        if len(mean_distance):
-            mean_distance = np.nanmean(np.sqrt(mean_distance))
-            if mean_distance > self.DeltaR:  # remove everything
-                while self.currently_avalible:
-                    self._remove_pseudojet(0)
-                return 0
-        np.fill_diagonal(self._distances2, np.inf)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`
+        if self.StoppingCondition == 'meandistance':
+            mean_distance = self._distances2[np.tril_indices_from(self._distances2, -1)]
+            if len(mean_distance):
+                mean_distance = np.nanmean(np.sqrt(mean_distance))
+                if mean_distance > self.DeltaR:  # remove everything
+                    while self.currently_avalible:
+                        self._remove_pseudojet(0)
+                    return 0
+            np.fill_diagonal(self._distances2, np.inf)
         beam_index = self.currently_avalible
         # now find the smallest distance
         row, column = np.unravel_index(np.argmin(self._distances2), self._distances2.shape)
@@ -4257,16 +4261,18 @@ if __name__ == '__main__':
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
                                    NumEigenvectors=np.inf,
-                                   StoppingCondition='standard',
+                                   StoppingCondition='meandistance',
+                                   EigNormFactor=0.5,
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
-                                   Laplacien='symmetric',
+                                   Laplacien='pt',
                                    DeltaR=1.3,
                                    Eigenspace='normalised',
                                    AffinityType='exponent',
+                                   Sigma=.6,
                                    CombineSize='sum',
-                                   AffinityCutoff=('distance', 3.5),
+                                   AffinityCutoff=('distance', 3.),
                                    EigDistance='abscos',
                                    #AffinityCutoff=None,
                                    PhyDistance='angular')

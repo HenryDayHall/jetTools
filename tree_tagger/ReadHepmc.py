@@ -4,46 +4,46 @@ import os
 import collections
 from tree_tagger import Components, InputTools
 import csv
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 
 
 class Hepmc(Components.EventWise):
     """ """
-    self.event_information_cols = ["Event_n", "N_multi_particle_inter",
-                                   "Event_scale", "Alpha_QCD", "Alpha_QED",
-                                   "Signal_process_id", "Barcode_for_signal_process",
-                                   "N_vertices_in_event", "Barcode_beam_particle1",
-                                   "Barcode_beam_particle2", "Len_random_state_list",
-                                   "Random_state_ints", "Len_weight_list",
-                                   "Weight_list"]
-    self.event_information_conversions = [int, int,
-                                          float, float, float,
-                                          int, int,
-                                          int, int,
-                                          int, int,
-                                          int, int, 
-                                          int]
-    self.weight_cols = ["N_weight_names",  # must == "len_weight_list"
-                        "Weight_names"]
-    self.units_cols = ["Momentum", "Length"]
-    self.cross_section_cols = ["Cross_section_pb", "Cross_section_error_pb"]
-    self.vertex_cols  = ["Vertex_barcode", "Id", "X", "Y", "Z", "Ctau",
-                         "N_orphans", "N_out", "N_vertex_weights"]
-    self.vertex_convertions  = [int, int, float, float, float, float,
-                                int, int, int]
+    event_information_cols = ["Event_n", "N_multi_particle_inter",
+                              "Event_scale", "Alpha_QCD", "Alpha_QED",
+                              "Signal_process_id", "Barcode_for_signal_process",
+                              "N_vertices_in_event", "Barcode_beam_particle1",
+                              "Barcode_beam_particle2", "Len_random_state_list",
+                              "Random_state_ints", "Len_weight_list",
+                              "Weight_list"]
+    event_information_conversions = [int, int,
+                                     float, float, float,
+                                     int, int,
+                                     int, int,
+                                     int, int,
+                                     int, int, 
+                                     float]
+    weight_cols = ["N_weight_names",  # must == "len_weight_list"
+                   "Weight_names"]
+    units_cols = ["Momentum", "Length"]
+    cross_section_cols = ["Cross_section_pb", "Cross_section_error_pb"]
+    vertex_cols  = ["Vertex_barcode", "Id", "X", "Y", "Z", "Ctau",
+                    "N_orphans", "N_out", "N_vertex_weights"]
+    vertex_convertions  = [int, int, float, float, float, float,
+                           int, int, int]
     # parents and children hold list indices
-    self.particle_cols = ["Particle_barcode", "MCPID", "Px", "Py", "Pz", "Energy", "Generated_mass",
-                          "Status_code", "Polarization_theta", "Polarization_phi",
-                          "End_vertex_barcode", "N_flow_codes", "Flow_codes", "Antiflow_codes",
-                          "Start_vertex_barcode",
-                          "Parents", "Children", "Is_root", "Is_leaf"]
-    self.particle_convertions = [int, int, float, float, float, float, float,
-                                 int, int, float,
-                                 int, int]  # cannot include the list of flow codes
-                                 # so do't include anythng after them
+    particle_cols = ["Particle_barcode", "MCPID", "Px", "Py", "Pz", "Energy", "Generated_mass",
+                     "Status_code", "Polarization_theta", "Polarization_phi",
+                     "End_vertex_barcode", "N_flow_codes", "Flow_codes", "Antiflow_codes",
+                     "Start_vertex_barcode",
+                     "Parents", "Children", "Is_root", "Is_leaf"]
+    particle_convertions = [int, int, float, float, float, float, float,
+                            int, float, float,
+                            int, int, int, int]  # cannot include the list of flow codes
+                            # so do't include anythng after them
     def __init__(self, dir_name, save_name, start=0, stop=np.inf, **kwargs):
-        expected_columns = self.event_information_cols + self.weight_cols + self.units_cols + \
-                           self.cross_section_cols + self.vertex_cols + self.particle_cols
+        expected_columns = Hepmc.event_information_cols + Hepmc.weight_cols + Hepmc.units_cols + \
+                           Hepmc.cross_section_cols + Hepmc.vertex_cols + Hepmc.particle_cols
         if 'columns' in kwargs: 
             assert kwargs['columns'] == expected_columns, f'Expected; {expected_columns},'+\
                                                           f' in input; {kwargs["columns"]}'
@@ -217,7 +217,7 @@ class Hepmc(Components.EventWise):
         
         """
         # start by adding default entries, incase anythign dosn't get content
-        add_row = self.particle_cols + self.vertex_cols
+        add_row = Hepmc.particle_cols + Hepmc.vertex_cols
         for name in add_row:
             table = self.prepared_contents[name]
             table.append([])
@@ -249,16 +249,16 @@ class Hepmc(Components.EventWise):
         # then add an new row for the particles and vertices
         assert next_line[0] == 'V'
         # get indices ahead of time
-        vertex_indices = {name: i+1 for i, name in enumerate(self.vertex_cols)} 
-        vertex_barcode_index = self.vertex_cols.index("Vertex_barcode") + 1
-        particle_indices = {name: i+1 for i, name in enumerate(self.particle_cols)
+        vertex_indices = {name: i+1 for i, name in enumerate(Hepmc.vertex_cols)} 
+        vertex_barcode_index = Hepmc.vertex_cols.index("Vertex_barcode") + 1
+        particle_indices = {name: i+1 for i, name in enumerate(Hepmc.particle_cols)
                             if name not in ["Flow_codes", "Antiflow_codes", "Start_vertex_barcode"]  # these are exceptional
                             and name not in ["Parents", "Children", "Is_root", "Is_leaf"]}  # and these will be determined later
-        n_flow_index = self.particle_cols.index("N_flow_codes") + 1
-        first_flow_index = self.particle_cols.index("Flow_codes") + 1
+        n_flow_index = Hepmc.particle_cols.index("N_flow_codes") + 1
+        first_flow_index = Hepmc.particle_cols.index("Flow_codes") + 1
         # for speed reason avpid function calls
         last_vertex_barcode = int(next_line[vertex_barcode_index])
-        for convertion, name in zip(self.vertex_convertions, vertex_indices):
+        for convertion, name in zip(Hepmc.vertex_convertions, vertex_indices):
             self.prepared_contents[name][-1].append(convertion(next_line[vertex_indices[name]]))
         # now everythng should be particles and vertices
         for line in csv_reader:
@@ -266,10 +266,10 @@ class Hepmc(Components.EventWise):
                 return line
             elif line[0] == 'V':  # new vertex
                 last_vertex_barcode = int(line[vertex_barcode_index])
-                for convertion, name in zip(self.vertex_convertions, vertex_indices):
+                for convertion, name in zip(Hepmc.vertex_convertions, vertex_indices):
                     self.prepared_contents[name][-1].append(convertion(line[vertex_indices[name]]))
             elif line[0] == 'P':  # new particle
-                for convertion, name in zip(self.particle_convertions, particle_indices):
+                for convertion, name in zip(Hepmc.particle_convertions, particle_indices):
                     self.prepared_contents[name][-1].append(convertion(line[particle_indices[name]]))
                 # now deal with the two speciel cases
                 self.prepared_contents["Start_vertex_barcode"][-1].append(last_vertex_barcode)
@@ -300,7 +300,7 @@ class Hepmc(Components.EventWise):
         multi_item_pairs = {"Random_state_ints": "Len_random_state_list",
                             "Weight_list": "Len_weight_list"}
         i = 1
-        for name, convert in zip(self.event_information_cols, self.event_information_converters):
+        for name, convert in zip(Hepmc.event_information_cols, Hepmc.event_information_conversions):
             if name in multi_item_pairs:
                 num_items = self.prepared_contents[multi_item_pairs[name]][event_n]
                 items = [convert(event_line[i + n]) for n in range(num_items)]

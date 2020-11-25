@@ -330,7 +330,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
         n_threads = 1
     wait_time = 30*60  # in seconds
     # note that the longest wait will be n_cores time this time
-    print("Running on {} threads".format(n_threads))
+    #print("Running on {} threads".format(n_threads))
     all_paths = make_n_working_fragments(eventWise_path, n_threads, jet_name)
     job_list = []
     # now each segment makes a worker
@@ -416,11 +416,13 @@ def recombine_eventWise(eventWise_path):
 
 # hacky ------------------------
 scan_hacky = dict(
-                 DeltaR=[1.2, 1.25, 1.3, 1.35, 1.4],
-                 AffinityType=['exponent', 'exponent2'],
-                 AffinityCutoff=[None, ('distance', 3.), ('distance', 3.5)],
+                 DeltaR=[1.26, 1.28, 1.3, 1.32, 1.34],
+                 Sigma=[0.6, 1., 1.6],
+                 EigNormFactor=[0.3, 0.5, 0.8],
                  )
 fix_hacky = dict(ExpofPTMultiplier=0,
+                 AffinityType='exponent',
+                 AffinityCutoff=('distance', 3.),
                  ExpofPTPosition='input',
                  ExpofPTFormat='Luclus',
                  NumEigenvectors=np.inf,
@@ -590,6 +592,7 @@ def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=No
             print(f"Already done {jet_class}, {parameters}\n")
         else:
             jet_name = next(name_gen)
+            print(f"{i/num_combinations:.2%} {jet_name}", flush=True)
             generate_pool(eventWise_path, jet_class, parameters, jet_name, True)
             finished += 1
         if time.time() > end_time:

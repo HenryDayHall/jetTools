@@ -543,7 +543,10 @@ def plot_correct_hist_axis(ax, jet_names, true_masses, recoed_masses, colours):
                        jet_linestyles['Other'])
                   for name in jet_names]
     # plot the true values
-    true_masses = true_masses[np.isfinite(true_masses)]
+    try:
+        true_masses = true_masses[np.isfinite(true_masses)]
+    except:
+        st()
     ax.hist(true_masses, color='grey', label='Visible mass', alpha=0.4, **hist_params)
     # now plot the recod values
     hist_params['histtype'] = 'step'

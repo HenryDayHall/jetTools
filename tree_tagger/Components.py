@@ -254,8 +254,8 @@ class git_properties:
             self.outdated = False
         except (pygit2.GitError, KeyError):
             self.outdated = True
-            print("Couldn't get git commit, update manually" + 
-                  " with eventWise.write(update_git_properties=True)")
+            #print("Couldn't get git commit, update manually" + 
+            #      " with eventWise.write(update_git_properties=True)")
 
     @property
     def gitdict(self):
