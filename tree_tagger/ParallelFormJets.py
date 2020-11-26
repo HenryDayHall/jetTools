@@ -432,6 +432,23 @@ fix_hacky1 = dict(ExpofPTMultiplier=0,
                  CombineSize='sum',
                  EigDistance='abscos',
                  PhyDistance='angular')
+scan_hacky2 = dict(
+                 DeltaR=[11., 13., 15., 17., 19.],
+                 Sigma=[0.6, 1., 1.6],
+                 EigNormFactor=[0.3, 0.5, 0.8],
+                 )
+fix_hacky2 = dict(ExpofPTMultiplier=0,
+                 AffinityType='exponent',
+                 AffinityCutoff=('distance', 3.),
+                 ExpofPTPosition='input',
+                 ExpofPTFormat='Luclus',
+                 NumEigenvectors=np.inf,
+                 StoppingCondition='standard',
+                 Laplacien='symmetric',
+                 Eigenspace='normalised',
+                 CombineSize='sum',
+                 EigDistance='abscos',
+                 PhyDistance='angular')
 # perfect -----------------------------
 scan_perfect = dict(
                           AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],

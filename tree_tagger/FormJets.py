@@ -4511,7 +4511,8 @@ if __name__ == '__main__':
         #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
         #pseudojets.plt_assign_parents()
 
-        c_class = SpectralKMeans
+        #c_class = SpectralKMeans
+        c_class = SpectralFull
         spectral_jet_params = dict(ExpofPTMultiplier=0,
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
@@ -4521,11 +4522,11 @@ if __name__ == '__main__':
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
-                                   Laplacien='pt',
-                                   #DeltaR=1.3,
+                                   Laplacien='symmetric',
+                                   DeltaR=15.,
                                    Eigenspace='normalised',
                                    AffinityType='exponent',
-                                   Sigma=.6,
+                                   Sigma=1.,
                                    #CombineSize='sum',
                                    AffinityCutoff=('distance', 3.),
                                    #EigDistance='abscos',
