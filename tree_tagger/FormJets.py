@@ -47,7 +47,8 @@ class Custom_KMeans:
         min_score = np.inf
         min_count = 0
         patience = 5
-        for i in range(self.max_restarts):
+        scores = []
+        for _ in range(self.max_restarts):
             score, aloc, cen = self._attempt(n_clusters)
             if np.isclose(score, min_score):
                 allocations.append(aloc)
@@ -65,6 +66,11 @@ class Custom_KMeans:
         else:
             if not self.silent:
                 print("Didn't repeat.")
+            # if all scores were nan we could technically reach here
+            # with no scores list
+            if not scores:
+                # return the last one
+                return score, aloc, cen
         # it is unlikely but possible that there are multiple choices
         best = np.argmin(scores)
         return scores[best], allocations[best], centeroids[best]
@@ -75,18 +81,18 @@ class Custom_KMeans:
         allocations = -np.ones(self.n_points)
         for i in range(self.max_iter):
             distances = self.distance_function(centeroids, self.points, None, None)
-            new_allocations = np.argmin(distances, axis=0)
+            new_allocations = np.nanargmin(distances, axis=0)
             if np.all(new_allocations == allocations):
                 break
             allocations = new_allocations
             for cluster_n in range(n_clusters):
                 points_here = self.points[allocations==cluster_n]
-                centeroids[cluster_n] = np.mean(self.points[allocations==cluster_n],
+                centeroids[cluster_n] = np.nanmean(self.points[allocations==cluster_n],
                                                 axis=0)
         else:
             if not self.silent:
                 print("Didn't settle!!")
-        score = np.sum(distances[allocations, range(self.n_points)])
+        score = np.nansum(distances[allocations, range(self.n_points)])
         return score, allocations, centeroids
 
 
@@ -1576,7 +1582,7 @@ class Spectral(PseudoJet):
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect', 'symoverpt'],
                        'CombineSize': ['sum', 'recalculate'],
                        'Eigenspace': ['unnormalised', 'normalised'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
@@ -1662,6 +1668,23 @@ class Spectral(PseudoJet):
                                for row in indices),
                               dtype=float)
             return pts
+        if self.Laplacien == 'symoverpt':
+            pts = np.fromiter((self._floats[row][self._PT_col]
+                               for row in indices),
+                              dtype=float)
+            pts /= self.event_mass
+            try:
+                affinities = np.sum(self._affinity[:, indices], axis=0)
+                #affinities /= np.mean(self._affinity)
+                affinities /= 1000
+            except IndexError as e:
+                if len(self._affinity.flatten()) == 0:
+                    return np.zeros(1)
+                text = f"jet_params = {self.jet_parameters}, affinity = {self._affinity}, indices = {indices}"
+                print(text)
+                raise e
+            print(f"aff = {np.mean(affinities)}, pts = {np.mean(pts)}")
+            return affinities+pts
         if self.Laplacien == 'energy':
             es = np.fromiter((self._floats[row][self._Energy_col]
                               for row in indices),
@@ -4531,24 +4554,24 @@ if __name__ == '__main__':
         #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
         #pseudojets.plt_assign_parents()
 
-        c_class = SpectralKMeans
-        #c_class = SpectralFull
+        #c_class = SpectralKMeans
+        c_class = SpectralFull
         spectral_jet_params = dict(ExpofPTMultiplier=0,
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
                                    NumEigenvectors=np.inf,
-                                   #StoppingCondition='meandistance',
+                                   StoppingCondition='meandistance',
                                    EigNormFactor=0.5,
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
-                                   Laplacien='symmetric',
-                                   #DeltaR=1.5,
+                                   Laplacien='symoverpt',
+                                   DeltaR=25.,
                                    Eigenspace='normalised',
                                    AffinityType='exponent',
                                    Sigma=1.,
                                    #CombineSize='sum',
-                                   AffinityCutoff=('distance', 3.),
+                                   AffinityCutoff=None,
                                    #EigDistance='abscos',
                                    #AffinityCutoff=None,
                                    PhyDistance='angular')
