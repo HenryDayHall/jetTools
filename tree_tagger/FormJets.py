@@ -31,7 +31,7 @@ class Custom_KMeans:
     """ Compute kmeans with a custom distance function,
     the mean of the centroids is a euclidien mean, but the 
     scores and allocations are done with the given  distance function"""
-    def __init__(self, distance_function, max_iter=100, max_restarts=20):
+    def __init__(self, distance_function, max_iter=500, max_restarts=500):
         self.distance_function = distance_function
         self.max_iter = max_iter
         self.max_restarts = max_restarts
@@ -45,7 +45,7 @@ class Custom_KMeans:
         self.n_points = len(points)
         min_score = np.inf
         min_count = 0
-        patience = 4
+        patience = 5
         for i in range(self.max_restarts):
             score, aloc, cen = self._attempt(n_clusters)
             if np.isclose(score, min_score):
@@ -61,6 +61,8 @@ class Custom_KMeans:
                 scores = [score]
                 min_count = 0
                 min_score = score
+        else:
+            print("Didn't repeat.")
         # it is unlikely but possible that there are multiple choices
         best = np.argmin(scores)
         return scores[best], allocations[best], centeroids[best]
@@ -70,8 +72,8 @@ class Custom_KMeans:
         centeroids = self._inital_centroids(n_clusters)
         allocations = -np.ones(self.n_points)
         for i in range(self.max_iter):
-            distances = self.distance_function(centeroids, self.points)
-            new_allocations = np.argmin(distances, axis=1)
+            distances = self.distance_function(centeroids, self.points, None, None)
+            new_allocations = np.argmin(distances, axis=0)
             if np.all(new_allocations == allocations):
                 break
             allocations = new_allocations
@@ -79,15 +81,15 @@ class Custom_KMeans:
                 points_here = self.points[allocations==cluster_n]
                 centeroids[cluster_n] = np.mean(self.points[allocations==cluster_n],
                                                 axis=0)
-        score = np.sum(distances[range(self.n_points), allocations])
+        else:
+            print("Didn't settle!!")
+        score = np.sum(distances[allocations, range(self.n_points)])
         return score, allocations, centeroids
 
 
     def _inital_centroids(self, n_clusters):
-        return np.random.choice(self.points, n_clusters, replace=False)
-
-
-
+        indices = np.random.choice(self.n_points, n_clusters, replace=False)
+        return self.points[indices]
 
 
 class PseudoJet:
@@ -2279,6 +2281,8 @@ class Spectral(PseudoJet):
         self._eigenspace = np.delete(self._eigenspace, pseudojet_index, axis=0)
         self._affinity = np.delete(self._affinity, pseudojet_index, axis=0)
         self._affinity = np.delete(self._affinity, pseudojet_index, axis=1)
+        # remove the alt diag
+        self.alt_diag = np.delete(self.alt_diag, pseudojet_index)
         # delete the row and column
         self._distances2 = np.delete(self._distances2, pseudojet_index, axis=0)
         self._distances2 = np.delete(self._distances2, pseudojet_index, axis=1)
@@ -2441,9 +2445,9 @@ class Spectral(PseudoJet):
         crossings = truth.reshape((1, -1)) != truth.reshape((-1, 1))
         crossings = crossings[np.tril_indices_from(self._distances2, -1)]
         all_distance = self._distances2[np.tril_indices_from(self._distances2, -1)]
-        distances_ax.hist([all_distance, all_distance[crossings], all_distance[~crossings]],
+        distances_ax.hist([all_distance[crossings], all_distance[~crossings]],
                           histtype='step',
-                          label=["All", "Crossing jets", "Inside jets"], normed=True)
+                          label=[ "Crossing jets", "Inside jets"], normed=True)
         distances_ax.set_xlabel("Distance in embedding space")
         distances_ax.set_title("Distances at start, not updated")
         distances_ax.legend()
@@ -2466,19 +2470,17 @@ class Spectral(PseudoJet):
             real_ax.set_xlabel(r"Rapidity")
         real_ax.set_title("Real space")
         # reshape the figure
-        fig.set_size_inches(18, 5)
+        fig.set_size_inches(18, 8)
         fig.tight_layout()
         real_ax.set_facecolor('gray')
         # draw each eigen axis:
         # check the mean distance
         mean_distance = np.nanmean(np.sqrt(all_distance))
-        existing_scatters = []
         ax_limits = []
         for ax, dim1, dim2 in eig_ax:
-            existing_scatters.append(
-                    ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
-                               self.Size*size_multipler,
-                               c=colours_now))
+            ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
+                       self.Size*size_multipler,
+                       c=colours_now)
             ax.set_xlabel(f"dim {dim1}")
             ax.set_ylabel(f"dim {dim2}")
             ax.axis('equal')
@@ -2537,10 +2539,9 @@ class Spectral(PseudoJet):
                 for (ax, dim1, dim2), limits in zip(eig_ax, ax_limits):
                     ax.clear()
                     try:
-                        existing_scatters.append(
-                                ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
-                                    self.Size[:self.currently_avalible]*size_multipler,
-                                           c=colours_now[:self.currently_avalible]))
+                        ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
+                            self.Size[:self.currently_avalible]*size_multipler,
+                                   c=colours_now[:self.currently_avalible])
                     except IndexError:
                         pass
                     ax.set_xlabel(f"dim {dim1}")
@@ -3304,10 +3305,10 @@ class SpectralKMeans(Spectral):
             Should the jets eb clustered immediatly?
             (Default; False)
         """
-        st()
         self.StoppingCondition = 'standard'  # this is a property used by Spectral Jets
         self.DeltaR = 1.  # thsi si required for defining the unused beam distances in
         self.EigDistance = 'abscos'
+        self.CombineSize = 'sum'
         # for spectral kmeans this is the only thing that maeks sense
         if dict_jet_params is not None:
             kwargs['dict_jet_params'] = dict_jet_params
@@ -3364,9 +3365,9 @@ class SpectralKMeans(Spectral):
         crossings = truth.reshape((1, -1)) != truth.reshape((-1, 1))
         crossings = crossings[np.tril_indices_from(self._distances2, -1)]
         all_distance = self._distances2[np.tril_indices_from(self._distances2, -1)]
-        distances_ax.hist([all_distance, all_distance[crossings], all_distance[~crossings]],
+        distances_ax.hist([all_distance[crossings], all_distance[~crossings]],
                           histtype='step',
-                          label=["All", "Crossing jets", "Inside jets"], density=True)
+                          label=["Crossing jets", "Inside jets"], density=True)
         distances_ax.set_xlabel("Distance in embedding space")
         distances_ax.set_title("Distances at start, not updated")
         distances_ax.legend()
@@ -3389,19 +3390,17 @@ class SpectralKMeans(Spectral):
             real_ax.set_xlabel(r"Rapidity")
         real_ax.set_title("Real space")
         # reshape the figure
-        fig.set_size_inches(18, 5)
+        fig.set_size_inches(18, 8)
         fig.tight_layout()
         real_ax.set_facecolor('gray')
         # draw each eigen axis:
         # check the mean distance
         mean_distance = np.nanmean(np.sqrt(all_distance))
-        existing_scatters = []
         ax_limits = []
         for ax, dim1, dim2 in eig_ax:
-            existing_scatters.append(
-                    ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
-                               self.Size*size_multipler,
-                               c=colours_now))
+            ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
+                       self.Size*size_multipler,
+                       c=colours_now)
             ax.set_xlabel(f"dim {dim1}")
             ax.set_ylabel(f"dim {dim2}")
             ax.axis('equal')
@@ -3415,15 +3414,33 @@ class SpectralKMeans(Spectral):
         eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
         print(f"mean distance = {mean_distance:.2f}")
         plt.pause(1.)
-        num_jets = len(self.eventWise.Solution)
+        # Do the computation
+        num_jets = len(self.eventWise.SolJet_Energy)
         kmeans = Custom_KMeans(self.eigenspace_distance2)
         score, allocations, centeroids = kmeans.fit(num_jets, self._eigenspace)
+        eig_ax[1][0].set_title(f"Score = {score}")
+        # plot the centeroids
+        allocation_truth = [np.mean(truth_order[allocations == i]) for i in range(num_jets)]
+        allocation_colour_dict = {i: cmap(t/num_jets) for t, i in
+                                  enumerate(np.argsort(allocation_truth))}
+
         for ax, dim1, dim2 in eig_ax:
-            for cen in centeroids:
-                ax.plot([0, cen[dim1]], [0, cen[dim2]], c='k')
+            for alloc, cen in enumerate(centeroids):
+                col = allocation_colour_dict[alloc]
+                vector = np.array([cen[dim1], cen[dim2]])
+                #vector /= np.linalg.norm(vector)
+                ax.plot([0, vector[0]], [0, vector[1]], c=col)
+        plt.pause(1.)
+        input("Press enter to put jets on real axis")
+        allocation_colours = np.array([allocation_colour_dict[x] for x in allocations])
+        real_ax.scatter(self.Rapidity, self.Phi, self.Size*size_multipler,
+                         c=allocation_colours)
+
 
         self._jets = [self.InputIdx[allocations==i] for i in range(num_jets)]
         self._merge_complete_jets()
+        plt.pause(1.)
+        input()
 
 
 def filter_obs(eventWise, existing_idx_selection):
@@ -3920,7 +3937,7 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
 
 
 # track which classes in this module are cluster classes
-cluster_classes = ["Traditional", "IterativeCone", "Spectral", "CheckpointsOnly", "Splitting", "SpectralFull", "SpectralMean", "Indicator"]
+cluster_classes = ["Traditional", "IterativeCone", "Spectral", "CheckpointsOnly", "Splitting", "SpectralFull", "SpectralMean", "Indicator", "SpectralKMeans"]
 # track which things are valid inputs to multiapply
 multiapply_input = {"Fast": run_FastJet, "Home": Traditional}
 for name in cluster_classes:
@@ -4511,19 +4528,19 @@ if __name__ == '__main__':
         #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
         #pseudojets.plt_assign_parents()
 
-        #c_class = SpectralKMeans
-        c_class = SpectralFull
+        c_class = SpectralKMeans
+        #c_class = SpectralFull
         spectral_jet_params = dict(ExpofPTMultiplier=0,
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
                                    NumEigenvectors=np.inf,
-                                   StoppingCondition='meandistance',
+                                   #StoppingCondition='meandistance',
                                    EigNormFactor=0.5,
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
                                    Laplacien='symmetric',
-                                   DeltaR=15.,
+                                   #DeltaR=1.5,
                                    Eigenspace='normalised',
                                    AffinityType='exponent',
                                    Sigma=1.,

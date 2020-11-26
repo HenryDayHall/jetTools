@@ -414,6 +414,23 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
+# cheating kmeans ----------------
+scan_cheat = dict(
+                 Sigma=[0.6, 0.8, 1., 1.2, 1.6],
+                 EigNormFactor=[0.1, 0.3, 0.5, 0.7, 0.9],
+                 )
+fix_cheat = dict(ExpofPTMultiplier=0,
+                 ExpofPTPosition='input',
+                 ExpofPTFormat='Luclus',
+                 NumEigenvectors=np.inf,
+                 EigNormFactor=0.5,
+                 Laplacien='symmetric',
+                 Eigenspace='normalised',
+                 AffinityType='exponent',
+                 Sigma=1.,
+                 AffinityCutoff=('distance', 3.),
+                 PhyDistance='angular')
+
 # hacky ------------------------
 scan_hacky1 = dict(
                  DeltaR=[1.26, 1.28, 1.3, 1.32, 1.34],
