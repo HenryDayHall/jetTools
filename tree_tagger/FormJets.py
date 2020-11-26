@@ -3318,7 +3318,7 @@ class SpectralKMeans(Spectral):
         """
         Take a single step to join pseudojets
         """
-        num_jets = len(self.EventWise.Solution)
+        num_jets = len(self.eventWise.SolJet_Energy)
         kmeans = Custom_KMeans(self.eigenspace_distance2)
         score, allocations, centeroids = kmeans.fit(num_jets, self._eigenspace)
         self._jets = [self.InputIdx[allocations==i] for i in range(num_jets)]
