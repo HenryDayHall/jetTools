@@ -415,13 +415,13 @@ def recombine_eventWise(eventWise_path):
     return new_eventWise
 
 # hacky ------------------------
-scan_hacky = dict(
+scan_hacky1 = dict(
                  DeltaR=[1.26, 1.28, 1.3, 1.32, 1.34],
                  Sigma=[0.6, 1., 1.6],
                  EigNormFactor=[0.3, 0.5, 0.8],
                  )
-fix_hacky = dict(ExpofPTMultiplier=0,
-                 AffinityType='exponent',
+fix_hacky1 = dict(ExpofPTMultiplier=0,
+                 AffinityType='exponent2',
                  AffinityCutoff=('distance', 3.),
                  ExpofPTPosition='input',
                  ExpofPTFormat='Luclus',
