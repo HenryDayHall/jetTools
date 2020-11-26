@@ -31,8 +31,9 @@ class Custom_KMeans:
     """ Compute kmeans with a custom distance function,
     the mean of the centroids is a euclidien mean, but the 
     scores and allocations are done with the given  distance function"""
-    def __init__(self, distance_function, max_iter=500, max_restarts=500):
+    def __init__(self, distance_function, max_iter=500, max_restarts=500, silent=True):
         self.distance_function = distance_function
+        self.silent = silent
         self.max_iter = max_iter
         self.max_restarts = max_restarts
 
@@ -62,7 +63,8 @@ class Custom_KMeans:
                 min_count = 0
                 min_score = score
         else:
-            print("Didn't repeat.")
+            if not self.silent:
+                print("Didn't repeat.")
         # it is unlikely but possible that there are multiple choices
         best = np.argmin(scores)
         return scores[best], allocations[best], centeroids[best]
@@ -82,7 +84,8 @@ class Custom_KMeans:
                 centeroids[cluster_n] = np.mean(self.points[allocations==cluster_n],
                                                 axis=0)
         else:
-            print("Didn't settle!!")
+            if not self.silent:
+                print("Didn't settle!!")
         score = np.sum(distances[allocations, range(self.n_points)])
         return score, allocations, centeroids
 
