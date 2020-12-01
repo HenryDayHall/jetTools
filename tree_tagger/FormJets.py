@@ -88,7 +88,7 @@ class Custom_KMeans:
             for cluster_n in range(n_clusters):
                 points_here = self.points[allocations==cluster_n]
                 centeroids[cluster_n] = np.nanmean(self.points[allocations==cluster_n],
-                                                axis=0)
+                                                   axis=0)
         else:
             if not self.silent:
                 print("Didn't settle!!")
