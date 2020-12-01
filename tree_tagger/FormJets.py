@@ -81,14 +81,23 @@ class Custom_KMeans:
         allocations = -np.ones(self.n_points)
         for i in range(self.max_iter):
             distances = self.distance_function(centeroids, self.points, None, None)
-            new_allocations = np.nanargmin(distances, axis=0)
+            try:
+                new_allocations = np.nanargmin(distances, axis=0)
+            except:
+                st()
+                pass
             if np.all(new_allocations == allocations):
                 break
             allocations = new_allocations
             for cluster_n in range(n_clusters):
                 points_here = self.points[allocations==cluster_n]
-                centeroids[cluster_n] = np.nanmean(self.points[allocations==cluster_n],
+                centeroid = np.nanmean(self.points[allocations==cluster_n],
                                                    axis=0)
+                if not np.all(centeroid == 0):
+                    # all 0 centeroid breaks the cross product thing,
+                    # and just indicates that the points in this cluster
+                    # are orientated in oposing directions
+                    centeroids[cluster_n] = centeroid
         else:
             if not self.silent:
                 print("Didn't settle!!")
@@ -4554,22 +4563,22 @@ if __name__ == '__main__':
         #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
         #pseudojets.plt_assign_parents()
 
-        #c_class = SpectralKMeans
-        c_class = SpectralFull
+        c_class = SpectralKMeans
+        #c_class = SpectralFull
         spectral_jet_params = dict(ExpofPTMultiplier=0,
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
                                    NumEigenvectors=np.inf,
-                                   StoppingCondition='meandistance',
+                                   #StoppingCondition='meandistance',
                                    EigNormFactor=0.5,
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
-                                   Laplacien='symoverpt',
-                                   DeltaR=25.,
+                                   Laplacien='symmetric',
+                                   #DeltaR=1.,
                                    Eigenspace='normalised',
-                                   AffinityType='exponent',
-                                   Sigma=1.,
+                                   AffinityType='exponent2',
+                                   Sigma=.6,
                                    #CombineSize='sum',
                                    AffinityCutoff=None,
                                    #EigDistance='abscos',
