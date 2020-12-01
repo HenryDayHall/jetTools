@@ -49,7 +49,11 @@ class Custom_KMeans:
         patience = 5
         scores = []
         for _ in range(self.max_restarts):
-            score, aloc, cen = self._attempt(n_clusters)
+            try:
+                score, aloc, cen = self._attempt(n_clusters)
+            except:
+                st()
+                score, aloc, cen = self._attempt(n_clusters)
             if np.isclose(score, min_score):
                 allocations.append(aloc)
                 centeroids.append(cen)
@@ -81,11 +85,12 @@ class Custom_KMeans:
         allocations = -np.ones(self.n_points)
         for i in range(self.max_iter):
             distances = self.distance_function(centeroids, self.points, None, None)
-            try:
-                new_allocations = np.nanargmin(distances, axis=0)
-            except:
-                st()
-                pass
+            # sometimes a point will return all nan, for an angular function
+            # this is a point sitting at the origin
+            # it dosen't matter where we put this point
+            distances[:, np.all(np.isnan(distances), axis=0)] = -1
+            # other nan values should be respected
+            new_allocations = np.nanargmin(distances, axis=0)
             if np.all(new_allocations == allocations):
                 break
             allocations = new_allocations
