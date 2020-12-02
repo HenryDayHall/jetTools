@@ -1,4 +1,5 @@
 """ Module for tools to create and handle jets """
+import warnings
 import matplotlib
 import subprocess
 import os
@@ -96,13 +97,13 @@ class Custom_KMeans:
             allocations = new_allocations
             for cluster_n in range(n_clusters):
                 points_here = self.points[allocations==cluster_n]
-                centeroid = np.nanmean(self.points[allocations==cluster_n],
-                                                   axis=0)
-                if not np.all(centeroid == 0):
-                    # all 0 centeroid breaks the cross product thing,
-                    # and just indicates that the points in this cluster
-                    # are orientated in oposing directions
-                    centeroids[cluster_n] = centeroid
+                if len(points_here):  # otherwise leave the centeriod where it was
+                    centeroid = np.nanmean(points_here, axis=0)
+                    if not np.all(centeroid == 0):
+                        # all 0 centeroid breaks the cross product thing,
+                        # and just indicates that the points in this cluster
+                        # are orientated in oposing directions
+                        centeroids[cluster_n] = centeroid
         else:
             if not self.silent:
                 print("Didn't settle!!")
@@ -1817,7 +1818,9 @@ class Spectral(PseudoJet):
         if self.beam_particle:
             factor += [1]
         factor = np.array(factor)
-        self.alt_diag = factor**(-0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            self.alt_diag = factor**(-0.5)
         self.alt_diag[factor == 0] = 0.
         diag_alt_diag = np.diag(self.alt_diag)
         laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
@@ -2371,7 +2374,11 @@ class Spectral(PseudoJet):
         new_laplacien[replace_index] = 0.  # need to blank this before summing the laplacien
         new_laplacien[replace_index] = -np.sum(new_laplacien)
         self.alt_diag = np.delete(self.alt_diag, remove_index)
-        new_alt_diag = self._floats[replace_index][self._Size_col]**(-0.5)
+        current_size = self._floats[replace_index][self._Size_col]
+        if current_size:
+            new_alt_diag = current_size**(-0.5)
+        else:
+            new_alt_diag = 0.
         self.alt_diag[replace_index] = new_alt_diag
         new_laplacien = self.alt_diag * (new_laplacien * new_alt_diag)
         # remove from the eigenspace and the affinity
@@ -2621,6 +2628,7 @@ class Indicator(Spectral):
                   'AffinityType': 'exponent', 'AffinityCutoff': None,
                   'Laplacien': 'unnormalised',
                   'CombineSize': 'recalculate',
+                  'Sigma': 1.,
                   'PhyDistance': 'angular',
                   'BaseJump': 0.2, 'JumpEigenFactor': 10}
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
@@ -2633,6 +2641,7 @@ class Indicator(Spectral):
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
+                       'Sigma': Constants.numeric_classes['rn'],
                        'BaseJump': Constants.numeric_classes['pdn'],
                        'JumpEigenFactor': Constants.numeric_classes['rn']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -2733,7 +2742,9 @@ class Indicator(Spectral):
         if self.beam_particle:
             factor += [1]
         factor = np.array(factor)
-        self.alt_diag = factor**(-0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            self.alt_diag = factor**(-0.5)
         self.alt_diag[factor == 0] = 0.
         diag_alt_diag = np.diag(self.alt_diag)
         laplacien = np.matmul(diag_alt_diag, np.matmul(laplacien, diag_alt_diag))
@@ -2946,6 +2957,7 @@ class Splitting(Indicator):
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent', 'AffinityCutoff': None,
                   'Laplacien': 'unnormalised',
+                  'Sigma': 1.,
                   'CombineSize': 'recalculate',
                   'PhyDistance': 'angular',
                   'MaxCutScore': 0.2}
@@ -2957,6 +2969,7 @@ class Splitting(Indicator):
                        'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
                                            ('distance', Constants.numeric_classes['pdn'])],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
+                       'Sigma': Constants.numeric_classes['rn'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'MaxCutScore': Constants.numeric_classes['pdn']}
