@@ -538,15 +538,12 @@ def plot_correct_hist_axis(ax, jet_names, true_masses, recoed_masses, colours):
     max_value = np.nanmax(true_masses)*1.2
     hist_params = dict(range=(0, max_value), bins=50)
     # decide on linestyles
-    jet_linestyles = {'SpectralMean': '-.', 'SpectralFull': 'dotted', 'Indicator': '--', 'Traditional': '-', 'Other': '-'}
+    jet_linestyles = {'AntiKT': '-.', 'SolJet': 'dotted', 'MeanStop': '-', 'Other': '--'}
     linestyles = [next((jet_linestyles[key] for key in jet_linestyles if key in name),
                        jet_linestyles['Other'])
                   for name in jet_names]
     # plot the true values
-    try:
-        true_masses = true_masses[np.isfinite(true_masses)]
-    except:
-        st()
+    true_masses = np.array(true_masses)[np.isfinite(true_masses)]
     ax.hist(true_masses, color='grey', label='Visible mass', alpha=0.4, **hist_params)
     # now plot the recod values
     hist_params['histtype'] = 'step'
@@ -899,7 +896,8 @@ if __name__ == '__main__':
             if next_name == 'all':
                 break
             elif next_name == '':
-                jet_names = sel_jet_names
+                if sel_jet_names:
+                    jet_names = sel_jet_names
             else:
                 sel_jet_names.append(next_name)
     #plot_PT_pairs(ew, jet_names, True)

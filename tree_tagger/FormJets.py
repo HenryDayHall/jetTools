@@ -2476,6 +2476,7 @@ class Spectral(PseudoJet):
         source = self.eventWise.JetInputs_SourceIdx
         truth = np.fromiter((next(j for j, jet in enumerate(solution) if i in jet)
                              for i in source), dtype=int)
+
         truth_order = np.argsort(truth)
         size_multipler = 8/np.mean(self.Size)
         truth_ax.scatter(self.Rapidity, self.Phi, self.Size*size_multipler,
@@ -2490,8 +2491,9 @@ class Spectral(PseudoJet):
 
         # plot the distances spectrum
         crossings = truth.reshape((1, -1)) != truth.reshape((-1, 1))
-        crossings = crossings[np.tril_indices_from(self._distances2, -1)]
-        all_distance = self._distances2[np.tril_indices_from(self._distances2, -1)]
+        triangle = np.tril_indices_from(crossings, -1)
+        crossings = crossings[triangle]
+        all_distance = self._distances2[triangle]
         distances_ax.hist([all_distance[crossings], all_distance[~crossings]],
                           histtype='step',
                           label=[ "Crossing jets", "Inside jets"], normed=True)
@@ -2525,7 +2527,8 @@ class Spectral(PseudoJet):
         mean_distance = np.nanmean(np.sqrt(all_distance))
         ax_limits = []
         for ax, dim1, dim2 in eig_ax:
-            ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
+            avali = self.currently_avalible  # excludes beam particle
+            ax.scatter(self._eigenspace[:avali, dim1], self._eigenspace[:avali, dim2],
                        self.Size*size_multipler,
                        c=colours_now)
             ax.set_xlabel(f"dim {dim1}")
@@ -2548,9 +2551,10 @@ class Spectral(PseudoJet):
             print(f"step = {step}")
             step += 1
             self._step_assign_parents()
+            avali = self.currently_avalible  # excludes beam particle
             if step % 3 == 0:
                 input()
-            if previously_avalible > self.currently_avalible:
+            if previously_avalible > avali:
                 try:
                     n_entries = len(self.Rapidity)
                 except TypeError:
@@ -2586,9 +2590,9 @@ class Spectral(PseudoJet):
                 for (ax, dim1, dim2), limits in zip(eig_ax, ax_limits):
                     ax.clear()
                     try:
-                        ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
-                            self.Size[:self.currently_avalible]*size_multipler,
-                                   c=colours_now[:self.currently_avalible])
+                        ax.scatter(self._eigenspace[:avali, dim1], self._eigenspace[:avali, dim2],
+                            self.Size[:avali]*size_multipler,
+                                   c=colours_now[:avali])
                     except IndexError:
                         pass
                     ax.set_xlabel(f"dim {dim1}")
@@ -4587,7 +4591,7 @@ if __name__ == '__main__':
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
                                    NumEigenvectors=np.inf,
-                                   #StoppingCondition='meandistance',
+                                   #StoppingCondition='beamparticle',
                                    EigNormFactor=0.5,
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
@@ -4598,9 +4602,8 @@ if __name__ == '__main__':
                                    AffinityType='exponent2',
                                    Sigma=.6,
                                    #CombineSize='sum',
+                                   EigDistance='abscos',
                                    AffinityCutoff=None,
-                                   #EigDistance='abscos',
-                                   #AffinityCutoff=None,
                                    PhyDistance='angular')
         checkpoint_hyper = {}
         checkpoint_content = {}

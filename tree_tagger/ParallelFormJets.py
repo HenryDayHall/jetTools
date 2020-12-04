@@ -1,4 +1,4 @@
-from tree_tagger import FormJets, Components, InputTools, CompareClusters
+from tree_tagger import FormJets, Components, InputTools, CompareClusters, CompareDatasets
 import time
 import csv
 import cProfile
@@ -423,23 +423,21 @@ fix_cheat = dict(ExpofPTMultiplier=0,
                  ExpofPTPosition='input',
                  ExpofPTFormat='Luclus',
                  NumEigenvectors=np.inf,
-                 EigNormFactor=0.5,
                  Laplacien='symmetric',
                  Eigenspace='normalised',
                  AffinityType='exponent',
-                 Sigma=1.,
-                 AffinityCutoff=('distance', 3.),
+                 AffinityCutoff=None,
                  PhyDistance='angular')
 
 # hacky ------------------------
-scan_hacky1 = dict(
-                 DeltaR=[1.26, 1.28, 1.3, 1.32, 1.34],
-                 Sigma=[0.6, 1., 1.6],
-                 EigNormFactor=[0.3, 0.5, 0.8],
-                 AffinityCutoff=[None, ('distance', 3.)],
+scan_hacky = dict(
+                 DeltaR=[1.26, 1.28, 1.3],
+                 Sigma=[0.1, 0.2, 0.3],
+                 EigNormFactor=[1.2, 1.5, 1.8],
                  )
-fix_hacky1 = dict(ExpofPTMultiplier=0,
+fix_hacky = dict(ExpofPTMultiplier=0,
                  AffinityType='exponent2',
+                 AffinityCutoff=None,
                  ExpofPTPosition='input',
                  ExpofPTFormat='Luclus',
                  NumEigenvectors=np.inf,
@@ -449,92 +447,6 @@ fix_hacky1 = dict(ExpofPTMultiplier=0,
                  CombineSize='sum',
                  EigDistance='abscos',
                  PhyDistance='angular')
-scan_hacky2 = dict(
-                 DeltaR=[11., 13., 15., 17., 19.],
-                 Sigma=[0.6, 1., 1.6],
-                 EigNormFactor=[0.3, 0.5, 0.8],
-                 AffinityCutoff=[None, ('distance', 3.)],
-                 )
-fix_hacky2 = dict(ExpofPTMultiplier=0,
-                 AffinityType='exponent',
-                 ExpofPTPosition='input',
-                 ExpofPTFormat='Luclus',
-                 NumEigenvectors=np.inf,
-                 StoppingCondition='meandistance',
-                 Laplacien='symmetric',
-                 Eigenspace='normalised',
-                 CombineSize='sum',
-                 EigDistance='abscos',
-                 PhyDistance='angular')
-# perfect -----------------------------
-scan_perfect = dict(
-                          AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
-                          DeltaR = [1.2, 1.5, 1.8, 2., 2.5, 3.],
-                        )
-fix_perfect = dict( 
-                          Eigenspace = 'normalised',
-                        AffinityType = 'exponent',
-                          PhyDistance = 'angular',
-                          ExpofPTMultiplier = 0.,
-                          Laplacien = 'perfect',
-                          NumEigenvectors = np.inf,
-                         ExpofPTPosition = 'input',
-                         EigDistance='euclidien',
-                         CombineSize='sum',
-                          StoppingCondition = 'standard')
-# sum ---------------------------------
-scan_sum = dict(
-                AffinityCutoff = [None] + [('distance', x) for x in np.arange(2, 4, 0.5)],
-                DeltaR = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1., 1.6],
-                Laplacien = ['unnormalised', 'symmetric', 'pt']
-                )
-fix_sum1 = dict( 
-                Eigenspace = 'normalised',
-                CombineSize='sum',
-               AffinityType = 'exponent',
-                 PhyDistance = 'angular',
-                 ExpofPTMultiplier = 0.,
-                 NumEigenvectors = 4,
-                ExpofPTPosition = 'input',
-                EigDistance='euclidien',
-                 StoppingCondition = 'standard')
-fix_sum2 = dict( 
-                Eigenspace = 'unnormalised',
-                CombineSize='sum',
-               AffinityType = 'exponent',
-                 PhyDistance = 'angular',
-                 ExpofPTMultiplier = 0.,
-                 NumEigenvectors = 4,
-                ExpofPTPosition = 'input',
-                EigDistance='euclidien',
-                 StoppingCondition = 'standard')
-# spectral full ------------------------
-scan_SpectralFull = dict(
-                          ExpofPTMultiplier = [0.2, 0.1, 0.0, -1.],
-                          AffinityCutoff = [None, ('knn', 3), ('distance', 5)],
-                          Laplacien = ['energy', 'pt'],
-                          Eigenspace = ['normalised', 'unnormalised'],
-                          PhyDistance = ['angular', 'taxicab'],
-                        )
-fix_SpectralFulleuclidian = dict(DeltaR=0.5,
-                          AffinityType = 'exponent2',
-                          NumEigenvectors = 4,
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'input',
-                         EigDistance='euclidien',
-                          StoppingCondition = 'beamparticle')
-fix_SpectralFullspherical = dict(DeltaR=0.5,
-                          AffinityType = 'exponent2',
-                          NumEigenvectors = 4,
-                         ExpofPTFormat = 'Luclus',
-                         ExpofPTPosition = 'input',
-                         EigDistance='spherical',
-                          StoppingCondition = 'beamparticle')
-fix_SpectralFull = dict( AffinityType = 'exponent2',
-                         ExpofPTPosition = 'input',
-                         EigDistance='euclidien',
-                         Laplacien='energy',
-                          StoppingCondition = 'beamparticle')
 # chechpoint only ------------------------
 scan_checkpoint = dict(
                        ExpofPTMultiplier = np.arange(-1, 1, 0.1),
@@ -566,21 +478,51 @@ scan_Traditional1 = dict(DeltaR=np.linspace(0.2, 1.5, 10),
 
 fix_Traditional1 = dict(PhyDistance='taxicab')
 
-# Indicator -------------------------------
-scan_Indicator = dict(
-                      ExpofPTMultiplier=np.linspace(-1, 0, 3),
-                      BaseJump=np.linspace(0.01, 0.11, 6),
-                      AffinityCutoff = [None, ('distance', 3)],
-                         )
-fix_Indicator = dict(
-                      JumpEigenFactor=10.,
-                      AffinityType='exponent',
-                     Laplacien='unnormalised',
-                     ExpofPTFormat='Luclus',
-                     ExpofPTPosition='input',
-                     NumEigenvectors=np.inf,
-                     PhyDistance='angular',
-                     )
+def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None, dijet_mass=None, irc_prep=False):
+    """
+    Scan over all combinations of a range of options. then score the result
+
+    Parameters
+    ----------
+    eventWise_path : str
+        Path to the dataset used for input and writing outputs.
+    jet_class : str
+    end_time : int
+        time to stop scanning.
+    scan_parameters : dict
+    fix_parameters : dict
+    dijet_mass : float
+        mass of the dijets for scoring
+        if not given the events are not scored
+    irc_prep: bool
+        should the file be preped for irc calculations?
+
+    Returns
+    -------
+    time_remaining : float
+        estimate for how long it would take to finish this scan.
+    
+    """
+    scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters)
+    if time.time() > end_time:
+        return
+    fragment_path = eventWise_path.replace(".awkd", "_fragment")
+    fragments = [os.path.join(fragment_path, name) for name in os.listdir(fragment_path)]
+    if dijet_mass is not None:
+        CompareClusters.multiprocess_append_scores(fragments, dijet_mass, end_time)
+    if time.time() > end_time:
+        return
+    new_ew = Components.EventWise.combine(fragment_path, "")
+    if time.time() > end_time:
+        return
+    new_path = os.path.join(new_ew.dir_name, new_ew.save_name)
+    os.replace(new_path, eventWise_path)
+    remove_partial(eventWise_path)
+    if time.time() > end_time:
+        return
+    if irc_prep:
+        CompareDatasets.append_all(eventWise_path, end_time)
+
 
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
@@ -827,5 +769,5 @@ if __name__ == '__main__':
         names = FormJets.cluster_classes
         jet_class = InputTools.list_complete("Jet class? ", names).strip()
         #monte_carlo(eventWise_path, end_time, jet_class=jet_class)
-        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=fix_SpectralFull)
+        monte_carlo(eventWise_path, end_time, jet_class=jet_class, fixed_parameters=fix_hacky)
 
