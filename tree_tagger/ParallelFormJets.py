@@ -517,7 +517,7 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
         return
     new_path = os.path.join(new_ew.dir_name, new_ew.save_name)
     os.replace(new_path, eventWise_path)
-    remove_partial(eventWise_path)
+    remove_partial([eventWise_path])
     if time.time() > end_time:
         return
     if irc_prep:
