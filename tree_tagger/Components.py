@@ -1060,7 +1060,7 @@ class EventWise:
                             contents[name] = content_here[name]
                     elif name in weighted_average:
                         # it is not a new hyper parameter and take an average
-                        hyperparameter_to_average[name][0].append(content_here[name], segment_length))
+                        hyperparameter_to_average[name][0].append(content_here[name], segment_length)
                         hyperparameter_to_average[name][1].append(segment_length)
                     else:  # we have seen it before, check for match
                         error_msg = f"Missmatch in hyperparameter {name}"
