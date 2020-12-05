@@ -1048,7 +1048,10 @@ class EventWise:
                 continue
             # check hyperparameters match and add as needed
             found_hcols = set(content_here.get("hyperparameter_column_order", []))
-            segment_length = len(getattr(content_here, content_here.columns[0], []))
+            # if we cannot find a column order try Event_n
+            column_name = getattr(content_here, "column_order", ["Event_n"])[0]
+            # if we cannot fnd the column return 1
+            segment_length = len(getattr(content_here, column_name, [None]))
             if found_hcols:  # check they are the same here
                 for name in found_hcols:
                     if name not in hyperparameter_columns:
