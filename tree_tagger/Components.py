@@ -988,7 +988,8 @@ class EventWise:
         return joined_name
 
     @classmethod
-    def combine(cls, dir_name, save_base, fragments=None, check_for_dups=False, del_fragments=False):
+    def combine(cls, dir_name, save_base, fragments=None, check_for_dups=False,
+                del_fragments=False, weighted_average=None):
         """
         Join multiple eventWise objects so that all events are contaiend in a single eventWise.
         Inverts the split funciton.
@@ -1015,6 +1016,9 @@ class EventWise:
             Should the fragments that have been combined be deleted
             once the combined file is written.
             (Default value = False)
+        weighted_average : list of str
+            Names of hyperparameter columns for which a weighted average should be taken
+            instead of checking for a match
 
         Returns
         -------
@@ -1022,6 +1026,8 @@ class EventWise:
             the combined eventWise object
         
         """
+        if weighted_average is None:
+            weighted_average = []
         in_dir = os.listdir(dir_name)
         if fragments is None:
             fragments = [name for name in in_dir
@@ -1031,6 +1037,8 @@ class EventWise:
         hyperparameter_columns = set()
         contents = {}
         pickle_strs = {}  # when checking for dups
+        # to create the averaged hyperparameters
+        hyperparameter_to_average = {}
         for fragment_n, fragment in enumerate(fragments):
             path = os.path.join(dir_name, fragment)
             try:
@@ -1040,21 +1048,30 @@ class EventWise:
                 continue
             # check hyperparameters match and add as needed
             found_hcols = set(content_here.get("hyperparameter_column_order", []))
-            if hyperparameter_columns and found_hcols:  # check they are the same here
+            segment_length = len(getattr(content_here, content_here.columns[0], []))
+            if found_hcols:  # check they are the same here
                 for name in found_hcols:
                     if name not in hyperparameter_columns:
+                        # it is a new hyperparameter
                         hyperparameter_columns.add(name)
-                        contents[name] = content_here[name]
-                    error_msg = f"Missmatch in hyperparameter {name}"
-                    try:
-                        np.testing.assert_allclose(content_here[name], contents[name],
-                                                   err_msg=error_msg)
-                    except TypeError:
-                        assert content_here[name] == contents[name], error_msg
-            elif found_hcols:  # add here
-                hyperparameter_columns = found_hcols
-                for name in found_hcols:
-                    contents[name] = content_here[name]
+                        if name in weighted_average:
+                            hyperparameter_to_average[name] = [content_here[name]], [segment_length]
+                        else:
+                            contents[name] = content_here[name]
+                    elif name in weighted_average:
+                        # it is not a new hyper parameter and take an average
+                        hyperparameter_to_average[name][0].append(content_here[name], segment_length))
+                        hyperparameter_to_average[name][1].append(segment_length)
+                    else:  # we have seen it before, check for match
+                        error_msg = f"Missmatch in hyperparameter {name}"
+                        try:
+                            np.testing.assert_allclose(content_here[name], contents[name],
+                                                       err_msg=error_msg)
+                        except TypeError:
+                            assert content_here[name] == contents[name], error_msg
+            # sort out the columns that should be averaged
+            for name, (values, lengths) in hyperparameter_to_average.items():
+                contents[name] = np.average(values, weights=lengths)
             # update columns
             for name in content_here['column_order']:
                 if name not in columns:
