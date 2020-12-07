@@ -1,9 +1,9 @@
-from tree_tagger import Components, InputTools
+from jet_tools.tree_tagger import Components, InputTools
 import numpy as np
 #from ipdb import set_trace as st
 from networkx.drawing.nx_agraph import write_dot
 from itertools import compress
-from tree_tagger.PDGNames import IDConverter
+from jet_tools.tree_tagger.PDGNames import IDConverter
 
 
 class DotGraph:
@@ -295,7 +295,7 @@ def main():
     eventWise_path = InputTools.get_file_name("Name the eventWise; ", '.awkd')
     eventWise = Components.EventWise.from_file(eventWise_path)
     while repeat:
-        from tree_tagger import FormShower
+        from jet_tools.tree_tagger import FormShower
         eventWise.selected_index = int(input("Event number: "))
         showers = FormShower.get_showers(eventWise)
         jet_name = "HomeJet"

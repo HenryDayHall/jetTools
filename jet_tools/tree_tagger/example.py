@@ -1,6 +1,6 @@
 # some generic, unintresting imports
 import os
-from tree_tagger import InputTools
+from jet_tools.tree_tagger import InputTools
 from ipdb import set_trace # to allow interactiverty
 
 def interactive():
@@ -25,8 +25,8 @@ else:
         exit
 print("This hepmc file will be read into an awkward array")
 input("press enter to continue\n...")
-print(" > from tree_tagger import ReadHepmc")
-from tree_tagger import ReadHepmc
+print(" > from jet_tools.tree_tagger import ReadHepmc")
+from jet_tools.tree_tagger import ReadHepmc
 print(" > required_size = 10")
 required_size = 10
 print(" > eventWise = ReadHepmc.Hepmc(*os.path.split(hepmc_path), start=0, stop=required_size)")
@@ -36,8 +36,8 @@ print("If the chosen stop point is beyond the end of the hepmc (or equal to np.i
       "The awkward array is wrapped in a cutsom object called an EventWise. "
       "If the hepmc file is very large it may be necessary to read it in chunks. "
       "The chunks can be combined using eventWise.combine (see the doc string for combine).")
-print(" > from tree_tagger.Components import EventWise")
-from tree_tagger.Components import EventWise
+print(" > from jet_tools.tree_tagger.Components import EventWise")
+from jet_tools.tree_tagger.Components import EventWise
 print("This class is structured around the format of event by event particle data.")
 print("(for direct access to the awkward array use EventWise._column_contents)")
 input("press enter to continue\n...")
@@ -108,8 +108,8 @@ input("press enter to continue\n...")
 
 print("The easiest way to use the RootReadout class is actually with "
       "the function marry in JoinHepMCRoot.py")
-print(" > from tree_tagger import JoinHepMCRoot")
-from tree_tagger import JoinHepMCRoot
+print(" > from jet_tools.tree_tagger import JoinHepMCRoot")
+from jet_tools.tree_tagger import JoinHepMCRoot
 print(" > eventWise = JoinHepMCRoot.marry(hepmc_path, root_path)")
 # this takes lots of time, so don't actually do it
 #eventWise = JoinHepMCRoot.marry(hepmc_path, root_path)

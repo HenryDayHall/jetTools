@@ -1,5 +1,5 @@
 """somewhat messy script to play with things related to the clustering objective in a live way """
-from tree_tagger import Components, InputTools, FormJets
+from jet_tools.tree_tagger import Components, InputTools, FormJets
 import matplotlib
 from ipdb import set_trace as st
 import numpy as np

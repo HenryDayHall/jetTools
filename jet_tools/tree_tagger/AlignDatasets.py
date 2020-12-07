@@ -1,6 +1,6 @@
 """ module to line up datasets by their hard events """
 from ipdb import set_trace as st
-from tree_tagger import InputTools, Components
+from jet_tools.tree_tagger import InputTools, Components
 import numpy as np
 import awkward
 

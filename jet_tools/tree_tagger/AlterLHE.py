@@ -14,7 +14,7 @@ from ipdb import set_trace as st
 import os
 from xml.etree import ElementTree
 import ast
-from tree_tagger import PDGNames, InputTools
+from jet_tools.tree_tagger import PDGNames, InputTools
 import numpy as np
 
 pdg_ids = PDGNames.Identities()

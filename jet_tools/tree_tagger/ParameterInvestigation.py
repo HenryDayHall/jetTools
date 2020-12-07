@@ -5,7 +5,7 @@ from collections import OrderedDict
 from ipdb import set_trace as st
 import os
 import numpy as np
-from tree_tagger import FormJets, FormShower, PlottingTools, Components, InputTools, TrueTag
+from jet_tools.tree_tagger import FormJets, FormShower, PlottingTools, Components, InputTools, TrueTag
 import scipy.spatial
 import scipy.stats
 import sklearn.metrics

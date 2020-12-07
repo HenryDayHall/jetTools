@@ -2,8 +2,8 @@
 display = False
 from ipdb import set_trace as st
 if display:
-    from tree_tagger import FormJets, DrawBarrel
-from tree_tagger import Components, InputTools, Constants, FormShower
+    from jet_tools.tree_tagger import FormJets, DrawBarrel
+from jet_tools.tree_tagger import Components, InputTools, Constants, FormShower
 import numpy as np
 import awkward
 import os
@@ -118,7 +118,9 @@ def tag_particle_indices(eventWise, hard_interaction_pids=None, tag_pids=None, i
     if tag_pids is None:
         tag_pids = np.array([-5])
     elif isinstance(tag_pids, str) and tag_pids == 'hadrons':
-        tag_pids = np.genfromtxt('tree_tagger/contains_b_quark.csv', dtype=int)
+        dir_name = os.path.dirname(os.path.abspath(__file__))
+        file_name = os.path.join(dir_name, "contains_b_quark.csv")
+        tag_pids = np.genfromtxt(file_name, dtype=int)
     if include_antiparticles:
         tag_pids = np.concatenate((tag_pids, -tag_pids))
     hard_emmision_idx = []
@@ -679,7 +681,7 @@ display=False  # note needs full simulation
 if display:  # have to comment out to run without display
     def main():
         """ """
-        from tree_tagger import Components, DrawBarrel
+        from jet_tools.tree_tagger import Components, DrawBarrel
         repeat = True
         eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt.awkd")
         jet_name = "HomeJet"

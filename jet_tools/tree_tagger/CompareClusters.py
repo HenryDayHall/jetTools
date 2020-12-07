@@ -10,7 +10,7 @@ import pickle
 import matplotlib
 import awkward
 from ipdb import set_trace as st
-from tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, JetQuality, PlottingTools
+from jet_tools.tree_tagger import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, JetQuality, PlottingTools
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt

@@ -1,4 +1,4 @@
-from tree_tagger import FormJets, Components, InputTools, CompareClusters, CompareDatasets
+from jet_tools.tree_tagger import FormJets, Components, InputTools, CompareClusters, CompareDatasets
 import time
 import csv
 import cProfile

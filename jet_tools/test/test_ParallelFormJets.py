@@ -5,8 +5,8 @@ import numpy.testing as tst
 import shutil
 import numpy as np
 from ipdb import set_trace as st
-from tree_tagger import ParallelFormJets, Components, FormJets
-from test.tools import TempTestDir
+from jet_tools.tree_tagger import ParallelFormJets, Components, FormJets
+from jet_tools.test.tools import TempTestDir
 import unittest.mock
 import time
 import os
@@ -47,7 +47,7 @@ def fake_cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
 
 def test_worker():
     # mock multiapply - it has been tested elsewhere
-    with unittest.mock.patch('tree_tagger.FormJets.cluster_multiapply',
+    with unittest.mock.patch('jet_tools.tree_tagger.FormJets.cluster_multiapply',
                              new=fake_cluster_multiapply):
         with TempTestDir("tst") as temp_dir:
             jet_name = "GoodJet"
@@ -184,7 +184,7 @@ def fake_worker(eventWise_path, run_condition, jet_class, jet_name, cluster_para
 
 def test_generate_pool():
     # mock _worker, this is tested above
-    with unittest.mock.patch('tree_tagger.ParallelFormJets._worker', new=fake_worker):
+    with unittest.mock.patch('jet_tools.tree_tagger.ParallelFormJets._worker', new=fake_worker):
         with TempTestDir("tst") as temp_dir:
             ew = Components.EventWise(temp_dir, "file.awkd")
             ew.append(JetInputs_Energy = np.arange(100))

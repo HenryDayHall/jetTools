@@ -2,7 +2,7 @@
 #from ipdb import set_trace as st
 import numpy as np
 from matplotlib import pyplot as plt
-from tree_tagger import RecursiveNN, Constants
+from jet_tools.tree_tagger import RecursiveNN, Constants
 import sklearn
 import torch
 

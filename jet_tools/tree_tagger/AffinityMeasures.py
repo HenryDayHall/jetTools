@@ -3,7 +3,7 @@ import os
 from ipdb import set_trace as st
 import numpy as np
 from matplotlib import pyplot as plt
-from tree_tagger import FormShower, PlottingTools, Components, InputTools, TrueTag, SingleFormJets
+from jet_tools.tree_tagger import FormShower, PlottingTools, Components, InputTools, TrueTag, SingleFormJets
 import scipy.spatial
 import scipy.stats
 import sklearn.metrics

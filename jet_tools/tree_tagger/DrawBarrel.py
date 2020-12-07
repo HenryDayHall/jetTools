@@ -520,7 +520,7 @@ def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
 
 def main():
     """ """
-    from tree_tagger import Components, LinkingFramework, InputTools
+    from jet_tools.tree_tagger import Components, LinkingFramework, InputTools
     repeat = True
     try:
         eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")

@@ -1,6 +1,6 @@
 """ Do a single run of forming the jets, with specified parameters"""
 from ipdb import set_trace as st
-from tree_tagger import InputTools, Components, JoinHepMCRoot, ReadHepmc, FormJets, TrueTag, ShapeVariables, MassPeaks
+from jet_tools.tree_tagger import InputTools, Components, JoinHepMCRoot, ReadHepmc, FormJets, TrueTag, ShapeVariables, MassPeaks
 import os
 import shutil
 import ast

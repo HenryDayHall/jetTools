@@ -1,7 +1,7 @@
 """ Tools to turn clusters of particles into showers """
 import os
 from ipdb import set_trace as st
-from tree_tagger import PDGNames, DrawTrees, Components
+from jet_tools.tree_tagger import PDGNames, DrawTrees, Components
 import itertools
 from matplotlib import pyplot as plt
 import numpy as np

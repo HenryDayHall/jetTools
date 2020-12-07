@@ -5,8 +5,8 @@ import awkward
 import pytest
 import numpy as np
 from numpy import testing as tst
-from test.tools import TempTestDir
-from tree_tagger import Components, CompareClusters, Constants
+from jet_tools.test.tools import TempTestDir
+from jet_tools.tree_tagger import Components, CompareClusters, Constants
 import unittest.mock
 
 
@@ -294,11 +294,11 @@ def test_append_scores():
         ew = Components.EventWise(dir_name, save_name)
         ew.append(**params)
         # mock JetQuality.quality_width_fracton and get_detectable_comparisons
-        with unittest.mock.patch('tree_tagger.JetQuality.quality_width_fracton',
+        with unittest.mock.patch('jet_tools.tree_tagger.JetQuality.quality_width_fracton',
                                  new=fake_quality_width_fraction):
-            with unittest.mock.patch('tree_tagger.CompareClusters.get_detectable_comparisons',
+            with unittest.mock.patch('jet_tools.tree_tagger.CompareClusters.get_detectable_comparisons',
                                      new=fake_detectable_comparisons):
-                with unittest.mock.patch('tree_tagger.TrueTag.add_detectable_fourvector',
+                with unittest.mock.patch('jet_tools.tree_tagger.TrueTag.add_detectable_fourvector',
                                          new=fake_empty):
                     CompareClusters.append_scores(ew)
                     tst.assert_allclose(ew.Jet_Bork, [np.inf, np.inf, np.inf])

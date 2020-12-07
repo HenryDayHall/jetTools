@@ -1,5 +1,5 @@
-from tree_tagger import Components
-from tree_tagger import CompareClusters
+from jet_tools.tree_tagger import Components
+from jet_tools.tree_tagger import CompareClusters
 from ipdb import set_trace as st
 
 

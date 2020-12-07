@@ -1,4 +1,4 @@
-from tree_tagger import ReadHepmc, Components
+from jet_tools.tree_tagger import ReadHepmc, Components
 import awkward
 from ipdb import set_trace as st
 import os

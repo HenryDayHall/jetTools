@@ -1,7 +1,7 @@
 """ Module to run the linking NN """
 import os
 import threading
-from tree_tagger import LinkingNN, LinkingEvaluation, RunTools, InputTools
+from jet_tools.tree_tagger import LinkingNN, LinkingEvaluation, RunTools, InputTools
 from matplotlib import pyplot as plt
 
 

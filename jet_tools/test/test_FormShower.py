@@ -1,9 +1,9 @@
 """ tests to evaluate the FormShower module """
 from ipdb import set_trace as st
-from tree_tagger import FormShower, DrawTrees, Components, PDGNames
+from jet_tools.tree_tagger import FormShower, DrawTrees, Components, PDGNames
 import numpy.testing as tst
 import numpy as np
-from test.tools import TempTestDir
+from jet_tools.test.tools import TempTestDir
 import pytest
 import awkward
 

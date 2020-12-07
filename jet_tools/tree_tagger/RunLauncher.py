@@ -2,7 +2,7 @@
 import os
 import threading
 import ast
-from tree_tagger import RecursiveNN, RunTools, InputTools, RunEvaluation, StandardNN, JetBDT
+from jet_tools.tree_tagger import RecursiveNN, RunTools, InputTools, RunEvaluation, StandardNN, JetBDT
 from matplotlib import pyplot as plt
 
 

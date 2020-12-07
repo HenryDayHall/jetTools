@@ -2,7 +2,7 @@
 #from ipdb import set_trace as st
 import numpy as np
 from matplotlib import pyplot as plt
-from tree_tagger import LinkingFramework, LinkingNN, Constants
+from jet_tools.tree_tagger import LinkingFramework, LinkingNN, Constants
 
 def apply_linking_net(run, use_test=True, nets=None):
     """

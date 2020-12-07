@@ -1,8 +1,8 @@
 """ Module to test DrawTrees """
 from networkx.drawing.nx_pydot import read_dot
-from test.tools import TempTestDir
+from jet_tools.test.tools import TempTestDir
 import os
-from tree_tagger import DrawTrees, FormShower
+from jet_tools.tree_tagger import DrawTrees, FormShower
 from ipdb import set_trace as st
 
 

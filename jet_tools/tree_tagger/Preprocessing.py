@@ -5,8 +5,8 @@ import numpy as np
 from sklearn import preprocessing
 import os
 import awkward
-from tree_tagger import Components
-from tree_tagger.Components import flatten, apply_array_func
+from jet_tools.tree_tagger import Components
+from jet_tools.tree_tagger.Components import flatten, apply_array_func
 
 def phi_rotation(eventWise):
     """

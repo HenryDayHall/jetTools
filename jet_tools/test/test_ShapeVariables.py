@@ -1,6 +1,6 @@
 """ Testing module for the ShapeVariables module"""
 from matplotlib import pyplot as plt
-from tree_tagger import ShapeVariables
+from jet_tools.tree_tagger import ShapeVariables
 import numpy as np
 from ipdb import set_trace as st
 

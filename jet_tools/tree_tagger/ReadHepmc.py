@@ -2,7 +2,7 @@ import numpy as np
 import awkward
 import os
 import collections
-from tree_tagger import Components, InputTools
+from jet_tools.tree_tagger import Components, InputTools
 import csv
 from ipdb import set_trace as st
 

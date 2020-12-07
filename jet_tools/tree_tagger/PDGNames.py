@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 class Identities:
     """ """
@@ -25,7 +26,10 @@ class Identities:
                                              # width, and would typically be 0 there.
                            "tau0": float,    # - the nominal proper lifetime tau_0 (in mm/c).
                             }
-    def __init__(self, file_name="tree_tagger/full_particle_data.txt"):
+    def __init__(self, file_name=None):
+        if file_name is None:
+            dir_name = os.path.dirname(os.path.abspath(__file__))
+            file_name = os.path.join(dir_name, "full_particle_data.txt")
         particle_data = []
         self.columns = {name: i for i, name in
                         enumerate(sorted(list(self.particle_attributes.keys())))}

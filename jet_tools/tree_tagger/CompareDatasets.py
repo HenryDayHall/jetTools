@@ -1,4 +1,4 @@
-from tree_tagger import Components, PDGNames, InputTools, FormJets
+from jet_tools.tree_tagger import Components, PDGNames, InputTools, FormJets
 import ast
 import multiprocessing
 import time

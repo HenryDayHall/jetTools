@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional
 from torch.utils.data import WeightedRandomSampler, BatchSampler
-from tree_tagger import CustomDataloader, CustomScheduler, CustomSampler, TrainingTools
+from jet_tools.tree_tagger import CustomDataloader, CustomScheduler, CustomSampler, TrainingTools
 # from torch.nn.utils import clip_grad_norm  this looks useful!
 
 class SimpleRecursor(nn.Module):

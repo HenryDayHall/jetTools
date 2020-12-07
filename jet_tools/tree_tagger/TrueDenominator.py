@@ -1,6 +1,6 @@
-from tree_tagger import Components
+from jet_tools.tree_tagger import Components
 from ipdb import set_trace as st
-from tree_tagger import FormShower, InputTools, FormJets
+from jet_tools.tree_tagger import FormShower, InputTools, FormJets
 import numpy as np
 import awkward
 

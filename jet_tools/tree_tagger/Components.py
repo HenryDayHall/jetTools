@@ -6,7 +6,7 @@ from ipdb import set_trace as st
 import awkward
 import uproot
 import numpy as np
-from tree_tagger import Constants, InputTools
+from jet_tools.tree_tagger import Constants, InputTools
 import pygit2
 
 def flatten(nested):

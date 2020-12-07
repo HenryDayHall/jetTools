@@ -11,7 +11,7 @@ from copy import deepcopy
 #from ipdb import set_trace as st
 import torch
 import numpy as np
-from tree_tagger import Constants, Datasets, LinkingNN, RecursiveNN, StandardNN
+from jet_tools.tree_tagger import Constants, Datasets, LinkingNN, RecursiveNN, StandardNN
 from matplotlib import pyplot as plt
 import matplotlib.animation
 import sklearn

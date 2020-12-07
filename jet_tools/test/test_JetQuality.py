@@ -2,11 +2,11 @@
 import pytest
 from ipdb import set_trace as st
 import unittest.mock  # for mocker
-from test.tools import TempTestDir
+from jet_tools.test.tools import TempTestDir
 import numpy as np
 import numpy.testing as tst
 import awkward
-from tree_tagger import JetQuality, Components
+from jet_tools.tree_tagger import JetQuality, Components
 
 def test_sorted_masses():
     params = {}
@@ -88,7 +88,7 @@ def test_quality_width_fraction():
     def fake_sorted_masses(eventWise, *args, **kwargs):
         return eventWise.Sorted_masses
     jet_name = "Jet"
-    with unittest.mock.patch('tree_tagger.JetQuality.sorted_masses', new=fake_sorted_masses):
+    with unittest.mock.patch('jet_tools.tree_tagger.JetQuality.sorted_masses', new=fake_sorted_masses):
         eventWise = lambda: None  # hack to get an object that can have attributes assigned
         # an empty dataset should raise a runtime error
         eventWise.selected_index = None

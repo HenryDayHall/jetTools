@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from torch import nn
 #from ipdb import set_trace as st
 import numpy as np
-from tree_tagger import Components, LinkingFramework, FormJets, TreeWalker, InputTools, Constants
+from jet_tools.tree_tagger import Components, LinkingFramework, FormJets, TreeWalker, InputTools, Constants
 from sklearn import preprocessing
 import torch
 

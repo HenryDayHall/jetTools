@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 import numpy as np
 #from ipdb import set_trace as st
-from tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework, CustomDataloader, InputTools, TrainingTools
+from jet_tools.tree_tagger import CustomSampler, Datasets, CustomScheduler, LinkingFramework, CustomDataloader, InputTools, TrainingTools
 
 
 class Latent_projector(nn.Sequential):

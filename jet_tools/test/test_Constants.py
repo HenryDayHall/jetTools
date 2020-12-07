@@ -1,5 +1,5 @@
 """ module to test the Constants.py module """
-from tree_tagger import Constants
+from jet_tools.tree_tagger import Constants
 import numpy as np
 import pytest
 

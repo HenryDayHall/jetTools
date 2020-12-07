@@ -1,6 +1,6 @@
 """ Jet quality measures as discribed in https://arxiv.org/pdf/0810.1304.pdf"""
 import numpy as np
-from tree_tagger import MassPeaks, Constants, TrueTag
+from jet_tools.tree_tagger import MassPeaks, Constants, TrueTag
 import scipy.optimize
 from ipdb import set_trace as st
 

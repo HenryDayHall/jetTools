@@ -1,9 +1,9 @@
 """ Test the function in AreaMeasures.py """
-from tree_tagger import AreaMeasures, Components, FormShower
+from jet_tools.tree_tagger import AreaMeasures, Components, FormShower
 import numpy as np
 import awkward
 import numpy.testing as tst
-from test.tools import TempTestDir
+from jet_tools.test.tools import TempTestDir
 
 def test_width():
     linear = np.array([0, np.inf])

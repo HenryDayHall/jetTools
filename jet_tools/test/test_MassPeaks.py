@@ -3,9 +3,9 @@ import pytest
 from ipdb import set_trace as st
 import numpy as np
 import numpy.testing as tst
-from test.tools import TempTestDir
+from jet_tools.test.tools import TempTestDir
 import awkward
-from tree_tagger import MassPeaks, Components, Constants
+from jet_tools.tree_tagger import MassPeaks, Components, Constants
 
 # WARNING; this was not written with consistent angular/linear momentums
 # if tests her start breaking, it could be that the functions are fine,

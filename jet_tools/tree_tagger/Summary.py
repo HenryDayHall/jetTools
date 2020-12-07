@@ -1,5 +1,5 @@
 """ Script to generate a summary based on one eventWise file """
-from tree_tagger import FormJets, CompareClusters, Components, InputTools,\
+from jet_tools.tree_tagger import FormJets, CompareClusters, Components, InputTools,\
                         PlottingTools, AreaMeasures, MassPeaks
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st
