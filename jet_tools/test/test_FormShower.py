@@ -3,7 +3,7 @@ from ipdb import set_trace as st
 from tree_tagger import FormShower, DrawTrees, Components, PDGNames
 import numpy.testing as tst
 import numpy as np
-from tools import TempTestDir
+from test.tools import TempTestDir
 import pytest
 import awkward
 

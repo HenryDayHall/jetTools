@@ -1,7 +1,7 @@
 """ Test for the InputTools.py module """
 import sys
 from contextlib import contextmanager
-from tools import TempTestDir
+from test.tools import TempTestDir
 import os
 import io
 from tree_tagger import InputTools

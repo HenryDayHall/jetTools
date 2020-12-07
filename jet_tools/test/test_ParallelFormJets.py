@@ -6,7 +6,7 @@ import shutil
 import numpy as np
 from ipdb import set_trace as st
 from tree_tagger import ParallelFormJets, Components, FormJets
-from tools import TempTestDir
+from test.tools import TempTestDir
 import unittest.mock
 import time
 import os

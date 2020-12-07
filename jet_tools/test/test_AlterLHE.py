@@ -2,7 +2,7 @@
 from ipdb import set_trace as st
 from tree_tagger import PDGNames, AlterLHE
 from numpy import testing as tst
-from tools import TempTestDir
+from test.tools import TempTestDir
 import numpy as np
 import ast
 import os

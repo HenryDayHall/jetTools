@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import testing as tst
 from tree_tagger import Components, JoinHepMCRoot, ReadHepmc
-from tools import TempTestDir, generic_equality_comp, data_dir
+from test.tools import TempTestDir, generic_equality_comp, data_dir
 import os
 from ipdb import set_trace as st
 

@@ -5,8 +5,8 @@ import os
 from ipdb import set_trace as st
 import numpy as np
 from tree_tagger import Components, FormJets
-from tools import TempTestDir
-from test_Components import AwkdArrays
+from test.tools import TempTestDir
+from test.test_Components import AwkdArrays
 import awkward
 import itertools
 import scipy.spatial

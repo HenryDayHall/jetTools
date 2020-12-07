@@ -3,7 +3,7 @@ from ipdb import set_trace as st
 import numpy as np
 from tree_tagger import Components, FormJets, TrueTag, FormShower
 import awkward
-from tools import TempTestDir
+from test.tools import TempTestDir
 import numpy.testing as tst
 
 

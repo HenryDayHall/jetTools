@@ -347,7 +347,7 @@ def multiprocess_append(eventWise_paths, end_time, overwrite=False, leave_one_fr
 def plot_catagory(eventWises, jet_name, ax_arr=None):
     eventWise_name = ["NLO" if 'nlo' in eventWise.save_name.lower() else "LO"
                       for eventWise in eventWises]
-    desired_endings = ["IRC_DeltaR", "IRC_JetMass", "IRC_relativePT"]
+    desired_endings = ["IRC_JetMass"]
     # make the axis
     if ax_arr is None:
         fig, ax_arr = plt.subplots(len(desired_endings), 1)
@@ -355,7 +355,10 @@ def plot_catagory(eventWises, jet_name, ax_arr=None):
     else:
         ax_arr[0].set_title(jet_name)
         set_spaceing = False
-    ax_list = ax_arr.tolist()
+    try:
+        ax_list = ax_arr.tolist()
+    except AttributeError:
+        ax_list = [ax_arr]
     for end in desired_endings:
         name = jet_name + end
         variable_name = end[4:]

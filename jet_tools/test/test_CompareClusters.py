@@ -5,7 +5,7 @@ import awkward
 import pytest
 import numpy as np
 from numpy import testing as tst
-from tools import TempTestDir
+from test.tools import TempTestDir
 from tree_tagger import Components, CompareClusters, Constants
 import unittest.mock
 

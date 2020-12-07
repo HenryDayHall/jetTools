@@ -508,11 +508,15 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
         return
     fragment_path = eventWise_path.replace(".awkd", "_fragment")
     fragments = [os.path.join(fragment_path, name) for name in os.listdir(fragment_path)]
+    average_columns = []
     if dijet_mass is not None:
         CompareClusters.multiprocess_append_scores(fragments, dijet_mass, end_time)
+        hyper_columns = EventWise.from_file(fragments[0]).hyperparameter_columns
+        average_columns = [name for name in hyper_columns
+                           if name.split('_', 1)[1] in CompareClusters.SCORE_COLS]
     if time.time() > end_time:
         return
-    new_ew = Components.EventWise.combine(fragment_path, "")
+    new_ew = Components.EventWise.combine(fragment_path, "", weighted_average=average_columns)
     if time.time() > end_time:
         return
     new_path = os.path.join(new_ew.dir_name, new_ew.save_name)

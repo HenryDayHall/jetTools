@@ -2,7 +2,7 @@
 import pytest
 from ipdb import set_trace as st
 import unittest.mock  # for mocker
-from tools import TempTestDir
+from test.tools import TempTestDir
 import numpy as np
 import numpy.testing as tst
 import awkward

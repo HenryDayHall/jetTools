@@ -3,7 +3,7 @@ from tree_tagger import AreaMeasures, Components, FormShower
 import numpy as np
 import awkward
 import numpy.testing as tst
-from tools import TempTestDir
+from test.tools import TempTestDir
 
 def test_width():
     linear = np.array([0, np.inf])

@@ -1,7 +1,7 @@
 """ A module to test the Parameter investigations module"""
 from ipdb import set_trace as st
 import awkward
-from tools import TempTestDir
+from test.tools import TempTestDir
 from tree_tagger import Components, ParameterInvestigation
 import numpy.testing as tst
 import numpy as np

@@ -1117,7 +1117,6 @@ class EventWise:
             for key in columns:
                 contents[key] = contents[key][order].flatten()
         else:
-            st()
             for key in columns:
                 contents[key] = contents[key].flatten()
             lengths = {len(contents[key]) for key in columns}
