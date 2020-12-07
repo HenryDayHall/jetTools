@@ -1051,7 +1051,7 @@ class EventWise:
             # if we cannot find a column order try Event_n
             column_name = getattr(content_here, "column_order", ["Event_n"])[0]
             # if we cannot fnd the column return 1
-            segment_length = len(getattr(content_here, column_name, [None]))
+            segment_length = len(content_here.get(column_name, [None]))
             if found_hcols:  # check they are the same here
                 for name in found_hcols:
                     if name not in hyperparameter_columns:
@@ -1063,7 +1063,7 @@ class EventWise:
                             contents[name] = content_here[name]
                     elif name in weighted_average:
                         # it is not a new hyper parameter and take an average
-                        hyperparameter_to_average[name][0].append(content_here[name], segment_length)
+                        hyperparameter_to_average[name][0].append(content_here[name])
                         hyperparameter_to_average[name][1].append(segment_length)
                     else:  # we have seen it before, check for match
                         error_msg = f"Missmatch in hyperparameter {name}"
@@ -1072,9 +1072,6 @@ class EventWise:
                                                        err_msg=error_msg)
                         except TypeError:
                             assert content_here[name] == contents[name], error_msg
-            # sort out the columns that should be averaged
-            for name, (values, lengths) in hyperparameter_to_average.items():
-                contents[name] = np.average(values, weights=lengths)
             # update columns
             for name in content_here['column_order']:
                 if name not in columns:
@@ -1105,6 +1102,9 @@ class EventWise:
                     pickle_strs[key] = pickle.dumps(content_here[key])
                 else:
                     pickle_strs[key] == pickle.dumps(content_here[key]), f"What is {key}?"
+        # sort out the columns that should be averaged
+        for name, (values, lengths) in hyperparameter_to_average.items():
+            contents[name] = np.average(values, weights=lengths)
         # make all non hyperparameters into awkward arrays
         for key in contents:
             if key not in hyperparameter_columns:
@@ -1117,6 +1117,7 @@ class EventWise:
             for key in columns:
                 contents[key] = contents[key][order].flatten()
         else:
+            st()
             for key in columns:
                 contents[key] = contents[key].flatten()
             lengths = {len(contents[key]) for key in columns}
