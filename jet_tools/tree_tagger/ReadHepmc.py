@@ -41,9 +41,10 @@ class Hepmc(Components.EventWise):
                             int, float, float,
                             int, int, int, int]  # cannot include the list of flow codes
                             # so do't include anythng after them
-    def __init__(self, dir_name, save_name, start=0, stop=np.inf, **kwargs):
+    def __init__(self, file_name, start=0, stop=np.inf, **kwargs):
         expected_columns = Hepmc.event_information_cols + Hepmc.weight_cols + Hepmc.units_cols + \
                            Hepmc.cross_section_cols + Hepmc.vertex_cols + Hepmc.particle_cols
+        dir_name, save_name = os.path.split(file_name)
         if 'columns' in kwargs: 
             assert kwargs['columns'] == expected_columns, f'Expected; {expected_columns},'+\
                                                           f' in input; {kwargs["columns"]}'
@@ -53,9 +54,14 @@ class Hepmc(Components.EventWise):
             self.prepared_contents = {name: [] for name in expected_columns}
             # there are more but unfortunatly I cannot be bothered to add them right now
             # parse the event
-            filepath = os.path.join(dir_name, save_name)
             print("Parsing events")
-            self._parse_events(filepath, start, stop)
+            try:
+                self._parse_events(file_name, start, stop)
+            except Exception as e:
+                if file_name.endswith('.gz'):
+                    raise ValueError("You need to unzip the hepmc file. \n try;\n" +
+                                     f"> gunzip {file_name}")
+                raise e  # otherwise it's something else
             # figure out which particles created which other particles
             print("Assigning heritage")
             self._assign_heritage()

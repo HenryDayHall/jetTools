@@ -1,11 +1,11 @@
 import numpy as np
-#from ipdb import set_trace as st
+from ipdb import set_trace as st
 import matplotlib
 #from tvtk.api import tvtk
 #from mayavi.scripts import mayavi2
 from mayavi import mlab
 
-def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, tower_name="Tower"):
+def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, tower_indices, cell_basesize, tower_name="Tower"):
     """
     
 
@@ -29,15 +29,21 @@ def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, to
     """
     # angles under this are on the endcap
     barrel_theta = np.arctan(barrel_radius/barrel_length)
-    thetas = 2*np.arctan(np.exp(-getattr(eventWise, tower_name+"_Eta")))
-    phis = getattr(eventWise, tower_name+"_Phi")
+    thetas = 2*np.arctan(np.exp(-getattr(eventWise, tower_name+"_Eta")[tower_indices]))
+    phis = getattr(eventWise, tower_name+"_Phi")[tower_indices]
+    cuboid_lengths = cuboid_lengths[tower_indices]
     on_endcap = np.any((np.abs(thetas) < barrel_theta, 
                         np.abs(thetas) > np.pi-barrel_theta),
                        axis=0)
+    # calculate the barrel and endcap cuboids seperatly
     b_cuboids, b_centers, b_heights = \
-        barrel_cuboids(barrel_radius, thetas[~on_endcap], phis[~on_endcap], cuboid_lengths[~on_endcap])
+        barrel_cuboids(barrel_radius, cell_basesize,
+                       thetas[~on_endcap], phis[~on_endcap], cuboid_lengths[~on_endcap])
     e_cuboids, e_centers, e_heights = \
-        endcap_cuboids(barrel_length, barrel_radius, thetas[on_endcap], phis[on_endcap], cuboid_lengths[on_endcap])
+        endcap_cuboids(barrel_length, cell_basesize,
+                       barrel_radius, thetas[on_endcap], phis[on_endcap],
+                       cuboid_lengths[on_endcap])
+    # zip them back together
     i_b_cuboids, i_e_cuboids = iter(b_cuboids), iter(e_cuboids)
     cuboids = [next(i_e_cuboids) if endcap else next(i_b_cuboids) for endcap in on_endcap]
     i_b_centers, i_e_centers = iter(b_centers.tolist()), iter(e_centers.tolist())
@@ -46,7 +52,8 @@ def generate_cuboids(eventWise, barrel_length, barrel_radius, cuboid_lengths, to
     heights = [next(i_e_heights) if endcap else next(i_b_heights) for endcap in on_endcap]
     return cuboids, centers, heights
 
-def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
+
+def barrel_cuboids(barrel_radius, cell_basesize, thetas, phis, cuboid_lengths):
     """
     
 
@@ -66,7 +73,7 @@ def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
 
     
     """
-    half_basesize = barrel_radius * np.pi / 200.
+    half_basesize = 0.5*cell_basesize
     cos_phis = np.cos(phis)
     sin_phis = np.sin(phis)
     center_x = barrel_radius * cos_phis
@@ -80,7 +87,8 @@ def barrel_cuboids(barrel_radius, thetas, phis, cuboid_lengths):
     cuboids = make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec)
     return cuboids, center_vec, height_vec
 
-def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
+
+def endcap_cuboids(barrel_length, cell_basesize, barrel_radius, thetas, phis, cuboid_lengths):
     """
     
 
@@ -102,7 +110,7 @@ def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
 
     
     """
-    half_basesize = barrel_radius * np.pi / 200.
+    half_basesize = 0.5*cell_basesize
     cos_phis = np.cos(phis)
     sin_phis = np.sin(phis)
     abstan_thetas = np.abs(np.tan(thetas))
@@ -118,6 +126,7 @@ def endcap_cuboids(barrel_length, barrel_radius, thetas, phis, cuboid_lengths):
     surface_2 = np.vstack((np.ones_like(phis), np.zeros_like(phis), np.zeros_like(phis))).T
     cuboids = make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec)
     return cuboids, center_vec, height_vec
+
 
 def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
     """
@@ -153,18 +162,18 @@ def make_cuboids(center_vec, half_basesize, surface_1, surface_2, height_vec):
     for i in range(len(point_1)):
         cuboid = []
         for dim in range(3):
-            coords = np.array(([[point_1[i, dim], point_2[i, dim], point_3[i, dim], point_4[i, dim]],
-                                [point_1[i, dim], point_2[i, dim], point_5[i, dim], point_6[i, dim]],
-                                [point_2[i, dim], point_3[i, dim], point_6[i, dim], point_7[i, dim]],
-                                [point_3[i, dim], point_4[i, dim], point_7[i, dim], point_8[i, dim]],
-                                [point_4[i, dim], point_1[i, dim], point_8[i, dim], point_5[i, dim]],
-                                [point_5[i, dim], point_6[i, dim], point_7[i, dim], point_8[i, dim]]]))
+            coords = np.array(([[point_1[i, dim], point_2[i, dim], point_4[i, dim], point_3[i, dim]],
+                                [point_1[i, dim], point_2[i, dim], point_6[i, dim], point_5[i, dim]],
+                                [point_2[i, dim], point_4[i, dim], point_8[i, dim], point_6[i, dim]],
+                                [point_4[i, dim], point_3[i, dim], point_7[i, dim], point_8[i, dim]],
+                                [point_3[i, dim], point_1[i, dim], point_5[i, dim], point_7[i, dim]],
+                                [point_7[i, dim], point_5[i, dim], point_6[i, dim], point_8[i, dim]]]))
             cuboid.append(coords)
         cuboids.append(cuboid)
     return cuboids
 
 
-def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
+def highlight_pos(highlight_xyz, colours=None, colourmap="cool", scale=1):
     """
     
 
@@ -183,13 +192,13 @@ def highlight_pos(highlight_xyz, colours=None, colourmap="cool"):
     
     """
     if colourmap is False: # use a flat colour
-        for scale in np.linspace(120, 200, 4):
+        for scale in np.linspace(scale*0.5, scale, 4):
             highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
                                        highlight_xyz[:, 2],
                                        name='highlights', color=colours, scale_mode='none',
                                        scale_factor=scale, opacity=0.06)
     else:
-        for scale in np.linspace(120, 200, 4):
+        for scale in np.linspace(scale*0.5, scale, 4):
             highlights = mlab.points3d(highlight_xyz[:, 0], highlight_xyz[:, 1],
                                        highlight_xyz[:, 2], colours,
                                        name='highlights', colormap=colourmap, scale_mode='none',
@@ -223,79 +232,55 @@ def highlight_indices(all_positions, indices, colours, colourmap="Blues"):
     highlight_pos(all_positions[indices], colours, colourmap)
 
     
-def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour=(0.9, 0.9, 0.9), has_vertex=True, new_figure=True, bg_color=(0., 0., 0.)):
-    """
-    
-
-    Parameters
-    ----------
-    eventWise :
-        param track_name: (Default value = "Track")
-    tower_name :
-        Default value = "Tower")
-    colour :
-        Default value = (0.9)
-    0 :
-        9:
-    0 :
-        9):
-    has_vertex :
-        Default value = True)
-    new_figure :
-        Default value = True)
-    bg_color :
-        Default value = (0.)
-    0 :
-        param 0.):
-    track_name :
-        (Default value = "Track")
-    0.9 :
-        
-    0.9) :
-        
-    0. :
-        
-    0.) :
-        
-
-    Returns
-    -------
-
-    
-    """
+def plot_tracks_towers(eventWise, track_name="Track", track_indices=None, 
+                       tower_name="Tower", tower_indices=None,
+                       colour=None, particle_jets=None,
+                       has_vertex=True, connect_tracks_towers=False,
+                       new_figure=True,
+                       half_barrel_length=None, barrel_radius=None,
+                       bg_color=(0., 0., 0.), cmap='gist_rainbow'):
     assert eventWise.selected_index is not None, "You must select an event to plot"
     names = list()
-    
+    if track_indices is None:
+        track_indices = slice(None, None)
+    else:
+        if len(track_indices) == 0:
+            return
+
+    # if there is no particle colour and no single colour is given pick one
+    if particle_jets is None and colour is None:
+        colour = (0.9, 0.9, 0.9)
+    if particle_jets is not None:
+        track_colours, tower_colours = track_tower_colours(particle_jets, eventWise.Track_Particle, eventWise.Tower_Particles)
+        
+
     # decide if we are making tracks from X/Y/Z or angles
+    print("Getting track coordinates", flush=True)
     use_pxyz =  hasattr(eventWise, track_name+"_dX")
     if use_pxyz:
         # approch is short for "closest approch" (in delphes), it is the inner most point of the track
         names.append("approch")
-        approch_pos = np.hstack([getattr(eventWise, track_name + "_dX").reshape((-1,1)),
-                                 getattr(eventWise, track_name + "_dY").reshape((-1,1)),
-                                 getattr(eventWise, track_name + "_dZ").reshape((-1,1))]).tolist()
-        # the commented out stuff with 'scl' in it was being used to produce variable colours
-        #approch_scl = eventWise.Track_Birr.tolist()
+        approch_pos = np.hstack([getattr(eventWise, track_name + "_dX").reshape((-1, 1)),
+                                 getattr(eventWise, track_name + "_dY").reshape((-1, 1)),
+                                 getattr(eventWise, track_name + "_dZ").reshape((-1, 1))])
 
         if has_vertex:
             names.append("vertex")
-            vertex_pos = np.hstack([getattr(eventWise, track_name+ "_X").reshape((-1,1)),
-                                    getattr(eventWise, track_name+ "_Y").reshape((-1,1)),
-                                    getattr(eventWise, track_name+ "_Z").reshape((-1,1))]).tolist()
-            #vertex_scl = eventWise.Track_Birr.tolist()
+            vertex_pos = np.hstack([getattr(eventWise, track_name+ "_X").reshape((-1, 1)),
+                                    getattr(eventWise, track_name+ "_Y").reshape((-1, 1)),
+                                    getattr(eventWise, track_name+ "_Z").reshape((-1, 1))])
 
         names.append("outer")
-        outer_pos = np.hstack([getattr(eventWise, track_name + "_OuterX").reshape((-1,1)),
-                               getattr(eventWise, track_name + "_OuterY").reshape((-1,1)),
-                               getattr(eventWise, track_name + "_OuterZ").reshape((-1,1))]).tolist()
-        #outer_scl = eventWise.Track_Birr.tolist()
+        outer_pos = np.hstack([getattr(eventWise, track_name + "_OuterX").reshape((-1, 1)),
+                               getattr(eventWise, track_name + "_OuterY").reshape((-1, 1)),
+                               getattr(eventWise, track_name + "_OuterZ").reshape((-1, 1))])
     else:  #using eta/phi
         assert not has_vertex
         track_eta = getattr(eventWise, track_name+"_Eta")
         track_phi = getattr(eventWise, track_name+"_Phi")
         num_tracks = len(track_eta)
         # everything just starts at the center
-        approch_pos = np.zeros((num_tracks, 3)).tolist()
+        approch_pos = np.zeros((num_tracks, 3))
         # then the outer edge is put on a "tracker barrel"
         tracker_radius = 1300
         half_tracker_length = 2800
@@ -307,18 +292,24 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
         radius = np.abs(np.where(on_endcap, half_tracker_length*np.tan(track_theta), tracker_radius))
         xs = radius * np.cos(track_phi)
         ys = radius * np.sin(track_phi)
-        outer_pos = np.hstack([xs.reshape((-1,1)), ys.reshape((-1,1)), zs.reshape((-1,1))]).tolist()
+        outer_pos = np.hstack([xs.reshape((-1,1)), ys.reshape((-1,1)), zs.reshape((-1,1))])
+    approch_pos = approch_pos[track_indices].tolist()
+    outer_pos = outer_pos[track_indices].tolist()
+    if has_vertex:
+        vertex_pos = vertex_pos[track_indices].tolist()
 
     # calculate barrel dimensions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     factor = 1.3
-    if use_pxyz:
-        radius = np.max(np.array(outer_pos)[:, :2])
-        halflength = np.max(np.array(outer_pos)[:, 2])
+    if barrel_radius is None or half_barrel_length is None:
+        radius = 1
+        halflength = 3
     else:
-        radius = 1400
-        halflength = 3000
+        radius = barrel_radius
+        halflength = half_barrel_length
+    tube_radius = radius/60
     radiusplus = radius * factor
     halflengthplus = halflength * factor
+    print("Getting Tower coordinates", flush=True)
     # this is a long way from elegant but it finds something usable for the tower heights
     try:
         tower_energies = getattr(eventWise, tower_name+"_Energy")
@@ -327,28 +318,39 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
             tower_energies = getattr(eventWise, tower_name+"_Et")
         except AttributeError:
             tower_energies = getattr(eventWise, tower_name+"_Pt")
-    tower_lengths = 0.5 * radiusplus * tower_energies/np.max(tower_energies)
+    tower_lengths =  radiusplus * tower_energies/np.max(tower_energies)
     dot_barrel = False
+    circumference = 2*radiusplus*np.pi
+    cells_round_circumference = 200
+    cell_basesize = circumference / cells_round_circumference
+    if tower_indices is None:
+        tower_indices = slice(None, None)
     cuboids, tower_pos, tower_heights = \
-        generate_cuboids(eventWise, halflengthplus, radiusplus, tower_lengths, tower_name)
-    tower_scl = tower_energies.tolist()
+        generate_cuboids(eventWise, halflengthplus, radiusplus, tower_lengths, tower_indices, cell_basesize,
+                         tower_name)
 
-    #colourmap = matplotlib.cm.get_cmap('Set2')
-    #colours = [tuple(colourmap(c)[:3]) for c in np.linspace(0.03, 0.97, 9)]
 
     if new_figure:
+        print("Making a figure", flush=True)
         # make figure ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        mlab.figure(1, bgcolor=bg_color)
-        mlab.clf()
+        #mlab.figure(1, bgcolor=bg_color)
 
+        # plot the barrel ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        mlab.plot3d([0, 0], [0, 0], [-halflengthplus, halflengthplus],
+                color=(0.5, 0.5, 0.8), opacity=0.6, tube_radius=radiusplus)
     # plot anchor points for approch-outer lines ~~~~~~~~~~~~~~~~~~~~~
+    print("Creating anchors", flush=True)
     num_tracks = len(approch_pos)
     o_a_anchor_pos = np.array(approch_pos + outer_pos)
-    #o_a_scalars = np.array(approch_scl + outer_scl)
+    if particle_jets is None:
+        o_a_anchors = mlab.points3d(o_a_anchor_pos[:, 0], o_a_anchor_pos[:, 1],
+                                o_a_anchor_pos[:, 2], color=colour,
+                                name='o_a_anchor', opacity=0.)
+    else:
+        o_a_anchors = mlab.points3d(o_a_anchor_pos[:, 0], o_a_anchor_pos[:, 1],
+                                o_a_anchor_pos[:, 2], np.tile(track_colours, 2),
+                                name='o_a_anchor', opacity=0., colormap=cmap)
 
-    o_a_anchors = mlab.points3d(o_a_anchor_pos[:, 0], o_a_anchor_pos[:, 1],
-                            o_a_anchor_pos[:, 2], #o_a_scalars,
-                            name='o_a_anchor', opacity=0.)
 
     # add approch to outer lines
     num_tracks = len(approch_pos)
@@ -356,69 +358,73 @@ def plot_tracks_towers(eventWise, track_name="Track", tower_name="Tower", colour
     o_a_connections = np.array([[x, x + num_tracks]
                             for x in range(num_tracks)])
     o_a_anchors.mlab_source.dataset.lines = np.array(o_a_connections)
-    tube = mlab.pipeline.tube(o_a_anchors, tube_radius=8)
+    tube = mlab.pipeline.tube(o_a_anchors, tube_radius=tube_radius)
     tube.filter.vary_radius = 'vary_radius_off'
-    mlab.pipeline.surface(tube, color=colour, opacity=0.3)
+    print("Plotting tracks", flush=True)
+    mlab.pipeline.surface(tube, colormap=cmap, opacity=0.3)
 
-    # plot anchor points for outer-tower lines ~~~~~~~~~~~~~~~~~~~~~~~
-    t_o_anchor_pos = np.array(outer_pos + tower_pos)
-    #t_o_scalars = np.array(outer_scl + tower_scl)
+    if connect_tracks_towers:
+        # plot anchor points for outer-tower lines ~~~~~~~~~~~~~~~~~~~~~~~
+        t_o_anchor_pos = np.array(outer_pos + tower_pos)
 
-    t_o_anchors = mlab.points3d(t_o_anchor_pos[:, 0], t_o_anchor_pos[:, 1],
-                            t_o_anchor_pos[:, 2], #t_o_scalars,
-                            name='t_o_anchor', opacity=0.)
+        if particle_jets is None:
+            t_o_anchors = mlab.points3d(t_o_anchor_pos[:, 0], t_o_anchor_pos[:, 1],
+                                    t_o_anchor_pos[:, 2], colour=colour,
+                                    name='t_o_anchor', opacity=0.)
+        else:
+            t_o_anchors = mlab.points3d(t_o_anchor_pos[:, 0], t_o_anchor_pos[:, 1],
+                                    t_o_anchor_pos[:, 2], np.tile(track_colours, 2),
+                                    name='t_o_anchor', opacity=0., colormap=cmap)
 
-    # if the event has particles specified for tracks and towers link tracks to towers using those
-    if hasattr(eventWise, track_name+ "_Particle"):
-        # get particle ids for the tracks
-        track_global_id = list(getattr(eventWise, track_name + "_Particle"))
-        t_o_connections = []
-        # go through the tower list lookignf or matches
-        for i, gids in enumerate(getattr(eventWise, tower_name + "_Particles")):
-            for gid in gids:
-                if gid in track_global_id:
-                    #                       index of outer point, index of tower (towers start after outers) 
-                    t_o_connections.append([track_global_id.index(gid), num_tracks +i])
-    else:  # assume the tracks and towers exist as two one-to-one lists
-        t_o_connections = [(i, num_tracks+i) for i in range(num_tracks)]
-    t_o_connections = np.array(t_o_connections)
-    t_o_anchors.mlab_source.dataset.lines = np.array(t_o_connections)
-    tube = mlab.pipeline.tube(t_o_anchors, tube_radius=8)
-    tube.filter.vary_radius = 'vary_radius_off'
-    mlab.pipeline.surface(tube, color=colour, opacity=0.3)
+        #if the event has particles specified for tracks and towers link tracks to towers using those
+        print("Connecting tracks to towers", flush=True)
+        if hasattr(eventWise, track_name+ "_Particle"):
+            # get particle ids for the tracks
+            track_global_id = list(getattr(eventWise, track_name + "_Particle"))
+            t_o_connections = []
+            # go through the tower list lookignf or matches
+            for i, gids in enumerate(getattr(eventWise, tower_name + "_Particles")):
+                for gid in gids:
+                    if gid in track_global_id:
+                        #                       index of outer point, index of tower (towers start after outers) 
+                        t_o_connections.append([track_global_id.index(gid), num_tracks +i])
+        else:  # assume the tracks and towers exist as two one-to-one lists
+            t_o_connections = [(i, num_tracks+i) for i in range(num_tracks)]
+        t_o_connections = np.array(t_o_connections)
+        t_o_anchors.mlab_source.dataset.lines = np.array(t_o_connections)
+        tube = mlab.pipeline.tube(t_o_anchors, tube_radius=tube_radius)
+        tube.filter.vary_radius = 'vary_radius_off'
+        mlab.pipeline.surface(tube, colormap=cmap, opacity=0.3)
 
-    if has_vertex:
-        # plot the vertices
-        vertex_pos = np.array(vertex_pos)
-        #vertex_scl = np.array(vertex_scl)
-        vertices = mlab.points3d(vertex_pos[:, 0], vertex_pos[:, 1],
-                                 vertex_pos[:, 2], #vertex_scl,
-                                 name='vertex', color=colour, scale_mode='none',
-                                 scale_factor=100, opacity=0.7)
+    #if has_vertex:
+    #    print("Plotting vertices", flush=True)
+    #    # plot the vertices
+    #    vertex_pos = np.array(vertex_pos)
+    #    vertices = mlab.points3d(vertex_pos[:, 0], vertex_pos[:, 1],
+    #                             vertex_pos[:, 2],
+    #                             name='vertex', color=colour, scale_mode='none',
+    #                             scale_factor=1, opacity=0.7)
     # plot the approch
-    approch_pos = np.array(approch_pos)
-    #approch_scl = np.array(approch_scl)
-    vertices = mlab.points3d(approch_pos[:, 0], approch_pos[:, 1],
-                             approch_pos[:, 2], #approch_scl,
-                             name='approch', color=colour, scale_mode='none',
-                             scale_factor=100, opacity=0.7)
-    # plot the outer
-    outer_pos = np.array(outer_pos)
-    #outer_scl = np.array(outer_scl)
-    vertices = mlab.points3d(outer_pos[:, 0], outer_pos[:, 1],
-                             outer_pos[:, 2], #outer_scl,
-                             name='outer', color=colour, scale_mode='none',
-                             scale_factor=100, opacity=0.7)
+    #approch_pos = np.array(approch_pos)
+    #approch = mlab.points3d(approch_pos[:, 0], approch_pos[:, 1],
+    #                         approch_pos[:, 2],
+    #                         name='approch', color=colour, scale_mode='none',
+    #                         scale_factor=1, opacity=0.7)
+    ## plot the outer
+    #outer_pos = np.array(outer_pos)
+    #outer = mlab.points3d(outer_pos[:, 0], outer_pos[:, 1],
+    #                         outer_pos[:, 2],
+    #                         name='outer', color=colour, scale_mode='none',
+    #                         scale_factor=1, opacity=0.7)
     # plot the towers
-    if dot_barrel:
-        tower_pos = np.array(tower_pos)
-        #tower_scl = np.array(tower_scl)
-        vertices = mlab.points3d(tower_pos[:, 0], tower_pos[:, 1],
-                                 tower_pos[:, 2], #tower_scl,
-                                 name='tower', color=colour, scale_mode='none',
-                                 scale_factor=100, opacity=0.7)
-    else:
+    print("Plotting towers")
+    if particle_jets is None:
         for cuboid in cuboids:
+            mlab.mesh(*cuboid, color=colour)
+    else:
+        cmap = matplotlib.cm.get_cmap(cmap)
+        for cuboid, colour in zip(cuboids, tower_colours):
+            colour = cmap(colour)[:3]
             mlab.mesh(*cuboid, color=colour)
     return outer_pos, tower_pos, radius, halflength
 
@@ -488,6 +494,52 @@ def colour_set(num_colours, colourmap='gist_rainbow'):
     return colours
 
 
+def track_tower_colours(particle_jets, tracks_particle, towers_particles):
+    jet_colours = {}
+    i = 1
+    for tower in towers_particles:
+        for p in tower:
+            jet = next((j for j, jet in enumerate(particle_jets) if p in jet), 0)
+            jet_colours[jet] = i
+            i += 1
+    for jet in range(len(particle_jets)):
+        if jet not in jet_colours:
+            jet_colours[jet] = i
+            i += 1
+    particle_colours = {p:jet_colours[j] for j, jet in enumerate(particle_jets) for p in jet}
+    map_down = {c: i for i, c in enumerate(set(particle_colours.values()))}
+    particle_colours = {p: map_down[c] for p, c in particle_colours.items()}
+    track_colours = np.fromiter((particle_colours.get(p, 0) for p in tracks_particle),
+                                dtype=float)
+    assert len(track_colours) == len(tracks_particle)
+    tower_colours = []
+    for tower in towers_particles:
+        here = np.fromiter((particle_colours.get(p, np.nan) for p in tower), dtype=float)
+        if np.all(np.isnan(here)):
+            tower_colours.append(0.)
+        else:
+            tower_colours.append(np.nanmean(here))
+    tower_colours = np.array(tower_colours)
+
+    tower_max = np.max(tower_colours)
+    track_max = np.max(track_colours)
+    if tower_max > track_max:
+        tower_mask1 = tower_colours == tower_max
+        tower_mask2 = tower_colours == track_max
+        track_mask1 = track_colours == tower_max
+        track_mask2 = track_colours == track_max
+        tower_colours[tower_mask1] = track_max
+        tower_colours[tower_mask2] = tower_max
+        track_colours[track_mask1] = track_max
+        track_colours[track_mask2] = tower_max
+    max_value = max(tower_max, track_max)
+    track_colours /= max_value
+    tower_colours /= max_value
+    assert len(tower_colours) == len(towers_particles)
+    return track_colours, tower_colours
+    
+
+
 def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
     """
     
@@ -518,42 +570,42 @@ def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
     if interaction:
         highlight_pos(np.array([[0, 0, 0]]), colours=colour, colourmap=False)
 
+
 def main():
     """ """
-    from jet_tools.tree_tagger import Components, LinkingFramework, InputTools
-    repeat = True
-    try:
-        eventWise = Components.EventWise.from_file("/home/henry/lazy/dataset2/h1bBatch2_particles.awkd")
-    except Exception:
-        print("This main method contains hardlinks to data on Henry's machine. You probably want to use the file as an import instead of running it")
-    while repeat:
-        eventWise.selected_index = int(input("Event number: "))
-        outer_pos, tower_pos, barrel_radius, halfbarrel_length = plot_tracks_towers(eventWise)
-        print(f"Barrel_radius = {barrel_radius}, half barrel length = {halfbarrel_length}")
-        plot_beamline(halfbarrel_length*3)
-        MCtruth = LinkingFramework.MC_truth_links(eventWise)
-        tracks_near_tower, towers_near_track = LinkingFramework.tower_track_proximity(eventWise)
-        look_at_towers = False
-        if look_at_towers:
-            highlight_track = np.random.randint(0, len(eventWise.Track_Birr))
-            tower_friends = towers_near_track[highlight_track]
-            highlight_indices(outer_pos, [highlight_track], [0], "Pastel1")
-            highlight_indices(tower_pos, tower_friends, np.ones_like(tower_friends), "Set2")
-        look_at_tracks = False
-        if look_at_tracks:
-            highlight_tower = np.random.randint(0, len(eventWise.Tower_Energy))
-            track_friends = tracks_near_tower[highlight_tower]
-            highlight_indices(tower_pos, [highlight_tower], [0], "Pastel1")
-            highlight_indices(outer_pos, track_friends, np.ones_like(track_friends), "Set2")
-        look_at_truth = False
-        if look_at_truth:
-            tracks_idx, towers_idx = zip(*[[track, tower] for track, tower in MCtruth.items() if tower is not None])
-            tracks_idx, towers_idx = list(tracks_idx), list(towers_idx)
-            colours = np.random.random(len(towers_idx))
-            highlight_indices(tower_pos, towers_idx, colours, "nipy_spectral")
-            highlight_indices(outer_pos, tracks_idx, colours, "nipy_spectral")
-        mlab.show()
-        repeat = InputTools.yesNo_question("Repeat? ")
+    from jet_tools.tree_tagger import Components, InputTools, FormJets
+    eventWise_path = InputTools.get_file_name("Name the eventWise: ", '.awkd').strip()
+    if eventWise_path:
+        eventWise = Components.EventWise.from_file(eventWise_path)
+        jets = FormJets.get_jet_names(eventWise)
+        repeat = True
+        barrel_radius2 = np.max((eventWise.Track_OuterX**2 +
+                                 eventWise.Track_OuterY**2).flatten())
+        barrel_radius = np.sqrt(barrel_radius2)
+        half_barrel_length = np.max(np.abs(eventWise.Track_OuterZ.flatten()))
+        while repeat:
+            eventWise.selected_index = int(input("Event number: "))
+            jet_name = InputTools.list_complete("Jet name (empty for none): ", jets).strip()
+            if not jet_name:
+                outer_pos, tower_pos, barrel_radius, halfbarrel_length\
+                        = plot_tracks_towers(eventWise, barrel_radius=barrel_radius,
+                                             half_barrel_length=half_barrel_length)
+            else:
+                jets_here = getattr(eventWise, jet_name + "_InputIdx")
+                print(f"Number of jets = {len(jets_here)}")
+                source_idx = eventWise.JetInputs_SourceIdx
+                n_source = len(source_idx)
+                jets_here = [source_idx[jet[jet < n_source]] for jet in jets_here]
+                all_jet_particles = set(np.concatenate(jets_here))
+                assert all_jet_particles == set(source_idx)
+                results = plot_tracks_towers(eventWise, particle_jets=jets_here,
+                                             barrel_radius=barrel_radius,
+                                             half_barrel_length=half_barrel_length)
+                outer_pos, tower_pos, barrel_radius, halfbarrel_length = results
+            plot_beamline(halfbarrel_length*3)
+            print(f"Barrel_radius = {barrel_radius}, half barrel length = {halfbarrel_length}")
+            mlab.show()
+            repeat = InputTools.yesNo_question("Repeat? ")
 
 
 if __name__ == '__main__':

@@ -32,6 +32,10 @@ def subsample_es(data1, data2):
     diff_function = lambda d1, d2: scipy.stats.epps_singleton_2samp(d1, d2)[1]
     return subsample_dissdiff(data1, data2, diff_function), None
 
+def subsample_js(data1, data2):
+    diff_function = lambda d1, d2: jensen_shannon(d1, d2)[0]
+    return subsample_dissdiff(data1, data2, diff_function), None
+
 
 def probablility_vectors(data1, data2, bins=20):
     all_data = np.concatenate((data1, data2))
@@ -53,7 +57,8 @@ def kullback_Leibler(data1, data2):
 
 metric_dict = {'js': jensen_shannon, 'kl': kullback_Leibler,
                'es': scipy.stats.epps_singleton_2samp,
-               'ks': scipy.stats.ks_2samp, 'ksu': subsample_ks}
+               'ks': scipy.stats.ks_2samp, 'ksu': subsample_ks,
+               'jsu': subsample_js}
 metric_names = {'js': 'Jensen-Shannon', 'kl': 'Kullback-Leibler',
                 'es': 'Epps-Singleton',
                 'ks': "Kolmogrov-Smirnov"}
@@ -159,11 +164,14 @@ def plot_dissdiff_values(list_dissdiff_values, score_name=None):
             score_name += " unnormed"
     jet_classes, variable_types, table = read_dissdiffs(list_dissdiff_values)
     fig, ax_arr = plt.subplots(len(variable_types), 1)
+    if len(variable_types) == 1:
+        ax_arr = [ax_arr]
     fig.suptitle(f"{score_name} between LO and NLO data")
     for var_type, ax in zip(variable_types, ax_arr):
         row = variable_types.index(var_type)
         class_values = table[row]
-        ax.hist(class_values, label=jet_classes, density=True, histtype='step')
+        bins=30
+        ax.hist(class_values, label=jet_classes, bins=bins, density=True, histtype='step')
         ax.set_ylabel("Frequency")
         ax.set_xlabel(var_type)
     ax.legend()
@@ -367,7 +375,14 @@ def plot_catagory(eventWises, jet_name, ax_arr=None):
             values = np.log(np.abs(awkward.fromiter(values)))
             variable_name = "log(|relativePT|)"
         ax = ax_list.pop()
-        plot_hist(variable_name, eventWise_name, values, ax)
+        bins = 30
+        if "mass" in variable_name.lower():
+            all_values = np.concatenate(values)
+            min_non_zero = np.nanmin(all_values[all_values>0])
+            max_val = np.nanmax(all_values)
+            min_non_zero = max(max_val/2000, min_non_zero)
+            bins = np.logspace(np.log10(min_non_zero), np.log10(max_val), 30)
+        plot_hist(variable_name, eventWise_name, values, ax, bins=bins)
     ax.legend()
     if set_spaceing:
         fig.suptitle(jet_name)
@@ -380,8 +395,8 @@ def plot_catagory(eventWises, jet_name, ax_arr=None):
                 wspace=0.5)
 
 
-def plot_hist(variable_name, names, values, ax):
-    ax.hist(values, histtype='step', label=names, density=True)
+def plot_hist(variable_name, names, values, ax, bins=None):
+    ax.hist(values, histtype='step', label=names, bins=bins, density=True)
     ax.set_xlabel(variable_name)
     ax.set_ylabel("Normed Frequency")
 
@@ -493,6 +508,7 @@ if __name__ == '__main__':
                                            '.txt').strip()
         dissdiff_values = calculate_dissdiff_values(paths[0], paths[1], dissdiff_name)
         plot_dissdiff_values([dissdiff_values])
+        input()
 
 
 

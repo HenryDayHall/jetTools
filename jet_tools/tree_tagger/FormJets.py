@@ -116,6 +116,22 @@ class Custom_KMeans:
         return self.points[indices]
 
 
+def parity(identities_a, coordinates_a, identities_b, coordinates_b):
+    """ Parity for b such that is best matches a """
+    n_dims = min(len(coordinates_a[0]), len(coordinates_b[0]))
+    assert len(identities_a) > len(identities_b)
+    identities_a = list(identities_a)
+    indices_in_b = np.where([b in identities_a for b in identities_b])[0]
+    indices_in_a = [identities_a.index(b) for b in identities_b[indices_in_b]]
+    coordinates_a = coordinates_a[indices_in_a, :n_dims]
+    coordinates_b = coordinates_b[indices_in_b]
+    diff = np.sum(np.abs(coordinates_a - coordinates_b), axis=0)
+    flipped_diff = np.sum(np.abs(coordinates_a + coordinates_b), axis=0)
+    par = 1 - 2*(flipped_diff<diff)
+    return par
+
+
+
 class PseudoJet:
     """ Base class for jets, needs to be extended to be usable """
     int_columns = ["Pseudojet_InputIdx",
@@ -2547,12 +2563,14 @@ class Spectral(PseudoJet):
         input("Press enter to start pseudojeting")
         step = 0
         previously_avalible = self.currently_avalible
+        previous_identities = None
+        previous_embedding_space = None
         while self.currently_avalible > 0:
             print(f"step = {step}")
             step += 1
             self._step_assign_parents()
             avali = self.currently_avalible  # excludes beam particle
-            if step % 3 == 0:
+            if step % 1 == 0:
                 input()
             if previously_avalible > avali:
                 try:
@@ -2587,21 +2605,32 @@ class Spectral(PseudoJet):
                 mean_distance = np.nanmean(np.sqrt(
                     self._distances2[np.tril_indices_from(self._distances2, -1)]))
                 # delete items in the eigenspace axis
+                identities = self.InputIdx[:self.currently_avalible]
+                embedding_space = np.array(self._eigenspace)
+                if previous_embedding_space is not None:
+                    try:
+                        par = parity(previous_identities, previous_embedding_space,
+                                     identities, embedding_space)
+                        embedding_space *= par
+                    except IndexError:
+                        pass
                 for (ax, dim1, dim2), limits in zip(eig_ax, ax_limits):
                     ax.clear()
                     try:
-                        ax.scatter(self._eigenspace[:avali, dim1], self._eigenspace[:avali, dim2],
+                        ax.scatter(embedding_space[:avali, dim1], embedding_space[:avali, dim2],
                             self.Size[:avali]*size_multipler,
                                    c=colours_now[:avali])
                     except IndexError:
                         pass
                     ax.set_xlabel(f"dim {dim1}")
                     ax.set_ylabel(f"dim {dim2}")
-                    limits[0] = min(limits[0], ax.get_xlim()[0])
-                    limits[1] = max(limits[1], ax.get_xlim()[1])
-                    limits[2] = min(limits[2], ax.get_ylim()[0])
-                    limits[3] = max(limits[3], ax.get_ylim()[1])
-                    ax.axis(limits)
+                    #limits[0] = min(limits[0], ax.get_xlim()[0])
+                    #limits[1] = max(limits[1], ax.get_xlim()[1])
+                    #limits[2] = min(limits[2], ax.get_ylim()[0])
+                    #limits[3] = max(limits[3], ax.get_ylim()[1])
+                    #ax.axis(limits)
+                previous_embedding_space = embedding_space
+                previous_identities = identities
                 eig_ax[-1][0].set_title(f"Num eigenvectors = {self.NumEigenvectors}")
                 eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
                 print(f"mean distance = {mean_distance:.2f}")
@@ -4585,19 +4614,19 @@ if __name__ == '__main__':
         #pseudojets = Traditional(eventWise, fast_jet_params, assign=False)
         #pseudojets.plt_assign_parents()
 
-        c_class = SpectralKMeans
-        #c_class = SpectralFull
+        #c_class = SpectralKMeans
+        c_class = SpectralFull
         spectral_jet_params = dict(ExpofPTMultiplier=0,
                                    ExpofPTPosition='input',
                                    ExpofPTFormat='Luclus',
                                    NumEigenvectors=np.inf,
-                                   #StoppingCondition='beamparticle',
-                                   EigNormFactor=0.5,
+                                   #StoppingCondition='meandistance',
+                                   EigNormFactor=1.5,
                                    #BaseJump=0.05,
                                    #JumpEigenFactor=10,
                                    #MaxCutScore=0.2, 
                                    Laplacien='symmetric',
-                                   #DeltaR=1.,
+                                   #DeltaR=3.2,
                                    Eigenspace='normalised',
                                    AffinityType='exponent2',
                                    Sigma=.6,
