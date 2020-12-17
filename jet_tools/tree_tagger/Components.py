@@ -278,16 +278,14 @@ class EventWise:
     EVENT_DEPTH = 1 # events, objects in events
     JET_DEPTH = 2 # events, jets, objects in jets
 
-    def __init__(self, dir_name, save_name, columns=None, contents=None, hyperparameter_columns=None, gitdict=None):
+    def __init__(self, path_name, columns=None, contents=None, hyperparameter_columns=None, gitdict=None):
         """
         Default constructor.
         If loading from file see 'from_file' method as alterative constructor.
 
         Parameters
         ----------
-        dir_name : string
-            directory for saving into
-        save_name : string
+        path_name : string
             file name for saving with
         columns : list of strings
             names for the contents that should be accessable as attributes
@@ -304,8 +302,7 @@ class EventWise:
         self._loaded_contents = {}  # keep columns that have been accessed in ram
         # the init method must generate some table of items,
         # nomally a jagged array
-        self.dir_name = dir_name
-        self.save_name = save_name
+        self.dir_name, self.save_name = os.path.split(path_name)
         # by using None as the default value it os possible to detect non entry
         if columns is not None:
             self.columns = columns
@@ -554,7 +551,7 @@ class EventWise:
             gitdict = {key: value for key, value in contents['gitdict']}
         else:  # the file format is outdated
             gitdict = 'old'
-        new_eventWise = cls(*os.path.split(path), columns=columns,
+        new_eventWise = cls(path, columns=columns,
                             hyperparameter_columns=hyperparameter_columns,
                             contents=contents, gitdict=gitdict)
         return new_eventWise
@@ -926,9 +923,10 @@ class EventWise:
             while name_format.format(i) in os.listdir(save_dir):
                 i += 1
             name = name_format.format(i)
+            path = os.path.join(save_dir, name)
             if add_unsplit:
                 new_content = {**new_content, **unchanged_parts}
-                eventWise = type(self)(save_dir, name,
+                eventWise = type(self)(path,
                                 columns=self.columns,
                                 hyperparameter_columns=self.hyperparameter_columns,
                                 contents=new_content)
@@ -936,11 +934,11 @@ class EventWise:
                     # don't do this again
                     add_unsplit = False
             else:
-                eventWise = type(self)(save_dir, name,
+                eventWise = type(self)(path,
                                 columns=per_event_cols,
                                 hyperparameter_columns=self.hyperparameter_columns,
                                 contents=new_content)
-            all_paths.append(os.path.join(save_dir, name))
+            all_paths.append(path)
             eventWise.write()
         return all_paths
 
@@ -1121,7 +1119,9 @@ class EventWise:
                 contents[key] = contents[key].flatten()
             lengths = {len(contents[key]) for key in columns}
             assert len(lengths) == 1, "Columns with differing length, but no Event_n"
-        new_eventWise = cls(dir_name, save_base+"_joined.awkd", columns=columns, contents=contents, hyperparameter_columns=hyperparameter_columns)
+        new_eventWise = cls(os.path.join(dir_name, save_base+"_joined.awkd"),
+                            columns=columns, contents=contents,
+                            hyperparameter_columns=hyperparameter_columns)
         new_eventWise.write()
         if del_fragments:
             for fragment in fragments:
@@ -1645,7 +1645,7 @@ def last_instance(eventWise, particle_idx):
 
 class RootReadout(EventWise):
     """Reads arbitary components from a root file created by Delphes"""
-    def __init__(self, dir_name, save_name, component_names,
+    def __init__(self, file_name, component_names,
                  component_of_root_file="Delphes",
                  key_selection_function=None, all_prefixed=False):
         """
@@ -1653,9 +1653,7 @@ class RootReadout(EventWise):
 
         Parameters
         ----------
-        dir_name : string
-            directory for reading from
-        save_name : string
+        file_name : string
             file name of the root file to read
         component_names : list of strings
             names of the subcomponents
@@ -1673,8 +1671,7 @@ class RootReadout(EventWise):
 
         """
         # read the root file
-        path = os.path.join(dir_name, save_name)
-        self._root_file = uproot.open(path)[component_of_root_file]
+        self._root_file = uproot.open(file_name)[component_of_root_file]
         if key_selection_function is not None:
             self._key_selection_function = key_selection_function
         else:
@@ -1713,7 +1710,7 @@ class RootReadout(EventWise):
             self._insert_inf_rapidities()
             self._fix_Tower_NTimeHits()
             self._remove_Track_Birr()
-        super().__init__(dir_name, save_name, columns=self.columns, contents=self._column_contents)
+        super().__init__(file_name, columns=self.columns, contents=self._column_contents)
 
     def add_component(self, component_name, key_prefix=''):
         """

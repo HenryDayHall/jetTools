@@ -1,6 +1,7 @@
 """ Test the function in AreaMeasures.py """
 from jet_tools.tree_tagger import AreaMeasures, Components, FormShower
 import numpy as np
+import os
 import awkward
 import numpy.testing as tst
 from jet_tools.test.tools import TempTestDir
@@ -44,7 +45,7 @@ def test_descendant_widths():
                "Phi": phi}
     content = {k: awkward.fromiter([v]) for k, v in content.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**content)
         eventWise.selected_index = 0
         root_idxs = [0, 1, 4, 10]
@@ -52,7 +53,7 @@ def test_descendant_widths():
         tst.assert_allclose(found, np.sqrt(2))
         # check what happens if no decndants are found
         content["JetInputs_SourceIdx"]= awkward.fromiter([[]])
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**content)
         eventWise.selected_index = 0
         root_idxs = [0, 1, 4, 10]
@@ -77,7 +78,7 @@ def test_append_b_shower_widths():
                "Phi": phi}
     content = {k: awkward.fromiter([v]) for k, v in content.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**content)
         AreaMeasures.append_b_shower_widths(eventWise)
         eventWise.selected_index = None
@@ -104,7 +105,7 @@ def test_append_b_jet_widths():
                "DogJet_Phi": phi}
     content = {k: awkward.fromiter([v]) for k, v in content.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**content)
         AreaMeasures.append_b_jet_widths(eventWise, "DogJet", signal_only=False)
         AreaMeasures.append_b_jet_widths(eventWise, "DogJet", signal_only=True)

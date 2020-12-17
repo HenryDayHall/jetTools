@@ -103,7 +103,8 @@ def marry(hepmc, root_particles):
     # make the new object and save it
     save_name = root_particles.save_name.split('.', 1)[0] + '_particles.awkd'
     dir_name = root_particles.dir_name
-    new_eventWise = Components.EventWise(dir_name, save_name, columns, contents)
+    path_name = os.path.join(dir_name, save_name)
+    new_eventWise = Components.EventWise(path_name, columns, contents)
     new_eventWise.write()
     return new_eventWise
 

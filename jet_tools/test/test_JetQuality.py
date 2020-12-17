@@ -1,4 +1,5 @@
 """ methods for testing JetQuality.py """
+import os
 import pytest
 from ipdb import set_trace as st
 import unittest.mock  # for mocker
@@ -72,7 +73,7 @@ def test_sorted_masses():
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v]) for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**prep_params)
         masses = JetQuality.sorted_masses(eventWise, jet_name,
                                           mass_function='highest pt pair',

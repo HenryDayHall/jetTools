@@ -1,4 +1,5 @@
 """ tests to evaluate the FormShower module """
+import os
 from ipdb import set_trace as st
 from jet_tools.tree_tagger import FormShower, DrawTrees, Components, PDGNames
 import numpy.testing as tst
@@ -69,7 +70,7 @@ def test_descendant_idxs():
     #           0   1       2    3       4   5   6          7   8   9   10
     children = [[], [2, 3], [5], [6, 5], [], [], [7, 8, 9], [], [], [], []]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(Children=[awkward.fromiter(children)])
         eventWise.selected_index = 0
         tst.assert_allclose(list(FormShower.descendant_idxs(eventWise, 0)), [0])
@@ -84,7 +85,7 @@ def test_append_b_idxs():
     mcpid =    [4,  5,      5,   3,      2,  1,  -5,        1,  7,  11, 12]
     expected = [2, 6]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(Children=[awkward.fromiter(children)],
                          MCPID=[awkward.fromiter(mcpid)])
         found = FormShower.append_b_idxs(eventWise, append=False)
@@ -106,7 +107,7 @@ def test_upper_layers():
     expected = [2, 6]
     labeler = PDGNames.IDConverter()
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(Children=[awkward.fromiter(children)],
                          Parents=[awkward.fromiter(parents)],
                          MCPID=[awkward.fromiter(mcpid)])
@@ -169,7 +170,7 @@ def test_get_roots():
 def test_get_showers():
     def check(children, parents, mcpid, exclude_pids, expected):
         with TempTestDir("tst") as dir_name:
-            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
             eventWise.append(Children=[awkward.fromiter(children)],
                              Parents=[awkward.fromiter(parents)],
                              MCPID=[awkward.fromiter(mcpid)])
@@ -212,7 +213,7 @@ def test_event_shared_ends():
     def check(children, parents, mcpid, all_roots, expected_roots, expected_shared):
         with TempTestDir("tst") as dir_name:
             is_leaf = [len(c) == 0 for c in children]
-            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
             eventWise.append(Children=[awkward.fromiter(children)],
                              Parents=[awkward.fromiter(parents)],
                              Is_leaf=[awkward.fromiter(is_leaf)],
@@ -280,7 +281,7 @@ def test_event_shared_ends():
 def test_shared_ends():
     def check(children, parents, is_leaf, mcpid, expected_roots, expected_shared):
         with TempTestDir("tst") as dir_name:
-            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
             eventWise.append(Children=awkward.fromiter(children),
                              Parents=awkward.fromiter(parents),
                              Is_leaf=awkward.fromiter(is_leaf),

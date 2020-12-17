@@ -384,7 +384,7 @@ def test_Traditional():
         # We start with the first method and do checks on the behavior of pseudojet
         empty_name = "empty.awkd"
         empty_path = os.path.join(dir_name, empty_name)
-        empty_ew = Components.EventWise(dir_name, empty_name)
+        empty_ew = Components.EventWise(os.path.join(dir_name, empty_name))
         empty_ew.selected_index = 0
         # method 1
         def make_jets1(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
@@ -439,7 +439,7 @@ def test_Traditional():
 # setup and test indervidual methods inside the jet classes
 def make_simple_jets(floats, jet_params={}, jet_class=FormJets.PseudoJet, assign=False, **kwargs):
     with TempTestDir("tst") as dir_name:
-        ew = Components.EventWise(dir_name, "tmp.awkd")
+        ew = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         set_JetInputs(ew, floats)
         ew.selected_index = 0
     with warnings.catch_warnings():
@@ -966,7 +966,7 @@ def test_write_event():
         jet_params = {'DeltaR': 0.4, 'ExpofPTPosition': 'input', 'AffinityCutoff': ('knn', 3)}
         ints = SimpleClusterSamples.close_join['ints']
         floats = SimpleClusterSamples.close_join['floats']
-        ew = Components.EventWise(dir_name, "tmp.awkd")
+        ew = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         set_JetInputs(ew, floats)
         ew.selected_index = 0
         jets = FormJets.Spectral(ew, dict_jet_params=jet_params, assign=False)
@@ -1559,7 +1559,8 @@ def test_cluster_edge_cases():
 def test_filter_obs():
     with TempTestDir("filter_obs") as dir_name:
         name = "test.awkd"
-        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                                  columns=["Particle_Tower", "Particle_Track"],
                 contents={"Particle_Track": AwkdArrays.event_ints, "Particle_Tower": AwkdArrays.event_ints})
         ew.selected_index = 0
         input_outputs = [
@@ -1570,7 +1571,8 @@ def test_filter_obs():
             out = FormJets.filter_obs(ew, np.array(inp))
             tst.assert_allclose(out, expected)
         all_unseen = awkward.fromiter([[-1, -1], [-1]])
-        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=["Particle_Tower", "Particle_Track"],
                 contents={"Particle_Track": AwkdArrays.event_ints, "Particle_Tower": all_unseen})
         ew.selected_index = 0
         input_outputs = [
@@ -1580,7 +1582,8 @@ def test_filter_obs():
         for inp, expected in input_outputs:
             out = FormJets.filter_obs(ew, np.array(inp))
             tst.assert_allclose(out, expected)
-        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=["Particle_Tower", "Particle_Track"],
                 contents={"Particle_Track": all_unseen, "Particle_Tower": AwkdArrays.event_ints})
         ew.selected_index = 0
         input_outputs = [
@@ -1590,7 +1593,8 @@ def test_filter_obs():
         for inp, expected in input_outputs:
             out = FormJets.filter_obs(ew, np.array(inp))
             tst.assert_allclose(out, expected)
-        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=["Particle_Tower", "Particle_Track"],
                 contents={"Particle_Track": all_unseen, "Particle_Tower": all_unseen})
         ew.selected_index = 0
         input_outputs = [
@@ -1601,7 +1605,8 @@ def test_filter_obs():
             out = FormJets.filter_obs(ew, np.array(inp))
             tst.assert_allclose(out, expected)
         one_unseen = awkward.fromiter([[-1, 1], [2]])
-        ew = Components.EventWise(dir_name, name, columns=["Particle_Tower", "Particle_Track"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=["Particle_Tower", "Particle_Track"],
                 contents={"Particle_Track": one_unseen, "Particle_Tower": all_unseen})
         ew.selected_index = 0
         input_outputs = [
@@ -1616,7 +1621,7 @@ def test_filter_obs():
 def test_filter_ends():
     with TempTestDir("filter_ends") as dir_name:
         name = "test.awkd"
-        ew = Components.EventWise(dir_name, name, columns=["Children"],
+        ew = Components.EventWise(os.path.join(dir_name, name), columns=["Children"],
                                   contents={"Children": AwkdArrays.empty_jets})
         ew.selected_index = 0
         input_outputs = [
@@ -1626,7 +1631,7 @@ def test_filter_ends():
         for inp, expected in input_outputs:
             out = FormJets.filter_ends(ew, np.array(inp))
             tst.assert_allclose(out, expected)
-        ew = Components.EventWise(dir_name, name, columns=["Children"],
+        ew = Components.EventWise(os.path.join(dir_name, name), columns=["Children"],
                                   contents={"Children": AwkdArrays.empty_jet})
         ew.selected_index = 0
         input_outputs = [
@@ -1641,7 +1646,8 @@ def test_filter_ends():
 def test_filter_pt_eta():
     with TempTestDir("filter_pt_eta") as dir_name:
         name = "test.awkd"
-        ew = Components.EventWise(dir_name, name, columns=["PT", "Pseudorapidity"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=["PT", "Pseudorapidity"],
                 contents={"PT": AwkdArrays.event_floats, "Pseudorapidity": AwkdArrays.event_floats})
         ew.selected_index = 0
         input_outputs = [
@@ -1656,7 +1662,8 @@ def test_filter_pt_eta():
             tst.assert_allclose(out, expected)
         pt = awkward.fromiter([[0.1, 0.1, 0.1, 0.1, 0.1]])
         pz = awkward.fromiter([[0., 0.1, 100., -0.1, -100.]])
-        ew = Components.EventWise(dir_name, name, columns=["PT", "Pz"],
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=["PT", "Pz"],
                 contents={"PT": pt, "Pz": pz})
         ew.selected_index = 0
         input_outputs = [
@@ -1681,7 +1688,8 @@ def test_create_JetInputs():
             return current_idx
         def return_second(_, current_idx):
             return current_idx[1:2]
-        ew = Components.EventWise(dir_name, name, columns=columns, contents=contents)
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=columns, contents=contents)
         FormJets.create_jetInputs(ew, filter_functions=[return_all])
         for name in columns_unchanged:
             ji_name = "JetInputs_" + name
@@ -1700,7 +1708,8 @@ def test_create_JetInputs():
         columns = [name[len("Pseudojet_"):] for name in FormJets.PseudoJet.float_columns
                    if "Distance" not in name]
         contents = {name: awkward.fromiter([x, x, x]) for name, x in zip(columns, floats.T)}
-        ew = Components.EventWise(dir_name, name, columns=columns, contents=contents)
+        ew = Components.EventWise(os.path.join(dir_name, name),
+                columns=columns, contents=contents)
         FormJets.create_jetInputs(ew, filter_functions=[return_all], batch_length=0)
         for name in columns_unchanged:
             ji_name = "JetInputs_" + name
@@ -1725,7 +1734,7 @@ def test_produce_summary():
         n_jet_inputs = len(FormJets.PseudoJet.float_columns)-1
         path = os.path.join(dir_name, "summary_observables.csv")
         # try an empty event
-        empty_ew = Components.EventWise(dir_name, name)
+        empty_ew = Components.EventWise(path)
         jet_inputs = np.array([]).reshape((-1, n_jet_inputs))
         set_JetInputs(empty_ew, jet_inputs)
         empty_ew.selected_index = 0
@@ -1773,7 +1782,7 @@ def test_produce_summary():
 #        with TempTestDir("fastjet") as dir_name:
 #            empty_name = "empty.awkd"
 #            empty_path = os.path.join(dir_name, empty_name)
-#            empty_ew = Components.EventWise(dir_name, empty_name)
+#            empty_ew = Components.EventWise(os.path.join(dir_name, empty_name))
 #            # can run fast jets via summary files or the pipe
 #            def make_jets3(eventWise, DeltaR, ExpofPTMultiplier, ints, floats):
 #                set_JetInputs(eventWise, floats)
@@ -1807,7 +1816,7 @@ def test_cluster_multiapply():
             SimpleClusterSamples.fill_angular(row)
         # try with the first only
         with TempTestDir("tst") as dir_name:
-            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
             set_JetInputs(eventWise, floats1)
             eventWise.selected_index = 0
         with warnings.catch_warnings():
@@ -1817,7 +1826,7 @@ def test_cluster_multiapply():
             end_float1 = np.array(jets._floats)
         # try with the second only
         with TempTestDir("tst") as dir_name:
-            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
             set_JetInputs(eventWise, floats2)
             eventWise.selected_index = 0
         with warnings.catch_warnings():
@@ -1834,7 +1843,7 @@ def test_cluster_multiapply():
         contents["JetInputs_SourceIdx"] = awkward.fromiter([np.arange(len(floats1)),
                                                             np.arange(len(floats2))])
         with TempTestDir("tst") as dir_name:
-            eventWise = Components.EventWise(dir_name, "tmp.awkd")
+            eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
             eventWise.append(**contents)
             jet_name = "TestJet"
             finished = FormJets.cluster_multiapply(eventWise, jet_class, jet_params,
@@ -1884,7 +1893,7 @@ def test_get_jet_names_params():
         SimpleClusterSamples.fill_angular(row)
     # need to keep the eventwise file around
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         set_JetInputs(eventWise, floats)
         eventWise.selected_index = 0
         with warnings.catch_warnings():
@@ -1956,7 +1965,7 @@ def test_filter_jets():
     with TempTestDir("tst") as dir_name:
         # this will raise a value error if given an empty eventWise
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew.append(**params)
         # using defaults
         jet_idxs = FormJets.filter_jets(ew, "Jet")

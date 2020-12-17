@@ -14,7 +14,7 @@ def test_get_best():
     with TempTestDir("tst") as dir_name:
         # this will raise a value error if given an empty eventWise
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         with pytest.raises(ValueError):
             CompareClusters.get_best(ew, "Duck")
         # it should also raise a value error if told to get the best of a jet not present
@@ -68,7 +68,7 @@ def test_add_bg_mass():
     with TempTestDir("tst") as dir_name:
         # this will raise a value error if given an empty eventWise
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew.append(**params)
         # settign a selected index should not screw things up
         ew.selected_index = 1
@@ -204,7 +204,7 @@ def test_get_detectable_comparisons():
     with TempTestDir("tst") as dir_name:
         # this will raise a value error if given an empty eventWise
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew.append(**params)
         jet_idxs = awkward.fromiter([[], [], [0, 1, 2], [0, 1, 2], [0, 1, 2], [0, 1, 2]])
         CompareClusters.get_detectable_comparisons(ew, "Jet", jet_idxs, True)
@@ -291,7 +291,7 @@ def test_append_scores():
     with TempTestDir("tst") as dir_name:
         # this will raise a value error if given an empty eventWise
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew.append(**params)
         # mock JetQuality.quality_width_fracton and get_detectable_comparisons
         #with unittest.mock.patch('jet_tools.tree_tagger.JetQuality.quality_width_fracton',
@@ -327,11 +327,11 @@ def test_tabulate_scores():
         # this will raise a value error if given an empty eventWise
         save_name1 = "test1.awkd"
         save_name2 = "test2.awkd"
-        ew1 = Components.EventWise(dir_name, save_name1)
+        ew1 = Components.EventWise(os.path.join(dir_name, save_name1))
         ew1.append_hyperparameters(**params1)
         ew1.append(DogJet_InputIdx = awkward.fromiter([[]]))
         path1 = os.path.join(dir_name, save_name1)
-        ew2 = Components.EventWise(dir_name, save_name2)
+        ew2 = Components.EventWise(os.path.join(dir_name, save_name2))
         ew2.append_hyperparameters(**params2)
         ew2.append(CatJet_InputIdx = awkward.fromiter([[]]))
         path2 = os.path.join(dir_name, save_name2)

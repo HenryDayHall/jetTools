@@ -206,7 +206,7 @@ def test_EventWise():
     with TempTestDir("tst") as dir_name:
         # instansation
         save_name = "blank.awkd"
-        blank_ew = Components.EventWise(dir_name, save_name)
+        blank_ew = Components.EventWise(os.path.join(dir_name, save_name))
         assert blank_ew.columns == []
         # getting attributes
         with pytest.raises(AttributeError):
@@ -258,7 +258,7 @@ def test_EventWise():
         columns = ["A1", "Long_name", "Prefix_1", "Prefix_2"]
         hyperparameter_columns = ["Hyper"]
         filled_name = "filled.awkd"
-        alt_ew = Components.EventWise(dir_name, filled_name, columns=columns,
+        alt_ew = Components.EventWise(os.path.join(dir_name, filled_name), columns=columns,
                                       contents=content, hyperparameter_columns=hyperparameter_columns)
         assert list(alt_ew.columns) == columns
         assert list(alt_ew.hyperparameter_columns) == hyperparameter_columns
@@ -327,7 +327,7 @@ def test_match_indices():
     with TempTestDir("tst") as dir_name:
         # splitting a blank ew should result in only Nones
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         col_lengths = [1, 5, 4, 0]
         n_events = len(col_lengths)
         values = awkward.fromiter(awkward.fromiter([0.5*np.arange(cols)]) for cols in col_lengths)
@@ -364,7 +364,7 @@ def test_split():
     with TempTestDir("tst") as dir_name:
         # splitting a blank ew should result in only Nones
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew.append(Energy= awkward.fromiter([]))
         parts = ew.split([0, 0, 0], [0, 0, 0])
         for part in parts:
@@ -437,7 +437,7 @@ def test_split():
 def test_fragment():
     with TempTestDir("tst") as dir_name:
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         # try with 12 events
         n_events = 12
         content_1 = awkward.fromiter(np.arange(n_events))
@@ -472,7 +472,7 @@ def test_fragment():
 def test_split_unfinished():
     with TempTestDir("tst") as dir_name:
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         # try with 12 events
         n_events = 12
         n_unfinished = 2
@@ -532,7 +532,7 @@ def test_combine():
     with TempTestDir("tst") as dir_name:
         # splitting a blank ew should result in only Nones
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         # try with 10 events
         n_events = 10
         content_1 = awkward.fromiter(np.arange(n_events))
@@ -586,7 +586,7 @@ def test_recursive_combine():
     with TempTestDir("tst") as dir_name:
         dir_name += '/'
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         # try with 10 events
         n_events = 10
         content_1 = awkward.fromiter(np.arange(n_events))
@@ -612,7 +612,7 @@ def test_event_matcher():
     with TempTestDir("tst") as dir_name:
         # splitting a blank ew should result in only Nones
         save_nameA = "testA.awkd"
-        ewA = Components.EventWise(dir_name, save_nameA)
+        ewA = Components.EventWise(os.path.join(dir_name, save_nameA))
         # make a longer eventwise
         n_events = 10
         #                              0  1  2  3  4  5  6  7  8  9
@@ -625,7 +625,7 @@ def test_event_matcher():
         ewA.append_hyperparameters(Hyper=hyper)
         # make an eventWise with a subset of the longer ones events
         save_nameB = "testB.awkd"
-        ewB = Components.EventWise(dir_name, save_nameB)
+        ewB = Components.EventWise(os.path.join(dir_name, save_nameB))
         required_order = [5, 3, 2, 8, 4]
         content_B1 = content_A1[required_order]
         content_B2 = content_A2[required_order]
@@ -664,7 +664,8 @@ def test_add_rapidity():
         # instansation
         save_name = "rapidity.awkd"
         contents = {"PT": pts, "Pz": pzs, "Energy": es}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_rapidity(ew)
         ew.selected_index = 0
@@ -672,7 +673,8 @@ def test_add_rapidity():
         # try adding to a specific prefix
         contents = {"A_PT": pts, "A_Pz": pzs, "A_Energy": es,
                     "B_PT": pts, "B_Pz": pzs, "B_Energy": es}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_rapidity(ew, 'A')
         ew.selected_index = 0
@@ -694,7 +696,8 @@ def test_add_mass():
         # instansation
         save_name = "rapidity.awkd"
         contents = {"Px": pxs, "Py": pys, "Pz": pzs, "Energy": es}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_mass(ew)
         ew.selected_index = 0
@@ -702,7 +705,8 @@ def test_add_mass():
         # try adding to a specific prefix
         contents = {"A_Px": pxs, "A_Py": pys, "A_Pz": pzs, "A_Energy": es,
                     "B_Px": pxs, "B_Py": pys, "B_Pz": pzs, "B_Energy": es}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_mass(ew, 'A')
         ew.selected_index = 0
@@ -761,74 +765,87 @@ def test_add_thetas():
             # there are many things theta can be calculated from
             # pz&birr pt&pz (px&py)&pz pt&birr et&e
             contents = {"Birr": particle.p, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()), 
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             contents = {"PT": particle.pt, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             contents = {"Px": particle.px, "Py": particle.py, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             contents = {"Birr": particle.p, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             # Need to add energy version for towers, trouble getting direction
             #contents = {"Energy": particle.e, "ET": particle.et}
-            #ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            #ew = Components.EventWise(os.path.join(dir_name, save_name),
+            #                          columns=list(contents.keys()),
             #                          contents=contents)
             #Components.add_thetas(ew, '')
             #tst.assert_allclose(ew.Theta[0], out)
             # check that adding mass makes no diference
             particle = Particle(inp, 1.)
             contents = {"Birr": particle.p, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             contents = {"PT": particle.pt, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             contents = {"Px": particle.px, "Py": particle.py, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             contents = {"Birr": particle.p, "Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, '')
             tst.assert_allclose(ew.Theta[0], out)
             # Need to add energy version for towers, trouble getting direction
             #contents = {"Energy": particle.e, "ET": particle.et}
-            #ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            #ew = Components.EventWise(os.path.join(dir_name, save_name),
+            #                          columns=list(contents.keys()),
             #                          contents=contents)
             #Components.add_thetas(ew, '')
             #tst.assert_allclose(ew.Theta[0], out)
             # try letting the function find the naems
             contents = {"Dog_Birr": particle.p, "Dog_Pz": particle.pz, "Dog_Phi": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, None)
             tst.assert_allclose(ew.Dog_Theta[0], out)
             # try letting the fix the prefix
             contents = {"Dog_Birr": particle.p, "Dog_Pz": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, "Dog")
             tst.assert_allclose(ew.Dog_Theta[0], out)
             # give it an impossible task
             contents = {"Dog_Birr": particle.p, "Dog_Phi": particle.pz}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_thetas(ew, "Dog")
             assert "Dog_Theta" not in ew.columns
@@ -856,7 +873,8 @@ def test_add_pseudorapidity():
         # instansation
         save_name = "pseudorapidity.awkd"
         contents = {"Theta": theta}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_pseudorapidity(ew)
         ew.selected_index = 0
@@ -864,7 +882,8 @@ def test_add_pseudorapidity():
         # try adding to a specific prefix
         contents = {"A_Theta": theta,
                     "B_Theta": theta}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_pseudorapidity(ew, 'A')
         ew.selected_index = 0
@@ -886,21 +905,24 @@ def test_add_phi():
         for contents, out in input_output:
             contents = {key: awkward.fromiter([[value]]) for key, value
                         in contents.items()}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             Components.add_phi(ew, '')
             tst.assert_allclose(ew.phi[0], out)
         # try letting the function idetify valid columns
         contents = {"Px": awkward.fromiter([[0]]), "Py": awkward.fromiter([[1]]),
                     "Dog_Px": awkward.fromiter([[1]]), "Dog_Py": awkward.fromiter([[0]])}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_phi(ew)
         tst.assert_allclose(ew.Phi[0], np.pi/2)
         tst.assert_allclose(ew.Dog_Phi[0], 0)
         # let the function fix a basename
         contents = {"Dog_Px": awkward.fromiter([[1]]), "Dog_Py": awkward.fromiter([[1]])}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()),
                                   contents=contents)
         Components.add_phi(ew, "Dog")
         tst.assert_allclose(ew.Dog_Phi[0], np.pi/4)
@@ -922,21 +944,24 @@ def test_add_PT():
         for inp, out in input_output:
             particle = Particle(inp, 0)
             contents = {"Px": particle.px, "Py": particle.py}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()), 
                                       contents=contents)
             Components.add_PT(ew, '')
             tst.assert_allclose(ew.PT[0], out)
         # try letting the function idetify valid columns
         contents = {"Px": particle.px, "Py": particle.py,
                     "Dog_Px": particle.px, "Dog_Py": particle.py}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()), 
                                   contents=contents)
         Components.add_PT(ew)
         tst.assert_allclose(ew.PT[0], out)
         tst.assert_allclose(ew.Dog_PT[0], out)
         # let the function fix a basename
         contents = {"Dog_Px": particle.px, "Dog_Py": particle.py}
-        ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()), 
+        ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                  columns=list(contents.keys()), 
                                   contents=contents)
         Components.add_PT(ew, "Dog")
         tst.assert_allclose(ew.Dog_PT[0], out)
@@ -944,9 +969,8 @@ def test_add_PT():
 
 def test_RootReadout():
     root_file = os.path.join(data_dir, "mini.root")
-    dir_name, save_name = os.path.split(root_file)
     components = ["Particle", "Track", "Tower"]
-    rr = Components.RootReadout(dir_name, save_name, components)
+    rr = Components.RootReadout(root_file, components)
     n_events = len(rr.Energy)
     test_events = np.random.randint(0, n_events, 20)
     idents = PDGNames.Identities()
@@ -1011,7 +1035,8 @@ def test_last_instance():
         for start, contents, expected in input_output:
             contents = {key: awkward.fromiter([value]) for key, value
                         in contents.items()}
-            ew = Components.EventWise(dir_name, save_name, columns=list(contents.keys()),
+            ew = Components.EventWise(os.path.join(dir_name, save_name),
+                                      columns=list(contents.keys()),
                                       contents=contents)
             ew.selected_index = 0
             found = Components.last_instance(ew, start)
@@ -1021,7 +1046,7 @@ def test_last_instance():
 def test_fix_nonexistent_columns():
     with TempTestDir("tst") as dir_name:
         save_name = "blank.awkd"
-        blank_ew = Components.EventWise(dir_name, save_name)
+        blank_ew = Components.EventWise(os.path.join(dir_name, save_name))
         # should have in effect on a blank eventWise
         h_problems, blank_ew = Components.fix_nonexistent_columns(blank_ew)
         assert len(h_problems) == 0
@@ -1048,7 +1073,7 @@ def test_fix_nonexistent_columns():
 def test_even_length():
     with TempTestDir("tst") as dir_name:
         save_name = "blank.awkd"
-        blank_ew = Components.EventWise(dir_name, save_name)
+        blank_ew = Components.EventWise(os.path.join(dir_name, save_name))
         # should have no effect on a blank eventWise
         Components.check_even_length(blank_ew, False, True)
         assert len(blank_ew.columns) == 0
@@ -1080,7 +1105,7 @@ def test_check_no_tachions():
     bad_pz = awkward.fromiter([[-1, 0, 1]])
     with TempTestDir("tst") as dir_name:
         save_name = "blank.awkd"
-        blank_ew = Components.EventWise(dir_name, save_name)
+        blank_ew = Components.EventWise(os.path.join(dir_name, save_name))
         # should have no effect on a blank eventWise
         Components.check_no_tachions(blank_ew, False, True)
         assert len(blank_ew.columns) == 0
@@ -1109,7 +1134,7 @@ def test_find_eventWise_in_dir():
     with TempTestDir("tst") as dir_name:
         # splitting a blank ew should result in only Nones
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         # try with 10 events
         n_events = 10
         content_1 = awkward.fromiter(np.arange(n_events))

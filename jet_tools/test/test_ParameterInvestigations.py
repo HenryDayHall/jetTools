@@ -1,4 +1,5 @@
 """ A module to test the Parameter investigations module"""
+import os
 from ipdb import set_trace as st
 import awkward
 from jet_tools.test.tools import TempTestDir
@@ -39,7 +40,7 @@ def test_create_eigenvectors():
     # invarient_mass                      873  100  388   4859, 388, 94
     # shifted energy                       30   10   20   70 sqrt(393) sqrt(103)
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         Components.add_phi(eventWise, "JetInputs")
         Components.add_PT(eventWise, "JetInputs")
@@ -97,7 +98,7 @@ def test_label_parings():
     params['Children'] += [awkward.fromiter([[1], [2], [], [4, 5], [], []])]
     params['Parents'] += [awkward.fromiter([[], [0], [1], [], [3], [3]])]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         labels = ParameterInvestigation.label_parings(eventWise)
         # first 2 should contain nothing
@@ -146,7 +147,7 @@ def test_closest_relative():
     params['Children'] += [awkward.fromiter([[1, 5], [2, 3], [], [4, 5], [], []])]
     params['Parents'] += [awkward.fromiter([[], [0], [1], [1], [3], [3]])]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         relatives = ParameterInvestigation.closest_relative(eventWise)
         # first 2 should contain nothing
@@ -254,7 +255,7 @@ def test_label_crossings():
     params['Children'] += [awkward.fromiter([[1], [2], [], [4, 5], [], []])]
     params['Parents'] += [awkward.fromiter([[], [0], [1], [], [3], [3]])]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         labels = ParameterInvestigation.label_parings(eventWise)
         crossings = ParameterInvestigation.label_crossings(labels)
@@ -395,7 +396,7 @@ def test_get_linked():
     params['JetInputs_Py'] += [awkward.fromiter(np.arange(6., 0., -1.))]
     params['JetInputs_Pz'] += [awkward.fromiter(np.arange(6)*5.)]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         Components.add_phi(eventWise, "JetInputs")
         Components.add_PT(eventWise, "JetInputs")

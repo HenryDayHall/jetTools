@@ -51,7 +51,7 @@ def test_worker():
                              new=fake_cluster_multiapply):
         with TempTestDir("tst") as temp_dir:
             jet_name = "GoodJet"
-            ew = Components.EventWise(temp_dir, "file.awkd")
+            ew = Components.EventWise(os.path.join(temp_dir, "file.awkd"))
             ew.write()
             eventWise_path = os.path.join(temp_dir, ew.save_name)
             # get rid of a continue file if there is one or we will get stuck
@@ -94,7 +94,7 @@ def test_make_n_working_fragments():
         os.remove(wrong_path)
         # now make a real eventWise to play with
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew_path = os.path.join(dir_name, save_name)
         # try with 12 events
         n_events = 12
@@ -186,7 +186,7 @@ def test_generate_pool():
     # mock _worker, this is tested above
     with unittest.mock.patch('jet_tools.tree_tagger.ParallelFormJets._worker', new=fake_worker):
         with TempTestDir("tst") as temp_dir:
-            ew = Components.EventWise(temp_dir, "file.awkd")
+            ew = Components.EventWise(os.path.join(temp_dir, "file.awkd"))
             ew.append(JetInputs_Energy = np.arange(100))
             eventWise_path = os.path.join(temp_dir, ew.save_name)
             # get rid of a continue file if there is one or we will get stuck
@@ -244,7 +244,7 @@ def test_remove_partial():
         ParallelFormJets.remove_partial([])
         # now make a real eventWise to play with
         save_name = "test1.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew_path1 = os.path.join(dir_name, save_name)
         paths.append(ew_path1)
         n_events = 12
@@ -279,7 +279,7 @@ def test_recombine_eventWise():
     with TempTestDir("tst") as dir_name:
         # make a real eventWise to play with
         save_name = "test.awkd"
-        ew = Components.EventWise(dir_name, save_name)
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew_path = os.path.join(dir_name, save_name)
         n_events = 12
         ew.append(Event_n=awkward.fromiter(np.arange(n_events)))

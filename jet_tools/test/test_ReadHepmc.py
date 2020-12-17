@@ -8,9 +8,8 @@ import os
 
 def void_test_ReadHepmc():
     hepmc_file = os.path.join(data_dir, "mini.hepmc")
-    dir_name, save_name = os.path.split(hepmc_file)
     n_events = 1
-    hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)
+    hepmc = ReadHepmc.Hepmc(hepmc_file, 0, n_events)
     idents = PDGNames.Identities()
     all_ids = set(idents.particle_data[:, idents.columns["id"]])
     for event_n in range(n_events):  # loop over out selection of events
@@ -98,9 +97,8 @@ def void_test_ReadHepmc():
 
 def void_test_ReadHepmc2():
     hepmc_file = os.path.join(data_dir, "billy_tag_2_pythia8_events.hepmc")
-    dir_name, save_name = os.path.split(hepmc_file)
     n_events = 4
-    hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)
+    hepmc = ReadHepmc.Hepmc(hepmc_file, 0, n_events)
     idents = PDGNames.Identities()
     mom_diff = []
     all_ids = set(idents.particle_data[:, idents.columns["id"]])
@@ -163,9 +161,8 @@ def void_test_ReadHepmc2():
 def test_ReadHepmc():
     check_lines()
     hepmc_file = os.path.join(data_dir, "mini.hepmc")
-    dir_name, save_name = os.path.split(hepmc_file)
     n_events = 4
-    hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)
+    hepmc = ReadHepmc.Hepmc(hepmc_file, 0, n_events)
     idents = PDGNames.Identities()
     all_ids = set(idents.particle_data[:, idents.columns["id"]])
     for event_n in range(n_events):  # loop over out selection of events
@@ -220,9 +217,8 @@ def check_lines():
     #particles.append({'barcode': 8, 'Start_vertex_barcode': -6, 'End_vertex_barcode': -9,
     #    'PID': 35, 'Px': 105.03226729368578, 'Py': 58.130810880765388, 'Pz':-79.206726092116511, 'Energy':185.73747728206331})
     hepmc_file = os.path.join(data_dir, "mini.hepmc")
-    dir_name, save_name = os.path.split(hepmc_file)
     n_events = 1
-    hepmc = ReadHepmc.Hepmc(dir_name, save_name, 0, n_events)
+    hepmc = ReadHepmc.Hepmc(hepmc_file, 0, n_events)
     hepmc.selected_index = 0
     for particle in particles:
         index = np.where(hepmc.Particle_barcode == particle['barcode'])[0][0]

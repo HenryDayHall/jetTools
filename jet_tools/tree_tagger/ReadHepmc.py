@@ -72,7 +72,7 @@ class Hepmc(Components.EventWise):
             save_name = save_name.split('.', 1)[0] + '_hepmc.awkd'
             kwargs["columns"] = self.columns
             kwargs["contents"] = self.prepared_contents
-        super().__init__(dir_name, save_name, **kwargs)
+        super().__init__(file_name, **kwargs)
         self.n_particles = sum([len(evt) for evt in self.Particle_barcode])
         self.n_vertices = sum([len(evt) for evt in self.Vertex_barcode])
         self.n_events = len(self.Event_n)

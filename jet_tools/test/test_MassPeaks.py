@@ -1,4 +1,5 @@
 """ A module to test the code in MassPeaks.py """
+import os
 import pytest
 from ipdb import set_trace as st
 import numpy as np
@@ -23,7 +24,7 @@ def test_order_tagged_jets():
     params['Jet_Child1'] = []
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         filtered_event_idxs = []
@@ -39,7 +40,7 @@ def test_order_tagged_jets():
     params['Jet_Child1'] = [[1, -1, -1], [-1, 5, -1], [-1, -1, 7]]
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         filtered_event_idxs = [0, 1]
@@ -61,7 +62,7 @@ def test_combined_jet_mass():
     params['Jet_Energy'] = []
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         found = MassPeaks.combined_jet_mass(eventWise, jet_name, [])
@@ -76,7 +77,7 @@ def test_combined_jet_mass():
     params['Jet_Energy'] = [[0, 0, 0], [10, 40, 10], [400, 40, 40], [10]]
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         for i, expected in enumerate([0, 40, np.sqrt(400**2 - 1 - 70**2 - 40**2), np.sqrt(99)]):
@@ -96,7 +97,7 @@ def test_cluster_mass():
     params['Energy'] = []
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         found = MassPeaks.cluster_mass(eventWise, [])
@@ -109,7 +110,7 @@ def test_cluster_mass():
     params['Energy'] = [0, 40, 400, 10]
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         for i, expected in enumerate([0, 40, np.sqrt(400**2 - 1 - 70**2 - 40**2), np.sqrt(99)]):
@@ -141,7 +142,7 @@ def test_smallest_angle_parings():
     params['Jet_Child1'] = []
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [])
@@ -157,7 +158,7 @@ def test_smallest_angle_parings():
     params['Jet_Tags'] = [[0], [], [1], []]
     params = {key: [awkward.fromiter(v)] for key, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [0, 1, 2])
@@ -167,7 +168,7 @@ def test_smallest_angle_parings():
         assert len(found) == 0
     params['Jet_Tags'] = [awkward.fromiter([[0], [5], [1], [7]])]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         found = MassPeaks.smallest_angle_parings(eventWise, jet_name, [0, 1, 2, 3])
@@ -222,7 +223,7 @@ def test_all_smallest_angles():
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in no masses
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**prep_params)
         found = MassPeaks.all_smallest_angles(eventWise, jet_name, 0)
         assert len(found) == 0
@@ -272,7 +273,7 @@ def test_all_smallest_angles():
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**prep_params)
         found = MassPeaks.all_smallest_angles(eventWise, jet_name, 0)
         tst.assert_allclose(sorted(found), sorted(expected_masses))
@@ -354,7 +355,7 @@ def test_all_jet_masses():
     expected_masses += [15.]
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**prep_params)
         found = MassPeaks.all_jet_masses(eventWise, jet_name, 0)
         tst.assert_allclose(found, expected_masses)
@@ -434,7 +435,7 @@ def test_all_PT_pairs():
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**prep_params)
         _, pairs, pair_masses = MassPeaks.all_PT_pairs(eventWise, jet_name, jet_pt_cut=0)
         err_start = f"All expected = {list(zip(expected_order, expected))}\n"
@@ -492,7 +493,7 @@ def test_all_doubleTagged_jets():
     prep_params = {key: awkward.fromiter([awkward.fromiter(e) for e in v])for key, v in params.items()}
     # check this results in the predicted masses
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**prep_params)
         masses = MassPeaks.all_doubleTagged_jets(eventWise, jet_name, 2)
         tst.assert_allclose(sorted(masses), expected)
@@ -515,7 +516,7 @@ def test_descendants_masses():
     expected_light = []
     expected_heavy = []
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         with pytest.raises(AssertionError):
             heavy, light1, light2 = MassPeaks.descendants_masses(eventWise, False)
@@ -532,7 +533,7 @@ def test_descendants_masses():
     expected_light = [np.sqrt((4*6)**2 - 3*4**2), np.sqrt(6**2 - 3)]
     expected_heavy = [np.sqrt((5*6)**2 - 3*5**2)]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         heavy, light1, light2 = MassPeaks.descendants_masses(eventWise, False)
         tst.assert_allclose(light1, max(expected_light))

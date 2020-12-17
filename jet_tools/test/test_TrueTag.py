@@ -1,4 +1,5 @@
 """ A module to test the TrueTag module """
+import os
 from ipdb import set_trace as st
 import numpy as np
 from jet_tools.tree_tagger import Components, FormJets, TrueTag, FormShower
@@ -22,7 +23,7 @@ def test_allocate():
     valid_jets = []
     expected = np.array([]).reshape((0,0))
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 0.1)
@@ -41,7 +42,7 @@ def test_allocate():
     valid_jets = np.array([0, 1])
     expected = [0, 1]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 0.1, valid_jets)
@@ -60,7 +61,7 @@ def test_allocate():
     valid_jets = None
     expected = [0, -1]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 0.9, valid_jets)
@@ -79,7 +80,7 @@ def test_allocate():
     valid_jets = np.array([1])
     expected = [1, 1]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 2., valid_jets)
@@ -95,7 +96,7 @@ def test_tag_particle_indices():
     #mcpid =    []
     #expected = []
     #with TempTestDir("tst") as dir_name:
-    #    eventWise = Components.EventWise(dir_name, "tmp.awkd")
+    #    eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
     #    eventWise.append(Children=[awkward.fromiter(children)],
     #                     Parents=[awkward.fromiter(parents)],
     #                     MCPID=[awkward.fromiter(mcpid)])
@@ -109,7 +110,7 @@ def test_tag_particle_indices():
     #mcpid =    [4,  -5,     5,   3,      2,  1,      -5,        -1, 7,  11, 12]
     #expected = [2]
     #with TempTestDir("tst") as dir_name:
-    #    eventWise = Components.EventWise(dir_name, "tmp.awkd")
+    #    eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
     #    eventWise.append(Children=[awkward.fromiter(children)],
     #                     Parents=[awkward.fromiter(parents)],
     #                     MCPID=[awkward.fromiter(mcpid)])
@@ -124,7 +125,7 @@ def test_tag_particle_indices():
     mcpid =    [1,  -5,     5101,10511,  5,  1,      -5,        -1, 7,  11, 12]
     expected = [2, 4, 6]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(Children=[awkward.fromiter(children)],
                          Parents=[awkward.fromiter(parents)],
                          MCPID=[awkward.fromiter(mcpid)])
@@ -167,7 +168,7 @@ def test_add_tags_particles():
     params['X'] = [[], []]
     expected = [[], [2]]
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         # try with append falst
         tag_angle = 8.
@@ -279,7 +280,7 @@ def test_add_inheritance():
     #                                        0   0    1    0    0   0       0          0   0    0   0 
     #                                        0   0    0    0    0   0       0          0   0    0   0 
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         FormShower.append_b_idxs(eventWise)
         TrueTag.add_inheritance(eventWise, jet_name)
@@ -330,7 +331,7 @@ def test_add_mass_share():
     # in jet 1  are decendents 2 from tag 1
     # in jet 2 are decendents 5 from tag 0
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         FormShower.append_b_idxs(eventWise)
         TrueTag.add_mass_share(eventWise, jet_name)
@@ -384,7 +385,7 @@ def test_add_detectable_fourvector():
     params["JetInputs_SourceIdx"] += [awkward.fromiter(source)]
     params = {k: awkward.fromiter(v) for k, v in params.items()}
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         TrueTag.add_detectable_fourvector(eventWise)
         # the first event should contain nothing
@@ -422,7 +423,7 @@ def test_tags_to_quarks():
     params['MCPID'] +=    [awkward.fromiter([4, -5,   5,    3,   2,  1,  -5,           -1,     7,  11, 5])]
     # the positivity will be                 0   1       1    1       0   1       1          1   1    1   0 
     with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(dir_name, "tmp.awkd")
+        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
         eventWise.selected_index = 0
         found = TrueTag.tags_to_quarks(eventWise, [])
