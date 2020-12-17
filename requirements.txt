@@ -2,7 +2,8 @@
 # could probably relax the version requirements
 # works under python 3.6.9
 numpy >= 1.16.1
-uproot >= 3.10.12
+uproot = 3.10.12
+awkward = 0.13.0
 matplotlib >= 3.1.2
 ipdb >= 0.12.3
 scipy >= 1.3.3
