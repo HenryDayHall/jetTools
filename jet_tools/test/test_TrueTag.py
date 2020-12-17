@@ -387,10 +387,17 @@ def test_add_detectable_fourvector():
     with TempTestDir("tst") as dir_name:
         eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
         eventWise.append(**params)
+        columns_before = [x for x in eventWise.columns]
         TrueTag.add_detectable_fourvector(eventWise)
+        columns_after = [x for x in eventWise.columns]
         # the first event should contain nothing
         eventWise.selected_index = 0
-        roots = eventWise.DetectableTag_Roots
+        try:
+            roots = eventWise.DetectableTag_Roots
+        except Exception as e:
+            message = f"Error; {e}\ncolumns_before={columns_before}\ncolumns_after={columns_after}"
+            raise Exception(message)
+        
         assert len(roots) == 0
         energy = eventWise.DetectableTag_Energy
         assert len(energy) == 0

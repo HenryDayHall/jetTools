@@ -113,8 +113,7 @@ if InputTools.yesNo_question("Do you want to try adding a root file for detector
     print(" > from jet_tools.tree_tagger import JoinHepMCRoot")
     from jet_tools.tree_tagger import JoinHepMCRoot
     print(" > eventWise = JoinHepMCRoot.marry(hepmc_path, root_path)")
-    # this takes lots of time, so don't actually do it
-    #eventWise = JoinHepMCRoot.marry(hepmc_path, root_path)
+    eventWise = JoinHepMCRoot.marry(eventWise, root_path)
     print("This results in an eventWise that contains data from the root file "
           "and the hepmc file")
     root_present = True

@@ -29,10 +29,13 @@ def marry(hepmc, root_particles):
     
     """
     if isinstance(root_particles, str):
-        root_particles = Components.RootReadout(*os.path.split(root_particles),
+        root_particles = Components.RootReadout(root_particles,
                                                 ['Particle', 'Track', 'Tower'])
     if isinstance(hepmc, str):
-        hepmc = ReadHepmc.Hepmc.from_file(hepmc)
+        if hepmc.endswith('awkd'):
+            hepmc = ReadHepmc.Hepmc.from_file(hepmc)
+        else:
+            hepmc = ReadHepmc.Hepmc(hepmc)
     # first we assert that they both contain the same number of events
     n_events = len(root_particles.PID)
     assert n_events == len(hepmc.MCPID), "Files cotain doferent number of events"
