@@ -245,73 +245,73 @@ def fake_empty(*args, **kwargs):
 # however the mocking dosn't work in travis (or on github actions)
 # that isn't the point of the test though, so I am commenting it out in the master branch
 # so that travis dosn't spam me with email
-#def test_append_scores():
-#    # set up as for filter jets
-#    params = {}
-#    # event 0
-#    params['Jet_InputIdx'] = [awkward.fromiter([])]
-#    params['Jet_Parent'] = [awkward.fromiter([])]
-#    params['Jet_Child1'] = [awkward.fromiter([])]
-#    params['Jet_PT'] =     [awkward.fromiter([])]
-#    params['Energy'] = [awkward.fromiter([])]
-#    params['Px'] = [awkward.fromiter([])]
-#    params['Py'] = [awkward.fromiter([])]
-#    params['Pz'] = [awkward.fromiter([])]
-#    params['Children'] = [awkward.fromiter([])]
-#    params['Parents'] = [awkward.fromiter([])]
-#    params['MCPID'] = [awkward.fromiter([])]
-#    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
-#    params['BQuarkIdx'] = [awkward.fromiter([])]
-#    # event 1
-#    params['Jet_InputIdx'] = [awkward.fromiter([[0], [1, 2, 3, 4, 5]])]
-#    params['Jet_Parent'] += [awkward.fromiter([[-1], [-1, 1, 1, 2, 2]])]
-#    params['Jet_Child1'] += [awkward.fromiter([[-1], [1, 2, -1, -1, -1]])]
-#    params['Jet_PT'] +=     [awkward.fromiter([[50.,], [0.2, 0.1, 0., 0., .1]])]
-#    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(6))]
-#    params['Energy'] += [awkward.fromiter([30., 10., 20., 70., 20., 10., 45., 56., 40., 25.])]
-#    params['Px'] += [awkward.fromiter([3., 0., 2., 1., 2., -1., 0., 3., -1., 0.])]
-#    params['Py'] += [awkward.fromiter([3., 0., 2., 2., 2., 1., -1., -3., 0., -1.])]
-#    params['Pz'] += [awkward.fromiter([3., 0., 2., 0., 2., 2., -5., -2., 1., 0.])]
-#    params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
-#    params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
-#    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
-#    params['BQuarkIdx'] += [awkward.fromiter([1, 6])]
-#    # event 2
-#    params['Jet_InputIdx'] = [awkward.fromiter([[0], [1, 2, 3]])]
-#    params['Jet_Parent'] += [awkward.fromiter([[-1], [-1, 1, 1]])]
-#    params['Jet_Child1'] += [awkward.fromiter([[-1], [1, -1, -1]])]
-#    params['Jet_PT'] +=     [awkward.fromiter([[50.,], [21., 0.1, 0.]])]
-#    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(6))]
-#    params['Energy'] += [awkward.fromiter([30., 10., 20., 70., 20., 10., 45., 56., 40., 25.])]
-#    params['Px'] += [awkward.fromiter([3., 0., 2., 1., 2., -1., 0., 3., -1., 0.])]
-#    params['Py'] += [awkward.fromiter([3., 0., 2., 2., 2., 1., -1., -3., 0., -1.])]
-#    params['Pz'] += [awkward.fromiter([3., 0., 2., 0., 2., 2., -5., -2., 1., 0.])]
-#    params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
-#    params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
-#    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
-#    params['BQuarkIdx'] += [awkward.fromiter([1, 6])]
-#    params = {key: awkward.fromiter(val) for key,val in params.items()}
-#    with TempTestDir("tst") as dir_name:
-#        # this will raise a value error if given an empty eventWise
-#        save_name = "test.awkd"
-#        ew = Components.EventWise(os.path.join(dir_name, save_name))
-#        ew.append(**params)
-#        # mock JetQuality.quality_width_fracton and get_detectable_comparisons
-#        with unittest.mock.patch('jet_tools.src.JetQuality.quality_width_fracton',
-#                                 new=fake_quality_width_fraction):
-#            with unittest.mock.patch('jet_tools.src.CompareClusters.get_detectable_comparisons',
-#                                     new=fake_detectable_comparisons):
-#                with unittest.mock.patch('jet_tools.src.TrueTag.add_detectable_fourvector',
-#                                         new=fake_empty):
-#                    CompareClusters.append_scores(ew)
-#                    tst.assert_allclose(ew.Jet_Bork, [np.inf, np.inf, np.inf])
-#                    tst.assert_allclose(ew.Jet_Quack[0], [0.5, np.nan])
-#                    tst.assert_allclose(ew.Jet_Quack[1], [0.5, -np.inf])
-#                    tst.assert_allclose(ew.Jet_Quack[2], [])
-#                    assert np.isnan(ew.Jet_AveBork)
-#                    tst.assert_allclose(ew.Jet_AveQuack, 0.5)
-#                    assert np.isnan(ew.Jet_QualityWidth)
-#                    tst.assert_allclose(ew.Jet_QualityFraction, 3/Constants.dijet_mass)
+def test_append_scores():
+    # set up as for filter jets
+    params = {}
+    # event 0
+    params['Jet_InputIdx'] = [awkward.fromiter([])]
+    params['Jet_Parent'] = [awkward.fromiter([])]
+    params['Jet_Child1'] = [awkward.fromiter([])]
+    params['Jet_PT'] =     [awkward.fromiter([])]
+    params['Energy'] = [awkward.fromiter([])]
+    params['Px'] = [awkward.fromiter([])]
+    params['Py'] = [awkward.fromiter([])]
+    params['Pz'] = [awkward.fromiter([])]
+    params['Children'] = [awkward.fromiter([])]
+    params['Parents'] = [awkward.fromiter([])]
+    params['MCPID'] = [awkward.fromiter([])]
+    params['JetInputs_SourceIdx'] = [awkward.fromiter([])]
+    params['BQuarkIdx'] = [awkward.fromiter([])]
+    # event 1
+    params['Jet_InputIdx'] = [awkward.fromiter([[0], [1, 2, 3, 4, 5]])]
+    params['Jet_Parent'] += [awkward.fromiter([[-1], [-1, 1, 1, 2, 2]])]
+    params['Jet_Child1'] += [awkward.fromiter([[-1], [1, 2, -1, -1, -1]])]
+    params['Jet_PT'] +=     [awkward.fromiter([[50.,], [0.2, 0.1, 0., 0., .1]])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(6))]
+    params['Energy'] += [awkward.fromiter([30., 10., 20., 70., 20., 10., 45., 56., 40., 25.])]
+    params['Px'] += [awkward.fromiter([3., 0., 2., 1., 2., -1., 0., 3., -1., 0.])]
+    params['Py'] += [awkward.fromiter([3., 0., 2., 2., 2., 1., -1., -3., 0., -1.])]
+    params['Pz'] += [awkward.fromiter([3., 0., 2., 0., 2., 2., -5., -2., 1., 0.])]
+    params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
+    params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
+    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
+    params['BQuarkIdx'] += [awkward.fromiter([1, 6])]
+    # event 2
+    params['Jet_InputIdx'] = [awkward.fromiter([[0], [1, 2, 3]])]
+    params['Jet_Parent'] += [awkward.fromiter([[-1], [-1, 1, 1]])]
+    params['Jet_Child1'] += [awkward.fromiter([[-1], [1, -1, -1]])]
+    params['Jet_PT'] +=     [awkward.fromiter([[50.,], [21., 0.1, 0.]])]
+    params['JetInputs_SourceIdx'] += [awkward.fromiter(np.arange(6))]
+    params['Energy'] += [awkward.fromiter([30., 10., 20., 70., 20., 10., 45., 56., 40., 25.])]
+    params['Px'] += [awkward.fromiter([3., 0., 2., 1., 2., -1., 0., 3., -1., 0.])]
+    params['Py'] += [awkward.fromiter([3., 0., 2., 2., 2., 1., -1., -3., 0., -1.])]
+    params['Pz'] += [awkward.fromiter([3., 0., 2., 0., 2., 2., -5., -2., 1., 0.])]
+    params['Children'] += [awkward.fromiter([[], [3], [],  [5], [], [],  [2, 7, 8, 9], [], [], [], []])]
+    params['Parents'] +=  [awkward.fromiter([[], [],  [6], [1], [], [3], [],           [6],[6],[6],[]])]
+    params['MCPID'] +=    [awkward.fromiter([4, -5,   5,   3,   2,  1,   -5,          -1,  7,  11, 12])]
+    params['BQuarkIdx'] += [awkward.fromiter([1, 6])]
+    params = {key: awkward.fromiter(val) for key,val in params.items()}
+    with TempTestDir("tst") as dir_name:
+        # this will raise a value error if given an empty eventWise
+        save_name = "test.awkd"
+        ew = Components.EventWise(os.path.join(dir_name, save_name))
+        ew.append(**params)
+        # mock JetQuality.quality_width_fracton and get_detectable_comparisons
+        with unittest.mock.patch('jet_tools.src.JetQuality.quality_width_fracton',
+                                 new=fake_quality_width_fraction):
+            with unittest.mock.patch('jet_tools.src.CompareClusters.get_detectable_comparisons',
+                                     new=fake_detectable_comparisons):
+                with unittest.mock.patch('jet_tools.src.TrueTag.add_detectable_fourvector',
+                                         new=fake_empty):
+                    CompareClusters.append_scores(ew)
+                    tst.assert_allclose(ew.Jet_Bork, [np.inf, np.inf, np.inf])
+                    tst.assert_allclose(ew.Jet_Quack[0], [0.5, np.nan])
+                    tst.assert_allclose(ew.Jet_Quack[1], [0.5, -np.inf])
+                    tst.assert_allclose(ew.Jet_Quack[2], [])
+                    assert np.isnan(ew.Jet_AveBork)
+                    tst.assert_allclose(ew.Jet_AveQuack, 0.5)
+                    assert np.isnan(ew.Jet_QualityWidth)
+                    tst.assert_allclose(ew.Jet_QualityFraction, 3/Constants.dijet_mass)
 
 
 def test_tabulate_scores():
