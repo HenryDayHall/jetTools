@@ -3,7 +3,7 @@ import os
 from ipdb import set_trace as st
 from numpy import testing as tst
 import pytest
-from jet_tools.tree_tagger import Components, PDGNames
+from jet_tools.src import Components, PDGNames
 from jet_tools.test.tools import generic_equality_comp, TempTestDir, data_dir
 import awkward
 

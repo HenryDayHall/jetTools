@@ -1,6 +1,6 @@
 """ File for testing the routeens in AlterLHE.py"""
 from ipdb import set_trace as st
-from jet_tools.tree_tagger import PDGNames, AlterLHE
+from jet_tools.src import PDGNames, AlterLHE
 from numpy import testing as tst
 from jet_tools.test.tools import TempTestDir
 import numpy as np

@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from jet_tools.test.tools import TempTestDir
 import os
 import io
-from jet_tools.tree_tagger import InputTools
+from jet_tools.src import InputTools
 import unittest.mock
 from ipdb import set_trace as st
 import numpy.testing as tst
@@ -49,7 +49,7 @@ def test_get_file_name():
         # tab completing a file that ends in cat should get the first name
         complete = os.path.join(dir_name, 'm') + '\t'
         with replace_stdin(io.StringIO(complete)):
-            with unittest.mock.patch('jet_tools.tree_tagger.InputTools.tab_complete',
+            with unittest.mock.patch('jet_tools.src.InputTools.tab_complete',
                                      new=fake_tab_complete):
                 found = InputTools.get_file_name("Msg ", "cat")
         assert found.strip() == new_name1, f"Found {found} from {complete}, expected {new_name1}"
@@ -75,7 +75,7 @@ def test_get_dir_name():
         # tab completing a dir should get the dir back
         complete = os.path.join(dir_name, 'm') + '\t'
         with replace_stdin(io.StringIO(complete)):
-            with unittest.mock.patch('jet_tools.tree_tagger.InputTools.tab_complete',
+            with unittest.mock.patch('jet_tools.src.InputTools.tab_complete',
                                      new=fake_tab_complete):
                 found = InputTools.get_dir_name("Msg ")
         new_dir1 += '/'
@@ -92,7 +92,7 @@ def test_list_complete():
     # tab completing 
     complete = 'b\t'
     with replace_stdin(io.StringIO(complete)):
-        with unittest.mock.patch('jet_tools.tree_tagger.InputTools.tab_complete',
+        with unittest.mock.patch('jet_tools.src.InputTools.tab_complete',
                                  new=fake_tab_complete):
             found = InputTools.list_complete("Msg ", select_from)
     expected = select_from[-1]

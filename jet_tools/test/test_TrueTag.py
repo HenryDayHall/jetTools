@@ -2,7 +2,7 @@
 import os
 from ipdb import set_trace as st
 import numpy as np
-from jet_tools.tree_tagger import Components, FormJets, TrueTag, FormShower
+from jet_tools.src import Components, FormJets, TrueTag, FormShower
 import awkward
 from jet_tools.test.tools import TempTestDir
 import numpy.testing as tst

@@ -1,6 +1,6 @@
 """ A script to check the contents/status of all data in a folder """
 import os
-from tree_tagger import Components, FormJets
+from src import Components, FormJets
 
 def check_path(path):
     # check for fragments, these would contain raw jets

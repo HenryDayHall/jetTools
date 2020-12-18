@@ -1,6 +1,6 @@
 """ Tests for the PDG names module """
 import numpy.testing as tst
-from jet_tools.tree_tagger import PDGNames
+from jet_tools.src import PDGNames
 
 
 def test_Identities():

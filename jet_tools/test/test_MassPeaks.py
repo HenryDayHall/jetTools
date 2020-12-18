@@ -6,7 +6,7 @@ import numpy as np
 import numpy.testing as tst
 from jet_tools.test.tools import TempTestDir
 import awkward
-from jet_tools.tree_tagger import MassPeaks, Components, Constants
+from jet_tools.src import MassPeaks, Components, Constants
 
 # WARNING; this was not written with consistent angular/linear momentums
 # if tests her start breaking, it could be that the functions are fine,

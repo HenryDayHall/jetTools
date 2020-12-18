@@ -1,5 +1,5 @@
 """ test the form vertices module """
-from jet_tools.tree_tagger import FormVertices
+from jet_tools.src import FormVertices
 import numpy as np
 from numpy import testing as tst
 from ipdb import set_trace as st

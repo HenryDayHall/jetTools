@@ -1,5 +1,5 @@
 """ Test the function in AreaMeasures.py """
-from jet_tools.tree_tagger import AreaMeasures, Components, FormShower
+from jet_tools.src import AreaMeasures, Components, FormShower
 import numpy as np
 import os
 import awkward

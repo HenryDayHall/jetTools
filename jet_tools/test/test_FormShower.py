@@ -1,7 +1,7 @@
 """ tests to evaluate the FormShower module """
 import os
 from ipdb import set_trace as st
-from jet_tools.tree_tagger import FormShower, DrawTrees, Components, PDGNames
+from jet_tools.src import FormShower, DrawTrees, Components, PDGNames
 import numpy.testing as tst
 import numpy as np
 from jet_tools.test.tools import TempTestDir

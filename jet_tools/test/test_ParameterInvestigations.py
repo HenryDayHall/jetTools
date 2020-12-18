@@ -3,7 +3,7 @@ import os
 from ipdb import set_trace as st
 import awkward
 from jet_tools.test.tools import TempTestDir
-from jet_tools.tree_tagger import Components, ParameterInvestigation
+from jet_tools.src import Components, ParameterInvestigation
 import numpy.testing as tst
 import numpy as np
 

@@ -1,6 +1,6 @@
 from numpy import testing as tst
 import numpy as np
-from jet_tools.tree_tagger import ReadHepmc, PDGNames
+from jet_tools.src import ReadHepmc, PDGNames
 from jet_tools.test.tools import generic_equality_comp, TempTestDir, data_dir
 from ipdb import set_trace as st
 import os

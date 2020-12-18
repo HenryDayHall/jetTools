@@ -1,7 +1,7 @@
 """ a script to update all datasets in the top level of megaIgnore to acount ro recent changes from FormTreesRefactor branch """
 import os
 import awkward
-from tree_tagger import Components, FormJets
+from src import Components, FormJets
 # grab the datasets
 file_names = []
 dir_name = "megaIgnore/best_scans1"
