@@ -241,6 +241,24 @@ def fake_detectable_comparisons(eventWise, name, jet_idx, append):
 def fake_empty(*args, **kwargs):
     pass
 
+def fake_purr(list_of_sounds):
+    list_of_sounds.append("meow")
+
+def purr(list_of_sounds):
+    list_of_sounds.append("purr")
+
+def pet_cat():
+    sounds_heard = []
+    purr(sounds_heard)
+    return sounds_heard
+
+
+def test_pet_cat():
+    from jet_tools.test import test_CompareClusters
+    with unittest.mock.patch('jet_tools.test.test_CompareClusters.purr', new=fake_purr):
+        sound = test_CompareClusters.pet_cat()
+    assert sound[0] == 'meow'
+
 
 def test_append_scores():
     # set up as for filter jets
