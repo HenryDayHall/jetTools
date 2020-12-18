@@ -131,7 +131,6 @@ def parity(identities_a, coordinates_a, identities_b, coordinates_b):
     return par
 
 
-
 class PseudoJet:
     """ Base class for jets, needs to be extended to be usable """
     int_columns = ["Pseudojet_InputIdx",
