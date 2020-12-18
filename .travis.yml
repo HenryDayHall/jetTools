@@ -1,4 +1,7 @@
 language: python
+branches:
+    only:
+    - master
 install:
   - pip3 install -r requirements.txt
   - pip3 install coverage
@@ -9,3 +12,4 @@ python:
 # must turn off warnings becuase otherwise the travis log file gets too long
 script: coverage run -m pytest -p no:warnings
 after_success: bash <(curl -s https://codecov.io/bash)
+
