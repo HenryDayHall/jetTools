@@ -116,7 +116,7 @@ def test_get_detectable_comparisons():
     params["BQuarkIdx"] += [awkward.fromiter([3, 4])]
     params["JetInputs_SourceIdx"] += [awkward.fromiter([])]
     params["DetectableTag_Roots"] += [awkward.fromiter([[3], [4]])]
-    params["DetectableTag_Leaves"] += [awkward.fromiter([])]
+    params["DetectableTag_Leaves"] += [awkward.fromiter([[], []])]
     params["DetectableTag_Energy"] += [awkward.fromiter([0., 0.])]
     params["DetectableTag_Px"] += [awkward.fromiter([0., 0.])]
     params["DetectableTag_Py"] += [awkward.fromiter([0., 0.])]
