@@ -1599,20 +1599,23 @@ class Spectral(PseudoJet):
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent',
+                      'AffinityExp': 1.,
+                      'Sigma': 1.,
                       'CutoffKNN': None,
                       'CutoffDistance': None,
                       'Laplacien': 'unnormalised',
                       'EigNormFactor': 0.,
                       'CombineSize': 'recalculate',
                       'PhyDistance': 'angular', 'EigDistance': 'euclidien',
-                      'Sigma': 1.,
                       'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
                        'CutoffKNN': [None, Constants.numeric_classes['nn']],
                        'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect', 'symoverpt'],
@@ -1620,7 +1623,6 @@ class Spectral(PseudoJet):
                        'EigNormFactor': Constants.numeric_classes['rn'],
                        'EigDistance': ['euclidien', 'spherical', 'abscos'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'Sigma': Constants.numeric_classes['rn'],
                        'StoppingCondition': ['standard', 'beamparticle', 'conductance', 'meandistance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
@@ -1895,6 +1897,7 @@ class Spectral(PseudoJet):
         knn_cutoff = self.CutoffKNN if self.CutoffKNN is not None else np.inf
         distance2_cutoff = self.CutoffDistance**2 if self.CutoffDistance is not None else np.inf
         if self.AffinityType == 'exponent':
+            exponent = self.AffinityExp*0.5
             def calculate_affinity(distances2):
                 """
                 Given physical distance squared, find an affinity.
@@ -1910,27 +1913,7 @@ class Spectral(PseudoJet):
                     the affinities
 
                 """
-                affinity = np.exp(-(distances2**0.5/sigma))
-                affinity[~knn(distances2, knn_cutoff)] = 0
-                affinity[distances2 > distance2_cutoff] = 0
-                return affinity
-        elif self.AffinityType == 'exponent2':
-            def calculate_affinity(distances2):
-                """
-                Given physical distance squared, find an affinity.
-
-                Parameters
-                ----------
-                distances2 : array like of floats
-                    the distances squared
-
-                Returns
-                -------
-                affinity : array like of floats
-                    the affinities
-
-                """
-                affinity = np.exp(-distances2/sigma)
+                affinity = np.exp(-(distances2**exponent/sigma))
                 affinity[~knn(distances2, knn_cutoff)] = 0
                 affinity[distances2 > distance2_cutoff] = 0
                 return affinity
@@ -2492,7 +2475,8 @@ class Indicator(Spectral):
     default_params = {'NumEigenvectors': np.inf,
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                  'AffinityType': 'exponent', 
+                  'AffinityType': 'exponent',
+                  'AffinityExp': 1.,
                   'CutoffKNN': None,
                   'CutoffDistance': None,
                   'Laplacien': 'unnormalised',
@@ -2504,13 +2488,14 @@ class Indicator(Spectral):
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
                        'CutoffKNN': [None, Constants.numeric_classes['nn']],
                        'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'Sigma': Constants.numeric_classes['rn'],
                        'BaseJump': Constants.numeric_classes['pdn'],
                        'JumpEigenFactor': Constants.numeric_classes['rn']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -2824,11 +2809,12 @@ class Splitting(Indicator):
     default_params = {'NumEigenvectors': np.inf,
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                  'AffinityType': 'exponent', 
+                  'AffinityType': 'exponent',
+                  'AffinityExp': 1.,
+                  'Sigma': 1.,
                   'CutoffKNN': None,
                   'CutoffDistance': None,
                   'Laplacien': 'unnormalised',
-                  'Sigma': 1.,
                   'CombineSize': 'recalculate',
                   'PhyDistance': 'angular',
                   'MaxCutScore': 0.2}
@@ -2836,11 +2822,12 @@ class Splitting(Indicator):
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
                        'CutoffKNN': [None, Constants.numeric_classes['nn']],
                        'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
-                       'Sigma': Constants.numeric_classes['rn'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'MaxCutScore': Constants.numeric_classes['pdn']}
@@ -3184,6 +3171,7 @@ class SpectralKMeans(Spectral):
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent',
+                      'AffinityExp': 1.,
                       'CutoffKNN': None,
                       'CutoffDistance': None,
                       'Laplacien': 'unnormalised',
@@ -3194,13 +3182,14 @@ class SpectralKMeans(Spectral):
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
                        'CutoffKNN': [None, Constants.numeric_classes['nn']],
                        'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
-                       'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'Sigma': Constants.numeric_classes['rn']}
+                       'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab']}
    
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
@@ -3718,6 +3707,12 @@ def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
     desired = jet_params['AffinityType']
     possible = [name for name in possible
                 if checkpoint_hyper[name+'_AffinityType'] == desired]
+    desired = jet_params['AffinityExp']
+    possible = [name for name in possible
+                if np.isclose(checkpoint_hyper[name+'_AffinityExp'],desired)]
+    desired = jet_params['Sigma']
+    possible = [name for name in possible
+                if np.isclose(checkpoint_hyper[name+'_Sigma'],desired)]
     if possible:
         checkpoint_name = 'affinity'
         this_name = next(name for name in checkpoint_content
@@ -4460,7 +4455,8 @@ if __name__ == '__main__':
                                    #MaxCutScore=0.2, 
                                    Laplacien='symmetric',
                                    #DeltaR=3.2,
-                                   AffinityType='exponent2',
+                                   AffinityType='exponent',
+                                   AffinityExp=1.,
                                    Sigma=.6,
                                    #CombineSize='sum',
                                    EigDistance='abscos',

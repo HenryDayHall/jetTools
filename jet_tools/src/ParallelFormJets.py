@@ -425,6 +425,7 @@ fix_cheat = dict(ExpofPTMultiplier=0,
                  NumEigenvectors=np.inf,
                  Laplacien='symmetric',
                  AffinityType='exponent',
+                 AffinityExp=1.,
                  CutoffKNN=None,
                  CutoffDistance=None,
                  PhyDistance='angular')
@@ -436,7 +437,8 @@ scan_hacky = dict(
                  EigNormFactor=[1.2, 1.5, 1.8],
                  )
 fix_hacky = dict(ExpofPTMultiplier=0,
-                 AffinityType='exponent2',
+                 AffinityType='exponent',
+                 AffinityExp=2.,
                  CutoffKNN=None,
                  CutoffDistance=None,
                  ExpofPTPosition='input',
@@ -457,15 +459,18 @@ scan_checkpoint = dict(
 fix_checkpointLuclus = dict( ExpofPTPosition = 'input',
                        CutoffDistance = None,
                        ExpofPTFormat='Luclus',
+                       AffinityExp=1.,
                        AffinityType='exponent')
 fix_checkpointmin = dict( ExpofPTPosition = 'input',
                        CutoffDistance = None,
                        ExpofPTFormat='min',
+                       AffinityExp=1.,
                        AffinityType='exponent')
 
 scan_checkpoint_final = dict(
                             CutoffDistance=[None] + list(np.linspace(1., 5., 11)),
-                            AffinityType=['linear', 'inverse', 'exponent', 'exponent2'],
+                            AffinityType=['linear', 'inverse', 'exponent'],
+                            AffinityExp=[1., 2.],
                             )
 fix_checkpoint_final = dict(ExpofPTPosition='eigenspace',
                             PhyDistance='taxicab')

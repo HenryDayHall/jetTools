@@ -702,7 +702,6 @@ def plot_PT_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angl
     
     """
     fig, ax_array = plt.subplots(3, 3)
-    input_names = ["NumEigenvectors", "AffinityType", "ExpofPTMultiplier"]
     # get lobal inputs
     eventWise.selected_index = None
     heavy, light1, light2 = descendants_masses(eventWise)

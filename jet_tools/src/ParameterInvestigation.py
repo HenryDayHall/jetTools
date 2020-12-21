@@ -800,7 +800,8 @@ def eig_jets():
     jet_params = []
     jet_name = 'AngularExponent21'
     jet_ps = dict(PhyDistance='angular',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='symmetric',
@@ -810,6 +811,7 @@ def eig_jets():
     jet_name = 'AngularExponent1'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='symmetric',
@@ -818,7 +820,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'LuclusExponent21'
     jet_ps = dict(PhyDistance='Luclus',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='symmetric',
@@ -828,6 +831,7 @@ def eig_jets():
     jet_name = 'LuclusExponent1'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='symmetric',
@@ -836,7 +840,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'AngularExponent22'
     jet_ps = dict(PhyDistance='angular',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='unnormalised',
@@ -846,6 +851,7 @@ def eig_jets():
     jet_name = 'AngularExponent2'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='unnormalised',
@@ -854,7 +860,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'LuclusExponent22'
     jet_ps = dict(PhyDistance='Luclus',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='unnormalised',
@@ -864,6 +871,7 @@ def eig_jets():
     jet_name = 'LuclusExponent2'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=None,
                       Laplacien='unnormalised',
@@ -872,7 +880,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'AngularExponent24'
     jet_ps = dict(PhyDistance='angular',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='symmetric',
@@ -882,6 +891,7 @@ def eig_jets():
     jet_name = 'AngularExponent4'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='symmetric',
@@ -890,7 +900,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'LuclusExponent24'
     jet_ps = dict(PhyDistance='Luclus',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='symmetric',
@@ -900,6 +911,7 @@ def eig_jets():
     jet_name = 'LuclusExponent4'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='symmetric',
@@ -908,7 +920,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'AngularExponent23'
     jet_ps = dict(PhyDistance='angular',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='unnormalised',
@@ -918,6 +931,7 @@ def eig_jets():
     jet_name = 'AngularExponent3'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='unnormalised',
@@ -926,7 +940,8 @@ def eig_jets():
     jet_params.append(jet_ps)
     jet_name = 'LuclusExponent23'
     jet_ps = dict(PhyDistance='Luclus',
-                      AffinityType='exponent2',
+                      AffinityType='exponent',
+                      AffinityExp=2.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='unnormalised',
@@ -936,6 +951,7 @@ def eig_jets():
     jet_name = 'LuclusExponent3'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
+                      AffinityExp=1.,
                       CutoffKNN=None,
                       CutoffDistance=2.,
                       Laplacien='unnormalised',

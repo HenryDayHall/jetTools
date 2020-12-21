@@ -1184,9 +1184,8 @@ def internal_set_affinity(jets, param_dict):
             warnings.simplefilter('ignore')
             expected = 1/distances
     elif param_dict['AffinityType'] == 'exponent':
-        expected = np.exp(-distances)
-    elif param_dict['AffinityType'] == 'exponent2':
-        expected = np.exp(-distances2)
+        exponent = param_dict['AffinityExp']
+        expected = np.exp(-distances**exponent)
     else:
         raise KeyError
     # apply the cut off
@@ -1295,7 +1294,7 @@ def test_Spectral_internal_exponent():
 def test_Spectral_internal_exponent2():
     # testing Pseudojet functions, but creating Spectral jets
     # as Pseudojet should not be directly created and Traditional lack support for all options
-    affinity = 'exponent2'
+    affinity = 'exponent'
     for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
         cutoffKNN = None
         cutoffDistance = None
@@ -1306,6 +1305,7 @@ def test_Spectral_internal_exponent2():
                 cutoffDistance = affinity_cutoff[1]
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
+                                     AffinityExp=2.,
                                      CutoffDistance=cutoffDistance,
                                      CutoffKNN=cutoffKNN)
         apply_internal(FormJets.Spectral, internal_set_affinity,
