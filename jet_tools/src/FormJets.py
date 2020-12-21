@@ -1618,7 +1618,7 @@ class Spectral(PseudoJet):
                        'Sigma': Constants.numeric_classes['pdn'],
                        'CutoffKNN': [None, Constants.numeric_classes['nn']],
                        'CutoffDistance': [None, Constants.numeric_classes['pdn']],
-                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect', 'symoverpt'],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
                        'EigDistance': ['euclidien', 'spherical', 'abscos'],
@@ -1702,23 +1702,6 @@ class Spectral(PseudoJet):
                                for row in indices),
                               dtype=float)
             return pts
-        if self.Laplacien == 'symoverpt':
-            pts = np.fromiter((self._floats[row][self._PT_col]
-                               for row in indices),
-                              dtype=float)
-            pts /= self.event_mass
-            try:
-                affinities = np.sum(self._affinity[:, indices], axis=0)
-                #affinities /= np.mean(self._affinity)
-                affinities /= 1000
-            except IndexError as e:
-                if len(self._affinity.flatten()) == 0:
-                    return np.zeros(1)
-                text = f"jet_params = {self.jet_parameters}, affinity = {self._affinity}, indices = {indices}"
-                print(text)
-                raise e
-            print(f"aff = {np.mean(affinities)}, pts = {np.mean(pts)}")
-            return affinities+pts
         if self.Laplacien == 'energy':
             es = np.fromiter((self._floats[row][self._Energy_col]
                               for row in indices),
