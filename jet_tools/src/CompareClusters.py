@@ -611,8 +611,6 @@ def quality_filter_table(all_cols, variable_cols, score_cols, table):
     table = table[signal_gap < 33.]
     background_gap = table[:, all_cols.index("AveDistanceBG")]
     table = table[background_gap < 33.]
-    #cutoff = table[:, all_cols.index("AffinityCutoff")]
-    #table = table[[x is not None for x in cutoff]]
     return all_cols, variable_cols, score_cols, table
 
 
@@ -770,9 +768,10 @@ def plot_grid(all_cols, plot_column_names, plot_row_names, table):
     inverted_names = ["AveBGMassRatio"] + [name for name in all_cols
                                            if "Distance" in name or "Quality" in name]
     # a list of cols where the axis must be constructed
-    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition", "ExpofPTFormat", "AffinityType", "AffinityCutoff",
-            "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore", "Eigenspace",
-                   "BaseJump"]
+    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition",
+                   "ExpofPTFormat", "AffinityType", "CutoffKNN", "CutoffDistance",
+                   "Laplacien", "PhyDistance", "StoppingCondition",
+                   "MaxJump", "MaxCutScore", "BaseJump"]
     n_cols = len(plot_column_names)
     n_rows = len(plot_row_names)
     fig, ax_arr = plt.subplots(n_rows, n_cols, sharex='col', sharey='row')

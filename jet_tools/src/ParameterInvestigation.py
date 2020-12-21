@@ -533,7 +533,7 @@ def create_eigenvectors(eventWise, jet_params):
     """
     Create and return the initial eigenspace and eigenvectors.
     The jet params relevent to this are;
-    PhyDistance, AffinityType, AffinityCutoff, Laplacien, ExpOfPTMultiplier
+    PhyDistance, AffinityType, CutoffDistance, CutoffKNN, Laplacien, ExpOfPTMultiplier
     SpectralMean will be used.
 
     Parameters
@@ -801,7 +801,8 @@ def eig_jets():
     jet_name = 'AngularExponent21'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent2',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -809,7 +810,8 @@ def eig_jets():
     jet_name = 'AngularExponent1'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -817,7 +819,8 @@ def eig_jets():
     jet_name = 'LuclusExponent21'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent2',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -825,7 +828,8 @@ def eig_jets():
     jet_name = 'LuclusExponent1'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -833,7 +837,8 @@ def eig_jets():
     jet_name = 'AngularExponent22'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent2',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -841,7 +846,8 @@ def eig_jets():
     jet_name = 'AngularExponent2'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -849,7 +855,8 @@ def eig_jets():
     jet_name = 'LuclusExponent22'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent2',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -857,7 +864,8 @@ def eig_jets():
     jet_name = 'LuclusExponent2'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
-                      AffinityCutoff=None,
+                      CutoffKNN=None,
+                      CutoffDistance=None,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -865,7 +873,8 @@ def eig_jets():
     jet_name = 'AngularExponent24'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent2',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -873,7 +882,8 @@ def eig_jets():
     jet_name = 'AngularExponent4'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -881,7 +891,8 @@ def eig_jets():
     jet_name = 'LuclusExponent24'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent2',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -889,7 +900,8 @@ def eig_jets():
     jet_name = 'LuclusExponent4'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='symmetric',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -897,7 +909,8 @@ def eig_jets():
     jet_name = 'AngularExponent23'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent2',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -905,7 +918,8 @@ def eig_jets():
     jet_name = 'AngularExponent3'
     jet_ps = dict(PhyDistance='angular',
                       AffinityType='exponent',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -913,7 +927,8 @@ def eig_jets():
     jet_name = 'LuclusExponent23'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent2',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -921,7 +936,8 @@ def eig_jets():
     jet_name = 'LuclusExponent3'
     jet_ps = dict(PhyDistance='Luclus',
                       AffinityType='exponent',
-                      AffinityCutoff=('distance', 2),
+                      CutoffKNN=None,
+                      CutoffDistance=2.,
                       Laplacien='unnormalised',
                       ExpOfPTMultiplier=0)
     jet_names.append(jet_name)
@@ -961,7 +977,8 @@ def get_linked(eventWise, jet_params):
     n_events = len(eventWise.JetInputs_SourceIdx)
     is_linked = []
     percent_sparcity = []
-    AffinityCutoff = jet_params["AffinityCutoff"]
+    CutoffDistance = jet_params["CutoffDistance"]
+    CutoffKNN = jet_params["CutoffKNN"]
     for event_n in range(n_events):
         eventWise.selected_index = event_n
         jets = FormJets.Traditional(eventWise, jet_params, assign=False)
@@ -972,16 +989,11 @@ def get_linked(eventWise, jet_params):
         upper_triangle = np.triu_indices_from(distances2)
         distances2[upper_triangle] = distances2.T[upper_triangle]
         local = np.ones_like(distances2, dtype=bool)
-        if AffinityCutoff is None:
-            pass # everything is linke
-        elif AffinityCutoff[0] == 'knn':
-            num_neigbours = AffinityCutoff[1]
-            local[~FormJets.knn(distances2, num_neigbours)] = False
-        elif AffinityCutoff[0] == 'distance':
-            max_distance2 = AffinityCutoff[1]**2
+        if CutoffKNN is not None:
+            local[~FormJets.knn(distances2, CutoffKNN)] = False
+        if CutoffDistance is not None:
+            max_distance2 = CutoffDistance**2
             local[distances2 > max_distance2] = False
-        else:
-            raise NotImplementedError
         is_linked.append(local)
         percent_sparcity.append(np.sum(~is_linked[-1])/(len(distances2)**2))
     return is_linked, percent_sparcity
@@ -1106,7 +1118,7 @@ def plot_cutoff_event(eventWise, event_num, jet_names=None):
     """
     if jet_names is None:
         jet_names = [name.split('_')[0] for name in eventWise.columns
-                     if name.endswith("_AffinityCutoff")]
+                     if name.endswith("_CutoffDistance")]
         #jet_names = jet_names[::2]
     # get global data
     eventWise.selected_index = event_num
@@ -1127,7 +1139,7 @@ def plot_cutoff_event(eventWise, event_num, jet_names=None):
     n_cols = int(np.ceil(num_jets/n_rows))
     fig, ax_arr = plt.subplots(1+n_rows, n_cols, sharex=True, sharey=True)
     # use the first row to discribe the jets
-    jet_inputs = ["PhyDistance", "ExpOfPTMultiplier", "AffinityCutoff"]
+    jet_inputs = ["PhyDistance", "ExpOfPTMultiplier", "CutoffKNN", "CutoffDistance"]
     PlottingTools.make_inputs_table(eventWise, jet_names, ax_arr[0, 0], jet_inputs)
     for blank_ax in ax_arr[0, 1:]:
         PlottingTools.hide_axis(blank_ax)
@@ -1161,8 +1173,8 @@ def cutoff_jets():
     fix_parameters = dict(ExpofPTPosition='input', ExpofPTFormat='Luclus')
     scan_parameters = dict(PhyDistance=['angular', 'taxicab'],
                            ExpOfPTMultiplier=np.linspace(-1, 1, 9),
-                           AffinityCutoff=[None] + [('distance', x) for x in np.linspace(0.5, 7.5, 8)]
-                                          +[('knn', x) for x in range(1, 6)])
+                           CutoffDistance=[None] + list(np.linspace(0.5, 7.5, 8)),
+                           CutoffKNN=[None] + list(range(1, 6)))
     key_order = list(scan_parameters.keys())
     ordered_values = [scan_parameters[key] for key in key_order]
     num_combinations = np.product([len(vals) for vals in ordered_values])

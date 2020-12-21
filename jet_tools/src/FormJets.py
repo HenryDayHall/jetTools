@@ -1598,9 +1598,11 @@ class Spectral(PseudoJet):
     default_params = {'DeltaR': .2, 'NumEigenvectors': np.inf,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                      'AffinityType': 'exponent', 'AffinityCutoff': None,
-                      'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
-                      'EigNormFactor': 0.5,
+                      'AffinityType': 'exponent',
+                      'CutoffKNN': None,
+                      'CutoffDistance': None,
+                      'Laplacien': 'unnormalised',
+                      'EigNormFactor': 0.,
                       'CombineSize': 'recalculate',
                       'PhyDistance': 'angular', 'EigDistance': 'euclidien',
                       'Sigma': 1.,
@@ -1611,10 +1613,10 @@ class Spectral(PseudoJet):
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect', 'symoverpt'],
                        'CombineSize': ['sum', 'recalculate'],
-                       'Eigenspace': ['unnormalised', 'normalised'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
                        'EigDistance': ['euclidien', 'spherical', 'abscos'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
@@ -1683,7 +1685,7 @@ class Spectral(PseudoJet):
     @property
     def eigenvectors(self):
         eigenvectors = self._eigenspace
-        if self.Eigenspace == 'normalised':
+        if self.EigNormFactor != 0:
             norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**self.EigNormFactor
             eigenvectors /= np.array(self.eigenvalues[-1])**0.5
         return eigenvectors
@@ -1873,7 +1875,7 @@ class Spectral(PseudoJet):
         self.eigenvalues.append(eigenvalues.tolist())
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
-        if self.Eigenspace == 'normalised':
+        if self.EigNormFactor != 0:
             norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**self.EigNormFactor
             self._eigenspace /= norm_factor
         # now treating the rows of this matrix as the new points get euclidien distances
@@ -1890,262 +1892,95 @@ class Spectral(PseudoJet):
     def _define_calculate_affinity(self):
         """ Define functions to caluclate affinity from real distance """
         sigma = self.Sigma
-        if self.AffinityCutoff is not None:
-            cutoff_type = self.AffinityCutoff[0]
-            cutoff_param = self.AffinityCutoff[1]
-            if cutoff_type == 'knn':
-                # add one to the number of neighbours to account for the 
-                # diagonal
-                cutoff_param += 1
-                if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+        knn_cutoff = self.CutoffKNN if self.CutoffKNN is not None else np.inf
+        distance2_cutoff = self.CutoffDistance**2 if self.CutoffDistance is not None else np.inf
+        if self.AffinityType == 'exponent':
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = np.exp(-(distances2**0.5/sigma))
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        return affinity
-                elif self.AffinityType == 'exponent2':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+                """
+                affinity = np.exp(-(distances2**0.5/sigma))
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                return affinity
+        elif self.AffinityType == 'exponent2':
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = np.exp(-distances2/sigma)
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        return affinity
-                elif self.AffinityType == 'linear':  # this actually makes for relative distances
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+                """
+                affinity = np.exp(-distances2/sigma)
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                return affinity
+        elif self.AffinityType == 'linear':  # this actually makes for relative distances
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = -distances2**0.5
-                        # if you don't shift first then if there is only
-                        # one non zero connection everything ends up as zero
-                        affinity -= np.min(affinity)
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        return affinity
-                elif self.AffinityType == 'inverse':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+                """
+                affinity = -distances2**0.5
+                # if you don't shift first then if there is only
+                # one non zero connection everything ends up as zero
+                affinity -= np.min(affinity)
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                return affinity
+        elif self.AffinityType == 'inverse':
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = distances2**-0.5
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        mask = np.isinf(affinity)
-                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
-                        return affinity
-                else:
-                    raise ValueError(f"affinity type {self.AffinityType} unknown")
-            elif cutoff_type == 'distance':
-                cutoff_param2 = cutoff_param**2
-                if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = np.exp(-(distances2**0.5)/sigma)
-                        affinity[distances2 > cutoff_param2] = 0
-                        return affinity
-                elif self.AffinityType == 'exponent2':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = np.exp(-distances2/sigma)
-                        affinity[distances2 > cutoff_param2] = 0
-                        return affinity
-                elif self.AffinityType == 'linear':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = -distances2**0.5
-                        # if you don't shift first then is there is only one
-                        # unsevered connection everythign ends up as zero
-                        affinity -= np.min(affinity)
-                        affinity[distances2 > cutoff_param2] = 0
-                        return affinity
-                elif self.AffinityType == 'inverse':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = distances2**-0.5
-                        affinity[distances2 > cutoff_param2] = 0
-                        mask = np.isinf(affinity)
-                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
-                        return affinity
-                else:
-                    raise ValueError(f"affinity type {self.AffinityType} unknown")
-            else:
-                raise ValueError(f"cut off {cutoff_type} unknown")
+                """
+                affinity = distances2**-0.5
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                mask = np.isinf(affinity)
+                affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
+                return affinity
         else:
-            if self.AffinityType == 'exponent':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = np.exp(-(distances2**0.5)/sigma)
-                    return affinity
-            elif self.AffinityType == 'exponent2':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = np.exp(-distances2/sigma)
-                    return affinity
-            elif self.AffinityType == 'linear':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = -distances2**0.5
-                    affinity -= np.min(affinity)
-                    return affinity
-            elif self.AffinityType == 'inverse':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = distances2**-0.5
-                    # this is prone to infinities from various sources
-                    mask = np.isinf(affinity)
-                    affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
-                    return affinity
-            else:
-                raise ValueError(f"affinity type {self.AffinityType} unknown")
+            raise ValueError(f"affinity type {self.AffinityType} unknown")
         # this is make into a class fuction becuase it will b needed elsewhere
         self.calculate_affinity = calculate_affinity
 
@@ -2657,7 +2492,9 @@ class Indicator(Spectral):
     default_params = {'NumEigenvectors': np.inf,
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                  'AffinityType': 'exponent', 'AffinityCutoff': None,
+                  'AffinityType': 'exponent', 
+                  'CutoffKNN': None,
+                  'CutoffDistance': None,
                   'Laplacien': 'unnormalised',
                   'CombineSize': 'recalculate',
                   'Sigma': 1.,
@@ -2668,8 +2505,8 @@ class Indicator(Spectral):
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
-                                           ('distance', Constants.numeric_classes['pdn'])],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
@@ -2987,7 +2824,9 @@ class Splitting(Indicator):
     default_params = {'NumEigenvectors': np.inf,
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                  'AffinityType': 'exponent', 'AffinityCutoff': None,
+                  'AffinityType': 'exponent', 
+                  'CutoffKNN': None,
+                  'CutoffDistance': None,
                   'Laplacien': 'unnormalised',
                   'Sigma': 1.,
                   'CombineSize': 'recalculate',
@@ -2998,8 +2837,8 @@ class Splitting(Indicator):
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
-                                           ('distance', Constants.numeric_classes['pdn'])],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'Sigma': Constants.numeric_classes['rn'],
                        'CombineSize': ['sum', 'recalculate'],
@@ -3344,8 +3183,10 @@ class SpectralKMeans(Spectral):
     default_params = {'NumEigenvectors': np.inf,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                      'AffinityType': 'exponent', 'AffinityCutoff': None,
-                      'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
+                      'AffinityType': 'exponent',
+                      'CutoffKNN': None,
+                      'CutoffDistance': None,
+                      'Laplacien': 'unnormalised',
                       'EigNormFactor': 0.5,
                       'PhyDistance': 'angular',
                       'Sigma': 1., }
@@ -3354,9 +3195,9 @@ class SpectralKMeans(Spectral):
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
                        'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
-                       'Eigenspace': ['unnormalised', 'normalised'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'Sigma': Constants.numeric_classes['rn']}
@@ -3855,14 +3696,20 @@ def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
     else:
         return checkpoints
     # now check affinity cutoff
-    desired = jet_params['AffinityCutoff']
+    desired = jet_params['CutoffKNN']
     if desired is None:
         possible = [name for name in possible
-                    if checkpoint_hyper[name + '_AffinityCutoff'] is None]
+                    if checkpoint_hyper[name + '_CutoffKNN'] is None]
     else:
         possible = [name for name in possible
-                    if checkpoint_hyper[name + '_AffinityCutoff'][0] == desired[0]
-                    and np.isclose(checkpoint_hyper[name + '_AffinityCutoff'][1], desired[1])]
+                    if np.isclose(checkpoint_hyper[name + '_CutoffKNN'], desired)]
+    desired = jet_params['CutoffDistance']
+    if desired is None:
+        possible = [name for name in possible
+                    if checkpoint_hyper[name + '_CutoffDistance'] is None]
+    else:
+        possible = [name for name in possible
+                    if np.isclose(checkpoint_hyper[name + '_CutoffDistance'], desired)]
     # chech if the stopping ondition matches, becuase beam particle adds a row
     desired = jet_params['StoppingCondition']
     possible = [name for name in possible
@@ -4065,19 +3912,6 @@ def check_hyperparameters(cluster_class, params):
                 continue  # no problem
         except (ValueError, TypeError):
             pass
-        if name == 'AffinityCutoff':
-            if value in opts:  # ture for None
-                continue
-            else:
-                # done this way to prevent any alteration to the original opts
-                opts = [opt for opt in opts if opt is not None]
-            primary, secondary = value
-            try:
-                secondary_options = next(s for p, s in opts if p == primary)
-            except StopIteration:
-                raise ValueError(error_str.format(value, name, opts))
-            if Constants.is_numeric_class(secondary, secondary_options):
-                continue  # no problem
         if isinstance(opts, list):
             found_correct = False
             for opt in opts:
@@ -4626,12 +4460,12 @@ if __name__ == '__main__':
                                    #MaxCutScore=0.2, 
                                    Laplacien='symmetric',
                                    #DeltaR=3.2,
-                                   Eigenspace='normalised',
                                    AffinityType='exponent2',
                                    Sigma=.6,
                                    #CombineSize='sum',
                                    EigDistance='abscos',
-                                   AffinityCutoff=None,
+                                   CutoffKNN=None,
+                                   CutoffDistance=None,
                                    PhyDistance='angular')
         checkpoint_hyper = {}
         checkpoint_content = {}

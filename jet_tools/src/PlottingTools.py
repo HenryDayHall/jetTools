@@ -130,7 +130,7 @@ def text_table(ax, content, cell_fmt=None):
 
 def make_inputs_table(eventWise, jet_names, table_ax, jet_inputs=None):
     if jet_inputs is None:
-        jet_inputs = ["PhyDistance", "AffinityType", "AffinityCutoff",
+        jet_inputs = ["PhyDistance", "AffinityType", "CutoffKNN", "CutoffDistance",
                       "Laplacien", "ExpOfPTMultiplier"]
     # construct a text table
     table_content = [[" "] + jet_inputs]
