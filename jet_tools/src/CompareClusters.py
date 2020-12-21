@@ -191,7 +191,8 @@ def add_bg_mass(eventWise):
     all_bg_mass = np.sqrt(all_bg_mass)
     eventWise.append(DetectableBG_Mass=awkward.fromiter(all_bg_mass))
 
-def match_jets(eventWise, event_tags, jet_name, tag_mass, jet_idxs):
+
+def match_jets(tag_idxs, event_jet_tags, event_tags, tag_mass, jet_idxs):
     """
     For a set of jets in an event that may have more than one tag each,
     and a set of tags that come in groups according to shower mixing,
@@ -199,12 +200,12 @@ def match_jets(eventWise, event_tags, jet_name, tag_mass, jet_idxs):
 
     Paramters
     ---------
-    eventWise : EventWise
-        data set
+    tag_idxs : list of ints
+        global idxs of the tag particles
+    event_jet_tags : list of list of tags
+        the tags found in each jet
     event_tags : list of lists of ints
         the idxs of the tag particles, grouped by tag group
-    jet_name : str
-        name of the jet
     tag_mass : array of float
         dimension 0 of tagmass is which jet
         dimension 1 of tagmass is which tag
@@ -220,11 +221,9 @@ def match_jets(eventWise, event_tags, jet_name, tag_mass, jet_idxs):
         as in the event_tags
 
     """
-    assert eventWise.selected_index is not None
-    tag_idxs = eventWise.BQuarkIdx
     matched_jets = [[] for _ in event_tags]
     seperate_jets = 0
-    for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_Tags")):
+    for jet_n, jet_tags in enumerate(event_jet_tags):
         if jet_n not in jet_idxs or len(jet_tags) == 0:
             continue  # jet not sutable or has no tags
         # if we get here the jet has at least one tag on it and is in the required list
@@ -337,6 +336,7 @@ def event_detectables(tag_leaves, jets, input_idx, source_idx,
         all_mass2 = phi = pt = rapidity = tag_phi = tag_pt = tag_rapidity = np.nan
     return tag_mass2, bg_mass2, all_mass2, phi, pt, rapidity, tag_phi, tag_pt, tag_rapidity
 
+
 def per_event_detectables(eventWise, jet_name, jet_idxs):
     """
     
@@ -399,8 +399,11 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
         pz = eventWise.Pz
         source_idx = eventWise.JetInputs_SourceIdx
         input_idx = getattr(eventWise, jet_name + "_InputIdx")
-        seperate_here, matched_jets = match_jets(eventWise, event_tags, jet_name,
+        tag_idx = eventWise.BQuarkIdx
+        event_jet_tags = getattr(eventWise, jet_name + "_Tags")
+        seperate_here, matched_jets = match_jets(tag_idx, event_jet_tags, event_tags, 
                                                  tag_mass[event_n], jet_idxs[event_n])
+        seperate_jets += seperate_here
         mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
         # the tag fragment accounts only for tags that could be found
         num_found = sum(len(group) for group, matched in zip(event_tags, matched_jets)
