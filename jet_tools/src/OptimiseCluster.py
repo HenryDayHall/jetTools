@@ -73,6 +73,7 @@ def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, gen
     mass = np.nan_to_num(mass)
     assert np.all(mass >= -1e-5)
     loss = np.sum(mass)
+    loss += spectral_jet_params['Sigma']
     return loss
 
 def parameter_values(jet_class, stopping_condition):
