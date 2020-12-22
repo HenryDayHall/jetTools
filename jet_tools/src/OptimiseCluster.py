@@ -1,4 +1,7 @@
 """ Module for optimising the clustering process without gradient decent """
+import multiprocessing
+import os
+import time
 import awkward
 import nevergrad as ng
 from ipdb import set_trace as st
@@ -85,7 +88,7 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
         try:
             loss += event_loss(eventWise, jet_class,
                                spectral_jet_params, other_hyperparams, {})
-        except (np.linalg.LinAlgError, TypeError):
+        except (np.linalg.LinAlgError, TypeError, Exception):
             unclusterable_counter += 1
             continue
         # we didn't manage a clustering
@@ -98,12 +101,12 @@ def parameter_values(jet_class, stopping_condition):
         jet_class = getattr(FormJets, jet_class)
     # make some default continuous params
     continuous_params = dict(ExpofPTMultiplier=dict(mean=0., std=1., minimum=None),
-                             AffinityExp=dict(mean=1., std=1., minimum=None),
-                             Sigma=dict(mean=1., std=1., minimum=0.001),
-                             CutoffDistance=dict(mean=4., std=2., minimum=0.),
-                             EigNormFactor=dict(mean=1., std=1., minimum=None))
+                             AffinityExp=dict(mean=2., std=1., minimum=None),
+                             Sigma=dict(mean=.2, std=1., minimum=0.001),
+                             CutoffDistance=dict(mean=6., std=3., minimum=0.),
+                             EigNormFactor=dict(mean=1.5, std=1., minimum=None))
     if stopping_condition == 'meandistance':
-        continuous_params['DeltaR'] = dict(mean=3., std=1., minimum=0.)
+        continuous_params['DeltaR'] = dict(mean=1.28, std=1., minimum=0.)
     else:
         continuous_params['DeltaR'] = dict(mean=0.8, std=0.5, minimum=0.)
 
@@ -184,14 +187,14 @@ class ParameterTranslator:
         return clustering_params
 
 
-def run_optimisation():
-    eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
+def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=10000, silent=True):
     eventWise = Components.EventWise.from_file(eventWise_name)
     n_events = len(eventWise.Px)
     # make a sampler
-    budget = 500
-    batch_size = 100
-    sampler = RandomSampler(range(n_events), replacement=True, num_samples=budget*batch_size)
+    if end_time is not None:
+        total_calls = int(np.nan_to_num(np.inf))
+    budget = int(total_calls/batch_size)
+    sampler = RandomSampler(range(n_events), replacement=True, num_samples=total_calls)
     sampler = BatchSampler(sampler, batch_size, drop_last=True)
     # check we have object needed for tagging
     if "DetectableTag_Roots" not in eventWise.columns:
@@ -204,18 +207,23 @@ def run_optimisation():
     # get the initial clustering parameters
     jet_class = FormJets.SpectralFull
     fixed_params = dict(StoppingCondition='meandistance',
+                        EigDistance='abscos',
+                        Laplacien='symmetric',
                         PhyDistance='angular',
                         CombineSize='sum',
                         AffinityType='exponent')
     translator = ParameterTranslator(jet_class, fixed_params)
     variables = translator.generate_nevergrad_variables()
+    # the parameters that will change should be logged
+    params_to_log = [name for name in variables.kwargs if name not in fixed_params]
     # set up an optimiser
     optimiser = ng.optimizers.NGOpt(variables, budget=budget, num_workers=1)
     # inital values keep the loop simple
     print_wait = 100
     loss_log = []
+    param_log = []
     for i, batch in enumerate(sampler):
-        if i%print_wait == 0:
+        if i%print_wait == 0 and not silent:
             recent_loss = np.sum(loss_log[-print_wait:])
             if recent_loss == 0:
                 num_spaces = 0
@@ -223,29 +231,87 @@ def run_optimisation():
                 num_spaces = min(int(np.log(recent_loss)*5), 45)
             progress = " "*num_spaces + "<"
             print(f"{i/budget:.2%}, {recent_loss:.2f}| {progress}", flush=True, end='\r')
+        if end_time is not None and time.time() > end_time:
+            break
         new_vars = optimiser.ask()
         spectral_jet_params = translator.translate_to_clustering(new_vars)
+        param_log.append([spectral_jet_params[key] for key in params_to_log])
         loss = batch_loss(batch, eventWise, jet_class,
                                    spectral_jet_params, other_hyperparams, {})
         loss_log.append(loss)
         optimiser.tell(new_vars, loss)
     new_vars = optimiser.provide_recommendation()
-    print(new_vars.kwargs)
     spectral_jet_params = translator.translate_to_clustering(new_vars)
-    print("Makes params")
-    print(spectral_jet_params)
-    return loss_log, spectral_jet_params
+    if not silent:
+        print(new_vars.kwargs)
+        print("Makes params")
+        print(spectral_jet_params)
+    print_log(params_to_log, loss_log, param_log, spectral_jet_params)
 
-                                             
 
+def log_text(params_to_log, loss_log, param_log, full_final_params):
+    text = str(full_final_params)
+    text += "\niteration\tloss\t" + "\t".join(params_to_log) + "\n"
+    for i, (loss, params) in enumerate(zip(loss_log, param_log)):
+        text += f"{i}\t{loss}\t"
+        text += "\t".join([str(p) for p in params])
+        text += "\n"
+    return text
+
+
+def print_log(params_to_log, loss_log, param_log, full_final_params, log_dir="./logs"):
+    try:
+        os.mkdir(log_dir)
+    except FileExistsError:
+        pass
+    text = log_text(params_to_log, loss_log, param_log, full_final_params)
+    log_name = os.path.join(log_dir, "log{:03d}.txt")
+    i = 0
+    while True:
+        try:
+            with open(log_name.format(i), 'x') as new_file:
+                new_file.write(text)
+            return
+        except FileExistsError:
+            i += 1
+        
+def generate_pool(eventWise_name, max_workers=10,
+                  end_time=None, duration=None, leave_one_free=True):
+    batch_size = 100
+    # decide on a stop condition
+    if duration is not None:
+        end_time = time.time() + duration
+    if end_time is not None and duration is None:
+        duration = end_time - time.time()
+    # work out how many threads
+    n_threads = min(multiprocessing.cpu_count()-leave_one_free, max_workers)
+    if n_threads < 1:
+        n_threads = 1
+    wait_time = duration  # in seconds
+    # note that the longest wait will be n_cores time this time
+    print(f"Running on {n_threads} threads", flush=True)
+    job_list = []
+    # now each segment makes a worker
+    for _ in range(n_threads):
+        job = multiprocessing.Process(target=run_optimisation,
+                                      args=(eventWise_name, batch_size, end_time))
+        job.start()
+        job_list.append(job)
+    for job in job_list:
+        job.join(wait_time)
+    # check they all stopped
+    stalled = [job.is_alive() for job in job_list]
+    if np.any(stalled):
+        # stop everything
+        for job in job_list:
+            job.terminate()
+            job.join()
+        print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
+        return False
+    print("All processes ended")
 
 if __name__ == '__main__':
-    loss_log, spectral_jet_params = run_optimisation()
-    st()
-    text = str(spectral_jet_params)
-    text += "\nloss\n"
-    text += "".join([f"{i}\t{l}\n" for i, l in enumerate(loss_log)])
-    with open("optimisation.txt", 'w') as logfile:
-        logfile.write(text)
-    print("Written to optimisation.txt")
+    run_time = InputTools.get_time("How long should it run?")
+    eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
+    generate_pool(eventWise_name, duration=run_time)
 
