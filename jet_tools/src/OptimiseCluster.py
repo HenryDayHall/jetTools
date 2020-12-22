@@ -4,6 +4,7 @@ import nevergrad as ng
 from ipdb import set_trace as st
 from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower
 import numpy as np
+from torch.utils.data import RandomSampler, BatchSampler
 
 
 def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, generic_data):
@@ -55,7 +56,7 @@ def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, gen
             mass2 = np.sum(energy[b_in_jet])**2 - np.sum(px[b_in_jet])**2 - \
                     np.sum(py[b_in_jet])**2 - np.sum(pz[b_in_jet])**2
             jet_masses2[jet_n, tag_n] = mass2
-    jet_masses = np.sqrt(jet_masses2)
+    jet_masses = np.sqrt(np.maximum(jet_masses2, 0))
     # add the pt cut onto the valid jets
     valid_jets = valid_jets[jet_pt[valid_jets] > other_hyperparams['min_jetpt']]
     seperate_jets, matched_jets = CompareClusters.match_jets(tags, jets_tags, tag_groups,
@@ -68,12 +69,29 @@ def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, gen
                                                  px, py, pz, mass_only=True)
         mass[tag_n, 0] += bg_mass2
         mass[tag_n, 1] += tag_mass2
-    mass = np.sqrt(mass)
+    mass = np.sqrt(np.maximum(mass, 0))
     mass[:, 1] = eventWise.DetectableTag_Mass - mass[:, 1]
     mass = np.nan_to_num(mass)
     assert np.all(mass >= -1e-5)
     loss = np.sum(mass)
     return loss
+
+
+def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperparams, generic_data):
+    loss = 0
+    unclusterable_counter = 0
+    for event_n in batch:
+        eventWise.selected_index = event_n
+        try:
+            loss += event_loss(eventWise, jet_class,
+                               spectral_jet_params, other_hyperparams, {})
+        except (np.linalg.LinAlgError, TypeError):
+            unclusterable_counter += 1
+            continue
+        # we didn't manage a clustering
+    loss += 2**unclusterable_counter
+    return loss
+
 
 def parameter_values(jet_class, stopping_condition):
     if isinstance(jet_class, str):
@@ -105,6 +123,7 @@ def parameter_values(jet_class, stopping_condition):
     discreete_params['Laplacien'] = ['unnormalised', 'symmetric', 'pt']
                                              
     return discreete_params, ordered_discreet_params, continuous_params
+
 
 class ParameterTranslator:
     def __init__(self, jet_class, fixed_params):
@@ -164,13 +183,16 @@ class ParameterTranslator:
         clustering_params.update(self.fixed_params)
         return clustering_params
 
-        
-                                                   
 
-if __name__ == '__main__':
+def run_optimisation():
     eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
     eventWise = Components.EventWise.from_file(eventWise_name)
     n_events = len(eventWise.Px)
+    # make a sampler
+    budget = 500
+    batch_size = 100
+    sampler = RandomSampler(range(n_events), replacement=True, num_samples=budget*batch_size)
+    sampler = BatchSampler(sampler, batch_size, drop_last=True)
     # check we have object needed for tagging
     if "DetectableTag_Roots" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise, silent=False)
@@ -188,59 +210,42 @@ if __name__ == '__main__':
     translator = ParameterTranslator(jet_class, fixed_params)
     variables = translator.generate_nevergrad_variables()
     # set up an optimiser
-    optimiser = ng.optimizers.NGOpt(variables, budget=n_events, num_workers=1)
-    unclusterable_counter = 0
+    optimiser = ng.optimizers.NGOpt(variables, budget=budget, num_workers=1)
     # inital values keep the loop simple
-    loss = 10
-    loss_log = [loss]
-    for event_n in range(n_events):
-        recent_loss = np.sum(loss_log[-10:])
-        if recent_loss == 0:
-            num_spaces = 0
-        else:
-            num_spaces = min(int(np.log(recent_loss)*5), 45)
-        progress = " "*num_spaces + "<"
-        print(f"{event_n/n_events:.2%}, {loss:.2f}| {progress}", flush=True, end='\r')
-        eventWise.selected_index = event_n
+    print_wait = 100
+    loss_log = []
+    for i, batch in enumerate(sampler):
+        if i%print_wait == 0:
+            recent_loss = np.sum(loss_log[-print_wait:])
+            if recent_loss == 0:
+                num_spaces = 0
+            else:
+                num_spaces = min(int(np.log(recent_loss)*5), 45)
+            progress = " "*num_spaces + "<"
+            print(f"{i/budget:.2%}, {recent_loss:.2f}| {progress}", flush=True, end='\r')
         new_vars = optimiser.ask()
         spectral_jet_params = translator.translate_to_clustering(new_vars)
-        try:
-            loss = event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, {})
-        except np.linalg.LinAlgError:
-            continue
-        if loss is None:
-            # we didn't manage a clustering
-            loss = 2**unclusterable_counter
-            unclusterable_counter += 1
-        else:
-            unclusterable_counter = 0
+        loss = batch_loss(batch, eventWise, jet_class,
+                                   spectral_jet_params, other_hyperparams, {})
         loss_log.append(loss)
         optimiser.tell(new_vars, loss)
-    new_vars = optimiser.recommend()
+    new_vars = optimiser.provide_recommendation()
     print(new_vars.kwargs)
     spectral_jet_params = translator.translate_to_clustering(new_vars)
     print("Makes params")
     print(spectral_jet_params)
+    return loss_log, spectral_jet_params
 
                                              
 
 
-#def onemax(*x):
-#    return len(x) - x.count(1)
-#
-## Discrete, ordered
-#variables = list(ng.p.TransitionChoice(list(range(7))) for _ in range(10))
-#instrum = ng.p.Instrumentation(*variables)
-#optimizer = ng.optimizers.DiscreteOnePlusOne(parametrization=instrum, budget=100, num_workers=1)
-#
-#recommendation = optimizer.provide_recommendation()
-#for _ in range(optimizer.budget):
-#    x = optimizer.ask()
-#    loss = onemax(*x.args, **x.kwargs)
-#    optimizer.tell(x, loss)
-#
-#recommendation = optimizer.provide_recommendation()
-#print(recommendation.value)
-## >>> ((1, 1, 0, 1, 1, 4, 1, 1, 1, 1), {})
-#print(recommendation.args)
-## >>> (1, 1, 0, 1, 1, 4, 1, 1, 1, 1)
+if __name__ == '__main__':
+    loss_log, spectral_jet_params = run_optimisation()
+    st()
+    text = str(spectral_jet_params)
+    text += "\nloss\n"
+    text += "".join([f"{i}\t{l}\n" for i, l in enumerate(loss_log)])
+    with open("optimisation.txt", 'w') as logfile:
+        logfile.write(text)
+    print("Written to optimisation.txt")
+
