@@ -1,4 +1,5 @@
 """ Module for optimising the clustering process without gradient decent """
+import collections
 import multiprocessing
 import os
 import time
@@ -86,8 +87,17 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
     for event_n in batch:
         eventWise.selected_index = event_n
         try:
-            loss += event_loss(eventWise, jet_class,
-                               spectral_jet_params, other_hyperparams, {})
+            loss_n = event_loss(eventWise, jet_class,
+                                spectral_jet_params, other_hyperparams, generic_data)
+            ## if possible normalise by previous loss findings for this point
+            #if generic_data["Attempts"] or generic_data["NewDifficulty"]:
+            #    normalise = ((np.sum(generic_data["NewDifficulty"]) + generic_data["Difficulty"])
+            #                 /(generic_data["Attempts"] + len(generic_data["NewDifficulty"])))
+            #else:
+            #    normalise = 1.
+            #generic_data['NewDifficulty'][event_n].append(loss_n)
+            #loss += loss_n/normalise
+            loss += loss_n
         except (np.linalg.LinAlgError, TypeError, Exception):
             unclusterable_counter += 1
             continue
@@ -124,7 +134,6 @@ def parameter_values(jet_class, stopping_condition):
     # remove some bad eggs
     discreete_params['StoppingCondition'] = ['standard', 'beamparticle', 'meandistance']
     discreete_params['Laplacien'] = ['unnormalised', 'symmetric', 'pt']
-                                             
     return discreete_params, ordered_discreet_params, continuous_params
 
 
@@ -187,7 +196,7 @@ class ParameterTranslator:
         return clustering_params
 
 
-def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=10000, silent=True):
+def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=10000, silent=True, log_dir="./logs"):
     eventWise = Components.EventWise.from_file(eventWise_name)
     n_events = len(eventWise.Px)
     # make a sampler
@@ -222,6 +231,14 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
     print_wait = 100
     loss_log = []
     param_log = []
+    generic_data = {}
+    # find the dificulty of each event
+    #if 'Difficulty' in eventWise.columns:
+    #    generic_data['Difficulty'] = eventWise.Difficulty
+    #    generic_data['Attempts'] = eventWise.Attempts
+    #else:
+    #    generic_data['Attempts'] = np.zeros(n_events)
+    #generic_data['NewDifficulty'] = [[] for _ in range(n_events)]
     for i, batch in enumerate(sampler):
         if i%print_wait == 0 and not silent:
             recent_loss = np.sum(loss_log[-print_wait:])
@@ -237,7 +254,7 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
         spectral_jet_params = translator.translate_to_clustering(new_vars)
         param_log.append([spectral_jet_params[key] for key in params_to_log])
         loss = batch_loss(batch, eventWise, jet_class,
-                                   spectral_jet_params, other_hyperparams, {})
+                                   spectral_jet_params, other_hyperparams, generic_data)
         loss_log.append(loss)
         optimiser.tell(new_vars, loss)
     new_vars = optimiser.provide_recommendation()
@@ -246,7 +263,7 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
         print(new_vars.kwargs)
         print("Makes params")
         print(spectral_jet_params)
-    print_log(params_to_log, loss_log, param_log, spectral_jet_params)
+    print_log(params_to_log, loss_log, param_log, spectral_jet_params, log_dir)
 
 
 def log_text(params_to_log, loss_log, param_log, full_final_params):
@@ -266,18 +283,21 @@ def print_log(params_to_log, loss_log, param_log, full_final_params, log_dir="./
         pass
     text = log_text(params_to_log, loss_log, param_log, full_final_params)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
+    #difficulty_name = os.path.join(log_dir, "difficulty{:03d}.awkd")
     i = 0
     while True:
         try:
             with open(log_name.format(i), 'x') as new_file:
                 new_file.write(text)
+            #awkward.save(difficulty_name.format(i), awkward.fromiter(new_difficulty))
             return
         except FileExistsError:
             i += 1
         
+        
 def generate_pool(eventWise_name, max_workers=10,
-                  end_time=None, duration=None, leave_one_free=True):
-    batch_size = 100
+                  end_time=None, duration=None, leave_one_free=True,
+                  log_dir="./logs"):
     # decide on a stop condition
     if duration is not None:
         end_time = time.time() + duration
@@ -292,9 +312,10 @@ def generate_pool(eventWise_name, max_workers=10,
     print(f"Running on {n_threads} threads", flush=True)
     job_list = []
     # now each segment makes a worker
-    for _ in range(n_threads):
+    for batch_size in np.linspace(50, 1000, n_threads, dtype=int):
         job = multiprocessing.Process(target=run_optimisation,
-                                      args=(eventWise_name, batch_size, end_time))
+                                      args=(eventWise_name, int(batch_size),
+                                          end_time), kwargs={'log_dir': log_dir})
         job.start()
         job_list.append(job)
     for job in job_list:
@@ -310,8 +331,26 @@ def generate_pool(eventWise_name, max_workers=10,
         return False
     print("All processes ended")
 
+
+#def append_dificulties(eventWise, log_dir):
+#    if isinstance(eventWise, str):
+#        eventWise = Components.EventWise(eventWise)
+#    paths = [os.path.join(log_dir, file_name) for file_name in os.listdir(log_dir)
+#             if file_name.startswith("difficulty")]
+#    if "Difficulty" in eventWise.columns:
+#        difficulty = eventWise.Difficulty.tolist()
+#        attempts = eventWise.Attempts.tolist()
+#    else:
+#        difficulty = [0. for _ in eventWise.X]
+#        attempts = [0 for _ in eventWise.X]
+#    # TODO
+#    
+
+
 if __name__ == '__main__':
     run_time = InputTools.get_time("How long should it run?")
     eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
-    generate_pool(eventWise_name, duration=run_time)
+    log_dir = "./logs"
+    generate_pool(eventWise_name, duration=run_time, log_dir=log_dir)
+
 
