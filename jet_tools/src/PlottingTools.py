@@ -45,7 +45,9 @@ def discribe_jet(eventWise=None, jet_name=None, properties_dict=None, ax=None, f
                                if not np.any([name.startswith(s) for s in score_starts])}
         text += f"In file {eventWise.save_name}\n"
     elif properties_dict is not None:
-        jet_name = properties_dict.get('jet_name', "Unnamed")
+        jet_name = properties_dict.get('jet_name', jet_name)
+        if jet_name is None:
+            jet_name = "Unnamed"
     else:
         raise ValueError("Must give eventWise or a properties_dict")
     text += f"Jet properties for {jet_name}\n"
