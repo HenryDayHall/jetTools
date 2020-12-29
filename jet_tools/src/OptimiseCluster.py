@@ -1,11 +1,16 @@
 """ Module for optimising the clustering process without gradient decent """
+import scipy
+import matplotlib
+from matplotlib import pyplot as plt
+import ast
+import collections
 import multiprocessing
 import os
 import time
 import awkward
 import nevergrad as ng
 from ipdb import set_trace as st
-from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower
+from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools
 import numpy as np
 from torch.utils.data import RandomSampler, BatchSampler
 
@@ -86,13 +91,23 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
     for event_n in batch:
         eventWise.selected_index = event_n
         try:
-            loss += event_loss(eventWise, jet_class,
-                               spectral_jet_params, other_hyperparams, {})
+            loss_n = event_loss(eventWise, jet_class,
+                                spectral_jet_params, other_hyperparams, generic_data)
+            ## if possible normalise by previous loss findings for this point
+            #if generic_data["Attempts"] or generic_data["NewDifficulty"]:
+            #    normalise = ((np.sum(generic_data["NewDifficulty"]) + generic_data["Difficulty"])
+            #                 /(generic_data["Attempts"] + len(generic_data["NewDifficulty"])))
+            #else:
+            #    normalise = 1.
+            #generic_data['NewDifficulty'][event_n].append(loss_n)
+            #loss += loss_n/normalise
+            loss += loss_n
         except (np.linalg.LinAlgError, TypeError, Exception):
             unclusterable_counter += 1
             continue
         # we didn't manage a clustering
     loss += 2**unclusterable_counter
+    loss = min(loss/len(batch), 1e5)  # cap the value of loss
     return loss
 
 
@@ -124,7 +139,6 @@ def parameter_values(jet_class, stopping_condition):
     # remove some bad eggs
     discreete_params['StoppingCondition'] = ['standard', 'beamparticle', 'meandistance']
     discreete_params['Laplacien'] = ['unnormalised', 'symmetric', 'pt']
-                                             
     return discreete_params, ordered_discreet_params, continuous_params
 
 
@@ -187,7 +201,7 @@ class ParameterTranslator:
         return clustering_params
 
 
-def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=10000, silent=True):
+def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=10000, silent=True, log_dir="./logs"):
     eventWise = Components.EventWise.from_file(eventWise_name)
     n_events = len(eventWise.Px)
     # make a sampler
@@ -219,12 +233,20 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
     # set up an optimiser
     optimiser = ng.optimizers.NGOpt(variables, budget=budget, num_workers=1)
     # inital values keep the loop simple
-    print_wait = 100
-    loss_log = []
+    print_wait = 10
+    hyper_log = []
     param_log = []
+    generic_data = {}
+    # find the dificulty of each event
+    #if 'Difficulty' in eventWise.columns:
+    #    generic_data['Difficulty'] = eventWise.Difficulty
+    #    generic_data['Attempts'] = eventWise.Attempts
+    #else:
+    #    generic_data['Attempts'] = np.zeros(n_events)
+    #generic_data['NewDifficulty'] = [[] for _ in range(n_events)]
     for i, batch in enumerate(sampler):
         if i%print_wait == 0 and not silent:
-            recent_loss = np.sum(loss_log[-print_wait:])
+            recent_loss = np.sum([line[0] for line in hyper_log[-print_wait:]])
             if recent_loss == 0:
                 num_spaces = 0
             else:
@@ -237,8 +259,8 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
         spectral_jet_params = translator.translate_to_clustering(new_vars)
         param_log.append([spectral_jet_params[key] for key in params_to_log])
         loss = batch_loss(batch, eventWise, jet_class,
-                                   spectral_jet_params, other_hyperparams, {})
-        loss_log.append(loss)
+                          spectral_jet_params, other_hyperparams, generic_data)
+        hyper_log.append([loss, batch_size])
         optimiser.tell(new_vars, loss)
     new_vars = optimiser.provide_recommendation()
     spectral_jet_params = translator.translate_to_clustering(new_vars)
@@ -246,38 +268,44 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
         print(new_vars.kwargs)
         print("Makes params")
         print(spectral_jet_params)
-    print_log(params_to_log, loss_log, param_log, spectral_jet_params)
+    print_log(params_to_log, hyper_log, param_log, spectral_jet_params, log_dir)
 
 
-def log_text(params_to_log, loss_log, param_log, full_final_params):
+def log_text(params_to_log, hyper_log, param_log, full_final_params):
     text = str(full_final_params)
-    text += "\niteration\tloss\t" + "\t".join(params_to_log) + "\n"
-    for i, (loss, params) in enumerate(zip(loss_log, param_log)):
-        text += f"{i}\t{loss}\t"
+    text += "\niteration\tloss\tbatch_size\t" 
+    text += "\t".join(params_to_log) + "\n"
+    for i, (hyper, params) in enumerate(zip(hyper_log, param_log)):
+        text += f"{i}\t"
+        text += "\t".join([str(p) for p in hyper])
+        text += "\t"
         text += "\t".join([str(p) for p in params])
         text += "\n"
     return text
 
 
-def print_log(params_to_log, loss_log, param_log, full_final_params, log_dir="./logs"):
+def print_log(params_to_log, hyper_log, param_log, full_final_params, log_dir="./logs"):
     try:
         os.mkdir(log_dir)
     except FileExistsError:
         pass
-    text = log_text(params_to_log, loss_log, param_log, full_final_params)
+    text = log_text(params_to_log, hyper_log, param_log, full_final_params)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
+    #difficulty_name = os.path.join(log_dir, "difficulty{:03d}.awkd")
     i = 0
     while True:
         try:
             with open(log_name.format(i), 'x') as new_file:
                 new_file.write(text)
+            #awkward.save(difficulty_name.format(i), awkward.fromiter(new_difficulty))
             return
         except FileExistsError:
             i += 1
         
+        
 def generate_pool(eventWise_name, max_workers=10,
-                  end_time=None, duration=None, leave_one_free=True):
-    batch_size = 100
+                  end_time=None, duration=None, leave_one_free=True,
+                  log_dir="./logs"):
     # decide on a stop condition
     if duration is not None:
         end_time = time.time() + duration
@@ -292,9 +320,10 @@ def generate_pool(eventWise_name, max_workers=10,
     print(f"Running on {n_threads} threads", flush=True)
     job_list = []
     # now each segment makes a worker
-    for _ in range(n_threads):
+    for batch_size in np.linspace(50, 1000, n_threads, dtype=int):
         job = multiprocessing.Process(target=run_optimisation,
-                                      args=(eventWise_name, batch_size, end_time))
+                                      args=(eventWise_name, int(batch_size),
+                                            end_time), kwargs={'log_dir': log_dir})
         job.start()
         job_list.append(job)
     for job in job_list:
@@ -310,8 +339,107 @@ def generate_pool(eventWise_name, max_workers=10,
         return False
     print("All processes ended")
 
+
+def visulise_training(log_name=None, sep='\t'):
+    if log_name is None:
+        log_dir = "./logs"
+        names = os.listdir(log_dir)
+        log_name = InputTools.list_complete("Chose a log file: ", names).strip()
+        log_name = os.path.join(log_dir, log_name)
+    fig, (final_ax, score_ax) = plt.subplots(1, 2)
+    fig.set_size_inches(9, 5)
+    fig.suptitle(log_name)
+    # read in the log file 
+    with open(log_name, 'r') as log_file:
+        final = ast.literal_eval(log_file.readline().strip())
+        headers = np.array(log_file.readline().strip().split(sep))
+        log = awkward.fromiter([line.strip().split(sep) for line in log_file.readlines()])
+    # decide which parameter is being changed in each line
+    num_hypers = 3  # iteration, loss, batch_size
+    change = [set(np.where(line)[0]) 
+              for line in log[1:, num_hypers:] == log[:-1, num_hypers:]]
+    # this becomes a column index if the num_hypers is added
+    things_that_change = np.fromiter(set(awkward.fromiter(change).flatten()),
+                                     dtype=int) + num_hypers
+    highlight_names = headers[things_that_change].tolist() + ["None"]
+    cmap = matplotlib.cm.get_cmap('nipy_spectral')
+    highlight_colours = [cmap(x) for x in np.linspace(0, 1, len(highlight_names))]
+    # get the scores
+    score_col = headers.tolist().index("loss")
+    scores = np.fromiter(log[1:, score_col],  # skip the first, it is garbage
+                         dtype=float)
+    smoothed_score = scipy.ndimage.gaussian_filter(scores, 10)
+    # write out the final configuration
+    final["Best score"] = np.min(scores)
+    jet_name = "best"
+    final["jet_name"] = jet_name
+    PlottingTools.discribe_jet(jet_name="optimisation result", 
+                               properties_dict=final, ax=final_ax)
+    # create a legend
+    for name, col in zip(highlight_names, highlight_colours):
+        final_ax.plot([], [], label=name, c=col)
+    final_ax.legend()
+    final_ax.set_xlim(3, 13)
+    final_ax.set_ylim(1, 11)
+    # plot each segment
+    point_reached = 0
+    #colours = []
+    while point_reached < len(scores) - 1:
+        print(point_reached, end='\r', flush=True)
+        section_end = point_reached + 1
+        highlights = change[point_reached]
+        if len(highlights) == 0:
+            highlight = -1
+            while len(change[section_end]) == 0:
+                section_end += 1
+        else:
+            overlap = highlights.intersection(change[section_end])
+            while overlap and section_end < len(change):
+                highlights = overlap
+                overlap = highlights.intersection(change[section_end])
+                section_end += 1
+            # there may be more than one overlap, just grab one
+            highlight = highlights.pop()
+        here = scores[point_reached: section_end+1]  # iclude the end point
+        # so it connects to the next line
+        xs = range(point_reached, point_reached + len(here))
+        score_ax.plot(xs, here, alpha=0.2,
+                      color=highlight_colours[highlight])
+        score_ax.plot(xs, smoothed_score[point_reached: section_end+1],
+                      color=highlight_colours[highlight])
+        #colours += [highlight_colours[highlight]]*(section_end-point_reached)
+        point_reached = section_end
+    #score_ax.scatter(range(len(scores)), scores, c=colours)
+    score_ax.set_xlabel("Time step")
+    score_ax.set_ylabel("Score")
+    y_max = np.max(scores[int(len(scores)*0.95):])*1.5
+    score_ax.set_ylim(np.min(scores)-10, y_max)
+    score_ax.set_xlim(0, 1200)
+        
+
+
+#def append_dificulties(eventWise, log_dir):
+#    if isinstance(eventWise, str):
+#        eventWise = Components.EventWise(eventWise)
+#    paths = [os.path.join(log_dir, file_name) for file_name in os.listdir(log_dir)
+#             if file_name.startswith("difficulty")]
+#    if "Difficulty" in eventWise.columns:
+#        difficulty = eventWise.Difficulty.tolist()
+#        attempts = eventWise.Attempts.tolist()
+#    else:
+#        difficulty = [0. for _ in eventWise.X]
+#        attempts = [0 for _ in eventWise.X]
+#    # TODO
+#    
+
+
 if __name__ == '__main__':
-    run_time = InputTools.get_time("How long should it run?")
-    eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
-    generate_pool(eventWise_name, duration=run_time)
+    if InputTools.yesNo_question("Plot run? "):
+        visulise_training()
+    elif InputTools.yesNo_question("Optimise? "):
+        run_time = InputTools.get_time("How long should it run?")
+        eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
+        log_dir = "./logs"
+        generate_pool(eventWise_name, duration=run_time, log_dir=log_dir)
+
 
