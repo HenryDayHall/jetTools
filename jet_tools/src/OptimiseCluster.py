@@ -93,14 +93,6 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
         try:
             loss_n = event_loss(eventWise, jet_class,
                                 spectral_jet_params, other_hyperparams, generic_data)
-            ## if possible normalise by previous loss findings for this point
-            #if generic_data["Attempts"] or generic_data["NewDifficulty"]:
-            #    normalise = ((np.sum(generic_data["NewDifficulty"]) + generic_data["Difficulty"])
-            #                 /(generic_data["Attempts"] + len(generic_data["NewDifficulty"])))
-            #else:
-            #    normalise = 1.
-            #generic_data['NewDifficulty'][event_n].append(loss_n)
-            #loss += loss_n/normalise
             loss += loss_n
         except (np.linalg.LinAlgError, TypeError, Exception):
             unclusterable_counter += 1
@@ -207,8 +199,12 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
     # make a sampler
     if end_time is not None:
         total_calls = int(np.nan_to_num(np.inf))
-    budget = int(total_calls/batch_size)
-    sampler = RandomSampler(range(n_events), replacement=True, num_samples=total_calls)
+    test_size = 500
+    test_interval = 10
+    train_end = n_events - test_size  # hold the last bit out for test
+    test_set = range(train_end, n_events)
+    sampler = RandomSampler(range(train_end), replacement=True,
+                            num_samples=total_calls)
     sampler = BatchSampler(sampler, batch_size, drop_last=True)
     # check we have object needed for tagging
     if "DetectableTag_Roots" not in eventWise.columns:
@@ -225,25 +221,25 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
                         Laplacien='symmetric',
                         PhyDistance='angular',
                         CombineSize='sum',
+                        ExpofPTFormat='Luclus',
+                        ExpofPTPosition='input',
                         AffinityType='exponent')
     translator = ParameterTranslator(jet_class, fixed_params)
     variables = translator.generate_nevergrad_variables()
+    # there are soem logged hyper parameters
+    hyper_to_log = ["iteration", "loss", "test_loss", "batch_size"]
     # the parameters that will change should be logged
     params_to_log = [name for name in variables.kwargs if name not in fixed_params]
     # set up an optimiser
+    budget = int(total_calls/batch_size)
     optimiser = ng.optimizers.NGOpt(variables, budget=budget, num_workers=1)
     # inital values keep the loop simple
     print_wait = 10
     hyper_log = []
     param_log = []
     generic_data = {}
-    # find the dificulty of each event
-    #if 'Difficulty' in eventWise.columns:
-    #    generic_data['Difficulty'] = eventWise.Difficulty
-    #    generic_data['Attempts'] = eventWise.Attempts
-    #else:
-    #    generic_data['Attempts'] = np.zeros(n_events)
-    #generic_data['NewDifficulty'] = [[] for _ in range(n_events)]
+    best_test_score = np.inf
+    best_params = {}
     for i, batch in enumerate(sampler):
         if i%print_wait == 0 and not silent:
             recent_loss = np.sum([line[0] for line in hyper_log[-print_wait:]])
@@ -252,7 +248,7 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
             else:
                 num_spaces = min(int(np.log(recent_loss)*5), 45)
             progress = " "*num_spaces + "<"
-            print(f"{i/budget:.2%}, {recent_loss:.2f}| {progress}", flush=True, end='\r')
+            print(f"{i/budget:.2%}, {best_test_score}, {recent_loss:.2f}| {progress}", flush=True, end='\r')
         if end_time is not None and time.time() > end_time:
             break
         new_vars = optimiser.ask()
@@ -260,23 +256,29 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
         param_log.append([spectral_jet_params[key] for key in params_to_log])
         loss = batch_loss(batch, eventWise, jet_class,
                           spectral_jet_params, other_hyperparams, generic_data)
-        hyper_log.append([loss, batch_size])
+        if i%test_interval == 0:
+            test_loss = batch_loss(test_set, eventWise, jet_class,
+                                   spectral_jet_params, other_hyperparams, generic_data)
+            if test_loss < best_test_score:
+                best_test_score = test_loss
+                best_params = spectral_jet_params
+        else:
+            test_loss = np.nan  # the test loss is only occasionally calculated
+        hyper_log.append([i, loss, test_loss, batch_size])
         optimiser.tell(new_vars, loss)
-    new_vars = optimiser.provide_recommendation()
-    spectral_jet_params = translator.translate_to_clustering(new_vars)
     if not silent:
         print(new_vars.kwargs)
         print("Makes params")
         print(spectral_jet_params)
-    print_log(params_to_log, hyper_log, param_log, spectral_jet_params, log_dir)
+    print_log(hyper_to_log, hyper_log,
+              params_to_log, param_log, best_params, log_dir)
 
 
-def log_text(params_to_log, hyper_log, param_log, full_final_params):
+def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params):
     text = str(full_final_params)
-    text += "\niteration\tloss\tbatch_size\t" 
+    text += "\n" + "\t".join(hyper_to_log) + "\t"
     text += "\t".join(params_to_log) + "\n"
-    for i, (hyper, params) in enumerate(zip(hyper_log, param_log)):
-        text += f"{i}\t"
+    for hyper, params in zip(hyper_log, param_log):
         text += "\t".join([str(p) for p in hyper])
         text += "\t"
         text += "\t".join([str(p) for p in params])
@@ -284,12 +286,13 @@ def log_text(params_to_log, hyper_log, param_log, full_final_params):
     return text
 
 
-def print_log(params_to_log, hyper_log, param_log, full_final_params, log_dir="./logs"):
+def print_log(hyper_to_log, hyper_log,
+              params_to_log, param_log, full_final_params, log_dir="./logs"):
     try:
         os.mkdir(log_dir)
     except FileExistsError:
         pass
-    text = log_text(params_to_log, hyper_log, param_log, full_final_params)
+    text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
     #difficulty_name = os.path.join(log_dir, "difficulty{:03d}.awkd")
     i = 0
@@ -297,7 +300,6 @@ def print_log(params_to_log, hyper_log, param_log, full_final_params, log_dir=".
         try:
             with open(log_name.format(i), 'x') as new_file:
                 new_file.write(text)
-            #awkward.save(difficulty_name.format(i), awkward.fromiter(new_difficulty))
             return
         except FileExistsError:
             i += 1
@@ -320,7 +322,7 @@ def generate_pool(eventWise_name, max_workers=10,
     print(f"Running on {n_threads} threads", flush=True)
     job_list = []
     # now each segment makes a worker
-    for batch_size in np.linspace(50, 1000, n_threads, dtype=int):
+    for batch_size in np.linspace(1, 40, n_threads, dtype=int):
         job = multiprocessing.Process(target=run_optimisation,
                                       args=(eventWise_name, int(batch_size),
                                             end_time), kwargs={'log_dir': log_dir})
@@ -340,6 +342,13 @@ def generate_pool(eventWise_name, max_workers=10,
     print("All processes ended")
 
 
+def str_to_dict(string):
+    # pull out any numpy inf
+    out = ast.literal_eval(string.strip().replace('inf,', '"np.inf",'))
+    out = {k: np.inf if isinstance(v, str) and v == 'np.inf' else v
+           for k, v in out.items()}
+    return out
+
 def visulise_training(log_name=None, sep='\t'):
     if log_name is None:
         log_dir = "./logs"
@@ -351,13 +360,13 @@ def visulise_training(log_name=None, sep='\t'):
     fig.suptitle(log_name)
     # read in the log file 
     with open(log_name, 'r') as log_file:
-        final = ast.literal_eval(log_file.readline().strip())
+        final = str_to_dict(log_file.readline())
         headers = np.array(log_file.readline().strip().split(sep))
         log = awkward.fromiter([line.strip().split(sep) for line in log_file.readlines()])
     # decide which parameter is being changed in each line
-    num_hypers = 3  # iteration, loss, batch_size
+    num_hypers = 4  # iteration, loss, test_loss, batch_size
     change = [set(np.where(line)[0]) 
-              for line in log[1:, num_hypers:] == log[:-1, num_hypers:]]
+              for line in log[1:, num_hypers-1:] == log[:-1, num_hypers-1:]]
     # this becomes a column index if the num_hypers is added
     things_that_change = np.fromiter(set(awkward.fromiter(change).flatten()),
                                      dtype=int) + num_hypers
@@ -369,8 +378,11 @@ def visulise_training(log_name=None, sep='\t'):
     scores = np.fromiter(log[1:, score_col],  # skip the first, it is garbage
                          dtype=float)
     smoothed_score = scipy.ndimage.gaussian_filter(scores, 10)
+    test_score_col = headers.tolist().index("test_loss")
+    test_scores = np.fromiter(log[1:, test_score_col],  # skip the first, it is garbage
+                              dtype=float)
     # write out the final configuration
-    final["Best score"] = np.min(scores)
+    final["Best score"] = np.nanmin(test_scores)
     jet_name = "best"
     final["jet_name"] = jet_name
     PlottingTools.discribe_jet(jet_name="optimisation result", 
@@ -390,7 +402,7 @@ def visulise_training(log_name=None, sep='\t'):
         highlights = change[point_reached]
         if len(highlights) == 0:
             highlight = -1
-            while len(change[section_end]) == 0:
+            while section_end < len(change) and len(change[section_end]) == 0:
                 section_end += 1
         else:
             overlap = highlights.intersection(change[section_end])
@@ -406,7 +418,11 @@ def visulise_training(log_name=None, sep='\t'):
         score_ax.plot(xs, here, alpha=0.2,
                       color=highlight_colours[highlight])
         score_ax.plot(xs, smoothed_score[point_reached: section_end+1],
-                      color=highlight_colours[highlight])
+                      color=highlight_colours[highlight], ls='-')
+        test_here = test_scores[point_reached: section_end+1]
+        test_filter = ~np.isnan(test_here)
+        score_ax.scatter(np.array(list(xs))[test_filter], test_here[test_filter],
+                         color=highlight_colours[highlight])
         #colours += [highlight_colours[highlight]]*(section_end-point_reached)
         point_reached = section_end
     #score_ax.scatter(range(len(scores)), scores, c=colours)
@@ -414,23 +430,10 @@ def visulise_training(log_name=None, sep='\t'):
     score_ax.set_ylabel("Score")
     y_max = np.max(scores[int(len(scores)*0.95):])*1.5
     score_ax.set_ylim(np.min(scores)-10, y_max)
-    score_ax.set_xlim(0, 1200)
+    #score_ax.set_xlim(0, 1200)
+    return final, scores, headers, log
         
 
-
-#def append_dificulties(eventWise, log_dir):
-#    if isinstance(eventWise, str):
-#        eventWise = Components.EventWise(eventWise)
-#    paths = [os.path.join(log_dir, file_name) for file_name in os.listdir(log_dir)
-#             if file_name.startswith("difficulty")]
-#    if "Difficulty" in eventWise.columns:
-#        difficulty = eventWise.Difficulty.tolist()
-#        attempts = eventWise.Attempts.tolist()
-#    else:
-#        difficulty = [0. for _ in eventWise.X]
-#        attempts = [0 for _ in eventWise.X]
-#    # TODO
-#    
 
 
 if __name__ == '__main__':
