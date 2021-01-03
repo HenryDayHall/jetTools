@@ -51,6 +51,7 @@ def jensen_shannon(data1, data2):
     probs1, probs2 = probablility_vectors(data1, data2)
     return scipy.spatial.distance.jensenshannon(probs1, probs2), None
 
+
 def kullback_Leibler(data1, data2):
     probs1, probs2 = probablility_vectors(data1, data2)
     return scipy.stats.entropy(probs1, probs2), None
@@ -74,7 +75,6 @@ def calculate_dissdiff_values(path1, path2, save_name=None, metric_name='js'):
         eventWise1 = Components.EventWise.from_file(path1)
         eventWise2 = Components.EventWise.from_file(path2)
         # get contents
-        content_prefix = jet_name + "IRC"
         contents = [jet_name + end for end in desired_endings
                     if jet_name + end in eventWise1.columns]
         for content in contents:
@@ -89,10 +89,10 @@ def calculate_dissdiff_values(path1, path2, save_name=None, metric_name='js'):
                 dissdiff_values[content] = metric(data1, data2)[0]
             except ZeroDivisionError:
                 pass
-    if save_name is not None:
+    if save_name is None:
         name1 = eventWise1.save_name[:-5].replace('_', '')
         name2 = eventWise2.save_name[:-5].replace('_', '')
-        file_name = f"IRC_meta_dicts/{metric_name}_{name1}_{name2}.txt"
+        save_name = f"IRC_meta_dicts/{metric_name}_{name1}_{name2}.txt"
     with open(save_name, 'w') as save_file:
         save_file.write(str(dissdiff_values))
     return dissdiff_values
@@ -168,12 +168,14 @@ def plot_dissdiff_values(list_dissdiff_values, score_name=None):
         ax_arr = [ax_arr]
     fig.suptitle(f"{score_name} between LO and NLO data")
     for var_type, ax in zip(variable_types, ax_arr):
+        if "Mass" not in var_type:
+            continue
         row = variable_types.index(var_type)
         class_values = table[row]
         bins=30
         ax.hist(class_values, label=jet_classes, bins=bins, density=True, histtype='step')
         ax.set_ylabel("Frequency")
-        ax.set_xlabel(var_type)
+        ax.label(f"{score_name} for {var_type} change")
     ax.legend()
     fig.subplots_adjust(top=0.95, bottom=0.08, left=0.08, right=0.95, hspace=0.4, wspace=0.21)
 
@@ -506,9 +508,11 @@ if __name__ == '__main__':
     elif chosen == "dissdiff":
         dissdiff_name = InputTools.get_file_name("Name a file to save the dissdiff scores in; ",
                                            '.txt').strip()
-        dissdiff_values = calculate_dissdiff_values(paths[0], paths[1], dissdiff_name)
-        plot_dissdiff_values([dissdiff_values])
-        input()
+        metric = InputTools.list_complete("Which metric? ", metric_dict).strip()
+        dissdiff_values = calculate_dissdiff_values(paths[0], paths[1], dissdiff_name,
+                                                    metric)
+        #plot_dissdiff_values([dissdiff_values])
+        #input()
 
 
 

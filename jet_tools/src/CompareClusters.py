@@ -239,7 +239,11 @@ def match_jets(tag_idxs, event_jet_tags, event_tags, tag_mass, jet_idxs):
             # this is the particle index of the tag with greatest massshare in the jet
             tag_idx = tag_idxs[tag_position]
         # which group does the tag belong to
-        group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
+        try:
+            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
+        except StopIteration:
+            # jet has a tag that is not actually observable
+            continue  # just skip it
         matched_jets[group_position].append(jet_n)
     return seperate_jets, matched_jets
 
@@ -403,7 +407,7 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
         event_jet_tags = getattr(eventWise, jet_name + "_Tags")
         seperate_here, matched_jets = match_jets(tag_idx, event_jet_tags, event_tags, 
                                                  tag_mass[event_n], jet_idxs[event_n])
-        seperate_jets += seperate_here
+        seperate_jets[event_n] += seperate_here
         mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
         # the tag fragment accounts only for tags that could be found
         num_found = sum(len(group) for group, matched in zip(event_tags, matched_jets)
@@ -774,7 +778,7 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_tradition
     max_colour = max(1.5, np.max(seperate_jets))
     points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=max_colour)
     ax.scatter(signal_gap[highlight], background_gap[highlight], c=(0,0,0,0),
-               marker='o', s=10*np.sqrt(percent_found)+0.3, edgecolor=(0,0,0,1))
+               marker='o', s=10*np.sqrt(percent_found[highlight])+0.3, edgecolor=(0,0,0,1))
     cbar = plt.colorbar(points)
     cbar.set_label("Seperate $b$-jets per event")
     ax.set_xlabel("Average signal loss (GeV)")

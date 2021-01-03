@@ -224,7 +224,8 @@ def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
     return test_set, sampler
 
 
-def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=10000, silent=True, log_dir="./logs"):
+def run_optimisation(eventWise_name, batch_size=100, end_time=None,
+                     total_calls=10000, silent=True, **kwargs):
     eventWise = Components.EventWise.from_file(eventWise_name)
     usable = get_usable_events(eventWise)
     if not silent:
@@ -264,7 +265,21 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
     params_to_log = [name for name in variables.kwargs if name not in fixed_params]
     # set up an optimiser
     budget = int(total_calls/batch_size)
-    optimiser = ng.optimizers.NGOpt(variables, budget=budget, num_workers=1)
+    # get the name
+    optimiser_name = kwargs.get("optimiser_name", "NGOpt")
+    optimiser_params = kwargs.get("optimiser_params", {})
+    other_records = {}
+    other_records["optimiser_name"] = optimiser_name
+    for key in optimiser_params:
+        other_records["optimiser_params_" + key] = optimiser_params[key]
+    # get the class
+    if len(optimiser_params):
+        optimiser_name = "Parametrized" + optimiser_name
+        optimiser = getattr(ng.optimizers, optimiser_name)(**optimiser_params)
+    else:
+        optimiser = getattr(ng.optimizers, optimiser_name)
+    # make an object
+    optimiser = optimiser(variables, budget=budget, num_workers=1)
     # inital values keep the loop simple
     print_wait = 10
     test_interval = 10
@@ -314,15 +329,19 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None, total_calls=
         best_params = spectral_jet_params
     hyper_log.append([i+1, np.nan, test_loss, batch_size])
     # print a log
+    log_dir = kwargs.get("log_dir", "./logs")
     log_index = print_log(hyper_to_log, hyper_log,
-                          params_to_log, param_log, best_params, log_dir)
+                          params_to_log, param_log,
+                          best_params, log_dir, other_records)
     # print the sucesses and fails
     print_successes_fails(log_dir, log_index, generic_data["SuccessCount"],
                           generic_data["FailCount"])
 
 
-def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params):
+def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records):
     text = str(full_final_params)
+    if other_records is not None:
+        text += "\nother_records " + str(other_records)
     text += "\n" + "\t".join(hyper_to_log) + "\t"
     text += "\t".join(params_to_log) + "\n"
     for hyper, params in zip(hyper_log, param_log):
@@ -334,12 +353,13 @@ def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_param
 
 
 def print_log(hyper_to_log, hyper_log,
-              params_to_log, param_log, full_final_params, log_dir="./logs"):
+              params_to_log, param_log, full_final_params,
+              log_dir="./logs", other_records=None):
     try:
         os.mkdir(log_dir)
     except FileExistsError:
         pass
-    text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params)
+    text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
     #difficulty_name = os.path.join(log_dir, "difficulty{:03d}.awkd")
     i = 0
@@ -397,10 +417,12 @@ def generate_pool(eventWise_name, max_workers=10,
     print(f"Running on {n_threads} threads", flush=True)
     job_list = []
     # now each segment makes a worker
-    for batch_size in np.linspace(100, 220, n_threads, dtype=int):
+    kwargs = {'log_dir': log_dir, 'optimiser_name': 'TBPSA',
+              'optimiser_params': {'naive': False}}
+    for batch_size in np.linspace(100, 300, n_threads, dtype=int):
         job = multiprocessing.Process(target=run_optimisation,
                                       args=(eventWise_name, int(batch_size),
-                                            end_time), kwargs={'log_dir': log_dir})
+                                            end_time), kwargs=kwargs)
         job.start()
         job_list.append(job)
     for job in job_list:
@@ -421,6 +443,8 @@ def generate_pool(eventWise_name, max_workers=10,
 def str_to_dict(string):
     # pull out any numpy inf
     out = ast.literal_eval(string.strip().replace('inf,', '"np.inf",'))
+    if not isinstance(out, dict):
+        out = {"string": out}
     out = {k: np.inf if isinstance(v, str) and v == 'np.inf' else v
            for k, v in out.items()}
     return out
@@ -438,7 +462,12 @@ def visulise_training(log_name=None, sep='\t'):
     # read in the log file 
     with open(log_name, 'r') as log_file:
         final = str_to_dict(log_file.readline())
-        headers = np.array(log_file.readline().strip().split(sep))
+        line = log_file.readline().strip()
+        if line.startswith("other_records"):
+            other_records = str_to_dict(line.split(' ', 1)[1])
+            final.update(other_records)
+            line = log_file.readline().strip()
+        headers = np.array(line.split(sep))
         log = awkward.fromiter([line.strip().split(sep) for line in log_file.readlines()])
     # these were added later so check for them for backward compatablity
     has_test = "test_loss" in headers
@@ -459,6 +488,7 @@ def visulise_training(log_name=None, sep='\t'):
     cmap = matplotlib.cm.get_cmap('nipy_spectral')
     highlight_colours = [cmap(x) for x in np.linspace(0, 1, len(highlight_names))]
     # get the scores
+    st()
     score_col = headers.tolist().index("loss")
     scores = np.fromiter(log[1:, score_col],  # skip the first, it is garbage
                          dtype=float)
@@ -518,12 +548,33 @@ def visulise_training(log_name=None, sep='\t'):
     #score_ax.scatter(range(len(scores)), scores, c=colours)
     score_ax.set_xlabel("Time step")
     score_ax.set_ylabel("Score")
-    y_max = np.max(scores[int(len(scores)*0.95):])*1.5
+    y_max = np.nanmax(scores[int(len(scores)*0.95):])*1.5
     y_max = 100
-    score_ax.set_ylim(np.min(scores)-10, y_max)
+    score_ax.set_ylim(np.nanmin(scores)-10, y_max)
     #score_ax.set_xlim(0, 1200)
     return final, scores, headers, log
         
+
+def visulise_logs(log_dir=None):
+    if log_dir is None:
+        log_dir = InputTools.get_file_name("Name the log file or directory; ", '.txt').strip()
+    if os.path.isfile(log_dir):
+        visulise_training(log_dir)
+        return
+    # otherwise we want to plot them all and same to disk
+    assert os.path.isdir(log_dir)
+    plt.interactive(False)
+    in_dir = os.listdir(log_dir)
+    for name in in_dir:
+        if not (name.startswith('log') and name.endswith('txt')):
+            continue
+        plt_name = name.replace('.txt', '.png')
+        if plt_name in in_dir:
+            continue
+        visulise_training(os.path.join(log_dir, name))
+        plt.savefig(os.path.join(log_dir, plt_name))
+        plt.close()
+
 
 def cluster_from_log(log_dirs, eventWise_path, jet_class="SpectralFull", dijet_mass=40):
     # if you wanted to multithread it you would either have to duplicate the eventwise
@@ -546,14 +597,18 @@ def cluster_from_log(log_dirs, eventWise_path, jet_class="SpectralFull", dijet_m
         print(f"{i} of {len(params_str)}\n", flush=True)
         params = str_to_dict(p_str)
         jet_name = f"OptimisedJet{i}"
-        FormJets.cluster_multiapply(eventWise, jet_class, params, jet_name, np.inf)
+        try:
+            FormJets.cluster_multiapply(eventWise, jet_class, params, jet_name, np.inf)
+        except Exception as e:
+            print(f"couldnt cluster params {p_str}")
+            print(e)
     print("Scoring")
     CompareClusters.append_scores(eventWise, dijet_mass=dijet_mass, overwrite=False)
 
 
 if __name__ == '__main__':
     if InputTools.yesNo_question("Plot run? "):
-        visulise_training()
+        visulise_logs()
     elif InputTools.yesNo_question("Optimise? "):
         run_time = InputTools.get_time("How long should it run?")
         eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
