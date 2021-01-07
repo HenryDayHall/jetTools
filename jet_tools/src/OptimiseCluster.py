@@ -214,6 +214,7 @@ def get_usable_events(eventWise):
 def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
     if end_time is not None:
         total_calls = int(np.nan_to_num(np.inf))
+    budget = int(total_calls/batch_size)
     train_end = len(usable_events) - test_size  # hold the last bit out for test
     # must convert the test set to a list becuase otherwise the
     # loss calculation fails on the np data type
@@ -221,7 +222,7 @@ def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
     sampler = RandomSampler(usable_events[:train_end], replacement=True,
                             num_samples=total_calls)
     sampler = BatchSampler(sampler, batch_size, drop_last=True)
-    return test_set, sampler
+    return test_set, sampler, budget
 
 
 def run_optimisation(eventWise_name, batch_size=100, end_time=None,
@@ -236,9 +237,9 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None,
     generic_data = dict(SuccessCount=np.zeros(n_events),
                         FailCount=np.zeros(n_events))
     # make a sampler
-    test_set, sampler = make_sampler(usable, batch_size, test_size=500,
-                                     end_time=end_time,
-                                     total_calls=total_calls)
+    test_set, sampler, budget = make_sampler(usable, batch_size, test_size=500,
+                                             end_time=end_time,
+                                             total_calls=total_calls)
     # check we have object needed for tagging
     if "DetectableTag_Roots" not in eventWise.columns:
         TrueTag.add_detectable_fourvector(eventWise, silent=False)
@@ -264,7 +265,6 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None,
     # the parameters that will change should be logged
     params_to_log = [name for name in variables.kwargs if name not in fixed_params]
     # set up an optimiser
-    budget = int(total_calls/batch_size)
     # get the name
     optimiser_name = kwargs.get("optimiser_name", "NGOpt")
     optimiser_params = kwargs.get("optimiser_params", {})
@@ -274,8 +274,11 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None,
         other_records["optimiser_params_" + key] = optimiser_params[key]
     # get the class
     if len(optimiser_params):
-        optimiser_name = "Parametrized" + optimiser_name
-        optimiser = getattr(ng.optimizers, optimiser_name)(**optimiser_params)
+        try:
+            class_name = "Parametrized" + optimiser_name
+            optimiser = getattr(ng.optimizers, class_name)(**optimiser_params)
+        except AttributeError:  # there is no consistent naming convention....
+            optimiser = getattr(ng.optimizers, optimiser_name)(**optimiser_params)
     else:
         optimiser = getattr(ng.optimizers, optimiser_name)
     # make an object
@@ -417,8 +420,8 @@ def generate_pool(eventWise_name, max_workers=10,
     print(f"Running on {n_threads} threads", flush=True)
     job_list = []
     # now each segment makes a worker
-    kwargs = {'log_dir': log_dir, 'optimiser_name': 'TBPSA',
-              'optimiser_params': {'naive': False}}
+    kwargs = {'log_dir': log_dir, 'optimiser_name': 'DifferentialEvolution',
+              'optimiser_params': {'recommendation': "noisy"}}
     for batch_size in np.linspace(100, 300, n_threads, dtype=int):
         job = multiprocessing.Process(target=run_optimisation,
                                       args=(eventWise_name, int(batch_size),
@@ -488,7 +491,6 @@ def visulise_training(log_name=None, sep='\t'):
     cmap = matplotlib.cm.get_cmap('nipy_spectral')
     highlight_colours = [cmap(x) for x in np.linspace(0, 1, len(highlight_names))]
     # get the scores
-    st()
     score_col = headers.tolist().index("loss")
     scores = np.fromiter(log[1:, score_col],  # skip the first, it is garbage
                          dtype=float)
