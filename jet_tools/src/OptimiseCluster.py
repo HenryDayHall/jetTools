@@ -13,7 +13,10 @@ from ipdb import set_trace as st
 from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools
 import numpy as np
 from torch.utils.data import RandomSampler, BatchSampler
-
+import abcpy
+import abcpy.inferences
+import abcpy.distances
+import copy
 
 def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, generic_data):
     assert eventWise.selected_index is not None
@@ -136,8 +139,41 @@ def parameter_values(jet_class, stopping_condition):
     return discreete_params, ordered_discreet_params, continuous_params
 
 
+def get_usable_events(eventWise):
+    eventWise.selected_index = None
+    try:
+        # must make a copy so it is alterable
+        sucesses = awkward.fromiter(eventWise.SuccessCount)
+        fails = awkward.fromiter(eventWise.FailCount)
+    except AttributeError:
+        n_events = len(eventWise.JetInputs_PT)
+        sucesses = awkward.fromiter([0]*n_events)
+        fails = awkward.fromiter([0]*n_events)
+    # anything that hasn't failed more than 100 times should be tried again
+    # if there is at least one success for every 20 fails use it
+    usable = np.where(np.logical_or(sucesses*20 >= fails, fails < 100))[0]
+    return usable
+
+
+def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
+    if end_time is not None:
+        #total_calls = int(np.nan_to_num(np.inf))
+        total_calls = int(1e5)  # memory errors if larger
+    budget = int(total_calls/batch_size)
+    train_end = len(usable_events) - test_size  # hold the last bit out for test
+    # must convert the test set to a list becuase otherwise the
+    # loss calculation fails on the np data type
+    test_set = usable_events[train_end:].tolist()
+    sampler = RandomSampler(usable_events[:train_end], replacement=True,
+                            num_samples=total_calls)
+    sampler = BatchSampler(sampler, batch_size, drop_last=True)
+    return test_set, sampler, budget
+
+
+################## NEVERGRAD ##################
+
 class ParameterTranslator:
-    def __init__(self, jet_class, fixed_params):
+    def __init__(self, jet_class, fixed_params, ):
         if isinstance(jet_class, str):
             jet_class = getattr(FormJets, jet_class)
         self.jet_class = jet_class
@@ -151,6 +187,7 @@ class ParameterTranslator:
         self.parameter_order = list(self._discrete.keys()) +\
                                list(self._ordered.keys()) +\
                                list(self._continuous.keys())
+        self.unfixed_order = [name for name in self.parameter_order if name not in fixed_params]
 
     
     def generate_nevergrad_variables(self):
@@ -171,17 +208,27 @@ class ParameterTranslator:
         # create the correct type
         variables = ng.p.Instrumentation(**variables)
         return variables
+    
+    def list_to_clustering(self, param_list):
+        if "StoppingCondition" in self.unfixed_order:
+            new_stopping_condition = param_list[self.unfixed_order.index("StoppingCondition")]
+            if new_stopping_condition != self.stopping_condition:
+                self.stopping_condition = new_stopping_condition
+                self._discrete, self._ordered, self._continuous\
+                        = parameter_values(self.jet_class, self.stopping_condition)
+        clustering_params = {**zip(self.unfixed_order, param_list)}
+        # throw in the fixed ones
+        clustering_params.update(self.fixed_params)
+        return clustering_params
 
-    def translate_to_clustering(self, variables):
+    def nevergrad_to_clustering(self, variables):
         # switching stopping condition changes the mean and range of deltar
-        try:
+        if "StoppingCondition" in self.unfixed_order:
             new_stopping_condition = variables.kwargs['StoppingCondition']
             if new_stopping_condition != self.stopping_condition:
                 self.stopping_condition = new_stopping_condition
                 self._discrete, self._ordered, self._continuous\
                         = parameter_values(self.jet_class, self.stopping_condition)
-        except KeyError:
-            pass  # it's in the fixed_params
         clustering_params = {}
         for key, value in variables.kwargs.items():
             if key in self._continuous:
@@ -195,38 +242,8 @@ class ParameterTranslator:
         return clustering_params
 
 
-def get_usable_events(eventWise):
-    eventWise.selected_index = None
-    try:
-        # must make a copy so it is alterable
-        sucesses = awkward.fromiter(eventWise.SuccessCount)
-        fails = awkward.fromiter(eventWise.FailCount)
-    except AttributeError:
-        n_events = len(eventWise.JetInputs_PT)
-        sucesses = awkward.fromiter([0]*n_events)
-        fails = awkward.fromiter([0]*n_events)
-    # anything that hasn't failed more than 100 times should be tried again
-    # if there is at least one success for every 20 fails use it
-    usable = np.where(np.logical_or(sucesses*20 >= fails, fails < 100))[0]
-    return usable
-
-
-def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
-    if end_time is not None:
-        total_calls = int(np.nan_to_num(np.inf))
-    budget = int(total_calls/batch_size)
-    train_end = len(usable_events) - test_size  # hold the last bit out for test
-    # must convert the test set to a list becuase otherwise the
-    # loss calculation fails on the np data type
-    test_set = usable_events[train_end:].tolist()
-    sampler = RandomSampler(usable_events[:train_end], replacement=True,
-                            num_samples=total_calls)
-    sampler = BatchSampler(sampler, batch_size, drop_last=True)
-    return test_set, sampler, budget
-
-
-def run_optimisation(eventWise_name, batch_size=100, end_time=None,
-                     total_calls=10000, silent=True, **kwargs):
+def run_optimisation_nevergrad(eventWise_name, batch_size=100, end_time=None,
+                               total_calls=10000, silent=True, **kwargs):
     eventWise = Components.EventWise.from_file(eventWise_name)
     usable = get_usable_events(eventWise)
     if not silent:
@@ -303,7 +320,7 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None,
         if end_time is not None and time.time() > end_time:
             break
         new_vars = optimiser.ask()
-        spectral_jet_params = translator.translate_to_clustering(new_vars)
+        spectral_jet_params = translator.nevergrad_to_clustering(new_vars)
         param_log.append([spectral_jet_params[key] for key in params_to_log])
         loss = batch_loss(batch, eventWise, jet_class,
                           spectral_jet_params, other_hyperparams, generic_data)
@@ -323,7 +340,7 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None,
         print(spectral_jet_params)
     # try the sugested_params
     new_vars = optimiser.provide_recommendation()
-    spectral_jet_params = translator.translate_to_clustering(new_vars)
+    spectral_jet_params = translator.nevergrad_to_clustering(new_vars)
     param_log.append([spectral_jet_params[key] for key in params_to_log])
     test_loss = batch_loss(test_set, eventWise, jet_class,
                            spectral_jet_params, other_hyperparams, generic_data)
@@ -340,6 +357,327 @@ def run_optimisation(eventWise_name, batch_size=100, end_time=None,
     print_successes_fails(log_dir, log_index, generic_data["SuccessCount"],
                           generic_data["FailCount"])
 
+        
+def generate_pool(eventWise_name, max_workers=10,
+                  end_time=None, duration=None, leave_one_free=True,
+                  log_dir="./logs"):
+    # decide on a stop condition
+    if duration is not None:
+        end_time = time.time() + duration
+    if end_time is not None and duration is None:
+        duration = end_time - time.time()
+    # work out how many threads
+    n_threads = min(multiprocessing.cpu_count()-leave_one_free, max_workers)
+    if n_threads < 1:
+        n_threads = 1
+    wait_time = duration  # in seconds
+    # note that the longest wait will be n_cores time this time
+    print(f"Running on {n_threads} threads", flush=True)
+    job_list = []
+    # now each segment makes a worker
+    kwargs = {'log_dir': log_dir, 'optimiser_name': 'DifferentialEvolution',
+              'optimiser_params': {'recommendation': "noisy"}}
+    for batch_size in np.linspace(100, 300, n_threads, dtype=int):
+        job = multiprocessing.Process(target=run_optimisation_nevergrad,
+                                      args=(eventWise_name, int(batch_size),
+                                            end_time), kwargs=kwargs)
+        job.start()
+        job_list.append(job)
+    for job in job_list:
+        job.join(wait_time)
+    # check they all stopped
+    stalled = [job.is_alive() for job in job_list]
+    if np.any(stalled):
+        # stop everything
+        for job in job_list:
+            job.terminate()
+            job.join()
+        print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
+        return False
+    print("All processes ended")
+    append_sucesses_fails(log_dir, eventWise_name)
+
+
+################### ABCPY  ##############################
+
+
+# wont do sampling here as the vectoisation is hard to predict
+class TimedPMCABC(abcpy.inferences.PMCABC):
+    def sample(self, observations, steps, epsilon_init, duration=60*5, n_samples_per_param=1, epsilon_percentile=10,
+	   covFactor=2, full_output=0, journal_file=None):
+        """Samples from the posterior distribution of the model parameter given the observed
+        data observations.
+        Identical to the standard method, appart from uses a time limit rather than a number of steps.
+
+        Parameters
+        ----------
+        observations : list
+            A list, containing lists describing the observed data sets
+        steps : integer
+            Number of iterations in the sequential algoritm ("generations")
+        epsilon_init : numpy.ndarray
+            An array of proposed values of epsilon to be used at each steps. Can be supplied
+            A single value to be used as the threshold in Step 1 or a `steps`-dimensional array of values to be
+            used as the threshold in evry steps.
+        duration : float, optional
+            Time in seconds to run for. The default value is 5 mins.
+        n_samples_per_param : integer, optional
+            Number of data points in each simulated data set. The default value is 1.
+        epsilon_percentile : float, optional
+            A value between [0, 100]. The default value is 10.
+        covFactor : float, optional
+            scaling parameter of the covariance matrix. The default value is 2 as considered in [1].
+        full_output: integer, optional
+            If full_output==1, intermediate results are included in output journal.
+            The default value is 0, meaning the intermediate results are not saved.
+        journal_file: str, optional
+            Filename of a journal file to read an already saved journal file, from which the first iteration will start.
+            The default value is None.
+
+        Returns
+        -------
+        abcpy.output.Journal
+            A journal containing simulation results, metadata and optionally intermediate results.
+        """
+        self.accepted_parameters_manager.broadcast(self.backend, observations)
+        self.n_samples = None  # fill in at the end
+        self.n_samples_per_param = n_samples_per_param
+
+        if journal_file is None:
+            journal = Journal(full_output)
+            journal.configuration["type_model"] = [type(model).__name__ for model in self.model]
+            journal.configuration["type_dist_func"] = type(self.distance).__name__
+            journal.configuration["n_samples"] = self.n_samples
+            journal.configuration["n_samples_per_param"] = self.n_samples_per_param
+            journal.configuration["steps"] = steps
+            journal.configuration["epsilon_percentile"] = epsilon_percentile
+        else:
+            journal = Journal.fromFile(journal_file)
+
+        accepted_parameters = None
+        accepted_weights = None
+        accepted_cov_mats = None
+
+        # Define epsilon_arr
+        if len(epsilon_init) == steps:
+            epsilon_arr = epsilon_init
+        else:
+            if len(epsilon_init) == 1:
+                epsilon_arr = [None] * steps
+                epsilon_arr[0] = epsilon_init
+            else:
+                raise ValueError("The length of epsilon_init can only be equal to 1 or steps.")
+
+        # main PMCABC algorithm
+        self.logger.info("Starting PMC iterations")
+        aStep = 0
+        end_time = time.time() + duration
+        while time.time() < end_time:
+            aStep += 1
+            self.logger.debug("iteration {} of PMC algorithm".format(aStep))
+            if aStep == 0 and journal_file is not None:
+                accepted_parameters = journal.get_accepted_parameters(-1)
+                accepted_weights = journal.get_weights(-1)
+
+                self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
+                                                                  accepted_weights=accepted_weights)
+
+                kernel_parameters = []
+                for kernel in self.kernel.kernels:
+                    kernel_parameters.append(
+                        self.accepted_parameters_manager.get_accepted_parameters_bds_values(kernel.models))
+                self.accepted_parameters_manager.update_kernel_values(self.backend, kernel_parameters=kernel_parameters)
+
+                # 3: calculate covariance
+                self.logger.info("Calculateing covariance matrix")
+                new_cov_mats = self.kernel.calculate_cov(self.accepted_parameters_manager)
+                # Since each entry of new_cov_mats is a numpy array, we can multiply like this
+                # accepted_cov_mats = [covFactor * new_cov_mat for new_cov_mat in new_cov_mats]
+                accepted_cov_mats = self._compute_accepted_cov_mats(covFactor, accepted_cov_mats)
+
+            seed_arr = self.rng.randint(0, np.iinfo(np.uint32).max, size=n_samples, dtype=np.uint32)
+            rng_arr = np.array([np.random.RandomState(seed) for seed in seed_arr])
+            rng_pds = self.backend.parallelize(rng_arr)
+
+            # 0: update remotely required variables
+            # print("INFO: Broadcasting parameters.")
+            self.logger.info("Broadcasting parameters")
+            self.epsilon = epsilon_arr[aStep]
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters, accepted_weights,
+                                                              accepted_cov_mats)
+
+            # 1: calculate resample parameters
+            # print("INFO: Resampling parameters")
+            self.logger.info("Resampling parameters")
+
+            params_and_dists_and_counter_pds = self.backend.map(self._resample_parameter, rng_pds)
+            params_and_dists_and_counter = self.backend.collect(params_and_dists_and_counter_pds)
+            new_parameters, distances, counter = [list(t) for t in zip(*params_and_dists_and_counter)]
+            new_parameters = np.array(new_parameters)
+            distances = np.array(distances)
+
+            for count in counter:
+                self.simulation_counter += count
+
+            # Compute epsilon for next step
+            # print("INFO: Calculating acceptance threshold (epsilon).")
+            self.logger.info("Calculating acceptances threshold")
+            if aStep < steps - 1:
+                if epsilon_arr[aStep + 1] is None:
+                    epsilon_arr[aStep + 1] = np.percentile(distances, epsilon_percentile)
+                else:
+                    epsilon_arr[aStep + 1] = np.max(
+                        [np.percentile(distances, epsilon_percentile), epsilon_arr[aStep + 1]])
+
+            # 2: calculate weights for new parameters
+            self.logger.info("Calculating weights")
+
+            new_parameters_pds = self.backend.parallelize(new_parameters)
+            self.logger.info("Calculate weights")
+            new_weights_pds = self.backend.map(self._calculate_weight, new_parameters_pds)
+            new_weights = np.array(self.backend.collect(new_weights_pds)).reshape(-1, 1)
+            sum_of_weights = np.sum(new_weights)
+            new_weights = new_weights / sum_of_weights
+
+            # The calculation of cov_mats needs the new weights and new parameters
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=new_parameters,
+                                                              accepted_weights=new_weights)
+
+            # The parameters relevant to each kernel have to be used to calculate n_sample times. It is therefore more efficient to broadcast these parameters once,
+            # instead of collecting them at each kernel in each step
+            kernel_parameters = []
+            for kernel in self.kernel.kernels:
+                kernel_parameters.append(
+                    self.accepted_parameters_manager.get_accepted_parameters_bds_values(kernel.models))
+            self.accepted_parameters_manager.update_kernel_values(self.backend, kernel_parameters=kernel_parameters)
+
+            # 3: calculate covariance
+            self.logger.info("Calculating covariance matrix")
+            new_cov_mats = self.kernel.calculate_cov(self.accepted_parameters_manager)
+            # Since each entry of new_cov_mats is a numpy array, we can multiply like this
+            new_cov_mats = [covFactor * new_cov_mat for new_cov_mat in new_cov_mats]
+
+            # 4: Update the newly computed values
+            accepted_parameters = new_parameters
+            accepted_weights = new_weights
+            accepted_cov_mats = new_cov_mats
+
+            self.logger.info("Save configuration to output journal")
+
+            if (full_output == 1 and aStep <= steps - 1) or (full_output == 0 and aStep == steps - 1):
+                journal.add_accepted_parameters(copy.deepcopy(accepted_parameters))
+                journal.add_distances(copy.deepcopy(distances))
+                journal.add_weights(copy.deepcopy(accepted_weights))
+                journal.add_ESS_estimate(accepted_weights)
+                self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
+                                                                  accepted_weights=accepted_weights)
+                names_and_parameters = self._get_names_and_parameters()
+                journal.add_user_parameters(names_and_parameters)
+                journal.number_of_simulations.append(self.simulation_counter)
+
+        self.n_samples = aStep
+        # Add epsilon_arr to the journal
+        journal.configuration["epsilon_arr"] = epsilon_arr
+        return journal 
+
+
+class DistanceScore(abcpy.distances.Distance):
+    def __init__(self, statistics_calc, **kwargs):
+        """
+        Parameters
+        ----------
+        statistics_calc : abcpy.statistics.Statistics
+            Statistics extractor object that conforms to the Statistics class.
+        eventWise_path : str
+            name of the data file
+        batch_size : int
+            number of events to run at each time step
+        test_size : int
+            size held out for test
+	
+        """
+        # start by getting the dataset
+        eventWise_path = kwargs.get("eventWise_path")
+        self.eventWise = Components.EventWise.from_file(eventWise_path)
+        n_events = len(self.eventWise.JetInputs_PT)
+        # make a sampler
+        batch_size = kwargs.get("batch_size", 100)
+        test_size = kwargs.get("test_size", 500)
+        usable = get_usable_events(self.eventWise)
+        self.test_set, sampler, _ = make_sampler(usable, batch_size, test_size=test_size,
+                                                 end_time=np.inf, total_calls=1e10)
+        self.sampler = iter(sampler)
+        # make the translator
+        self.jet_class = kwargs.get("jet_class", FormJets.SpectralFull)
+        if isinstance(self.jet_class, str):
+            self.jet_class = getattr(FormJets, self.jet_class)
+        if fixed_params in kwargs:
+            fixed_params = kwargs["fixed_params"]
+        else:
+            fixed_params = dict(StoppingCondition='meandistance',
+                                EigDistance='abscos',
+                                Laplacien='symmetric',
+                                PhyDistance='angular',
+                                CombineSize='sum',
+                                ExpofPTFormat='Luclus',
+                                #ExpofPTPosition='input',
+                                AffinityType='exponent')
+        self.translator = ParameterTranslator(self.jet_class, fixed_params)
+        # make other objects used
+        self.other_hyperparams = {}
+        self.other_hyperparams['min_tracks'] = Constants.min_ntracks
+        self.other_hyperparams['min_jetpt'] = Constants.min_pt
+        max_angle = Constants.max_tagangle
+        self.other_hyperparams['max_angle2'] = max_angle**2
+        self.generic_data = dict(SuccessCount=np.zeros(n_events),
+                                 FailCount=np.zeros(n_events))
+        #  must call the super scontructor
+        super().__init__(statistics_calc)
+
+    def distance(self, d1, d2):
+        """Calculates the distance between two datasets,
+        only, my datasets are actually model parameter choices....
+        that have been pulled from a model of the parameters
+
+        priors -> distribution of hyperparametres -> hyperparameter choice ->
+        score on data
+
+        either the first or the second model should have None as parameters
+
+        Parameters
+        ----------
+        d1: Python list
+            Parameters for first model
+        d2: Python list
+            Parameters for second model
+            
+
+        Returns
+        -------
+        numpy.float
+            The distance between the two input data sets.
+        """
+        if d2 is None:
+            params = d1
+        else:
+            params = d2
+
+        batch = next(self.sampler)
+        full_parameteres = self.translator.list_to_clustering(params)
+        score = batch_loss(batch, self.eventWise, self.jet_class, full_parameteres,
+                           self.other_hyperparams, self.generic_data)
+        return score
+
+    def dist_max(self):
+        # the total event mass of the heaviest event is
+        max_mass = 1804
+        return max_mass*2
+
+def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
+                               total_calls=10000, silent=True, **kwargs):
+    pass
+
+##################### logging ############################
 
 def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records):
     text = str(full_final_params)
@@ -402,46 +740,6 @@ def append_sucesses_fails(log_dir, eventWise_name):
     eventWise.append(SuccessCount=awkward.fromiter(sucesses),
                      FailCount=awkward.fromiter(fails))
         
-        
-def generate_pool(eventWise_name, max_workers=10,
-                  end_time=None, duration=None, leave_one_free=True,
-                  log_dir="./logs"):
-    # decide on a stop condition
-    if duration is not None:
-        end_time = time.time() + duration
-    if end_time is not None and duration is None:
-        duration = end_time - time.time()
-    # work out how many threads
-    n_threads = min(multiprocessing.cpu_count()-leave_one_free, max_workers)
-    if n_threads < 1:
-        n_threads = 1
-    wait_time = duration  # in seconds
-    # note that the longest wait will be n_cores time this time
-    print(f"Running on {n_threads} threads", flush=True)
-    job_list = []
-    # now each segment makes a worker
-    kwargs = {'log_dir': log_dir, 'optimiser_name': 'DifferentialEvolution',
-              'optimiser_params': {'recommendation': "noisy"}}
-    for batch_size in np.linspace(100, 300, n_threads, dtype=int):
-        job = multiprocessing.Process(target=run_optimisation,
-                                      args=(eventWise_name, int(batch_size),
-                                            end_time), kwargs=kwargs)
-        job.start()
-        job_list.append(job)
-    for job in job_list:
-        job.join(wait_time)
-    # check they all stopped
-    stalled = [job.is_alive() for job in job_list]
-    if np.any(stalled):
-        # stop everything
-        for job in job_list:
-            job.terminate()
-            job.join()
-        print(f"Problem in {sum(stalled)} out of {len(stalled)} threads")
-        return False
-    print("All processes ended")
-    append_sucesses_fails(log_dir, eventWise_name)
-
 
 def str_to_dict(string):
     # pull out any numpy inf
