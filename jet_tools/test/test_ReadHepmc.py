@@ -162,32 +162,48 @@ def test_ReadHepmc():
     check_lines()
     hepmc_file = os.path.join(data_dir, "mini.hepmc")
     n_events = 4
-    hepmc = ReadHepmc.Hepmc(hepmc_file, 0, n_events)
+    # try starting from 0
+    hepmc1 = ReadHepmc.Hepmc(hepmc_file, 0, n_events)
+    # try startng from 1
+    start2 = 1
+    hepmc2 = ReadHepmc.Hepmc(hepmc_file, start=start2, stop=n_events)
     idents = PDGNames.Identities()
     all_ids = set(idents.particle_data[:, idents.columns["id"]])
     for event_n in range(n_events):  # loop over out selection of events
-        hepmc.selected_index = event_n
+        hepmc1.selected_index = event_n
         # sanity checks on the components
-        assert hepmc.Event_n == event_n
-        # check the beam particles
-        beam_idx1 = np.where(hepmc.Particle_barcode == hepmc.Barcode_beam_particle1)[0][0]
-        beam_idx2 = np.where(hepmc.Particle_barcode == hepmc.Barcode_beam_particle2)[0][0]
-        assert hepmc.Is_root[beam_idx1]
-        assert hepmc.Is_root[beam_idx2]
-        assert len(hepmc.Parents[beam_idx1]) == 0
-        assert len(hepmc.Parents[beam_idx2]) == 0
-        # valid PID
-        assert set(np.abs(hepmc.MCPID)).issubset(all_ids)
-        # conservation of momentum and parent child reflection
-        num_particles = len(hepmc.MCPID)
-        root_p4 = np.zeros(4)
-        leaf_p4 = np.zeros(4)
-        for idx in range(num_particles):  # loop over particles in event
-            if hepmc.Is_root[idx]:
-                root_p4 += (hepmc.Energy[idx], hepmc.Px[idx], hepmc.Py[idx], hepmc.Pz[idx])
-            if hepmc.Is_leaf[idx]:
-                leaf_p4 += (hepmc.Energy[idx], hepmc.Px[idx], hepmc.Py[idx], hepmc.Pz[idx])
-        tst.assert_allclose(root_p4, leaf_p4, atol=0.0001)
+        assert hepmc1.Event_n == event_n
+        # again for the other one
+        check_event_consistancy(hepmc1, all_ids)
+        try:
+            hepmc2.selected_index = event_n
+            assert hepmc2.Event_n == event_n + 1
+        except IndexError:
+            assert event_n + start2 == n_events
+            continue  # reach the end of 1
+        check_event_consistancy(hepmc2, all_ids)
+
+
+def check_event_consistancy(hepmc, all_ids):
+    # check the beam particles
+    beam_idx1 = np.where(hepmc.Particle_barcode == hepmc.Barcode_beam_particle1)[0][0]
+    beam_idx2 = np.where(hepmc.Particle_barcode == hepmc.Barcode_beam_particle2)[0][0]
+    assert hepmc.Is_root[beam_idx1]
+    assert hepmc.Is_root[beam_idx2]
+    assert len(hepmc.Parents[beam_idx1]) == 0
+    assert len(hepmc.Parents[beam_idx2]) == 0
+    # valid PID
+    assert set(np.abs(hepmc.MCPID)).issubset(all_ids)
+    # conservation of momentum and parent child reflection
+    num_particles = len(hepmc.MCPID)
+    root_p4 = np.zeros(4)
+    leaf_p4 = np.zeros(4)
+    for idx in range(num_particles):  # loop over particles in event
+        if hepmc.Is_root[idx]:
+            root_p4 += (hepmc.Energy[idx], hepmc.Px[idx], hepmc.Py[idx], hepmc.Pz[idx])
+        if hepmc.Is_leaf[idx]:
+            leaf_p4 += (hepmc.Energy[idx], hepmc.Px[idx], hepmc.Py[idx], hepmc.Pz[idx])
+    tst.assert_allclose(root_p4, leaf_p4, atol=0.0001)
 
 
 def check_lines():
