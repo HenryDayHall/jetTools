@@ -569,7 +569,6 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
         projected_end = step_begun
         while projected_end < end_time:
             step_begun = time.time()
-            print(f"Began at {step_begun}")
             self.logger.debug(f"iteration {aStep} of PMC algorithm, started at {step_begun}".format(aStep))
             if aStep == 0 and journal_file is not None:
                 accepted_parameters = journal.get_accepted_parameters(-1)
@@ -661,7 +660,7 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             self.logger.info("Save configuration to output journal")
             # guess when the next step will end
             step_end = time.time()
-            print(f"Iteration ended at {step_end}, took {step_end - step_begun} seconds")
+            print(f"Iteration took {(step_end - step_begun)/60:.1f} mins")
             projected_end = 2*step_end - step_begun
             aStep += 1
             write_now = ((full_output == 1) or
