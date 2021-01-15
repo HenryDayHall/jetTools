@@ -163,19 +163,21 @@ def plot_dissdiff_values(list_dissdiff_values, score_name=None):
         else:
             score_name += " unnormed"
     jet_classes, variable_types, table = read_dissdiffs(list_dissdiff_values)
-    fig, ax_arr = plt.subplots(len(variable_types), 1)
+    #fig, ax_arr = plt.subplots(len(variable_types), 1)
+    fig, ax_arr = plt.subplots(1, 1)
+    variable_types = [n for n in variable_types if "Mass" in n]
     if len(variable_types) == 1:
         ax_arr = [ax_arr]
     fig.suptitle(f"{score_name} between LO and NLO data")
     for var_type, ax in zip(variable_types, ax_arr):
-        if "Mass" not in var_type:
-            continue
         row = variable_types.index(var_type)
         class_values = table[row]
-        bins=30
+        bins=130
+        st()
         ax.hist(class_values, label=jet_classes, bins=bins, density=True, histtype='step')
         ax.set_ylabel("Frequency")
-        ax.label(f"{score_name} for {var_type} change")
+        #ax.set_xlabel(f"{score_name} for {var_type} change")
+        ax.set_xlabel(f"{score_name} for jet mass change")
     ax.legend()
     fig.subplots_adjust(top=0.95, bottom=0.08, left=0.08, right=0.95, hspace=0.4, wspace=0.21)
 
