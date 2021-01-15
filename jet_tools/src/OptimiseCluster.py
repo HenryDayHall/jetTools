@@ -1,4 +1,5 @@
 """ Module for optimising the clustering process without gradient decent """
+import warnings
 import scipy
 import matplotlib
 from matplotlib import pyplot as plt
@@ -12,13 +13,18 @@ import nevergrad as ng
 from ipdb import set_trace as st
 from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools
 import numpy as np
-from torch.utils.data import RandomSampler, BatchSampler
-import abcpy
 import abcpy.inferences
 import abcpy.distances
+import abcpy.discretemodels
+import abcpy.continuousmodels
+import abcpy.probabilisticmodels
+import abcpy.statistics
+import abcpy.backends
+import abcpy.output
 import copy
 
 def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, generic_data):
+    warnings.filterwarnings('ignore')
     assert eventWise.selected_index is not None
     jets = jet_class(eventWise, dict_jet_params=spectral_jet_params,
                      assign=True)
@@ -92,13 +98,13 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
     loss = 0
     unclusterable_counter = 0
     for event_n in batch:
-        eventWise.selected_index = event_n
+        eventWise.selected_index = int(event_n)
         try:
             loss_n = event_loss(eventWise, jet_class,
                                 spectral_jet_params, other_hyperparams, generic_data)
             loss += loss_n
             generic_data["SuccessCount"][event_n] += 1
-        except (np.linalg.LinAlgError, TypeError, Exception):
+        except (np.linalg.LinAlgError, TypeError, Exception) as e:
             generic_data["FailCount"][event_n] += 1
             unclusterable_counter += 1
             continue
@@ -106,6 +112,72 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
     loss += 2**unclusterable_counter
     loss = min(loss/len(batch), 1e5)  # cap the value of loss
     return loss
+
+
+def get_usable_events(eventWise):
+    eventWise.selected_index = None
+    try:
+        # must make a copy so it is alterable
+        sucesses = awkward.fromiter(eventWise.SuccessCount)
+        fails = awkward.fromiter(eventWise.FailCount)
+    except AttributeError:
+        n_events = len(eventWise.JetInputs_PT)
+        sucesses = awkward.fromiter([0]*n_events)
+        fails = awkward.fromiter([0]*n_events)
+    # anything that hasn't failed more than 100 times should be tried again
+    # if there is at least one success for every 20 fails use it
+    usable = np.where(np.logical_or(sucesses*20 >= fails, fails < 100))[0]
+    return usable
+
+
+class BatchSampler:
+    def __init__(self, data, batch_size, num_samples=np.inf):
+        self.data = data
+        float_len = len(data)/batch_size
+        self._len = int(np.floor(float_len))
+        self.batch_size = batch_size
+        self.num_samples = num_samples
+        self.samples_dispensed = 0
+        # make a seed
+        np.random.seed(int(time.time()))
+
+    def __len__(self):
+        return self._len
+
+    def __iter__(self):
+        data_len = len(self.data)
+        # a list of indieces for shuffling
+        # avoids accedntally loading data needlessly
+        idxs = list(range(data_len))
+        np.random.shuffle(idxs)
+        batch_size = self.batch_size
+        reached = 0
+        batch_end = 0
+        while self.samples_dispensed < self.num_samples:
+            batch_end += batch_size
+            if batch_end >= data_len:
+                reached = 0
+                batch_end = batch_size
+                np.random.shuffle(idxs)
+            yield self.data[idxs[reached:batch_end]]
+            reached = batch_end
+            self.samples_dispensed += 1
+            
+
+
+def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
+    if end_time is not None:
+        total_calls = np.inf
+        budget = np.inf
+    else:
+        budget = int(total_calls/batch_size)
+    train_end = len(usable_events) - test_size  # hold the last bit out for test
+    # must convert the test set to a list becuase otherwise the
+    # loss calculation fails on the np data type
+    test_set = usable_events[train_end:].tolist()
+    sampler = BatchSampler(usable_events[:train_end], batch_size=batch_size,
+                           num_samples=budget)
+    return test_set, sampler, budget
 
 
 def parameter_values(jet_class, stopping_condition):
@@ -139,63 +211,36 @@ def parameter_values(jet_class, stopping_condition):
     return discreete_params, ordered_discreet_params, continuous_params
 
 
-def get_usable_events(eventWise):
-    eventWise.selected_index = None
-    try:
-        # must make a copy so it is alterable
-        sucesses = awkward.fromiter(eventWise.SuccessCount)
-        fails = awkward.fromiter(eventWise.FailCount)
-    except AttributeError:
-        n_events = len(eventWise.JetInputs_PT)
-        sucesses = awkward.fromiter([0]*n_events)
-        fails = awkward.fromiter([0]*n_events)
-    # anything that hasn't failed more than 100 times should be tried again
-    # if there is at least one success for every 20 fails use it
-    usable = np.where(np.logical_or(sucesses*20 >= fails, fails < 100))[0]
-    return usable
-
-
-def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
-    if end_time is not None:
-        #total_calls = int(np.nan_to_num(np.inf))
-        total_calls = int(1e5)  # memory errors if larger
-    budget = int(total_calls/batch_size)
-    train_end = len(usable_events) - test_size  # hold the last bit out for test
-    # must convert the test set to a list becuase otherwise the
-    # loss calculation fails on the np data type
-    test_set = usable_events[train_end:].tolist()
-    sampler = RandomSampler(usable_events[:train_end], replacement=True,
-                            num_samples=total_calls)
-    sampler = BatchSampler(sampler, batch_size, drop_last=True)
-    return test_set, sampler, budget
-
-
-################## NEVERGRAD ##################
-
 class ParameterTranslator:
     def __init__(self, jet_class, fixed_params, ):
         if isinstance(jet_class, str):
             jet_class = getattr(FormJets, jet_class)
         self.jet_class = jet_class
-        if jet_class == FormJets.SpectralFull:
-            self.stopping_condition = fixed_params.get('StoppingCondition', 'meandistance')
-        else:
-            raise NotImplementedError(f"Implement translator for {jet_class}")
         self.fixed_params = fixed_params
-        self._discrete, self._ordered, self._continuous = parameter_values(jet_class,
-                                                                    self.stopping_condition)
-        self.parameter_order = list(self._discrete.keys()) +\
-                               list(self._ordered.keys()) +\
-                               list(self._continuous.keys())
+        if jet_class == FormJets.SpectralFull:
+            stopping_condition = fixed_params.get("StoppingCondition", "meandistance")
+        else:
+            raise NotImplementedError
+        self.discrete, self.ordered, self.continuous = parameter_values(jet_class,
+                                                                        stopping_condition)
+        # soemtimes it is useful to have all the listlike data togethere
+        self.all_discrete = {**self.discrete, **self.ordered}
+        self.parameter_order = list(self.discrete.keys()) +\
+                               list(self.ordered.keys()) +\
+                               list(self.continuous.keys())
         self.unfixed_order = [name for name in self.parameter_order if name not in fixed_params]
-
+        self._unfixed_stopping = "StoppingCondition" in self.unfixed_order
+        if self._unfixed_stopping:  # changes other params
+            self._stopping_index = self.unfixed_order.index("StoppingCondition")
+            self._current_stopping = self.unfixed_order["StoppingCondition"]\
+                                          .index(stopping_condition)
     
     def generate_nevergrad_variables(self):
-        variables = {key: ng.p.Choice(values) for key, values in self._discrete.items()}
+        variables = {key: ng.p.Choice(values) for key, values in self.discrete.items()}
         variables.update({key: ng.p.TransitionChoice(values) for key, values
-                         in self._ordered.items()})
+                         in self.ordered.items()})
         # the continuous variables have diferent bounds so we add them indervidually
-        for key, range_dict in self._continuous.items():
+        for key, range_dict in self.continuous.items():
             param = ng.p.Scalar()
             if range_dict['minimum'] is not None:
                 shifted_min = (range_dict['minimum'] - range_dict['mean'])/range_dict['std']
@@ -208,32 +253,61 @@ class ParameterTranslator:
         # create the correct type
         variables = ng.p.Instrumentation(**variables)
         return variables
+
+    def generate_abcpy_variables(self):
+        variables = []
+        for name in self.unfixed_order:
+            # treat ordered and unordered the same
+            if name in self.all_discrete:
+                n_items = len(self.all_discrete[name])
+                model = abcpy.discretemodels.DiscreteUniform([0, n_items-1], name=name)
+            else:
+                mean = self.continuous[name]['mean']
+                std = self.continuous[name]['std']
+                minm = self.continuous[name]['minimum']
+                # calculate values
+                maximum = mean + std*5
+                if minm is None:
+                    minimum = mean - std*5
+                else:
+                    minimum = minm
+                model = abcpy.continuousmodels.Uniform([[minimum], [maximum]], name=name)
+            variables.append(model)
+        return variables
     
     def list_to_clustering(self, param_list):
-        if "StoppingCondition" in self.unfixed_order:
-            new_stopping_condition = param_list[self.unfixed_order.index("StoppingCondition")]
-            if new_stopping_condition != self.stopping_condition:
-                self.stopping_condition = new_stopping_condition
-                self._discrete, self._ordered, self._continuous\
-                        = parameter_values(self.jet_class, self.stopping_condition)
-        clustering_params = {**zip(self.unfixed_order, param_list)}
+        if self._unfixed_stopping:
+            new_stopping_condition = param_list[self._stopping_index]
+            if new_stopping_condition != self._current_stopping:
+                self._current_stopping = new_stopping_condition
+                # convert from index to string
+                stopping_condition = self.discrete["StoppingCondition"][self._current_stopping]
+                self.discrete, self.ordered, self.continuous\
+                        = parameter_values(self.jet_class, stopping_condition)
+        clustering_params = {}
+        for name, value in zip(self.unfixed_order, param_list):
+            if name in self.continuous:
+                clustering_params[name] = value
+            else:
+                clustering_params[name] = self.all_discrete[name][int(value)]
         # throw in the fixed ones
         clustering_params.update(self.fixed_params)
         return clustering_params
 
     def nevergrad_to_clustering(self, variables):
         # switching stopping condition changes the mean and range of deltar
-        if "StoppingCondition" in self.unfixed_order:
+        if self._unfixed_stopping:
             new_stopping_condition = variables.kwargs['StoppingCondition']
-            if new_stopping_condition != self.stopping_condition:
-                self.stopping_condition = new_stopping_condition
-                self._discrete, self._ordered, self._continuous\
-                        = parameter_values(self.jet_class, self.stopping_condition)
+            if new_stopping_condition != self.discrete[self._current_stopping]:
+                self._current_stopping = self.discrete["StoppingCondition"]\
+                                              .index(new_stopping_condition)
+                self.discrete, self.ordered, self.continuous\
+                        = parameter_values(self.jet_class, new_stopping_condition)
         clustering_params = {}
         for key, value in variables.kwargs.items():
-            if key in self._continuous:
-                mean = self._continuous[key]['mean']
-                std = self._continuous[key]['std']
+            if key in self.continuous:
+                mean = self.continuous[key]['mean']
+                std = self.continuous[key]['std']
                 clustering_params[key] = value*std + mean
             else:
                 clustering_params[key] = value
@@ -241,6 +315,8 @@ class ParameterTranslator:
         clustering_params.update(self.fixed_params)
         return clustering_params
 
+
+################## NEVERGRAD ##################
 
 def run_optimisation_nevergrad(eventWise_name, batch_size=100, end_time=None,
                                total_calls=10000, silent=True, **kwargs):
@@ -403,8 +479,11 @@ def generate_pool(eventWise_name, max_workers=10,
 
 # wont do sampling here as the vectoisation is hard to predict
 class TimedPMCABC(abcpy.inferences.PMCABC):
-    def sample(self, observations, steps, epsilon_init, duration=60*5, n_samples_per_param=1, epsilon_percentile=10,
-	   covFactor=2, full_output=0, journal_file=None):
+    def sample(self, observations, duration,
+               epsilon_init, n_samples, n_samples_per_param=1,
+               epsilon_percentile=10,
+               covFactor=2, full_output=0, journal_file=None,
+               log_dir="./logs"):
         """Samples from the posterior distribution of the model parameter given the observed
         data observations.
         Identical to the standard method, appart from uses a time limit rather than a number of steps.
@@ -413,14 +492,14 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
         ----------
         observations : list
             A list, containing lists describing the observed data sets
-        steps : integer
-            Number of iterations in the sequential algoritm ("generations")
+        duration : float, optional
+            Time in seconds to run for. The default value is 5 mins.
         epsilon_init : numpy.ndarray
             An array of proposed values of epsilon to be used at each steps. Can be supplied
             A single value to be used as the threshold in Step 1 or a `steps`-dimensional array of values to be
             used as the threshold in evry steps.
-        duration : float, optional
-            Time in seconds to run for. The default value is 5 mins.
+        n_samples : integer
+            Number of samples to generate.
         n_samples_per_param : integer, optional
             Number of data points in each simulated data set. The default value is 1.
         epsilon_percentile : float, optional
@@ -440,41 +519,58 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             A journal containing simulation results, metadata and optionally intermediate results.
         """
         self.accepted_parameters_manager.broadcast(self.backend, observations)
-        self.n_samples = None  # fill in at the end
+        self.n_samples = n_samples
         self.n_samples_per_param = n_samples_per_param
 
+        # track the journals event if the function crashes
+        journal_list = []
+        if isinstance(journal_file, list):
+            journal_list = journal_file
+            if len(journal_list):
+                journal_file = journal_list[-1]
+            else:
+                journal_file = None
         if journal_file is None:
-            journal = Journal(full_output)
+            journal = abcpy.output.Journal(full_output)
             journal.configuration["type_model"] = [type(model).__name__ for model in self.model]
             journal.configuration["type_dist_func"] = type(self.distance).__name__
             journal.configuration["n_samples"] = self.n_samples
             journal.configuration["n_samples_per_param"] = self.n_samples_per_param
-            journal.configuration["steps"] = steps
+            journal.configuration["steps"] = -1
             journal.configuration["epsilon_percentile"] = epsilon_percentile
         else:
-            journal = Journal.fromFile(journal_file)
+            journal = abcpy.output.Journal.fromFile(journal_file)
+
+        journal_name = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
+        journal_list.append(journal_name)
 
         accepted_parameters = None
         accepted_weights = None
         accepted_cov_mats = None
 
         # Define epsilon_arr
-        if len(epsilon_init) == steps:
-            epsilon_arr = epsilon_init
-        else:
-            if len(epsilon_init) == 1:
-                epsilon_arr = [None] * steps
-                epsilon_arr[0] = epsilon_init
-            else:
-                raise ValueError("The length of epsilon_init can only be equal to 1 or steps.")
+        epsilon_arr = list(epsilon_init)
+        #if len(epsilon_init) == steps:
+        #    epsilon_arr = epsilon_init
+        #else:
+        #    if len(epsilon_init) == 1:
+        #        epsilon_arr = [None] * steps
+        #        epsilon_arr[0] = epsilon_init
+        #    else:
+        #        raise ValueError("The length of epsilon_init can only be equal to 1 or steps.")
 
         # main PMCABC algorithm
         self.logger.info("Starting PMC iterations")
         aStep = 0
         end_time = time.time() + duration
-        while time.time() < end_time:
-            aStep += 1
-            self.logger.debug("iteration {} of PMC algorithm".format(aStep))
+        step_begun = time.time()
+        last_save = step_begun
+        save_wait = 5*60
+        projected_end = step_begun
+        while projected_end < end_time:
+            step_begun = time.time()
+            print(f"Began at {step_begun}")
+            self.logger.debug(f"iteration {aStep} of PMC algorithm, started at {step_begun}".format(aStep))
             if aStep == 0 and journal_file is not None:
                 accepted_parameters = journal.get_accepted_parameters(-1)
                 accepted_weights = journal.get_weights(-1)
@@ -493,7 +589,7 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
                 new_cov_mats = self.kernel.calculate_cov(self.accepted_parameters_manager)
                 # Since each entry of new_cov_mats is a numpy array, we can multiply like this
                 # accepted_cov_mats = [covFactor * new_cov_mat for new_cov_mat in new_cov_mats]
-                accepted_cov_mats = self._compute_accepted_cov_mats(covFactor, accepted_cov_mats)
+                accepted_cov_mats = self._compute_accepted_cov_mats(covFactor, new_cov_mats)
 
             seed_arr = self.rng.randint(0, np.iinfo(np.uint32).max, size=n_samples, dtype=np.uint32)
             rng_arr = np.array([np.random.RandomState(seed) for seed in seed_arr])
@@ -522,12 +618,12 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             # Compute epsilon for next step
             # print("INFO: Calculating acceptance threshold (epsilon).")
             self.logger.info("Calculating acceptances threshold")
-            if aStep < steps - 1:
-                if epsilon_arr[aStep + 1] is None:
-                    epsilon_arr[aStep + 1] = np.percentile(distances, epsilon_percentile)
-                else:
-                    epsilon_arr[aStep + 1] = np.max(
-                        [np.percentile(distances, epsilon_percentile), epsilon_arr[aStep + 1]])
+            if aStep + 2 > len(epsilon_arr):
+                epsilon_arr.append(np.percentile(distances, epsilon_percentile))
+            else:
+                epsilon_arr[aStep + 1] = np.max(
+                    [np.percentile(distances, epsilon_percentile),
+                     epsilon_arr[aStep + 1]])
 
             # 2: calculate weights for new parameters
             self.logger.info("Calculating weights")
@@ -563,8 +659,16 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             accepted_cov_mats = new_cov_mats
 
             self.logger.info("Save configuration to output journal")
-
-            if (full_output == 1 and aStep <= steps - 1) or (full_output == 0 and aStep == steps - 1):
+            # guess when the next step will end
+            step_end = time.time()
+            print(f"Iteration ended at {step_end}, took {step_end - step_begun} seconds")
+            projected_end = 2*step_end - step_begun
+            aStep += 1
+            write_now = ((full_output == 1) or
+                         (full_output == 0 and projected_end > end_time))
+            save_now = save_wait < step_end - last_save
+            if write_now or save_now:
+                journal.configuration["steps"] = aStep
                 journal.add_accepted_parameters(copy.deepcopy(accepted_parameters))
                 journal.add_distances(copy.deepcopy(distances))
                 journal.add_weights(copy.deepcopy(accepted_weights))
@@ -574,28 +678,37 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
                 names_and_parameters = self._get_names_and_parameters()
                 journal.add_user_parameters(names_and_parameters)
                 journal.number_of_simulations.append(self.simulation_counter)
-
+                if save_now:
+                    journal.save(journal_name)
+                    last_save = step_end
         self.n_samples = aStep
         # Add epsilon_arr to the journal
         journal.configuration["epsilon_arr"] = epsilon_arr
-        return journal 
+        journal.configuration["steps"] = aStep
+        journal.save(journal_name)
+        return journal_name, journal
 
 
-class DistanceScore(abcpy.distances.Distance):
-    def __init__(self, statistics_calc, **kwargs):
+class ClusteringModel(abcpy.probabilisticmodels.ProbabilisticModel,
+                      abcpy.continuousmodels.Continuous):
+    def __init__(self, parameters, name='clustering', **kwargs):
         """
         Parameters
         ----------
-        statistics_calc : abcpy.statistics.Statistics
-            Statistics extractor object that conforms to the Statistics class.
+        parameters : list
+            list of hypereparameters for clustering
         eventWise_path : str
             name of the data file
         batch_size : int
             number of events to run at each time step
         test_size : int
             size held out for test
+        translator : ParameterTranslator
+            to get the parameters back to clustring format
 	
         """
+        if not isinstance(parameters, list):
+            raise TypeError("model takes parameters int he form of a list")
         # start by getting the dataset
         eventWise_path = kwargs.get("eventWise_path")
         self.eventWise = Components.EventWise.from_file(eventWise_path)
@@ -607,22 +720,14 @@ class DistanceScore(abcpy.distances.Distance):
         self.test_set, sampler, _ = make_sampler(usable, batch_size, test_size=test_size,
                                                  end_time=np.inf, total_calls=1e10)
         self.sampler = iter(sampler)
-        # make the translator
-        self.jet_class = kwargs.get("jet_class", FormJets.SpectralFull)
-        if isinstance(self.jet_class, str):
-            self.jet_class = getattr(FormJets, self.jet_class)
-        if fixed_params in kwargs:
-            fixed_params = kwargs["fixed_params"]
-        else:
-            fixed_params = dict(StoppingCondition='meandistance',
-                                EigDistance='abscos',
-                                Laplacien='symmetric',
-                                PhyDistance='angular',
-                                CombineSize='sum',
-                                ExpofPTFormat='Luclus',
-                                #ExpofPTPosition='input',
-                                AffinityType='exponent')
-        self.translator = ParameterTranslator(self.jet_class, fixed_params)
+        # get the translator
+        self.translator = kwargs.get("translator")
+        self.jet_class = self.translator.jet_class
+        # check we got the right number of parameters
+        if len(parameters) != len(self.translator.unfixed_order):
+            raise RuntimeError(f"Model needs {len(self.translator.unfixed_order)} parameters, "
+                               +f"\n({self.translator.unfixed_order})\n"
+                               +f" but found {len(parameters)} parameters.")
         # make other objects used
         self.other_hyperparams = {}
         self.other_hyperparams['min_tracks'] = Constants.min_ntracks
@@ -632,12 +737,36 @@ class DistanceScore(abcpy.distances.Distance):
         self.generic_data = dict(SuccessCount=np.zeros(n_events),
                                  FailCount=np.zeros(n_events))
         #  must call the super scontructor
-        super().__init__(statistics_calc)
+        input_connector = abcpy.probabilisticmodels.InputConnector.from_list(parameters)
+        super().__init__(input_connector, name)
 
-    def distance(self, d1, d2):
-        """Calculates the distance between two datasets,
-        only, my datasets are actually model parameter choices....
-        that have been pulled from a model of the parameters
+    def _check_input(self, input_values):
+        # check we got the right number of parameters
+        variable_order = self.translator.unfixed_order
+        if len(input_values) != len(variable_order):
+            raise ValueError(f"Model needs {len(self.translator.unfixed_order)} parameters, "
+                             +f"\n({variable_order})\n"
+                             +f" but found {len(input_values)} parameters.")
+        # check each variable
+        discreet_dict = self.translator.all_discrete
+        for name, value in zip(variable_order, input_values):
+            # treat ordered and unordered the same
+            if name in discreet_dict:
+                n_items = len(discreet_dict[name])
+                if value >= n_items:
+                    return False
+            else:
+                minimum = self.translator.continuous[name]['minimum']
+                if minimum is not None and value < minimum:
+                    return False
+                # sigma is specal case
+                if name == 'sigma' and value == 0:
+                    return False
+        # no checks have failed if we reach here
+        return True
+
+    def forward_simulate(self, input_values, k, rng=np.random.RandomState()):
+        """Calculates the score of the dataset.
 
         priors -> distribution of hyperparametres -> hyperparameter choice ->
         score on data
@@ -646,36 +775,113 @@ class DistanceScore(abcpy.distances.Distance):
 
         Parameters
         ----------
-        d1: Python list
-            Parameters for first model
-        d2: Python list
-            Parameters for second model
-            
+        input_values: Python list
+            Parameters for model
+        k: int
+            number of batches to do
+        rng : random number generator
+            not used, sampler does that job
 
         Returns
         -------
-        numpy.float
-            The distance between the two input data sets.
+        scores : list of k numpy arrays
+            each the score of one batch
         """
-        if d2 is None:
-            params = d1
-        else:
-            params = d2
+        results = []
+        for batch_n in range(k):
+            batch = next(self.sampler)
+            full_parameteres = self.translator.list_to_clustering(input_values)
+            score = batch_loss(batch, self.eventWise, self.jet_class, full_parameteres,
+                               self.other_hyperparams, self.generic_data)
+            results.append(np.array(score))
+        return results
 
-        batch = next(self.sampler)
-        full_parameteres = self.translator.list_to_clustering(params)
-        score = batch_loss(batch, self.eventWise, self.jet_class, full_parameteres,
-                           self.other_hyperparams, self.generic_data)
-        return score
+    def _check_output(self, values):
+        if np.any(np.isnan(values)):
+            raise ValueError('got nan out of a batch. how?')
+        return True
 
-    def dist_max(self):
-        # the total event mass of the heaviest event is
-        max_mass = 1804
-        return max_mass*2
+    def get_output_dimension(self):
+        return 1
+
 
 def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
                                total_calls=10000, silent=True, **kwargs):
-    pass
+    # make the translator
+    print("setting up optimisation", flush=True)
+    jet_class = kwargs.get("jet_class", FormJets.SpectralFull)
+    if isinstance(jet_class, str):
+        jet_class = getattr(FormJets, jet_class)
+    if "fixed_params" in kwargs:
+        fixed_params = kwargs["fixed_params"]
+    else:
+        fixed_params = dict(StoppingCondition='meandistance',
+                            EigDistance='abscos',
+                            Laplacien='symmetric',
+                            PhyDistance='angular',
+                            CombineSize='sum',
+                            ExpofPTFormat='Luclus',
+                            #ExpofPTPosition='input',
+                            AffinityType='exponent')
+    translator = ParameterTranslator(jet_class, fixed_params)
+    varaible_list = translator.generate_abcpy_variables()
+    statistics_calc = abcpy.statistics.Identity()
+    distance_calc = abcpy.distances.Euclidean(statistics_calc)
+    #distance_calc = abcpy.distances.LogReg(statistics_calc, seed=42)
+    backend = abcpy.backends.BackendDummy()
+    #backend = abcpy.backends.BackendMPI()
+    print("defining objective", flush=True)
+    objective = [np.array(0)]
+    # parameters for the optimiser
+    #eps_init = np.array([10000])
+    eps_init = np.array([50])
+    #eps_init = np.array([0.75])
+    #n_samples = 10000
+    n_samples = 10
+    n_samples_per_param = 5
+    epsilon_percentile = 60
+    #epsilon_percentile = 10
+    duration = kwargs.get("duration", 5*60)
+    log_dir = kwargs.get("log_dir", "./logs")
+    # set up a loop to restart the optimiser untill it finishes
+    start_time = time.time()
+    run_complete = False
+    max_tries = 3
+    n_tries = 0
+    journal_name_list = []
+    if 'last_journal' in kwargs:
+        journal_name_list.append(kwargs['last_journal'])
+    while not run_complete:
+        try:
+            # create these in the loop to refresh input
+            print("creating model", flush=True)
+            model = ClusteringModel(varaible_list, eventWise_path=eventWise_name,
+                                    batch_size=batch_size, test_size=500, translator=translator)
+            print("creating sampler", flush=True)
+            kernal = abcpy.perturbationkernel.DefaultKernel(varaible_list)
+            sampler = TimedPMCABC([model], [distance_calc], backend, kernal, seed=1)
+            print(f"Running for {duration} seconds aprox", flush=True)
+            journal_name, journal = sampler.sample([objective], duration, eps_init,
+                                                   n_samples, n_samples_per_param,
+                                                   epsilon_percentile, full_output=True,
+                                                   journal_file=journal_name_list,
+                                                   log_dir=log_dir)
+            run_complete = True
+        except Exception as e:  # something failed
+            st()
+            print("Exception during optimisation")
+            print(e)
+            n_tries += 1
+            if n_tries > max_tries:
+                break
+            print("Retrying", flush=True)
+            duration += start_time - time.time()
+            print(f"Journal_name_list is {journal_name_list}")
+
+    #log_path = "logs/New_Journal.jnl"
+    #print(f"Saveing to {log_path}")
+    #journal.save(log_path)
+    #return journal
 
 ##################### logging ############################
 
@@ -692,6 +898,17 @@ def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_param
         text += "\n"
     return text
 
+def reserve_name(name_form):
+    assert "}" in name_form, "Need '{}' to be able to format name_form"
+    i = 0
+    while True:
+        try:
+            open(name_form.format(i), 'x').close()
+            name = name_form.format(i)
+            return name
+        except FileExistsError:
+            i += 1
+
 
 def print_log(hyper_to_log, hyper_log,
               params_to_log, param_log, full_final_params,
@@ -703,14 +920,9 @@ def print_log(hyper_to_log, hyper_log,
     text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
     #difficulty_name = os.path.join(log_dir, "difficulty{:03d}.awkd")
-    i = 0
-    while True:
-        try:
-            with open(log_name.format(i), 'x') as new_file:
-                new_file.write(text)
-            return i
-        except FileExistsError:
-            i += 1
+    file_name = reserve_name(log_name)
+    with open(log_name.format(i), 'w') as new_file:
+        new_file.write(text)
 
 
 def print_successes_fails(log_dir, log_index, sucesses, fails):
@@ -898,6 +1110,7 @@ def cluster_from_log(log_dirs, eventWise_path, jet_class="SpectralFull", dijet_m
         params = str_to_dict(p_str)
         jet_name = f"OptimisedJet{i}"
         try:
+            warnings.filterwarnings('ignore')
             FormJets.cluster_multiapply(eventWise, jet_class, params, jet_name, np.inf)
         except Exception as e:
             print(f"couldnt cluster params {p_str}")
@@ -907,12 +1120,22 @@ def cluster_from_log(log_dirs, eventWise_path, jet_class="SpectralFull", dijet_m
 
 
 if __name__ == '__main__':
+    #run_optimisation_abcpy("megaIgnore/show.awkd")
     if InputTools.yesNo_question("Plot run? "):
         visulise_logs()
-    elif InputTools.yesNo_question("Optimise? "):
+    elif InputTools.yesNo_question("Optimise with nevergrad? "):
         run_time = InputTools.get_time("How long should it run?")
         eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
         log_dir = "./logs"
         generate_pool(eventWise_name, duration=run_time, log_dir=log_dir)
+    elif InputTools.yesNo_question("Optimise with abcpy? "):
+        run_time = InputTools.get_time("How long should it run?")
+        eventWise_name = InputTools.get_file_name("Name the eventWise: ").strip()
+        log_dir = "./logs"
+        if InputTools.yesNo_question("Add journal? "):
+            journal_name = InputTools.get_file_name("Journal file; ", '.jnl').strip()
+            run_optimisation_abcpy(eventWise_name, duration=run_time, log_dir=log_dir, last_journal=journal_name)
+        else:
+            run_optimisation_abcpy(eventWise_name, duration=run_time, log_dir=log_dir)
 
 
