@@ -371,6 +371,8 @@ def remove_partial(all_paths, expected_length=None):
         the number of events that should exist
     
     """
+    if isinstance(all_paths, str):
+        all_paths = [all_paths]
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
         length = len(ew.Event_n)
