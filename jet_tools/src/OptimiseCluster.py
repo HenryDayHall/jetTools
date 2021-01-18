@@ -11,9 +11,8 @@ import time
 import awkward
 import nevergrad as ng
 from ipdb import set_trace as st
-from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools
+from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools, abcpy_new_inferences
 import numpy as np
-import abcpy.inferences
 import abcpy.distances
 import abcpy.discretemodels
 import abcpy.continuousmodels
@@ -78,19 +77,19 @@ def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, gen
     valid_jets = valid_jets[jet_pt[valid_jets] > other_hyperparams['min_jetpt']]
     seperate_jets, matched_jets = CompareClusters.match_jets(tags, jets_tags, tag_groups,
                                                              jet_masses, valid_jets)
-    mass = np.zeros((len(matched_jets), 2))
+    mass2 = np.zeros((len(matched_jets), 2))
     for tag_n, tag_leaves in enumerate(eventWise.DetectableTag_Leaves):
         tag_mass2, bg_mass2, _, _, _, _, _, _, _ = \
                CompareClusters.event_detectables(tag_leaves, matched_jets[tag_n],
                                                  input_idxs, source_idx, energy,
                                                  px, py, pz, mass_only=True)
-        mass[tag_n, 0] += bg_mass2
-        mass[tag_n, 1] += tag_mass2
-    mass = np.sqrt(np.maximum(mass, 0))
-    mass[:, 1] = eventWise.DetectableTag_Mass - mass[:, 1]
-    mass = np.nan_to_num(mass)
-    assert np.all(mass >= -1e-5)
-    loss = np.sum(mass)
+        mass2[tag_n, 0] += bg_mass2
+        mass2[tag_n, 1] += tag_mass2
+    mass2 = np.maximum(mass2, 0)   # imaginary mass is a floating point error
+    # take the euclidien norm of the two types of mass
+    mass = np.sqrt(mass2[:, 0] + 
+                   (eventWise.DetectableTag_Mass - np.sqrt(mass2[:, 1]))**2)
+    loss = np.nansum(mass)
     return loss
 
 
@@ -162,7 +161,6 @@ class BatchSampler:
             yield self.data[idxs[reached:batch_end]]
             reached = batch_end
             self.samples_dispensed += 1
-            
 
 
 def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
@@ -478,7 +476,7 @@ def generate_pool(eventWise_name, max_workers=10,
 
 
 # wont do sampling here as the vectoisation is hard to predict
-class TimedPMCABC(abcpy.inferences.PMCABC):
+class TimedPMCABC(abcpy_new_inferences.PMCABC):
     def sample(self, observations, duration,
                epsilon_init, n_samples, n_samples_per_param=1,
                epsilon_percentile=10,
@@ -544,20 +542,45 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
         journal_name = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
         journal_list.append(journal_name)
 
-        accepted_parameters = None
-        accepted_weights = None
-        accepted_cov_mats = None
+        if journal_file is not None:
+            accepted_parameters = journal.get_accepted_parameters(-1)
+            accepted_weights = journal.get_weights(-1)
+
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
+                                                              accepted_weights=accepted_weights)
+
+            kernel_parameters = []
+            for kernel in self.kernel.kernels:
+                kernel_parameters.append(
+                    self.accepted_parameters_manager.get_accepted_parameters_bds_values(kernel.models))
+            self.accepted_parameters_manager.update_kernel_values(self.backend, kernel_parameters=kernel_parameters)
+
+            # 3: calculate covariance
+            self.logger.info("Calculateing covariance matrix")
+            new_cov_mats = self.kernel.calculate_cov(self.accepted_parameters_manager)
+            # Since each entry of new_cov_mats is a numpy array, we can multiply like this
+            # accepted_cov_mats = [covFactor * new_cov_mat for new_cov_mat in new_cov_mats]
+            accepted_cov_mats = self._compute_accepted_cov_mats(covFactor, new_cov_mats)
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_cov_mats=accepted_cov_mats)
+
+        else:
+            accepted_parameters = None
+            accepted_weights = None
+            accepted_cov_mats = None
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
+                                                              accepted_weights=accepted_weights)
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_cov_mats=accepted_cov_mats)
+            distances = None
 
         # Define epsilon_arr
-        epsilon_arr = list(epsilon_init)
-        #if len(epsilon_init) == steps:
-        #    epsilon_arr = epsilon_init
-        #else:
-        #    if len(epsilon_init) == 1:
-        #        epsilon_arr = [None] * steps
-        #        epsilon_arr[0] = epsilon_init
-        #    else:
-        #        raise ValueError("The length of epsilon_init can only be equal to 1 or steps.")
+        if journal_file is not None:
+            # check distances
+            distances = journal.distances[-1]
+            # should be max or min?
+            epsilon_arr = np.minimum(epsilon_init, np.max(distances))
+        else:
+            epsilon_arr = epsilon_init
+        epsilon_arr = list(epsilon_arr)
 
         # main PMCABC algorithm
         self.logger.info("Starting PMC iterations")
@@ -570,26 +593,6 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
         while projected_end < end_time:
             step_begun = time.time()
             self.logger.debug(f"iteration {aStep} of PMC algorithm, started at {step_begun}".format(aStep))
-            if aStep == 0 and journal_file is not None:
-                accepted_parameters = journal.get_accepted_parameters(-1)
-                accepted_weights = journal.get_weights(-1)
-
-                self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
-                                                                  accepted_weights=accepted_weights)
-
-                kernel_parameters = []
-                for kernel in self.kernel.kernels:
-                    kernel_parameters.append(
-                        self.accepted_parameters_manager.get_accepted_parameters_bds_values(kernel.models))
-                self.accepted_parameters_manager.update_kernel_values(self.backend, kernel_parameters=kernel_parameters)
-
-                # 3: calculate covariance
-                self.logger.info("Calculateing covariance matrix")
-                new_cov_mats = self.kernel.calculate_cov(self.accepted_parameters_manager)
-                # Since each entry of new_cov_mats is a numpy array, we can multiply like this
-                # accepted_cov_mats = [covFactor * new_cov_mat for new_cov_mat in new_cov_mats]
-                accepted_cov_mats = self._compute_accepted_cov_mats(covFactor, new_cov_mats)
-
             seed_arr = self.rng.randint(0, np.iinfo(np.uint32).max, size=n_samples, dtype=np.uint32)
             rng_arr = np.array([np.random.RandomState(seed) for seed in seed_arr])
             rng_pds = self.backend.parallelize(rng_arr)
@@ -598,8 +601,8 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             # print("INFO: Broadcasting parameters.")
             self.logger.info("Broadcasting parameters")
             self.epsilon = epsilon_arr[aStep]
-            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters, accepted_weights,
-                                                              accepted_cov_mats)
+            #self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters, accepted_weights,
+            #                                                  accepted_cov_mats)
 
             # 1: calculate resample parameters
             # print("INFO: Resampling parameters")
@@ -651,6 +654,7 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             new_cov_mats = self.kernel.calculate_cov(self.accepted_parameters_manager)
             # Since each entry of new_cov_mats is a numpy array, we can multiply like this
             new_cov_mats = [covFactor * new_cov_mat for new_cov_mat in new_cov_mats]
+            self.accepted_parameters_manager.update_broadcast(self.backend, accepted_cov_mats=new_cov_mats)
 
             # 4: Update the newly computed values
             accepted_parameters = new_parameters
@@ -672,8 +676,8 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
                 journal.add_distances(copy.deepcopy(distances))
                 journal.add_weights(copy.deepcopy(accepted_weights))
                 journal.add_ESS_estimate(accepted_weights)
-                self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
-                                                                  accepted_weights=accepted_weights)
+                #self.accepted_parameters_manager.update_broadcast(self.backend, accepted_parameters=accepted_parameters,
+                #                                                  accepted_weights=accepted_weights)
                 names_and_parameters = self._get_names_and_parameters()
                 journal.add_user_parameters(names_and_parameters)
                 journal.number_of_simulations.append(self.simulation_counter)
@@ -836,7 +840,7 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     eps_init = np.array([50])
     #eps_init = np.array([0.75])
     #n_samples = 10000
-    n_samples = 10
+    n_samples = 40
     n_samples_per_param = 5
     epsilon_percentile = 60
     #epsilon_percentile = 10
@@ -859,15 +863,22 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
             print("creating sampler", flush=True)
             kernal = abcpy.perturbationkernel.DefaultKernel(varaible_list)
             sampler = TimedPMCABC([model], [distance_calc], backend, kernal, seed=1)
-            print(f"Running for {duration} seconds aprox", flush=True)
+            #sampler = abcpy_new_inferences.PMCABC([model], [distance_calc], backend, kernal, seed=1)
+            print(f"Running for {duration/(60*60):.1f} hours aprox", flush=True)
             journal_name, journal = sampler.sample([objective], duration, eps_init,
                                                    n_samples, n_samples_per_param,
                                                    epsilon_percentile, full_output=True,
                                                    journal_file=journal_name_list,
                                                    log_dir=log_dir)
+            #journal = sampler.sample([objective], 2, eps_init,
+            #                                      n_samples, n_samples_per_param,
+            #                                      epsilon_percentile, full_output=True,
+            #                                      journal_file=journal_name_list[-1])
+            #journal_name = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
+            #journal_name_list.append(journal_name)
+            #journal.save(journal_name)
             run_complete = True
         except Exception as e:  # something failed
-            st()
             print("Exception during optimisation")
             print(e)
             n_tries += 1
@@ -876,11 +887,46 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
             print("Retrying", flush=True)
             duration += start_time - time.time()
             print(f"Journal_name_list is {journal_name_list}")
+    print_journal_to_log(translator, journal_name_list[-1])
 
-    #log_path = "logs/New_Journal.jnl"
-    #print(f"Saveing to {log_path}")
-    #journal.save(log_path)
-    #return journal
+
+def journal_to_log(translator, journal_name):
+    fixed_params = translator.fixed_params
+    journal = abcpy.output.Journal.fromFile(journal_name)
+    hyper_to_log = ["score", "weights"]
+    param_to_log = list(translator.unfixed_order)
+    scores = np.concatenate(journal.distances).reshape((-1, 1))
+    weights = np.concatenate(journal.weights)
+    hyper_log = np.hstack((scores, weights))
+    # now loop over each step getting the parameters
+    items_per_step = len(journal.weights[0])
+    # this will come in raw optimiser format
+    raw_log = np.empty((len(scores), len(param_to_log)), dtype=float)
+    for step_n, params in enumerate(journal.names_and_parameters):
+        step_start = step_n * items_per_step
+        for col, name in enumerate(param_to_log):
+            # it's nested in a stupid way
+            for i, val in enumerate(params[name]):
+                raw_log[step_start + i, col] = val[0]
+    # then loop through again and convert witht eh translator
+    param_log = []
+    for row in raw_log:
+        converted = translator.list_to_clustering(row)
+        param_log.append([converted[name] for name in param_to_log])
+    # now make the best score
+    best_idx = np.nanargmin(scores)
+    best_params = {name: param_log[best_idx][col]
+                   for col, name in enumerate(param_to_log)}
+    best_params.update(fixed_params)
+    return hyper_to_log, hyper_log, param_to_log, param_log, best_params, journal_name
+
+
+def print_journal_to_log(translator, journal_name):
+    log_args = journal_to_log(translator, journal_name)
+    string = log_text(*log_args)
+    file_name = journal_name + '.txt'
+    with open(file_name, 'w') as log_file:
+        log_file.write(string)
 
 ##################### logging ############################
 
@@ -908,19 +954,18 @@ def reserve_name(name_form):
         except FileExistsError:
             i += 1
 
-
 def print_log(hyper_to_log, hyper_log,
               params_to_log, param_log, full_final_params,
-              log_dir="./logs", other_records=None):
+              log_dir="./logs", other_records=None,
+              file_name=None):
     try:
         os.mkdir(log_dir)
     except FileExistsError:
         pass
     text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
-    #difficulty_name = os.path.join(log_dir, "difficulty{:03d}.awkd")
     file_name = reserve_name(log_name)
-    with open(log_name.format(i), 'w') as new_file:
+    with open(file_name, 'w') as new_file:
         new_file.write(text)
 
 
