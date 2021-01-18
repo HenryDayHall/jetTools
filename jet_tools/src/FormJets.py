@@ -3824,9 +3824,15 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
         if checkpoints is not None:
             check_here = {k:v[event_n] for k, v in checkpoints.items()
                           if len(v) > event_n and v[event_n] is not None}
-        jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
-                                 checkpoints=check_here,
-                                 **additional_parameters)
+        try:
+            jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
+                                     checkpoints=check_here,
+                                     **additional_parameters)
+        except np.linalg.LinAlgError:  # we can just ignore this event
+            eigenvalues.append([])
+            if not silent:
+                print(f"LinAlgError in event {event_n}")
+            continue
         new_checkpoints += update_checkpoint_dict(checkpoint_content, checkpoint_hyper,
                                                   jets, check_here)
         if has_eigenvalues:
