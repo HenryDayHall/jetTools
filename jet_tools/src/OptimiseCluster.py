@@ -908,6 +908,33 @@ class ClippedNormal(abcpy.probabilisticmodels.ProbabilisticModel,
     def get_output_dimension(self):
         return 1
 
+    def pdf(self, input_values, x):
+        """
+        Calculates the probability density function at point x.
+        Commonly used to determine whether perturbed parameters are still valid according to the pdf.
+
+        Parameters
+        ----------
+        input_values: list
+            List of input parameters of the from [mu, sigma]
+        x: list
+            The point at which the pdf should be evaluated.
+
+        Returns
+        -------
+        Float:
+            The evaluated pdf at point x.
+        """
+        minimum = input_values[2]
+        if x < minimum:
+            pdf = 0.
+        else:
+            mu = input_values[0]
+            sigma = input_values[1]
+            pdf = scipy.stats.norm(mu, sigma).pdf(x)
+        self.calculated_pdf = pdf
+        return pdf
+
 
 def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
                                total_calls=10000, silent=True, **kwargs):
@@ -956,8 +983,10 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     journal_name_list = []
     if 'last_journal' in kwargs:
         journal_name_list.append(kwargs['last_journal'])
-    while not run_complete:
-        try:
+    #while not run_complete:
+    #    try:
+    if True:
+        if True:
             # create these in the loop to refresh input
             print("creating model", flush=True)
             model = ClusteringModel(varaible_list, eventWise_path=eventWise_name,
@@ -980,15 +1009,15 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
             #journal_name_list.append(journal_name)
             #journal.save(journal_name)
             run_complete = True
-        except Exception as e:  # something failed
-            print("Exception during optimisation")
-            print(e)
-            n_tries += 1
-            if n_tries > max_tries:
-                break
-            print("Retrying", flush=True)
-            duration += start_time - time.time()
-            print(f"Journal_name_list is {journal_name_list}")
+    #    except Exception as e:  # something failed
+    #        print("Exception during optimisation")
+    #        print(e)
+    #        n_tries += 1
+    #        if n_tries > max_tries:
+    #            break
+    #        print("Retrying", flush=True)
+    #        duration += start_time - time.time()
+    #        print(f"Journal_name_list is {journal_name_list}")
     print_journal_to_log(translator, journal_name_list[-1])
 
 
