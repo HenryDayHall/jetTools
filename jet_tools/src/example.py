@@ -1,7 +1,7 @@
 # some generic, unintresting imports
 import numpy as np
 import os
-from jet_tools.src import InputTools, FormJets, Components
+from . import InputTools, FormJets, Components
 from ipdb import set_trace # to allow interactiverty
 
 def interactive():
@@ -26,8 +26,8 @@ else:
         exit
 print("This hepmc file will be read into an awkward array")
 input("press enter to continue\n...")
-print(" > from jet_tools.src import ReadHepmc")
-from jet_tools.src import ReadHepmc
+print(" > from jet_tools import ReadHepmc")
+from . import ReadHepmc
 print(" > required_size = 10")
 required_size = 10
 print(" > eventWise = ReadHepmc.Hepmc(*os.path.split(hepmc_path), start=0, stop=required_size)")
@@ -37,8 +37,8 @@ print("If the chosen stop point is beyond the end of the hepmc (or equal to np.i
       "The awkward array is wrapped in a cutsom object called an EventWise. "
       "If the hepmc file is very large it may be necessary to read it in chunks. "
       "The chunks can be combined using eventWise.combine (see the doc string for combine).")
-print(" > from jet_tools.src.Components import EventWise")
-from jet_tools.src.Components import EventWise
+print(" > from jet_tools.Components import EventWise")
+from jet_tools.Components import EventWise
 print("This class is structured around the format of event by event particle data.")
 print("(for direct access to the awkward array use EventWise._column_contents)")
 input("press enter to continue\n...")
@@ -110,8 +110,8 @@ if InputTools.yesNo_question("Do you want to try adding a root file for detector
 
     print("The easiest way to use the RootReadout class is actually with "
           "the function marry in JoinHepMCRoot.py")
-    print(" > from jet_tools.src import JoinHepMCRoot")
-    from jet_tools.src import JoinHepMCRoot
+    print(" > from jet_tools import JoinHepMCRoot")
+    from jet_tools import JoinHepMCRoot
     print(" > eventWise = JoinHepMCRoot.marry(hepmc_path, root_path)")
     eventWise = JoinHepMCRoot.marry(eventWise, root_path)
     print("This results in an eventWise that contains data from the root file "

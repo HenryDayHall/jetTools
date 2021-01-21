@@ -2,7 +2,7 @@
 import numpy as np
 import awkward
 import scipy.spatial
-from jet_tools.src import FormShower, TrueTag, FormJets, Components, PlottingTools
+from . import FormShower, TrueTag, FormJets, Components, PlottingTools
 import os
 from matplotlib import pyplot as plt
 from ipdb import set_trace as st

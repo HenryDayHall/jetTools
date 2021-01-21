@@ -1,7 +1,7 @@
 """ Tools to turn clusters of particles into showers """
 import os
 from ipdb import set_trace as st
-from jet_tools.src import PDGNames, DrawTrees, Components
+from . import PDGNames, DrawTrees, Components
 import itertools
 from matplotlib import pyplot as plt
 import numpy as np
@@ -216,7 +216,7 @@ class Shower:
                 index = list_particle_idxs.index(child)
                 # don't overwite a rank, so in a loop the lowers rank stands
                 # also needed to prevent perpetual loops
-                if ranks[index] == -1:
+                if True or ranks[index] == -1:
                     current_rank.append(index)
             ranks[current_rank] = rank_n
             has_decendants = len(current_rank) > 0
@@ -227,6 +227,56 @@ class Shower:
         ranks[[i in ends for i in self.particle_idxs]] = rank_n
         self.ranks = ranks
         return ranks
+
+    def simplify_shower(self):
+        """Check for chains of the same particle and cut them to one link"""
+        one_child = {i for i, children in enumerate(self.children) if len(children) == 1}
+        one_parent = {i for i, parents in enumerate(self.parents) if len(parents) == 1}
+        straight_link = one_parent.intersection(one_child)
+        idx_list = self.particle_idxs.tolist()
+        keep = np.ones_like(self.particle_idxs, dtype=bool)
+        while straight_link:
+            chain = [straight_link.pop()]
+            # either the parent of the child must share the label
+            while True:  # search for parents
+                parent = self.parents[chain[-1]]
+                try:
+                    parent_idx = idx_list.index(parent)
+                except ValueError:  # goes to the edge
+                    chain = chain[:-1]  # remove the edge
+                    break
+                if parent_idx in straight_link:
+                    straight_link.remove(parent_idx)
+                    chain.append(parent_idx)
+                else:
+                    break
+            while True:  # search for children
+                child = self.children[chain[0]]
+                try:
+                    child_idx = idx_list.index(child)
+                except ValueError:  # goes to the edge
+                    chain = chain[1:]  # remove the edge
+                    break
+                if child_idx in straight_link:
+                    straight_link.remove(child_idx)
+                    chain = [child_idx] + chain
+                else:
+                    break
+            # the final child_idx and parent_idx are off the chain,
+            # connect them together and remove the chain
+            assert child_idx not in chain
+            assert parent_idx not in chain
+            keep[chain] = False
+            self.parents[child_idx][0] = self.particle_idxs[parent_idx]
+            self.children[parent_idx][0] = self.particle_idxs[child_idx]
+        self.particle_idxs = self.particle_idxs[keep]
+        self.parents = self.parents[keep]
+        self.children = self.children[keep]
+        self.labels = self.labels[keep]
+        if self.ranks is not None:
+            self.ranks = self.ranks[keep]
+        st()
+        self.find_ranks()
 
     def graph(self):
         """Turn the shower into a dotgraph"""
