@@ -13,4 +13,5 @@
 #del os
 
 # for now just manually specify stuff
-__all__ = ['Components', 'FormVertices', 'JoinHepMCRoot', 'ReadHepmc', 'DrawTrees', 'CompareClusters', 'PDGNames', 'TrueTag', 'MergeHepmc', 'TreeWalker', 'FakeTracksTowers', 'RescaleJets', 'PlottingTools', 'ParameterInvestigation', 'DrawBarrel', 'TrueDenominator', 'ShapeVariables', 'MassPeaks', 'Constants', 'JetQuality', 'InputTools', 'AreaMeasures', 'SingleFormJets', 'OverlapPlotting', 'CompareDatasets', 'ParallelFormJets', 'FormJets', 'FormShower']
+# avoid DrawBarrel becuase it requires mayavi
+__all__ = ['Components', 'FormVertices', 'JoinHepMCRoot', 'ReadHepmc', 'DrawTrees', 'CompareClusters', 'PDGNames', 'TrueTag', 'MergeHepmc', 'TreeWalker', 'FakeTracksTowers', 'RescaleJets', 'PlottingTools', 'ParameterInvestigation', 'TrueDenominator', 'ShapeVariables', 'MassPeaks', 'Constants', 'JetQuality', 'InputTools', 'AreaMeasures', 'SingleFormJets', 'OverlapPlotting', 'CompareDatasets', 'ParallelFormJets', 'FormJets', 'FormShower']
