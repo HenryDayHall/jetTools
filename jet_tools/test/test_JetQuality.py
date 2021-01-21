@@ -7,7 +7,7 @@ from jet_tools.test.tools import TempTestDir
 import numpy as np
 import numpy.testing as tst
 import awkward
-from jet_tools.src import JetQuality, Components
+from jet_tools import JetQuality, Components
 
 def test_sorted_masses():
     params = {}

@@ -1,4 +1,4 @@
-from jet_tools.src import ReadHepmc, Components
+from . import ReadHepmc, Components
 import awkward
 from ipdb import set_trace as st
 import os

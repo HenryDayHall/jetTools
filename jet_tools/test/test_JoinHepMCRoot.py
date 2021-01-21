@@ -1,6 +1,6 @@
 import numpy as np
 from numpy import testing as tst
-from jet_tools.src import Components, JoinHepMCRoot, ReadHepmc
+from jet_tools import Components, JoinHepMCRoot, ReadHepmc
 from jet_tools.test.tools import TempTestDir, generic_equality_comp, data_dir
 import os
 from ipdb import set_trace as st

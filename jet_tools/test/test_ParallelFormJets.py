@@ -5,7 +5,7 @@ import numpy.testing as tst
 import shutil
 import numpy as np
 from ipdb import set_trace as st
-from jet_tools.src import ParallelFormJets, Components, FormJets
+from jet_tools import ParallelFormJets, Components, FormJets
 from jet_tools.test.tools import TempTestDir
 import unittest.mock
 import time
