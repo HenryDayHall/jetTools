@@ -31,4 +31,3 @@ dependencies:
   - pip:
     - sklearn
     - scikit-hep == 0.5.1
-prefix: /scratch/jlc1n20/miniconda3/envs/jet-tools
