@@ -14,4 +14,11 @@
 
 # for now just manually specify stuff
 # avoid DrawBarrel becuase it requires mayavi
-__all__ = ['Components', 'FormVertices', 'JoinHepMCRoot', 'ReadHepmc', 'DrawTrees', 'CompareClusters', 'PDGNames', 'TrueTag', 'MergeHepmc', 'TreeWalker', 'FakeTracksTowers', 'RescaleJets', 'PlottingTools', 'ParameterInvestigation', 'TrueDenominator', 'ShapeVariables', 'MassPeaks', 'Constants', 'JetQuality', 'InputTools', 'AreaMeasures', 'SingleFormJets', 'OverlapPlotting', 'CompareDatasets', 'ParallelFormJets', 'FormJets', 'FormShower']
+__all__ = ['Components', 'FormVertices', 'JoinHepMCRoot',
+           'ReadHepmc', 'DrawTrees', 'CompareClusters',
+           'PDGNames', 'TrueTag', 'MergeHepmc', 'TreeWalker',
+           'RescaleJets', 'PlottingTools',
+           'ParameterInvestigation', 'TrueDenominator', 'ShapeVariables',
+           'MassPeaks', 'Constants', 'JetQuality', 'InputTools',
+           'AreaMeasures', 'SingleFormJets', 'OverlapPlotting',
+           'CompareDatasets', 'ParallelFormJets', 'FormJets', 'FormShower']
