@@ -1,5 +1,5 @@
 """ module to test the Constants.py module """
-from jet_tools.src import Constants
+from jet_tools import Constants
 import numpy as np
 import pytest
 

@@ -6,7 +6,7 @@ import pytest
 import numpy as np
 from numpy import testing as tst
 from jet_tools.test.tools import TempTestDir
-from jet_tools.src import Components, CompareClusters, Constants, JetQuality, TrueTag
+from jet_tools import Components, CompareClusters, Constants, JetQuality, TrueTag
 import unittest.mock
 
 
@@ -297,11 +297,11 @@ def test_append_scores():
         ew = Components.EventWise(os.path.join(dir_name, save_name))
         ew.append(**params)
         # mock JetQuality.quality_width_fracton and get_detectable_comparisons
-        with unittest.mock.patch('jet_tools.src.JetQuality.quality_width_fracton',
+        with unittest.mock.patch('jet_tools.JetQuality.quality_width_fracton',
                                  new=fake_quality_width_fraction):
-            with unittest.mock.patch('jet_tools.src.CompareClusters.get_detectable_comparisons',
+            with unittest.mock.patch('jet_tools.CompareClusters.get_detectable_comparisons',
                                      new=fake_detectable_comparisons):
-                with unittest.mock.patch('jet_tools.src.TrueTag.add_detectable_fourvector',
+                with unittest.mock.patch('jet_tools.TrueTag.add_detectable_fourvector',
                                          new=fake_empty):
                     CompareClusters.append_scores(ew)
                     tst.assert_allclose(ew.Jet_Bork, [np.inf, np.inf, np.inf])
