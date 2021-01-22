@@ -1,11 +1,13 @@
+import os
+import csv
+import gzip
+
+import collections
+from ipdb import set_trace as st
 import numpy as np
 import awkward
-import os
-import collections
-from jet_tools.src import Components, InputTools
-import csv
-from ipdb import set_trace as st
 
+from jet_tools.src import Components, InputTools
 
 class Hepmc(Components.EventWise):
     """ """
@@ -55,13 +57,7 @@ class Hepmc(Components.EventWise):
             # there are more but unfortunatly I cannot be bothered to add them right now
             # parse the event
             print("Parsing events")
-            try:
-                self._parse_events(file_name, start, stop)
-            except Exception as e:
-                if file_name.endswith('.gz'):
-                    raise ValueError("You need to unzip the hepmc file. \n try;\n" +
-                                     f"> gunzip {file_name}")
-                raise e  # otherwise it's something else
+            self._parse_events(file_name, start, stop)
             # figure out which particles created which other particles
             print("Assigning heritage")
             self._assign_heritage()
@@ -160,6 +156,14 @@ class Hepmc(Components.EventWise):
                                                     f"has {link_counter[flow]} outgoing colour " +\
                                                     f"flows for colour flow {flow}"
 
+    
+    def _open_hep(self, filepath):
+        if filepath.endswith('.gz'):
+            f = gzip.open(filepath, mode='rt')
+        else:
+            f = open(filepath, 'r')
+        return f
+
 
     def _parse_events(self, filepath, start=0, stop=np.inf):
         """
@@ -180,7 +184,7 @@ class Hepmc(Components.EventWise):
         
         """
         assert os.path.exists(filepath), f"Can't see that file; {filepath}"
-        with open(filepath, 'r') as this_file:
+        with self._open_hep(filepath) as this_file:
             csv_reader = csv.reader(this_file, delimiter=' ', quotechar='"')
             event_reached = 0
             event_line = None
