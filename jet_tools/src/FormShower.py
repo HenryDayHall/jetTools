@@ -200,7 +200,7 @@ class Shower:
         
         """
         # put the first rank in
-        current_rank = self.root_local_idxs  
+        current_rank = self.root_local_idxs
         rank_n = 0
         ranks = np.full_like(self.particle_idxs, -1, dtype=int)
         ranks[current_rank] = rank_n
@@ -223,12 +223,12 @@ class Shower:
         assert -1 not in ranks
         rank_n -= 1  # will have incremented it one time too many
         # finally, promote all end state particles to the highest rank
-        ends = self.ends
-        ranks[[i in ends for i in self.particle_idxs]] = rank_n
+        #ends = self.ends
+        #ranks[[i in ends for i in self.particle_idxs]] = rank_n
         self.ranks = ranks
         return ranks
 
-    def simplify_shower(self):
+    def remove_straight_links(self):
         """Check for chains of the same particle and cut them to one link"""
         one_child = {i for i, children in enumerate(self.children) if len(children) == 1}
         one_parent = {i for i, parents in enumerate(self.parents) if len(parents) == 1}
@@ -238,6 +238,7 @@ class Shower:
         while straight_link:
             chain = [straight_link.pop()]
             # either the parent of the child must share the label
+            parent_idx = -1
             while True:  # search for parents
                 parent = self.parents[chain[-1]]
                 try:
@@ -250,6 +251,10 @@ class Shower:
                     chain.append(parent_idx)
                 else:
                     break
+            child_idx = -1
+            if not chain:
+                # chan was an edge 
+                continue
             while True:  # search for children
                 child = self.children[chain[0]]
                 try:
@@ -262,20 +267,28 @@ class Shower:
                     chain = [child_idx] + chain
                 else:
                     break
+            if not chain:
+                # chan was an edge 
+                continue
             # the final child_idx and parent_idx are off the chain,
             # connect them together and remove the chain
             assert child_idx not in chain
             assert parent_idx not in chain
             keep[chain] = False
-            self.parents[child_idx][0] = self.particle_idxs[parent_idx]
-            self.children[parent_idx][0] = self.particle_idxs[child_idx]
+            # off the ends of the chain there may be more than one aprent of child
+            # make a mask to replace the right one
+            mask = self.parents[child_idx] == self.particle_idxs[chain[0]]
+            self.parents[child_idx][mask] = self.particle_idxs[parent_idx]
+            mask = self.children[parent_idx] == self.particle_idxs[chain[-1]]
+            self.children[parent_idx][mask] = self.particle_idxs[child_idx]
         self.particle_idxs = self.particle_idxs[keep]
         self.parents = self.parents[keep]
         self.children = self.children[keep]
         self.labels = self.labels[keep]
         if self.ranks is not None:
             self.ranks = self.ranks[keep]
-        st()
+        # local root may have moved
+        self._find_roots()
         self.find_ranks()
 
     def graph(self):
@@ -315,7 +328,8 @@ class Shower:
         """ global idxs not local """
         _ends = []
         for i, children_here in enumerate(self.children):
-            if np.all([child is None for child in children_here]):
+            in_shower = set(children_here).intersection(self.particle_idxs)
+            if not in_shower:
                 _ends.append(self.particle_idxs[i])
         return _ends
 
@@ -362,6 +376,67 @@ def upper_layers(eventWise, n_layers=5, capture_pids=[]):
     shower = Shower(particle_idxs, eventWise.Parents[particle_idxs],
                     eventWise.Children[particle_idxs], labels, amalgam=True)
     return shower
+
+def capture_generation(eventWise, capture_pids, num_additional_children=1):
+    """Capture the path to generate the specified particles """
+    assert eventWise.selected_index is not None
+    # start by finding the first generated particle of capture_pids
+    particle_idxs = set()
+    for pid in capture_pids:
+        all_pid_matches = np.where(eventWise.MCPID == pid)[0]
+        children = eventWise.Children[all_pid_matches].flatten()
+        particle_idxs.update({idx for idx in all_pid_matches if idx not in children})
+    last_layer = list(particle_idxs)
+    # now work up to the top
+    while last_layer:
+        last_layer = eventWise.Parents[last_layer].flatten().tolist()
+        particle_idxs.update(last_layer)
+    for _ in range(num_additional_children):
+        # add the first decendednt of everythign captured
+        particle_idxs.update(eventWise.Children[list(particle_idxs)].flatten())
+    particle_idxs = list(particle_idxs)
+    labeler = PDGNames.IDConverter()
+    labels = [labeler[pid] for pid in eventWise.MCPID[particle_idxs]]
+    shower = Shower(particle_idxs, eventWise.Parents[particle_idxs],
+                    eventWise.Children[particle_idxs], labels, amalgam=True)
+    return shower
+
+
+def label_observable_parents(eventWise, shower, observables=None):
+    assert eventWise.selected_index is not None
+    if observables is None:
+        observables = eventWise.JetInputs_SourceIdx
+    observables = set(observables)
+    idx_list = shower.particle_idxs.tolist()
+    ends = shower.ends
+    observed_from_ends = []
+    groups = [-1 for _ in ends]
+    for end_n, end in enumerate(ends):
+        from_here = descendant_idxs(eventWise, end)
+        obs_here = from_here.intersection(observables)
+        observed_from_ends.append(obs_here)
+        if not obs_here:
+            continue
+        overlap_with = 0
+        while not obs_here.intersection(observed_from_ends[overlap_with]):
+            # it must overlap with itself, the last element
+            overlap_with += 1
+        if overlap_with == len(observed_from_ends)-1:
+            # it overlaps with itself only
+            # need a new group number
+            group = np.max(groups) + 1
+        else:
+            group = groups[overlap_with]
+        groups[end_n] = group
+
+    new_labels = shower.labels.tolist()
+    for group, end in zip(groups, ends):
+        if group > -1:
+            # label this one
+            end_idx = idx_list.index(end)
+            new_labels[end_idx] += f" Obs#{group}"
+    shower.labels = awkward.fromiter(new_labels)
+
 
 
 def get_roots(particle_ids, parents):
