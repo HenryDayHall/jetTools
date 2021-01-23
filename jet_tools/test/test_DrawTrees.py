@@ -2,7 +2,7 @@
 from networkx.drawing.nx_pydot import read_dot
 from jet_tools.test.tools import TempTestDir
 import os
-from jet_tools.src import DrawTrees, FormShower
+from jet_tools import DrawTrees, FormShower
 from ipdb import set_trace as st
 
 

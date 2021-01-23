@@ -1,4 +1,4 @@
-from jet_tools.src import Components, PDGNames, InputTools, FormJets
+from . import Components, PDGNames, InputTools, FormJets
 import ast
 import multiprocessing
 import time

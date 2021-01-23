@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from jet_tools.test.tools import TempTestDir
 import os
 import io
-from jet_tools.src import InputTools
+from jet_tools import InputTools
 import unittest.mock
 from ipdb import set_trace as st
 import numpy.testing as tst

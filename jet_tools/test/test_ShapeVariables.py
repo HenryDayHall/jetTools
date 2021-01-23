@@ -1,6 +1,6 @@
 """ Testing module for the ShapeVariables module"""
 from matplotlib import pyplot as plt
-from jet_tools.src import ShapeVariables
+from jet_tools import ShapeVariables
 import numpy as np
 from ipdb import set_trace as st
 

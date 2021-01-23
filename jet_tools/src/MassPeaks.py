@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import matplotlib
 import scipy.spatial
 from ipdb import set_trace as st
-from jet_tools.src import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
+from . import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
 
 
 def order_tagged_jets(eventWise, jet_name, filtered_event_idxs, ranking_variable="PT"):
@@ -1008,7 +1008,7 @@ def descendants_masses(eventWise, use_jetInputs=True):
 
 
 if __name__ == '__main__':
-    from jet_tools.src import Components
+    from jet_tools import Components
     best_name = InputTools.get_file_name("Name the eventWise file? ", 'awkd').strip()
     if best_name:
         ew = Components.EventWise.from_file(best_name)

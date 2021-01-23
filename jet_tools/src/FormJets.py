@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 import matplotlib
 from ipdb import set_trace as st
 import numpy as np
-from jet_tools.src import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
+from . import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
 
 TRUTH_COLOUR = 'limegreen'
 SPECTRAL_COLOUR = 'dodgerblue'

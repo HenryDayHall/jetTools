@@ -573,7 +573,7 @@ def plot_beamline(length, colour=(1., 0.7, 0.2), interaction=True):
 
 def main():
     """ """
-    from jet_tools.src import Components, InputTools, FormJets
+    from jet_tools import Components, InputTools, FormJets
     eventWise_path = InputTools.get_file_name("Name the eventWise: ", '.awkd').strip()
     if eventWise_path:
         eventWise = Components.EventWise.from_file(eventWise_path)
