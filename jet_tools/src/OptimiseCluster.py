@@ -77,30 +77,29 @@ def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, gen
     valid_jets = valid_jets[jet_pt[valid_jets] > other_hyperparams['min_jetpt']]
     seperate_jets, matched_jets = CompareClusters.match_jets(tags, jets_tags, tag_groups,
                                                              jet_masses, valid_jets)
+    missed_jets = len(eventWise.DetectableTag_Roots.flatten()) - seperate_jets
     mass2 = np.zeros((len(matched_jets), 2))
-    # need to insist on seperate jets
-    # this will also penalise unforn jets
-    # TODO change this to ony removing actual merges?
-    merge_or_loss = np.zeros(len(matched_jets), dtype=bool)
+    # insist on seperate jets
     for tag_n, tag_leaves in enumerate(eventWise.DetectableTag_Leaves):
         jets_here = matched_jets[tag_n]
-        if len(eventWise.DetectableTag_Roots[tag_n]) > len(jets_here):
-            merge_or_loss[tag_n] = True
-        else:
-            tag_mass2, bg_mass2, _, _, _, _, _, _, _ = \
-                   CompareClusters.event_detectables(tag_leaves, jets_here,
-                                                     input_idxs, source_idx, energy,
-                                                     px, py, pz, mass_only=True)
-            mass2[tag_n, 0] += bg_mass2
-            mass2[tag_n, 1] += tag_mass2
+        if len(jets_here) and len(eventWise.DetectableTag_Roots[tag_n]) > len(jets_here):
+            # at least one jet is a merged jet
+            # leave both masses 0
+            continue
+        tag_mass2, bg_mass2, _, _, _, _, _, _, _ = \
+               CompareClusters.event_detectables(tag_leaves, jets_here,
+                                                 input_idxs, source_idx, energy,
+                                                 px, py, pz, mass_only=True)
+        mass2[tag_n, 0] += bg_mass2
+        mass2[tag_n, 1] += tag_mass2
     mass2 = np.maximum(mass2, 0)   # imaginary mass is a floating point error
     # take the euclidien norm of the two types of mass
     mass = np.sqrt(mass2[:, 0] + 
                    (eventWise.DetectableTag_Mass - np.sqrt(mass2[:, 1]))**2)
-    #merge_or_loss_penalty = np.sum(eventWise.DetectableTag_Mass[merge_or_loss])
-    merge_or_loss_penalty = 10*np.sum(merge_or_loss)
-    loss = np.nansum(mass[~merge_or_loss]) + merge_or_loss_penalty  # penalise merging jets
-    assert np.isfinite(loss), f"loss is {loss}, mass2={mass2}, merge_or_loss_penalty={merge_or_loss_penalty}"
+    # penalise missing jet a little
+    missed_jets_penalty = 1. + 0.1*(missed_jets)
+    loss = np.nansum(mass) * missed_jets_penalty
+    #assert np.isfinite(loss), f"loss is {loss}, mass2={mass2}, merge_or_loss_penalty={merge_or_loss_penalty}"
     return loss
 
 
@@ -122,6 +121,8 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
     loss += 2**unclusterable_counter
     loss = min(loss/len(batch), 1e5)  # cap the value of loss
     #print(f"loss = {loss}, unclusterable = {unclusterable_counter}")
+    if loss < 200:
+        print('.', end='', flush=True)
     return loss
 
 
@@ -195,10 +196,10 @@ def parameter_values(jet_class, stopping_condition):
         jet_class = getattr(FormJets, jet_class)
     # make some default continuous params
     continuous_params = dict(ExpofPTMultiplier=dict(mean=0., std=1., minimum=None),
-                             AffinityExp=dict(mean=2., std=1., minimum=None),
+                             AffinityExp=dict(mean=2., std=1., minimum=0.001),
                              Sigma=dict(mean=.2, std=1., minimum=0.001),
                              CutoffDistance=dict(mean=6., std=3., minimum=0.),
-                             EigNormFactor=dict(mean=1.5, std=1., minimum=None))
+                             EigNormFactor=dict(mean=1.5, std=1., minimum=0.))
     if stopping_condition == 'meandistance':
         continuous_params['DeltaR'] = dict(mean=1.28, std=1., minimum=0.)
     else:
@@ -602,7 +603,7 @@ class TimedPMCABC(abcpy_new_inferences.PMCABC):
             # check distances
             distances = journal.distances[-1]
             # should be max or min?
-            epsilon_arr = np.minimum(epsilon_init, np.max(distances))
+            epsilon_arr = np.maximum(epsilon_init, np.max(distances))
         else:
             epsilon_arr = epsilon_init
         epsilon_arr = list(epsilon_arr)
@@ -636,7 +637,8 @@ class TimedPMCABC(abcpy_new_inferences.PMCABC):
             params_and_dists_and_counter_pds = self.backend.map(self._resample_parameter, rng_pds)
             params_and_dists_and_counter = self.backend.collect(params_and_dists_and_counter_pds)
             new_parameters, distances, counter = [list(t) for t in zip(*params_and_dists_and_counter)]
-            new_parameters = np.array(new_parameters)
+            # need to instist parameters are floats, otherwise other bits break...
+            new_parameters = np.array(new_parameters, dtype=float)
             distances = np.array(distances)
 
             for count in counter:
@@ -965,7 +967,7 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     objective = [np.array(0)]
     # parameters for the optimiser
     #eps_init = np.array([10000])
-    eps_init = np.array([60])
+    eps_init = np.array([70])
     #eps_init = np.array([0.75])
     #n_samples = 10000
     n_samples = 40
@@ -1001,6 +1003,11 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
                                                    epsilon_percentile, full_output=True,
                                                    journal_file=journal_name_list,
                                                    log_dir=log_dir)
+            journal.configuration["fixed_parameters"] = self.translator.fixed_parameters
+            if not isinstance(jet_class, str):
+                jet_class = jet_class.__name__
+            journal.configuration["jet_class"] = jet_class
+            journal.save(journal_name)
             #journal = sampler.sample([objective], 2, eps_init,
             #                                      n_samples, n_samples_per_param,
             #                                      epsilon_percentile, full_output=True,
@@ -1058,6 +1065,54 @@ def print_journal_to_log(translator, journal_name):
     file_name = journal_name + '.txt'
     with open(file_name, 'w') as log_file:
         log_file.write(string)
+
+
+def journal_to_best(journal, num_best=100, max_steps_back=None):
+    if isinstance(journal, str):
+        journal = abcpy.output.Journal.fromFile(journal)
+    jet_class = journal.configuration.get("jet_class", "SpectralFull")
+    if "fixed_parameters" in journal.configuration:
+        fixed_params = journal.configuration["fixed_parameters"]
+    else:
+        fixed_params = dict(StoppingCondition='meandistance',
+                            EigDistance='abscos',
+                            Laplacien='symmetric',
+                            PhyDistance='angular',
+                            CombineSize='sum',
+                            ExpofPTFormat='Luclus',
+                            #ExpofPTPosition='input',
+                            AffinityType='exponent')
+    translator = ParameterTranslator(jet_class, fixed_params)
+    jet_class = translator.jet_class  # converts out of str
+
+    if max_steps_back is None:
+        max_steps_back = 0
+    distances = awkward.fromiter(journal.distances[-max_steps_back:]
+                                 ).flatten()
+    parameters = awkward.fromiter(journal.accepted_parameters[-max_steps_back:]
+                                  ).flatten()
+    best = []
+    for idx in np.argsort(distances)[:num_best]:
+        params = parameters[idx].flatten()
+        best.append(translator.list_to_clustering(params))
+    return jet_class, best
+
+def cluster_from_journal(eventWise, journal,
+                         dijet_mass=40, num_best=100, max_steps_back=None):
+    if isinstance(eventWise, str):
+        eventWise = Components.EventWise.from_file(eventWise)
+    jet_class, best = journal_to_best(journal, num_best, max_steps_back)
+    for i, params in enumerate(best):
+        print(f"{i} of {num_best}\n", flush=True)
+        jet_name = f"OptimisedJet{i}"
+        try:
+            warnings.filterwarnings('ignore')
+            FormJets.cluster_multiapply(eventWise, jet_class, params, jet_name, np.inf)
+        except Exception as e:
+            print(f"couldnt cluster params {params}")
+            print(e)
+    print("Scoring")
+    CompareClusters.append_scores(eventWise, dijet_mass=dijet_mass, overwrite=False)
 
 ##################### logging ############################
 
