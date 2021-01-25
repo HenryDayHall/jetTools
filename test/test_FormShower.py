@@ -66,6 +66,31 @@ def test_Shower():
     tst.assert_allclose(sorted(double_root.outside_connection_idxs), [4])
 
 
+def test_simplify_shower():
+    # this should do nothing to an empty shower
+    empty = FormShower.Shower([], [], [], [])
+    empty.simplify_shower()
+    assert len(empty) == 0
+    # now a simple shower where A -> B, C
+    particle_idxs = [1, 2, 3]
+    parents = [[], [1], [1]]
+    children = [[2, 3], [], []]
+    labels = ['A', 'B', 'C']
+    amalgam = False
+    simple = FormShower.Shower(particle_idxs, parents, children, labels, amalgam)
+    simple.simplify_shower()
+    assert len(simple) == 3
+    # now a shower where there is a link that could be removed
+    particle_idxs.append(4)
+    parents.append([2])
+    children[1].append(4)
+    children.append([])
+    labels.append('D')
+    simple = FormShower.Shower(particle_idxs, parents, children, labels, amalgam)
+    simple.simplify_shower()
+    assert len(simple) == 3
+
+
 def test_descendant_idxs():
     #           0   1       2    3       4   5   6          7   8   9   10
     children = [[], [2, 3], [5], [6, 5], [], [], [7, 8, 9], [], [], [], []]

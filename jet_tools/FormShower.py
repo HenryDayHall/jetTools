@@ -275,7 +275,6 @@ class Shower:
         self.labels = self.labels[keep]
         if self.ranks is not None:
             self.ranks = self.ranks[keep]
-        st()
         self.find_ranks()
 
     def graph(self):

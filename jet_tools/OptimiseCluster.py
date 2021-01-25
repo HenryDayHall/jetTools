@@ -11,7 +11,7 @@ import time
 import awkward
 import nevergrad as ng
 from ipdb import set_trace as st
-from jet_tools.src import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools, abcpy_new_inferences
+from jet_tools import InputTools, CompareClusters, Components, FormJets, TrueTag, Constants, FormShower, PlottingTools
 import numpy as np
 import abcpy.distances
 import abcpy.discretemodels
@@ -20,7 +20,9 @@ import abcpy.probabilisticmodels
 import abcpy.statistics
 import abcpy.backends
 import abcpy.output
+import abcpy.inferences
 import copy
+
 
 def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, generic_data):
     warnings.filterwarnings('ignore')
@@ -118,7 +120,7 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
             unclusterable_counter += 1
             continue
         # we didn't manage a clustering
-    loss += 2**unclusterable_counter
+    loss += 2**unclusterable_counter - 1
     loss = min(loss/len(batch), 1e5)  # cap the value of loss
     #print(f"loss = {loss}, unclusterable = {unclusterable_counter}")
     if loss < 200:
@@ -144,6 +146,8 @@ def get_usable_events(eventWise):
 
 class BatchSampler:
     def __init__(self, data, batch_size, num_samples=np.inf):
+        if isinstance(data, list):
+            data = awkward.fromiter(data)
         self.data = data
         float_len = len(data)/batch_size
         self._len = int(np.floor(float_len))
@@ -526,7 +530,7 @@ def generate_pool(eventWise_name, max_workers=10,
 
 
 # wont do sampling here as the vectoisation is hard to predict
-class TimedPMCABC(abcpy_new_inferences.PMCABC):
+class TimedPMCABC(abcpy.inferences.PMCABC):
     def sample(self, observations, duration,
                epsilon_init, n_samples, n_samples_per_param=1,
                epsilon_percentile=10,
