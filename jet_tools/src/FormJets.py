@@ -1193,6 +1193,8 @@ class PseudoJet:
         """
         # for now just merge in pairs
         local_indices = sorted([self.idx_from_inpIdx(i) for i in input_indices])
+        if not local_indices:
+            return
         replace = local_indices[0]
         for remove in local_indices[:0:-1]:
             self._merge_pseudojets(replace, remove, 0)
@@ -1595,7 +1597,9 @@ class IterativeCone(PseudoJet):
 class Spectral(PseudoJet):
     """ Clustering algorithm that embeds the jet inputs into spectral space to cluster """
     # list the params with default values
-    default_params = {'DeltaR': .2, 'NumEigenvectors': np.inf,
+    default_params = {'DeltaR': .2,
+                      'NumEigenvectors': np.inf,
+                      'EigenvalueLimit': 0.5,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent',
@@ -1610,6 +1614,7 @@ class Spectral(PseudoJet):
                       'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
@@ -1857,7 +1862,14 @@ class Spectral(PseudoJet):
         eigenvectors = np.delete(eigenvectors, to_remove, axis=1)
         eigenvalues = np.delete(eigenvalues, to_remove)
         # now the trivial eigenvector should eb removed
-        self.eigenvalues.append(eigenvalues.tolist())
+        # also remove any eigenvectors with eigenvalus over the limit
+        # assuming that leaves at least 1 iegenvector
+        under_limit = int(np.sum(eigenvalues < self.EigenvalueLimit)
+                          *np.log(self.currently_avalible))
+        under_limit = max(under_limit, 1)
+        eigenvalues = eigenvalues[:under_limit]
+        eigenvectors = eigenvectors[:, :under_limit]
+        self.eigenvalues.append(eigenvalues)
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
         if self.EigNormFactor != 0:
@@ -2312,7 +2324,7 @@ class Spectral(PseudoJet):
         all_distance = self._distances2[triangle]
         distances_ax.hist([all_distance[crossings], all_distance[~crossings]],
                           histtype='step',
-                          label=[ "Crossing jets", "Inside jets"], normed=True)
+                          label=[ "Crossing jets", "Inside jets"], density=True)
         distances_ax.set_xlabel("Distance in embedding space")
         distances_ax.set_title("Distances at start, not updated")
         distances_ax.legend()
@@ -2402,8 +2414,9 @@ class Spectral(PseudoJet):
                     real_ax.set_xlabel(r"Rapidity")
                 real_ax.set_title("Real space")
                 # check the mean distance
-                mean_distance = np.nanmean(np.sqrt(
-                    self._distances2[np.tril_indices_from(self._distances2, -1)]))
+                if len(self._distances2) > 1:
+                    mean_distance = np.nanmean(np.sqrt(
+                        self._distances2[np.tril_indices_from(self._distances2, -1)]))
                 # delete items in the eigenspace axis
                 identities = self.InputIdx[:self.currently_avalible]
                 embedding_space = np.array(self._eigenspace)
@@ -2456,6 +2469,7 @@ class Indicator(Spectral):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
+                       'EigenvalueLimit': 0.5, 
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent',
@@ -2468,6 +2482,7 @@ class Indicator(Spectral):
                   'PhyDistance': 'angular',
                   'BaseJump': 0.2, 'JumpEigenFactor': 10}
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
@@ -2614,7 +2629,7 @@ class Indicator(Spectral):
             to_remove = np.argmin(eigenvalues)
         eigenvectors = np.delete(eigenvectors, to_remove, axis=1)
         eigenvalues = np.delete(eigenvalues, to_remove)
-        self.eigenvalues.append(eigenvalues.tolist())
+        self.eigenvalues.append(eigenvalues)
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = eigenvectors
 
@@ -2790,6 +2805,7 @@ class Splitting(Indicator):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
+                       'EigenvalueLimit': 0.5, 
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent',
@@ -2802,6 +2818,7 @@ class Splitting(Indicator):
                   'PhyDistance': 'angular',
                   'MaxCutScore': 0.2}
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
@@ -3151,6 +3168,7 @@ class SpectralFull(Spectral):
 class SpectralKMeans(Spectral):
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
+                      'EigenvalueLimit': 0.5,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent',
@@ -3162,6 +3180,7 @@ class SpectralKMeans(Spectral):
                       'PhyDistance': 'angular',
                       'Sigma': 1., }
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
@@ -3216,7 +3235,10 @@ class SpectralKMeans(Spectral):
         """
         Take a single step to join pseudojets
         """
-        num_jets = len(self.eventWise.SolJet_Energy)
+        num_particles = self.currently_avalible
+        #num_jets = np.sum(self.eigenvalues[-1] < self.EigenvalueLimit)*np.log(num_particles)
+        num_jets = self._eigenspace.shape[1]   # currently set as equal to the above
+        #old_num_jets = len(self.eventWise.SolJet_Energy)
         kmeans = Custom_KMeans(self.eigenspace_distance2)
         score, allocations, centeroids = kmeans.fit(num_jets, self._eigenspace)
         self._jets = [self.InputIdx[allocations==i] for i in range(num_jets)]
@@ -3240,7 +3262,6 @@ class SpectralKMeans(Spectral):
         truth_ax = ax_arr[0, 1]
         distances_ax = ax_arr[0, 2]
 
-        eig_ax = [(ax, 2*i, (2*i+1)%num_eigdims) for i, ax in enumerate(ax_arr[1])]
 
         # plot the truth
         solution = self.eventWise.Solution
@@ -3295,7 +3316,13 @@ class SpectralKMeans(Spectral):
         # check the mean distance
         mean_distance = np.nanmean(np.sqrt(all_distance))
         ax_limits = []
+
+        num_eigdims = self._eigenspace.shape[1]
+        eig_ax = [(ax, (2*i)%num_eigdims, (2*i+1)%num_eigdims)
+                  for i, ax in enumerate(ax_arr[1])]
         for ax, dim1, dim2 in eig_ax:
+            dim1 = dim1 % self._eigenspace.shape[1]
+            dim2 = dim2 % self._eigenspace.shape[1]
             ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
                        self.Size*size_multipler,
                        c=colours_now)
@@ -3309,11 +3336,15 @@ class SpectralKMeans(Spectral):
             limits[3] = max(limits[3], 1)
             ax_limits.append(limits)
         ax.set_title(f"Num eigenvectors = {self.NumEigenvectors}")
-        eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
+        #num_jets = np.sum(self.eigenvalues[-1] < self.EigenvalueLimit)*np.log(num_particles)
+        num_jets = self._eigenspace.shape[1]   # currently set as equal to the above
+        print(num_jets)
+        print(self.eigenvalues[-1][self.eigenvalues[-1]<self.EigenvalueLimit])
+        num_jets = max(num_jets, 1)
+        eig_ax[0][0].set_title(f"num jets = {num_jets}")
         print(f"mean distance = {mean_distance:.2f}")
         plt.pause(1.)
         # Do the computation
-        num_jets = len(self.eventWise.SolJet_Energy)
         kmeans = Custom_KMeans(self.eigenspace_distance2)
         score, allocations, centeroids = kmeans.fit(num_jets, self._eigenspace)
         eig_ax[1][0].set_title(f"Score = {score}")

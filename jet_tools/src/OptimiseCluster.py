@@ -191,11 +191,12 @@ def make_sampler(usable_events, batch_size, test_size, end_time, total_calls):
     return test_set, sampler, budget
 
 
-def parameter_values(jet_class, stopping_condition):
+def parameter_values(jet_class, stopping_condition=None):
     if isinstance(jet_class, str):
         jet_class = getattr(FormJets, jet_class)
     # make some default continuous params
     continuous_params = dict(ExpofPTMultiplier=dict(mean=0., std=1., minimum=None),
+                             EigenvalueLimit=dict(mean=0.5, std=0.5, minimum=0.00001),
                              AffinityExp=dict(mean=2., std=1., minimum=0.001),
                              Sigma=dict(mean=.2, std=1., minimum=0.001),
                              CutoffDistance=dict(mean=6., std=3., minimum=0.),
@@ -208,17 +209,22 @@ def parameter_values(jet_class, stopping_condition):
     ordered_discreet_params = dict(NumEigenvectors=list(range(1, 10)) + [np.inf],
                                    CutoffKNN=list(range(1, 10)) + [None])
 
-    if jet_class == FormJets.SpectralFull:
-        pass
-    else:
-        raise NotImplementedError(f"Implement params for {jet_class}")
-
     discreete_params = {key: values for key, values in jet_class.permited_values.items()
                         if key not in continuous_params and
                            key not in ordered_discreet_params}
     # remove some bad eggs
     discreete_params['StoppingCondition'] = ['standard', 'beamparticle', 'meandistance']
     discreete_params['Laplacien'] = ['unnormalised', 'symmetric', 'pt']
+    
+    # tweaks for specific classes
+    if jet_class == FormJets.SpectralFull:
+        pass
+    elif jet_class == FormJets.SpectralKMeans:
+        del discreete_params["StoppingCondition"]
+        del continuous_params["DeltaR"]
+    else:
+        raise NotImplementedError(f"Implement params for {jet_class}")
+
     return discreete_params, ordered_discreet_params, continuous_params
 
 
@@ -230,6 +236,8 @@ class ParameterTranslator:
         self.fixed_params = fixed_params
         if jet_class == FormJets.SpectralFull:
             stopping_condition = fixed_params.get("StoppingCondition", "meandistance")
+        elif jet_class == FormJets.SpectralKMeans:
+            stopping_condition = None
         else:
             raise NotImplementedError
         self.discrete, self.ordered, self.continuous = parameter_values(jet_class,
@@ -366,15 +374,29 @@ def run_optimisation_nevergrad(eventWise_name, batch_size=100, end_time=None,
     max_angle = Constants.max_tagangle
     other_hyperparams['max_angle2'] = max_angle**2
     # get the initial clustering parameters
-    jet_class = FormJets.SpectralFull
-    fixed_params = dict(StoppingCondition='meandistance',
-                        EigDistance='abscos',
-                        Laplacien='symmetric',
-                        PhyDistance='angular',
-                        CombineSize='sum',
-                        ExpofPTFormat='Luclus',
-                        #ExpofPTPosition='input',
-                        AffinityType='exponent')
+    jet_class = kwargs.get("jet_class", FormJets.SpectralFull)
+    if isinstance(jet_class, str):
+        jet_class = getattr(FormJets, jet_class)
+    if "fixed_params" in kwargs:
+        fixed_params = kwargs["fixed_params"]
+    elif jet_class == FormJets.SpectralFull:
+        fixed_params = dict(StoppingCondition='meandistance',
+                            EigDistance='abscos',
+                            Laplacien='symmetric',
+                            PhyDistance='angular',
+                            CombineSize='sum',
+                            ExpofPTFormat='Luclus',
+                            #ExpofPTPosition='input',
+                            AffinityType='exponent')
+    elif jet_class == FormJets.SpectralKMeans:
+        fixed_params = dict(EigDistance='abscos',
+                            Laplacien='symmetric',
+                            PhyDistance='angular',
+                            ExpofPTFormat='Luclus',
+                            ExpofPTPosition='input',
+                            AffinityType='exponent')
+    else:
+        raise NotImplementedError
     translator = ParameterTranslator(jet_class, fixed_params)
     variables = translator.generate_nevergrad_variables()
     # there are soem logged hyper parameters
@@ -460,7 +482,7 @@ def run_optimisation_nevergrad(eventWise_name, batch_size=100, end_time=None,
         
 def generate_pool(eventWise_name, max_workers=10,
                   end_time=None, duration=None, leave_one_free=True,
-                  log_dir="./logs"):
+                  log_dir="./logs", **kwargs):
     # decide on a stop condition
     if duration is not None:
         end_time = time.time() + duration
@@ -474,9 +496,11 @@ def generate_pool(eventWise_name, max_workers=10,
     # note that the longest wait will be n_cores time this time
     print(f"Running on {n_threads} threads", flush=True)
     job_list = []
+    optimiser_name = kwargs.get('optimiser_name', 'NGOpt')
     # now each segment makes a worker
-    kwargs = {'log_dir': log_dir, 'optimiser_name': 'DifferentialEvolution',
-              'optimiser_params': {'recommendation': "noisy"}}
+    kwargs.update({'log_dir': log_dir, 'optimiser_name': optimiser_name})
+    if optimiser_name == 'DifferentialEvolution':
+        kwargs['optimiser_params'] = {'recommendation': "noisy"}
     for batch_size in np.linspace(100, 300, n_threads, dtype=int):
         job = multiprocessing.Process(target=run_optimisation_nevergrad,
                                       args=(eventWise_name, int(batch_size),
@@ -565,7 +589,7 @@ class TimedPMCABC(abcpy_new_inferences.PMCABC):
         else:
             journal = abcpy.output.Journal.fromFile(journal_file)
 
-        journal_name = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
+        journal_name, _ = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
         journal_list.append(journal_name)
 
         if journal_file is not None:
@@ -947,7 +971,7 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
         jet_class = getattr(FormJets, jet_class)
     if "fixed_params" in kwargs:
         fixed_params = kwargs["fixed_params"]
-    else:
+    elif jet_class == FormJets.SpectralFull:
         fixed_params = dict(StoppingCondition='meandistance',
                             EigDistance='abscos',
                             Laplacien='symmetric',
@@ -956,6 +980,15 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
                             ExpofPTFormat='Luclus',
                             #ExpofPTPosition='input',
                             AffinityType='exponent')
+    elif jet_class == FormJets.SpectralKMeans:
+        fixed_params = dict(EigDistance='abscos',
+                            Laplacien='symmetric',
+                            PhyDistance='angular',
+                            ExpofPTFormat='Luclus',
+                            ExpofPTPosition='input',
+                            AffinityType='exponent')
+    else:
+        raise NotImplementedError
     translator = ParameterTranslator(jet_class, fixed_params)
     varaible_list = translator.generate_abcpy_variables()
     statistics_calc = abcpy.statistics.Identity()
@@ -970,61 +1003,35 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     eps_init = np.array([70])
     #eps_init = np.array([0.75])
     #n_samples = 10000
-    n_samples = 40
-    #n_samples = 10
+    #n_samples = 40
+    n_samples = 10
     n_samples_per_param = 5
     epsilon_percentile = 60
     #epsilon_percentile = 10
     duration = kwargs.get("duration", 5*60)
     log_dir = kwargs.get("log_dir", "./logs")
     # set up a loop to restart the optimiser untill it finishes
-    start_time = time.time()
-    run_complete = False
-    max_tries = 3
-    n_tries = 0
     journal_name_list = []
     if 'last_journal' in kwargs:
         journal_name_list.append(kwargs['last_journal'])
-    #while not run_complete:
-    #    try:
-    if True:
-        if True:
-            # create these in the loop to refresh input
-            print("creating model", flush=True)
-            model = ClusteringModel(varaible_list, eventWise_path=eventWise_name,
-                                    batch_size=batch_size, test_size=500, translator=translator)
-            print("creating sampler", flush=True)
-            kernal = abcpy.perturbationkernel.DefaultKernel(varaible_list)
-            sampler = TimedPMCABC([model], [distance_calc], backend, kernal, seed=1)
-            #sampler = abcpy_new_inferences.PMCABC([model], [distance_calc], backend, kernal, seed=1)
-            print(f"Running for {duration/(60*60):.1f} hours aprox", flush=True)
-            journal_name, journal = sampler.sample([objective], duration, eps_init,
-                                                   n_samples, n_samples_per_param,
-                                                   epsilon_percentile, full_output=True,
-                                                   journal_file=journal_name_list,
-                                                   log_dir=log_dir)
-            journal.configuration["fixed_parameters"] = self.translator.fixed_parameters
-            if not isinstance(jet_class, str):
-                jet_class = jet_class.__name__
-            journal.configuration["jet_class"] = jet_class
-            journal.save(journal_name)
-            #journal = sampler.sample([objective], 2, eps_init,
-            #                                      n_samples, n_samples_per_param,
-            #                                      epsilon_percentile, full_output=True,
-            #                                      journal_file=journal_name_list[-1])
-            #journal_name = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
-            #journal_name_list.append(journal_name)
-            #journal.save(journal_name)
-            run_complete = True
-    #    except Exception as e:  # something failed
-    #        print("Exception during optimisation")
-    #        print(e)
-    #        n_tries += 1
-    #        if n_tries > max_tries:
-    #            break
-    #        print("Retrying", flush=True)
-    #        duration += start_time - time.time()
-    #        print(f"Journal_name_list is {journal_name_list}")
+    print("creating model", flush=True)
+    model = ClusteringModel(varaible_list, eventWise_path=eventWise_name,
+                            batch_size=batch_size, test_size=500, translator=translator)
+    print("creating sampler", flush=True)
+    kernal = abcpy.perturbationkernel.DefaultKernel(varaible_list)
+    sampler = TimedPMCABC([model], [distance_calc], backend, kernal, seed=1)
+    #sampler = abcpy_new_inferences.PMCABC([model], [distance_calc], backend, kernal, seed=1)
+    print(f"Running for {duration/(60*60):.1f} hours aprox", flush=True)
+    journal_name, journal = sampler.sample([objective], duration, eps_init,
+                                           n_samples, n_samples_per_param,
+                                           epsilon_percentile, full_output=True,
+                                           journal_file=journal_name_list,
+                                           log_dir=log_dir)
+    journal.configuration["fixed_parameters"] = translator.fixed_parameters
+    if not isinstance(jet_class, str):
+        jet_class = jet_class.__name__
+    journal.configuration["jet_class"] = jet_class
+    journal.save(journal_name)
     print_journal_to_log(translator, journal_name_list[-1])
 
 
@@ -1136,7 +1143,7 @@ def reserve_name(name_form):
         try:
             open(name_form.format(i), 'x').close()
             name = name_form.format(i)
-            return name
+            return name, i
         except FileExistsError:
             i += 1
 
@@ -1150,9 +1157,10 @@ def print_log(hyper_to_log, hyper_log,
         pass
     text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
-    file_name = reserve_name(log_name)
+    file_name, index = reserve_name(log_name)
     with open(file_name, 'w') as new_file:
         new_file.write(text)
+    return index
 
 
 def print_successes_fails(log_dir, log_index, sucesses, fails):
@@ -1290,7 +1298,7 @@ def visulise_training(log_name=None, sep='\t'):
     #score_ax.scatter(range(len(scores)), scores, c=colours)
     score_ax.set_xlabel("Time step")
     score_ax.set_ylabel("Score")
-    y_max = np.nanmax(scores[int(len(scores)*0.95):])*1.5
+    y_max = np.nanmax(scores[int(len(scores)*0.70):])*1.5
     y_max = 100
     score_ax.set_ylim(np.nanmin(scores)-10, y_max)
     #score_ax.set_xlim(0, 1200)
