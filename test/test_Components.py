@@ -4,7 +4,7 @@ from ipdb import set_trace as st
 from numpy import testing as tst
 import pytest
 from jet_tools import Components, PDGNames
-from jet_tools.test.tools import generic_equality_comp, TempTestDir, data_dir
+from test.tools import generic_equality_comp, TempTestDir, data_dir
 import awkward
 
 class AwkdArrays:

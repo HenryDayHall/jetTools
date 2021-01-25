@@ -4,7 +4,7 @@ import pytest
 from ipdb import set_trace as st
 import numpy as np
 import numpy.testing as tst
-from jet_tools.test.tools import TempTestDir
+from test.tools import TempTestDir
 import awkward
 from jet_tools import MassPeaks, Components, Constants
 

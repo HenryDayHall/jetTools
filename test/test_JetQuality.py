@@ -3,7 +3,7 @@ import os
 import pytest
 from ipdb import set_trace as st
 import unittest.mock  # for mocker
-from jet_tools.test.tools import TempTestDir
+from test.tools import TempTestDir
 import numpy as np
 import numpy.testing as tst
 import awkward
@@ -89,7 +89,7 @@ def test_quality_width_fraction():
     def fake_sorted_masses(eventWise, *args, **kwargs):
         return eventWise.Sorted_masses
     jet_name = "Jet"
-    with unittest.mock.patch('jet_tools.src.JetQuality.sorted_masses', new=fake_sorted_masses):
+    with unittest.mock.patch('jet_tools.JetQuality.sorted_masses', new=fake_sorted_masses):
         eventWise = lambda: None  # hack to get an object that can have attributes assigned
         # an empty dataset should raise a runtime error
         eventWise.selected_index = None

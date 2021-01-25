@@ -4,7 +4,7 @@ from ipdb import set_trace as st
 from jet_tools import FormShower, DrawTrees, Components, PDGNames
 import numpy.testing as tst
 import numpy as np
-from jet_tools.test.tools import TempTestDir
+from test.tools import TempTestDir
 import pytest
 import awkward
 

@@ -4,7 +4,7 @@ import numpy as np
 import os
 import awkward
 import numpy.testing as tst
-from jet_tools.test.tools import TempTestDir
+from test.tools import TempTestDir
 
 def test_width():
     linear = np.array([0, np.inf])

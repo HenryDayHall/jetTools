@@ -1,6 +1,6 @@
-from jet_tools.src import Components
+from jet_tools import Components
 from ipdb import set_trace as st
-from jet_tools.src import FormShower, InputTools, FormJets
+from jet_tools import FormShower, InputTools, FormJets
 import numpy as np
 import awkward
 

@@ -5,8 +5,8 @@ import os
 from ipdb import set_trace as st
 import numpy as np
 from jet_tools import Components, FormJets
-from jet_tools.test.tools import TempTestDir
-from jet_tools.test.test_Components import AwkdArrays
+from test.tools import TempTestDir
+from test.test_Components import AwkdArrays
 import awkward
 import itertools
 import scipy.spatial

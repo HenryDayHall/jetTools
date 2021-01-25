@@ -16,7 +16,7 @@ from skhep import math as hepmath
 import os
 import csv
 import torch
-from jet_tools.src import Components
+from jet_tools import Components
 
 class TreeWalker:
     """ """

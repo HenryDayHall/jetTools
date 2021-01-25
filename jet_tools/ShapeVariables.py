@@ -4,8 +4,8 @@ import scipy.optimize
 import scipy.linalg
 import numpy as np
 from ipdb import set_trace as st
-from jet_tools.src.stefano_shapes import shape as stefano
-from jet_tools.src import TrueTag, Constants, PlottingTools, Components
+from jet_tools.stefano_shapes import shape as stefano
+from jet_tools import TrueTag, Constants, PlottingTools, Components
 import awkward
 from matplotlib import pyplot as plt
 

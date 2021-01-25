@@ -2,8 +2,8 @@
 display = False
 from ipdb import set_trace as st
 if display:
-    from jet_tools.src import FormJets, DrawBarrel
-from jet_tools.src import Components, InputTools, Constants, FormShower
+    from jet_tools import FormJets, DrawBarrel
+from jet_tools import Components, InputTools, Constants, FormShower
 import numpy as np
 import awkward
 import os
@@ -687,7 +687,7 @@ display=False  # note needs full simulation
 if display:  # have to comment out to run without display
     def main():
         """ """
-        from jet_tools.src import Components, DrawBarrel
+        from jet_tools import Components, DrawBarrel
         repeat = True
         eventWise = Components.EventWise.from_file("megaIgnore/deltaRp4_akt.awkd")
         jet_name = "HomeJet"
