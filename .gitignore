@@ -2,6 +2,8 @@
 *.dot
 *.pdf
 images/
+# docker images
+*.simg
 # python stuff
 __pycache__/
 # other peoples code
