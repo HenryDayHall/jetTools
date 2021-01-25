@@ -2,6 +2,8 @@
 *.dot
 *.pdf
 images/
+# docker images
+*.simg
 # python stuff
 __pycache__/
 # other peoples code
@@ -14,6 +16,8 @@ pyTorchTree/
 *.swp
 *.swo
 .converage
+# files created while making c executables
+*.cpython-36m-x86_64-linux-gnu.so
 
 *autofill_memory.csv
 
