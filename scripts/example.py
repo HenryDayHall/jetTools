@@ -1,7 +1,7 @@
 # some generic, unintresting imports
 import numpy as np
 import os
-from . import InputTools, FormJets, Components
+from jet_tools import InputTools, FormJets, Components
 from ipdb import set_trace # to allow interactiverty
 
 def interactive():
@@ -15,7 +15,7 @@ def interactive():
     print("...")
 
 print("~~ Example of reading a hepmc file ~~")
-hepmc_path = "/data/h1bBatch2.hepmc"
+hepmc_path = "./mini_data/mini.hepmc"
 if os.path.exists(hepmc_path):
     print(f"Found a file to read in at {hepmc_path}")
 else:
@@ -27,7 +27,7 @@ else:
 print("This hepmc file will be read into an awkward array")
 input("press enter to continue\n...")
 print(" > from jet_tools import ReadHepmc")
-from . import ReadHepmc
+from jet_tools import ReadHepmc
 print(" > required_size = 10")
 required_size = 10
 print(" > eventWise = ReadHepmc.Hepmc(*os.path.split(hepmc_path), start=0, stop=required_size)")
@@ -66,11 +66,11 @@ eventWise.selected_index = None
 print("Give it a try, and press `c` when you are done")
 interactive()
 
+new_path = hepmc_path + ".awkd"
 print("Now a quick note on saving this format. "
       "Reading a hepmc file takes time, "
       "so it is convenient to save this format directly. "
-      "By default it will save as h1bBatch2_hepmc.awkd.")
-new_path = hepmc_path[:-6] + "_hepmc.awkd"
+      f"By default it will save as {new_path}.")
 print("this can be altered by changing the variable eventWise.save_name. ")
 print("To save the object, use the write method;")
 print(" > eventWise.write()")
@@ -97,7 +97,7 @@ if InputTools.yesNo_question("Do you want to try adding a root file for detector
           "however, the code included in jetTools makes assumptions about the "
           "structure of the root file that corrispond to a root file written by delphes. "
           "This code also fixes various idiosyncrasies of delphes root files.")
-    root_path = "/data/h1bBatch2.root"
+    root_path = "./mini_data/mini.root"
     if os.path.exists(root_path):
         print(f"Found a file to read in at {root_path}")
     else:
