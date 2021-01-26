@@ -12,7 +12,11 @@ networkx >= 2.4
 pydot >= 1.4.1
 tabulate >= 0.8.6
 torch >= 1.3.1
-scikit-hep >= 0.5.1
+scikit-hep == 0.5.1
 bokeh >= 1.4.0
 psutil >= 5.6.7
 pygit2 >= 1.2.1
+# cannot get mpi4py to install in github actions or travis.
+#nevergrad >= 0.4.2
+#mpi4py >= 3.0.3  # needed for abcpy, but abcpy is bad at installing it
+#abcpy  # not sure which version because pypi is down :(

@@ -1,0 +1,34 @@
+fakesource   NoSource: No source for code: '/home/henry/Documents/PhD/jetTagger/tree_tagger/fakesource'.
+Aborting report output, consider using -i.
+Name                                                    Stmts   Miss  Cover
+---------------------------------------------------------------------------
+referance_code/test_speed.py                                1      0   100%
+tree_tagger/AlterLHE.py                                   104      5    95%
+tree_tagger/AreaMeasures.py
+tree_tagger/CompareClusters.py                            475    190    60%
+tree_tagger/CompareDatasets.py
+tree_tagger/Components.py                                 933     60    94%
+tree_tagger/Constants.py                                   34      1    97%
+tree_tagger/DrawTrees.py                                  162     73    55%
+tree_tagger/FormJets.py                                  1485    469    68%
+tree_tagger/FormShower.py                                 253     13    95%
+tree_tagger/FormVertices.py                               210    168    20%
+tree_tagger/InputTools.py                                 266     47    82%
+tree_tagger/IRCsafety.py
+tree_tagger/JetQuality.py                                  66      7    89%
+tree_tagger/JoinHepMCRoot.py                               52      3    94%
+tree_tagger/MassPeaks.py                                  222     57    74%
+tree_tagger/PDGNames.py                                    51      0   100%
+tree_tagger/ParallelFormJets.py                           310    126    59%
+tree_tagger/ParameterInvestigation.py                     452    293    35%
+tree_tagger/PlottingTools.py                              107     97     9%
+tree_tagger/ReadHepmc.py                                  214     33    85%
+tree_tagger/RescaleJets.py                                 74     68     8%
+tree_tagger/ShapeVariables.py                             243    222     9%
+tree_tagger/TrueTag.py                                    385     29    92%
+tree_tagger/__init__.py                                     0      0   100%
+tree_tagger/stefano_shapes/shape.py                        19     14    26%
+tree_tagger/tagorigin_test.py                              64     50    22%
+/home/henry/MyStartupScripts/python_start_commands.py      20      7    65%
+---------------------------------------------------------------------------
+TOTAL                                                    6202   2032    67%
