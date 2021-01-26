@@ -1,4 +1,4 @@
-from . import FormJets, Components, InputTools, CompareClusters, CompareDatasets
+from jet_tools import FormJets, Components, InputTools, CompareClusters, CompareDatasets
 import time
 import csv
 import cProfile
