@@ -45,7 +45,7 @@ def test_create_eigenvectors():
         Components.add_phi(eventWise, "JetInputs")
         Components.add_PT(eventWise, "JetInputs")
         Components.add_rapidity(eventWise, "JetInputs")
-        jet_params = dict(AffinityCutoff=('distance', 1.))
+        jet_params = dict(CutoffDistance=1.)
         values, vectors = ParameterInvestigation.create_eigenvectors(eventWise, jet_params)
         # first event was empty
         assert len(values[0]) == 0
@@ -405,7 +405,7 @@ def test_get_linked():
         eventWise.selected_index = None
         jet_params = dict(ExpofPTPosition='input', ExpofPTMultiplier=0.,
                           PhyDistance='angular',
-                          AffinityCutoff=None)
+                          CutoffDistance=None, CutoffKNN=None)
         is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
         expected_sparsity = [np.nan, 0., 0., 0., 0.]
         tst.assert_allclose(percent_sparcity, expected_sparsity)
@@ -415,7 +415,7 @@ def test_get_linked():
         eventWise.selected_index = None
         jet_params = dict(ExpofPTPosition='input', ExpofPTMultiplier=0.,
                           PhyDistance='angular',
-                          AffinityCutoff=('distance', 0.1))
+                          CutoffDistance=0.1, CutoffKNN=None)
         is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
         expected_sparsity = [np.nan, 0., 0., .5, 5/6]
         tst.assert_allclose(percent_sparcity, expected_sparsity)
@@ -427,7 +427,7 @@ def test_get_linked():
         eventWise.selected_index = None
         jet_params = dict(ExpofPTPosition='input', ExpofPTMultiplier=0.,
                           PhyDistance='angular',
-                          AffinityCutoff=('knn', 2))
+                          CutoffKNN=2, CutoffDistance=None)
         is_linked, percent_sparcity = ParameterInvestigation.get_linked(eventWise, jet_params)
         expected4 = np.array([[True, True, True, False, False, False],
                               [True, True, True, False, False, False],

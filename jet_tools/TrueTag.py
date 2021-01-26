@@ -10,7 +10,8 @@ import os
 import scipy.stats
 
 
-def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
+def allocate(jet_phis, jet_rapidities, tag_phis, tag_rapidities,
+             max_angle2, valid_jets=None):
     """
     In a given event each tag is allocated to a jet. 
     Each tag may only be allocated up to once, jets may recive multiple tags.
@@ -19,10 +20,14 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
 
     Parameters
     ----------
-    eventWise : EventWise
-        dataset containing locations of particles and jets
-    tag_idx : iterable of ints
-        the idx of the tag particles as found in the EventWise
+    jet_phis : array of floats
+        the center of mass phi of each jet
+    jet_rapidities : array of floats
+        the center of mass rapidity of each jet
+    tag_phis : array of floats
+        the phi of each tag
+    tag_rapidities : array of floats
+        the rapidity of each tag
     valid_jets : array like of ints
         The idx of the jets that can be tagged, as found in the eventWise
         If None then all jets are valid
@@ -41,32 +46,24 @@ def allocate(eventWise, jet_name, tag_idx, max_angle2, valid_jets=None):
         -1 if no sutable jet found
     
     """
-    root_name = jet_name + "_RootInputIdx"
-    inputidx_name = jet_name + "_InputIdx"
-    attr_name = jet_name + "_Phi"
-    jet_phis = eventWise.match_indices(attr_name, root_name, inputidx_name).flatten()
-    attr_name = jet_name + "_Rapidity"
-    jet_raps = eventWise.match_indices(attr_name, root_name, inputidx_name).flatten()
     if valid_jets is not None:
         # check that a list of indices not a bool mask has been passed
-        if len(valid_jets) == len(jet_raps):
+        if len(valid_jets) == len(jet_rapidities):
             # should they be the same length every index must appear
             # just check for the last one
-            assert len(jet_raps) - 1 in valid_jets
+            assert len(jet_rapidities) - 1 in valid_jets
         # select only valid jets for comparison
         jet_phis = jet_phis[valid_jets]
-        jet_raps = jet_raps[valid_jets]
-    phi_distance = np.array([[eventWise.Phi[tag_i] - jet_phi for jet_phi
-                               in jet_phis]
-                              for tag_i in tag_idx])
+        jet_rapidities = jet_rapidities[valid_jets]
+    tag_phis = tag_phis.reshape((-1, 1))
+    phi_distance = tag_phis - jet_phis
     phi_distance = Components.raw_to_angular_distance(phi_distance)
-    rap_distance = np.array([[eventWise.Rapidity[tag_i] - jet_rap for jet_rap
-                               in jet_raps]
-                              for tag_i in tag_idx])
+    tag_rapidities = tag_rapidities.reshape((-1, 1))
+    rap_distance = tag_rapidities - jet_rapidities
     dist2 = np.square(phi_distance) + np.square(rap_distance)
     try:
         closest = np.argmin(dist2, axis=1)
-    except np.AxisError:
+    except (np.AxisError, ValueError):
         assert len(dist2) == 0
         return dist2.reshape((0, 0))
     if valid_jets is not None:
@@ -279,7 +276,10 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, 
             break
         eventWise.selected_index = event_n
         # get the tags
-        tags = eventWise.DetectableTag_Roots.flatten()
+        tags = eventWise.DetectableTag_Roots.flatten().tolist()
+        #  Jacan need this to not be a BQuark!!!
+        tag_phis = eventWise.Phi[tags]
+        tag_raps = eventWise.Rapidity[tags]
         # get the valiables to cut on
         jet_pt = eventWise.match_indices(jet_name+"_PT", inputidx_name, rootinputidx_name).flatten()
         if len(jet_pt) == 0:
@@ -293,7 +293,13 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, 
         if len(tags) > 0 and len(valid_jets) > 0:
             # there may not be any of the particles we wish to tag in the event
             # or there may not be any jets
-            closest_matches = allocate(eventWise, jet_name, tags, max_angle2, valid_jets)
+            root_name = jet_name + "_RootInputIdx"
+            inputidx_name = jet_name + "_InputIdx"
+            attr_name = jet_name + "_Phi"
+            jet_phis = eventWise.match_indices(attr_name, root_name, inputidx_name).flatten()
+            attr_name = jet_name + "_Rapidity"
+            jet_raps = eventWise.match_indices(attr_name, root_name, inputidx_name).flatten()
+            closest_matches = allocate(jet_phis, jet_raps, tag_phis, tag_raps, max_angle2, valid_jets)
         else:
             closest_matches = []
         # keep only the indices for space reasons

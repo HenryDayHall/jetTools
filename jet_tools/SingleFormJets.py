@@ -259,7 +259,7 @@ def check_problem():
     if BATCH_LENGTH == -1:
         BATCH_LENGTH = np.inf
     eventWise = define_inputs(eventWise)
-    params = {'DeltaR': 0.4, 'ExponentMultiplier': 0.1, 'NumEigenvectors': 2, 'Laplacien': 'symmetric', "AffinityType": 'linear', "WithLaplacienScaling": False, "AffinityCutoff": ('distance', 5.2), "Invarient": 'normed'}
+    params = {'DeltaR': 0.4, 'ExponentMultiplier': 0.1, 'NumEigenvectors': 2, 'Laplacien': 'symmetric', "AffinityType": 'linear', "WithLaplacienScaling": False, "CutoffDistance":  5.2, "Invarient": 'normed'}
     jet_name = "ProblemJet"
     params["jet_name"] = jet_name
     FormJets.cluster_multiapply(eventWise, FormJets.SpectralFull, params, batch_length=BATCH_LENGTH)

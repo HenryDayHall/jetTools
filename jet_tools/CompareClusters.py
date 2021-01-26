@@ -192,6 +192,155 @@ def add_bg_mass(eventWise):
     eventWise.append(DetectableBG_Mass=awkward.fromiter(all_bg_mass))
 
 
+def match_jets(tag_idxs, event_jet_tags, event_tags, tag_mass, jet_idxs):
+    """
+    For a set of jets in an event that may have more than one tag each,
+    and a set of tags that come in groups according to shower mixing,
+    assign each jet to at most oe tag group.
+
+    Paramters
+    ---------
+    tag_idxs : list of ints
+        global idxs of the tag particles
+    event_jet_tags : list of list of tags
+        the tags found in each jet
+    event_tags : list of lists of ints
+        the idxs of the tag particles, grouped by tag group
+    tag_mass : array of float
+        dimension 0 of tagmass is which jet
+        dimension 1 of tagmass is which tag
+    jet_idxs : array of int
+        idxs of the jets that should be considered
+
+    Returns
+    -------
+    seperate_jets : int
+        number of indervidual jets found
+    match_jets : list of list of ints
+        indices of the jets, sorted into sublists
+        as in the event_tags
+
+    """
+    matched_jets = [[] for _ in event_tags]
+    seperate_jets = 0
+    for jet_n, jet_tags in enumerate(event_jet_tags):
+        if jet_n not in jet_idxs or len(jet_tags) == 0:
+            continue  # jet not sutable or has no tags
+        # if we get here the jet has at least one tag on it and is in the required list
+        seperate_jets += 1
+        if len(jet_tags) == 1:
+            # no chosing to be done, the jet just has one tag
+            tag_idx = jet_tags[0]
+        else:
+            # chose the tag with the greatest tagmass
+            # dimension 0 of tagmass is which jet
+            # dimension 1 of tagmass is which tag
+            tag_position = np.argmax(tag_mass[jet_n])
+            # this is the particle index of the tag with greatest massshare in the jet
+            tag_idx = tag_idxs[tag_position]
+        # which group does the tag belong to
+        try:
+            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
+        except StopIteration:
+            # jet has a tag that is not actually observable
+            continue  # just skip it
+        matched_jets[group_position].append(jet_n)
+    return seperate_jets, matched_jets
+
+
+def event_detectables(tag_leaves, jets, input_idx, source_idx,
+                      energy, px, py, pz, mass_only=False):
+    """
+    For a set of visible tag-group leaves and 
+    and a set of jets that corrisond to this tag group
+    calculate kinematic scores.
+
+    Paramters
+    ---------
+    tag_leaves : array of int
+        ids of the visible components of the tag group
+    jets : array of ints
+        idxs of the jets assigned to this tag group
+    input_idx : 2d awkward array of int
+        locations in the source_idx of the jet components
+    source_idx : array of int
+        locations of the particles in the kinematic lists
+    energy : array of float
+        energies of the particles
+    px : array of float
+        pxs of the particles
+    py : array of float
+        pys of the particles
+    pz : array of float
+        pzs of the particles
+    mass_only : bool
+        just calculate the mass of the tag in jet and bg in jet?
+
+    Returns
+    -------
+    tag_mass2 : float
+        square of the signal mass in the jet
+    bg_mass2 : float
+        square of the background mass in the jet
+    all_mass2 : float
+        square of the mass in the jet
+    phi : float
+        phi of the jet
+    pt : float
+        pt of the jet
+    rapidity : float
+        rapidity of the jet
+    tag_phi : float
+        phi of the signal component of the jet
+    tag_pt : float
+        pt of the signal component of the jet
+    tag_rapidity : float
+        rapidity of the signal component of the jet
+    """
+    if jets:
+        jet_inputs = input_idx[jets].flatten()
+        # convert to source_idxs
+        jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
+        jet_inputs = set(source_idx[jet_inputs])
+        tag_in_jet = jet_inputs.intersection(tag_leaves)
+        bg_in_jet = list(jet_inputs - tag_in_jet)
+        tag_in_jet = list(tag_in_jet)
+        tag_mass2 = np.sum(energy[tag_in_jet])**2 -\
+                   np.sum(px[tag_in_jet])**2 -\
+                   np.sum(py[tag_in_jet])**2 -\
+                   np.sum(pz[tag_in_jet])**2
+        bg_mass2 = np.sum(energy[bg_in_jet])**2 -\
+                  np.sum(px[bg_in_jet])**2 -\
+                  np.sum(py[bg_in_jet])**2 -\
+                  np.sum(pz[bg_in_jet])**2
+        if not mass_only:
+            # get the whole jets mass
+            jet_inputs = list(jet_inputs)
+            all_mass2 = np.sum(energy[jet_inputs])**2 -\
+                        np.sum(px[jet_inputs])**2 -\
+                        np.sum(py[jet_inputs])**2 -\
+                        np.sum(pz[jet_inputs])**2
+            # for the pt and the phi comparisons use all the jet components
+            # not just the ones that come from the truth
+            phi, pt = Components.pxpy_to_phipt(np.sum(px[jet_inputs]),
+                                               np.sum(py[jet_inputs]))
+            rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[jet_inputs]),
+                                                    np.sum(energy[jet_inputs]))
+            # then for just the tagged parts
+            tag_phi, tag_pt = Components.pxpy_to_phipt(np.sum(px[tag_in_jet]),
+                                               np.sum(py[tag_in_jet]))
+            tag_rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[tag_in_jet]),
+                                                np.sum(energy[tag_in_jet]))
+    else:
+        # no jets in this group
+        tag_mass2 = bg_mass2 = all_mass2 = 0
+        phi = pt = rapidity = np.nan
+        tag_phi = tag_pt = tag_rapidity = np.nan
+    if mass_only:
+        all_mass2 = phi = pt = rapidity = tag_phi = tag_pt = tag_rapidity = np.nan
+    return tag_mass2, bg_mass2, all_mass2, phi, pt, rapidity, tag_phi, tag_pt, tag_rapidity
+
+
 def per_event_detectables(eventWise, jet_name, jet_idxs):
     """
     
@@ -253,72 +402,22 @@ def per_event_detectables(eventWise, jet_name, jet_idxs):
         py = eventWise.Py
         pz = eventWise.Pz
         source_idx = eventWise.JetInputs_SourceIdx
-        parent_idxs = getattr(eventWise, jet_name + "_Parent")
-        tag_idxs = eventWise.BQuarkIdx
-        matched_jets = [[] for _ in event_tags]
-        for jet_n, jet_tags in enumerate(getattr(eventWise, jet_name + "_Tags")):
-            if jet_n not in jet_idxs[event_n] or len(jet_tags) == 0:
-                continue  # jet not sutable or has no tags
-            # if we get here the jet has at least one tag on it and is in the required list
-            seperate_jets[event_n] += 1
-            if len(jet_tags) == 1:
-                # no chosing to be done, the jet just has one tag
-                tag_idx = jet_tags[0]
-            else:
-                # chose the tag with the greatest tagmass
-                # dimension 0 of tagmass is which jet
-                # dimension 1 of tagmass is which tag
-                tag_position = np.argmax(tag_mass[event_n][jet_n])
-                # this is the particle index of the tag with greatest massshare in the jet
-                tag_idx = tag_idxs[tag_position]
-            # which group does the tag belong to
-            # this is hitting stopiteration?
-            group_position = next(i for i, group in enumerate(event_tags) if tag_idx in group)
-            matched_jets[group_position].append(jet_n)
+        input_idx = getattr(eventWise, jet_name + "_InputIdx")
+        tag_idx = eventWise.BQuarkIdx
+        event_jet_tags = getattr(eventWise, jet_name + "_Tags")
+        seperate_here, matched_jets = match_jets(tag_idx, event_jet_tags, event_tags, 
+                                                 tag_mass[event_n], jet_idxs[event_n])
+        seperate_jets[event_n] += seperate_here
         mask[event_n] = [len(jets) >= len(tags) for jets, tags in zip(matched_jets, event_tags)]
         # the tag fragment accounts only for tags that could be found
         num_found = sum(len(group) for group, matched in zip(event_tags, matched_jets)
                                  if len(matched))
         percent_found[event_n] = num_found/len(event_tags.flatten())
         for group_n, jets in enumerate(matched_jets):
-            if jets:
-                jet_inputs = getattr(eventWise, jet_name + "_InputIdx")[jets].flatten()
-                # convert to source_idxs
-                jet_inputs = jet_inputs[jet_inputs < len(source_idx)]
-                jet_inputs = set(source_idx[jet_inputs])
-                tag_in_jet = jet_inputs.intersection(eventWise.DetectableTag_Leaves[group_n])
-                bg_in_jet = list(jet_inputs - tag_in_jet)
-                tag_in_jet = list(tag_in_jet)
-                tag_mass2 = np.sum(energy[tag_in_jet])**2 -\
-                           np.sum(px[tag_in_jet])**2 -\
-                           np.sum(py[tag_in_jet])**2 -\
-                           np.sum(pz[tag_in_jet])**2
-                bg_mass2 = np.sum(energy[bg_in_jet])**2 -\
-                          np.sum(px[bg_in_jet])**2 -\
-                          np.sum(py[bg_in_jet])**2 -\
-                          np.sum(pz[bg_in_jet])**2
-                # get the whole jets mass
-                jet_inputs = list(jet_inputs)
-                all_mass2 = np.sum(energy[jet_inputs])**2 -\
-                            np.sum(px[jet_inputs])**2 -\
-                            np.sum(py[jet_inputs])**2 -\
-                            np.sum(pz[jet_inputs])**2
-                # for the pt and the phi comparisons use all the jet components
-                # not just the ones that come from the truth
-                phi, pt = Components.pxpy_to_phipt(np.sum(px[jet_inputs]),
-                                                   np.sum(py[jet_inputs]))
-                rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[jet_inputs]),
-                                                        np.sum(energy[jet_inputs]))
-                # then for just the tagged parts
-                tag_phi, tag_pt = Components.pxpy_to_phipt(np.sum(px[tag_in_jet]),
-                                                   np.sum(py[tag_in_jet]))
-                tag_rapidity = Components.ptpze_to_rapidity(pt, np.sum(pz[tag_in_jet]),
-                                                        np.sum(energy[tag_in_jet]))
-            else:
-                # no jets in this group
-                tag_mass2 = bg_mass2 = all_mass2 = 0
-                phi = pt = rapidity = np.nan
-                tag_phi = tag_pt = tag_rapidity = np.nan
+            tag_leaves = eventWise.DetectableTag_Leaves[group_n]
+            tag_mass2, bg_mass2, all_mass2, phi, pt, rapidity, tag_phi, tag_pt, tag_rapidity\
+                    = event_detectables(tag_leaves, jets, input_idx, source_idx,
+                                        energy, px, py, pz)
             tag_mass2_in[event_n].append(tag_mass2)
             all_mass2_in[event_n].append(all_mass2)
             bg_mass2_in[event_n].append(bg_mass2)
@@ -611,8 +710,6 @@ def quality_filter_table(all_cols, variable_cols, score_cols, table):
     table = table[signal_gap < 33.]
     background_gap = table[:, all_cols.index("AveDistanceBG")]
     table = table[background_gap < 33.]
-    #cutoff = table[:, all_cols.index("AffinityCutoff")]
-    #table = table[[x is not None for x in cutoff]]
     return all_cols, variable_cols, score_cols, table
 
 
@@ -673,7 +770,7 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_tradition
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison and zoom:
         #mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
-        mask = (signal_gap < 3.)*(background_gap < 10)
+        mask = (signal_gap < 50.)*(background_gap < 50.)
         if sum(mask)>4:
             signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
@@ -681,7 +778,7 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_tradition
     max_colour = max(1.5, np.max(seperate_jets))
     points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=max_colour)
     ax.scatter(signal_gap[highlight], background_gap[highlight], c=(0,0,0,0),
-               marker='o', s=10*np.sqrt(percent_found)+0.3, edgecolor=(0,0,0,1))
+               marker='o', s=10*np.sqrt(percent_found[highlight])+0.3, edgecolor=(0,0,0,1))
     cbar = plt.colorbar(points)
     cbar.set_label("Seperate $b$-jets per event")
     ax.set_xlabel("Average signal loss (GeV)")
@@ -770,9 +867,10 @@ def plot_grid(all_cols, plot_column_names, plot_row_names, table):
     inverted_names = ["AveBGMassRatio"] + [name for name in all_cols
                                            if "Distance" in name or "Quality" in name]
     # a list of cols where the axis must be constructed
-    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition", "ExpofPTFormat", "AffinityType", "AffinityCutoff",
-            "Laplacien", "PhyDistance", "StoppingCondition", "MaxJump", "MaxCutScore", "Eigenspace",
-                   "BaseJump"]
+    impure_cols = ["jet_class", "NumEigenvectors", "ExpofPTPosition",
+                   "ExpofPTFormat", "AffinityType", "CutoffKNN", "CutoffDistance",
+                   "Laplacien", "PhyDistance", "StoppingCondition",
+                   "MaxJump", "MaxCutScore", "BaseJump"]
     n_cols = len(plot_column_names)
     n_rows = len(plot_row_names)
     fig, ax_arr = plt.subplots(n_rows, n_cols, sharex='col', sharey='row')

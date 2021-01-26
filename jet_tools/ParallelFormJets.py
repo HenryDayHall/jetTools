@@ -371,6 +371,8 @@ def remove_partial(all_paths, expected_length=None):
         the number of events that should exist
     
     """
+    if isinstance(all_paths, str):
+        all_paths = [all_paths]
     for ew_name in all_paths:
         ew = Components.EventWise.from_file(ew_name)
         length = len(ew.Event_n)
@@ -424,9 +426,10 @@ fix_cheat = dict(ExpofPTMultiplier=0,
                  ExpofPTFormat='Luclus',
                  NumEigenvectors=np.inf,
                  Laplacien='symmetric',
-                 Eigenspace='normalised',
                  AffinityType='exponent',
-                 AffinityCutoff=None,
+                 AffinityExp=1.,
+                 CutoffKNN=None,
+                 CutoffDistance=None,
                  PhyDistance='angular')
 
 # hacky ------------------------
@@ -436,34 +439,40 @@ scan_hacky = dict(
                  EigNormFactor=[1.2, 1.5, 1.8],
                  )
 fix_hacky = dict(ExpofPTMultiplier=0,
-                 AffinityType='exponent2',
-                 AffinityCutoff=None,
+                 AffinityType='exponent',
+                 AffinityExp=2.,
+                 CutoffKNN=None,
+                 CutoffDistance=None,
                  ExpofPTPosition='input',
                  ExpofPTFormat='Luclus',
                  NumEigenvectors=np.inf,
                  StoppingCondition='meandistance',
                  Laplacien='symmetric',
-                 Eigenspace='normalised',
                  CombineSize='sum',
                  EigDistance='abscos',
                  PhyDistance='angular')
 # chechpoint only ------------------------
 scan_checkpoint = dict(
                        ExpofPTMultiplier = np.arange(-1, 1, 0.1),
-                       AffinityCutoff = [('knn', i) for i in range(2, 5)] + [None],
+                       CutoffKNN = list(range(2, 5)) + [None],
                        PhyDistance = ['angular', 'taxicab'],
                        )
 
 fix_checkpointLuclus = dict( ExpofPTPosition = 'input',
+                       CutoffDistance = None,
                        ExpofPTFormat='Luclus',
+                       AffinityExp=1.,
                        AffinityType='exponent')
 fix_checkpointmin = dict( ExpofPTPosition = 'input',
+                       CutoffDistance = None,
                        ExpofPTFormat='min',
+                       AffinityExp=1.,
                        AffinityType='exponent')
 
 scan_checkpoint_final = dict(
-                            AffinityCutoff=[None] + [('distance', x) for x in np.linspace(1., 5., 11)],
-                            AffinityType=['linear', 'inverse', 'exponent', 'exponent2'],
+                            CutoffDistance=[None] + list(np.linspace(1., 5., 11)),
+                            AffinityType=['linear', 'inverse', 'exponent'],
+                            AffinityExp=[1., 2.],
                             )
 fix_checkpoint_final = dict(ExpofPTPosition='eigenspace',
                             PhyDistance='taxicab')
@@ -707,15 +716,10 @@ def random_parameters(jet_class=None, desired_parameters=None, omit_parameters=N
             params[key] = np.around(np.random.uniform(0.01, 0.5), 2)
         elif key == 'JumpEigenFactor':
             params[key] = np.around(np.random.uniform(0., 100), -1)
-        elif key == 'AffinityCutoff':
-            cutofftypes = [None if x is None else x[0] for x in selection]
-            cutofftype = np.random.choice(cutofftypes)
-            if cutofftype is None:
-                params[key] = cutofftype
-            elif cutofftype == 'knn':
-                params[key] = (cutofftype, np.random.randint(1, 6))
-            elif cutofftype == 'distance':
-                params[key] = (cutofftype, np.around(np.random.uniform(0., 10.), 1))
+        elif key == 'CutoffKNN':
+            params[key] = np.random.choice([None, np.random.randint(2, 10)])
+        elif key == 'CutoffDistance':
+            params[key] = np.random.choice([None, np.around(np.random.uniform(0., 10.), 1)])
         else:  # all the remaining ones are selected from lists
             params[key] = np.random.choice(selection)
     return jet_class, params

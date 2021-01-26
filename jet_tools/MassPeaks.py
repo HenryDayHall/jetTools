@@ -367,6 +367,79 @@ def all_PT_pairs(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_
     return all_masses, pairs, pair_masses
 
 
+def all_best_mass(eventWise, jet_name, jet_pt_cut=None, max_tag_angle=0.8, track_cut=None, dijet_mass=40.):
+    """
+    Select pairings that have mass closest to the dijet_mass.
+    REquires seperated jets.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    track_cut : int
+        required minimum number of tracks for the jet to be used
+        if None the value s taken from Constants.py
+         (Default value = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
+
+    Returns
+    -------
+    all_masses : list of floats
+        the masses of all the tagged jets in each event.
+    pairs : list of list of ints
+        the indices refering to the combinations chosen
+    pair_masses : list of list of floats
+        the masses of the combinations chosen.
+        Inner list may not have the same length as the number of events
+        beuase for some event not all pairings are possble.
+
+
+    """
+    eventWise.selected_index = None
+    tag_name = jet_name + "_Tags"
+    if tag_name not in eventWise.columns:
+        TrueTag.add_tags(eventWise, jet_name, max_tag_angle, np.inf)
+        TrueTag.add_mass_share(eventWise, jet_name, np.inf)
+    n_events = len(getattr(eventWise, jet_name+'_InputIdx'))
+    # becuase we will use these to take indices from a numpy array they need to be lists 
+    # not tuples
+    pairs = [list(pair) for pair in itertools.combinations(range(4), 2)]
+    pair_masses = np.zeros(len(pairs))
+    chosen_pairs = np.zeros((n_events, 2))
+    all_masses = np.zeros(n_events)
+    for event_n in range(n_events):
+        if event_n % 100 == 0:
+            print(f"{event_n/n_events:.1%}", end='\r')
+        eventWise.selected_index = event_n
+        tags = getattr(eventWise, tag_name)
+        tagged_jets = np.fromiter((i for i, t in enumerate(tags) if len(t)),
+                                  dtype=int)
+        n_jets = len(tagged_jets)
+        # check if all 4 tags are present
+        if n_jets == 4:
+            all_masses[event_n] = combined_jet_mass(eventWise, jet_name, tagged_jets)
+        pair_masses[:] = 0
+        for i, pair in enumerate(pairs):
+            if max(pair) < n_jets:
+                pair_masses[i] = combined_jet_mass(eventWise, jet_name, tagged_jets[pair])
+        best_pair = np.argmin(np.abs(pair_masses - dijet_mass))
+        chosen_pairs[event_n][0] = pair_masses[best_pair]
+        if n_jets > 3:
+            jet_a, jet_b = pairs[best_pair]
+            other_pair = next(i for i, p in enumerate(pairs)
+                              if jet_a not in p and jet_b not in p)
+            chosen_pairs[event_n][1] = pair_masses[other_pair]
+    return all_masses, chosen_pairs
+
+
 def all_h_combinations(eventWise, jet_name, jet_pt_cut=None, track_cut=None, tag_type=None, require_seperate=True, signal_background='both'):
     """
     Gather all jets tagged by b-quarks from the same light higgs.
@@ -702,7 +775,6 @@ def plot_PT_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angl
     
     """
     fig, ax_array = plt.subplots(3, 3)
-    input_names = ["NumEigenvectors", "AffinityType", "ExpofPTMultiplier"]
     # get lobal inputs
     eventWise.selected_index = None
     heavy, light1, light2 = descendants_masses(eventWise)
@@ -743,6 +815,59 @@ def plot_PT_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angl
         plt.show()
     return all_masses, pair_masses
 
+
+def plot_best_mass_pairs(eventWise, jet_names, jet_pt_cut=None, show=True, max_tag_angle=0.8,
+                         dijet_mass=40):
+    """
+    Plot a pair that best forms the dijet mass, and the remaining pair.
+
+    Parameters
+    ----------
+    eventWise : EventWise
+        dataset containing the jets
+    jet_name : str
+        prefix of the jet's variables in the eventWise
+    jet_pt_cut : float
+        required minimum jet PT for the jet to be selected
+        if None the value s taken from Constants.py
+        (Default = None)
+    max_tag_angle : float
+        The maximum deltaR betweeen a tag and its jet
+         (Default value = 0.8)
+    
+    """
+    fig, ax_array = plt.subplots(1, 3)
+    # get lobal inputs
+    eventWise.selected_index = None
+    n_events = len(getattr(eventWise, jet_names[0]+'_InputIdx'))
+    cmap = matplotlib.cm.get_cmap('gist_rainbow')
+    colours = [cmap(x) for x in np.linspace(0, 1, len(jet_names))]
+    all_masses = []
+    all_pair_masses = [[], []]
+    for name in jet_names:
+        masses, pairs = all_best_mass(eventWise, name, jet_pt_cut, max_tag_angle=max_tag_angle)
+        masses = masses[masses>0]
+        pairs0 = pairs[:, 0][pairs[:, 0]>0]
+        pairs1 = pairs[:, 1][pairs[:, 1]>0]
+        all_masses.append(masses.tolist())
+        all_pair_masses[0].append(pairs0.tolist())
+        all_pair_masses[1].append(pairs1.tolist())
+    ax_array[0].hist(all_masses, bins=100, density=True, histtype='step', label=jet_names, color=colours)
+    ax_array[0].set_title(f"All tagged mass")
+
+    ax_array[1].hist(all_pair_masses[0], bins=100, density=True, histtype='step', label=jet_names, color=colours)
+    ax_array[1].set_title(f"Best matched pair")
+
+    ax_array[2].hist(all_pair_masses[1], bins=100, density=True, histtype='step', label=jet_names, color=colours)
+    ax_array[2].set_title(f"Remaining pair")
+    ax_array[2].legend()
+
+    for ax in ax_array:
+        ax.set_xlabel("Mass (GeV)")
+        ax.set_ylabel(f"Density")
+    if show:
+        plt.show()
+    return all_masses, all_pair_masses
 
 def all_doubleTagged_jets(eventWise, jet_name, jet_pt_cut=None):
     """
@@ -885,25 +1010,26 @@ def descendants_masses(eventWise, use_jetInputs=True):
 if __name__ == '__main__':
     from jet_tools import Components
     best_name = InputTools.get_file_name("Name the eventWise file? ", 'awkd').strip()
-    ew = Components.EventWise.from_file(best_name)
-    jet_names = FormJets.get_jet_names(ew)
-    
-    if len(jet_names) > 4:
-        sel_jet_names = []
-        next_name = True
-        while next_name:
-            next_name = InputTools.list_complete(f"Add jet {len(sel_jet_names)+1} to plot; (blank to stop, 'all' for all) ", jet_names).strip()
-            if next_name == 'all':
-                break
-            elif next_name == '':
-                if sel_jet_names:
-                    jet_names = sel_jet_names
-            else:
-                sel_jet_names.append(next_name)
-    #plot_PT_pairs(ew, jet_names, True)
-    options = ['means', 'hist', 'scatter']
-    choice = InputTools.list_complete("Which kind of plot? ", options).strip()
-    plot_correct_pairs(ew, jet_names, True, choice)
-    input()
+    if best_name:
+        ew = Components.EventWise.from_file(best_name)
+        jet_names = FormJets.get_jet_names(ew)
+        
+        if len(jet_names) > 4:
+            sel_jet_names = []
+            next_name = True
+            while next_name:
+                next_name = InputTools.list_complete(f"Add jet {len(sel_jet_names)+1} to plot; (blank to stop, 'all' for all) ", jet_names).strip()
+                if next_name == 'all':
+                    break
+                elif next_name == '':
+                    if sel_jet_names:
+                        jet_names = sel_jet_names
+                else:
+                    sel_jet_names.append(next_name)
+        #plot_PT_pairs(ew, jet_names, True)
+        options = ['means', 'hist', 'scatter']
+        choice = InputTools.list_complete("Which kind of plot? ", options).strip()
+        plot_correct_pairs(ew, jet_names, True, choice)
+        input()
 
 

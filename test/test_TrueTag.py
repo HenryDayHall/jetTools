@@ -10,81 +10,40 @@ import numpy.testing as tst
 
 def test_allocate():
     # try an empty event
-    params = {}
-    jet_name = "Jet"
-    params['Jet_InputIdx'] = []
-    params['Jet_RootInputIdx'] = []
-    params['Jet_Phi'] = []
-    params['Jet_Rapidity'] = []
-    params['Phi'] = []
-    params['Rapidity'] = []
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    tag_idx = []
-    valid_jets = []
     expected = np.array([]).reshape((0,0))
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 0.1)
-        tst.assert_allclose(closest, expected)
+    closest = TrueTag.allocate(np.array([]),
+                               np.array([]),
+                               np.array([]),
+                               np.array([]),
+                               0.1)
+    tst.assert_allclose(closest, expected)
     # try a regular event
-    params = {}
-    jet_name = "Jet"
-    params['Jet_InputIdx'] = [[0, 1, 2], [3, 4, 5]]
-    params['Jet_RootInputIdx'] = [[0], [4]]
-    params['Jet_Phi'] = [[0., 1., 1.], [1., np.pi, 1.]]
-    params['Jet_Rapidity'] = [[0., 1., 1.], [1., 2., 1.]]
-    params['Phi'] = [4., 0., -np.pi, -1., np.pi, 2.]
-    params['Rapidity'] = [0., 0., -2., 10., 2., 0.]
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    tag_idx = [1, 4]
     valid_jets = np.array([0, 1])
     expected = [0, 1]
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 0.1, valid_jets)
-        tst.assert_allclose(closest, expected)
+    closest = TrueTag.allocate(np.array([0., np.pi]),
+                               np.array([0., 2.]),
+                               np.array([0., np.pi]),
+                               np.array([0., 2.]),
+                               0.1, valid_jets)
+    tst.assert_allclose(closest, expected)
     # try an event where one tag gets cut off by the max angle
-    params = {}
-    jet_name = "Jet"
-    params['Jet_InputIdx'] = [[0], [1]]
-    params['Jet_RootInputIdx'] = [[0], [1]]
-    params['Jet_Phi'] = [[0.], [1.]]
-    params['Jet_Rapidity'] = [[0.], [1.]]
-    params['Phi'] = [4., 0., -np.pi, 1., np.pi, 2.]
-    params['Rapidity'] = [0., 0., -2., 0., 2., 0.]
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    tag_idx = [1, 3]
     valid_jets = None
     expected = [0, -1]
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 0.9, valid_jets)
-        tst.assert_allclose(closest, expected)
+    closest = TrueTag.allocate(np.array([0., np.pi]),
+                               np.array([0., 1.]),
+                               np.array([0., np.pi]),
+                               np.array([0., 2.]),
+                               0.1, valid_jets)
+    tst.assert_allclose(closest, expected)
     # try an event with th closest et declated invalid
-    params = {}
-    jet_name = "Jet"
-    params['Jet_InputIdx'] = [[0], [1]]
-    params['Jet_RootInputIdx'] = [[0], [1]]
-    params['Jet_Phi'] = [[0.], [1.]]
-    params['Jet_Rapidity'] = [[0.], [1.]]
-    params['Phi'] = [4., 0., -np.pi, 1., np.pi, 2.]
-    params['Rapidity'] = [0., 0., -2., 0., 2., 0.]
-    params = {key: [awkward.fromiter(v)] for key, v in params.items()}
-    tag_idx = [1, 3]
     valid_jets = np.array([1])
     expected = [1, 1]
-    with TempTestDir("tst") as dir_name:
-        eventWise = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
-        eventWise.append(**params)
-        eventWise.selected_index = 0
-        closest = TrueTag.allocate(eventWise, jet_name, tag_idx, 2., valid_jets)
-        tst.assert_allclose(closest, expected)
+    closest = TrueTag.allocate(np.array([0., 1.]),
+                               np.array([0., 1.]),
+                               np.array([0., np.pi]),
+                               np.array([0., 2.]),
+                               6., valid_jets)
+    tst.assert_allclose(closest, expected)
 
 
 def test_tag_particle_indices():

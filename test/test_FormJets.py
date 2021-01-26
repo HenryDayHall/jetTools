@@ -963,7 +963,7 @@ def test_IterativeCone_init():
 # wait until spectral to test this becuase the cutoff is the most complex parameter
 def test_write_event():
     with TempTestDir("tst") as dir_name:
-        jet_params = {'DeltaR': 0.4, 'ExpofPTPosition': 'input', 'AffinityCutoff': ('knn', 3)}
+        jet_params = {'DeltaR': 0.4, 'ExpofPTPosition': 'input', 'CutoffKNN': 3}
         ints = SimpleClusterSamples.close_join['ints']
         floats = SimpleClusterSamples.close_join['floats']
         ew = Components.EventWise(os.path.join(dir_name, "tmp.awkd"))
@@ -999,12 +999,13 @@ def test_write_event():
         jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
         assert not jets.check_params(ew)
         jet_params['DeltaR'] -= 1
-        jet_params['AffinityCutoff'] = None
+        jet_params['CutoffKNN'] = None
+        jet_params['CutoffDistance'] = None
         jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
         assert not jets.check_params(ew)
         # the chekc should return false if the eventWise has diferent parameters listed
-        jet_params['AffinityCutoff'] = ('knn', 3)
-        ew.remove(jet_name + '_AffinityCutoff')
+        jet_params['CutoffKNN'] = 3
+        ew.remove(jet_name + '_CutoffKNN')
         jets = make_simple_jets(floats, jet_params, FormJets.Spectral)
         assert not jets.check_params(ew)
 
@@ -1021,7 +1022,7 @@ def test_set_eigenspace_distances():
         for row in floats:
             SimpleClusterSamples.fill_angular(row)
         jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
-                                         'AffinityCutoff': ('distance', 0.2),
+                                         'CutoffDistance': 0.2,
                                          'NumEigenvectors': 1,
                                          'DeltaR': dr}, jet_class)
         # check that there is an eigenvector with the pattern [x, y, y]
@@ -1037,7 +1038,7 @@ def test_set_eigenspace_distances():
         for row in floats:
             SimpleClusterSamples.fill_angular(row)
         jets = make_simple_jets(floats, {'Laplacien': 'symmetric',
-                                         'AffinityCutoff': ('distance', 0.2),
+                                         'CutoffDistance': 0.2,
                                          'NumEigenvectors': 1,
                                          'DeltaR': dr}, jet_class)
         # check that there is an eigenvector with the pattern [x, x, y, y]
@@ -1183,23 +1184,26 @@ def internal_set_affinity(jets, param_dict):
             warnings.simplefilter('ignore')
             expected = 1/distances
     elif param_dict['AffinityType'] == 'exponent':
-        expected = np.exp(-distances)
-    elif param_dict['AffinityType'] == 'exponent2':
-        expected = np.exp(-distances2)
+        exponent = param_dict['AffinityExp']
+        expected = np.exp(-distances**exponent)
     else:
         raise KeyError
     # apply the cut off
-    if param_dict['AffinityCutoff'] is not None:
-        to_keep = param_dict['AffinityCutoff'][1]
-        if param_dict['AffinityCutoff'][0] == 'knn':
-            np.fill_diagonal(expected, 0)
-            order = np.argsort(distances, axis=1)
-            # plus on for the diagonal
-            expected[order > to_keep + 1] = 0
-        elif param_dict['AffinityCutoff'][0] == 'distance':
-            expected[distances > to_keep] = 0
-        else:
-            raise KeyError
+    np.fill_diagonal(expected, 0)
+    if param_dict['CutoffKNN'] is not None:
+        to_keep = param_dict['CutoffKNN']
+        order = np.argsort(distances, axis=1)
+        alt_order = np.argsort(distances, axis=0)
+        for row in range(len(expected)):
+            for col in range(row+1):
+                # if the column is sorted as being beyond the section to keep
+                if (row in alt_order[to_keep+1:, col]) \
+                   and (col in order[row, to_keep+1:]):
+                    expected[row, col] = 0.
+                    expected[col, row] = 0.
+    if param_dict['CutoffDistance'] is not None:
+        to_keep = param_dict['CutoffDistance']
+        expected[distances > to_keep] = 0
     if len(expected) == 0:
         expected = expected.reshape((1, 0))
     np.fill_diagonal(expected, 0)
@@ -1248,9 +1252,17 @@ def test_Spectral_internal_linear():
     # as Pseudojet should not be directly created and Traditional lack support for all options
     affinity = 'linear'
     for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        cutoffKNN = None
+        cutoffDistance = None
+        if affinity_cutoff is not None:
+            if affinity_cutoff[0] == 'knn':
+                cutoffKNN = affinity_cutoff[1]
+            elif affinity_cutoff[0] == 'distance':
+                cutoffDistance = affinity_cutoff[1]
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
-                                     AffinityCutoff=affinity_cutoff)
+                                     CutoffKNN=cutoffKNN,
+                                     CutoffDistance=cutoffDistance)
         apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
@@ -1262,9 +1274,17 @@ def test_Spectral_internal_exponent():
     # as Pseudojet should not be directly created and Traditional lack support for all options
     affinity  = 'exponent'
     for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        cutoffKNN = None
+        cutoffDistance = None
+        if affinity_cutoff is not None:
+            if affinity_cutoff[0] == 'knn':
+                cutoffKNN = affinity_cutoff[1]
+            elif affinity_cutoff[0] == 'distance':
+                cutoffDistance = affinity_cutoff[1]
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
-                                     AffinityCutoff=affinity_cutoff)
+                                     CutoffDistance=cutoffDistance,
+                                     CutoffKNN=cutoffKNN)
         apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
@@ -1274,11 +1294,20 @@ def test_Spectral_internal_exponent():
 def test_Spectral_internal_exponent2():
     # testing Pseudojet functions, but creating Spectral jets
     # as Pseudojet should not be directly created and Traditional lack support for all options
-    affinity = 'exponent2'
+    affinity = 'exponent'
     for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        cutoffKNN = None
+        cutoffDistance = None
+        if affinity_cutoff is not None:
+            if affinity_cutoff[0] == 'knn':
+                cutoffKNN = affinity_cutoff[1]
+            elif affinity_cutoff[0] == 'distance':
+                cutoffDistance = affinity_cutoff[1]
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
-                                     AffinityCutoff=affinity_cutoff)
+                                     AffinityExp=2.,
+                                     CutoffDistance=cutoffDistance,
+                                     CutoffKNN=cutoffKNN)
         apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
@@ -1290,9 +1319,17 @@ def test_Spectral_internal_inverse():
     # as Pseudojet should not be directly created and Traditional lack support for all options
     affinity = 'inverse'
     for affinity_cutoff in [None, ('knn', 3), ('distance', 0.5), ('knn', 1), ('distance', 0)]:
+        cutoffKNN = None
+        cutoffDistance = None
+        if affinity_cutoff is not None:
+            if affinity_cutoff[0] == 'knn':
+                cutoffKNN = affinity_cutoff[1]
+            elif affinity_cutoff[0] == 'distance':
+                cutoffDistance = affinity_cutoff[1]
         additional_jet_params = dict(StoppingCondition='standard',
                                      AffinityType=affinity,
-                                     AffinityCutoff=affinity_cutoff)
+                                     CutoffDistance=cutoffDistance,
+                                     CutoffKNN=cutoffKNN)
         apply_internal(FormJets.Spectral, internal_set_affinity,
                        additional_jet_params=additional_jet_params)
         additional_jet_params['StoppingCondition'] = 'beamparticle'
@@ -1863,7 +1900,8 @@ def test_cluster_multiapply():
 def test_check_hyperparameters():
     params1 = {'DeltaR': .2, 'NumEigenvectors': np.inf,
                'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-               'AffinityType': 'exponent', 'AffinityCutoff': None,
+               'AffinityType': 'exponent', 'CutoffDistance': None,
+               'CutoffKNN': None,
                'Laplacien': 'unnormalised',
                'PhyDistance': 'angular', 'StoppingCondition': 'standard'}
     FormJets.check_hyperparameters(FormJets.Spectral, params1)
@@ -1875,7 +1913,7 @@ def test_check_hyperparameters():
     with pytest.raises(ValueError):
         FormJets.check_hyperparameters(FormJets.Traditional, params1)
     params1['NumEigenvectors'] = 3
-    params1['AffinityCutoff'] = ('knn', 3)
+    params1['CutoffKNN'] = 3
     FormJets.check_hyperparameters(FormJets.Spectral, params1)
     del params1['NumEigenvectors']
     FormJets.check_hyperparameters(FormJets.Spectral, params1)
@@ -1884,7 +1922,7 @@ def test_check_hyperparameters():
 
 def test_get_jet_names_params():
     jet_class = FormJets.SpectralMean
-    jet_paramsA = {'DeltaR': 0.4, 'AffinityCutoff': ('distance', 2.3), 
+    jet_paramsA = {'DeltaR': 0.4, 'CutoffDistance': 2.3,
                    'ExpofPTPosition': 'input'}
     floats = np.random.random((3, 8))
     # set distance to 0
@@ -1902,7 +1940,8 @@ def test_get_jet_names_params():
             jets = jets.split()
             jets[0].write_event(jets, jet_name="AAJet", event_index=0, eventWise=eventWise)
             jet_paramsB = {k: v for k, v in jet_paramsA.items()}
-            jet_paramsB['AffinityCutoff'] = None
+            jet_paramsB['CutoffKNN'] = None
+            jet_paramsB['CutoffDistance'] = None
             eventWise.selected_index = 0
             jets = jet_class(eventWise, dict_jet_params=jet_paramsB, assign=True)
             jets = jets.split()

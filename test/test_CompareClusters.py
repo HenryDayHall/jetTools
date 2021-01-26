@@ -116,7 +116,7 @@ def test_get_detectable_comparisons():
     params["BQuarkIdx"] += [awkward.fromiter([3, 4])]
     params["JetInputs_SourceIdx"] += [awkward.fromiter([])]
     params["DetectableTag_Roots"] += [awkward.fromiter([[3], [4]])]
-    params["DetectableTag_Leaves"] += [awkward.fromiter([])]
+    params["DetectableTag_Leaves"] += [awkward.fromiter([[], []])]
     params["DetectableTag_Energy"] += [awkward.fromiter([0., 0.])]
     params["DetectableTag_Px"] += [awkward.fromiter([0., 0.])]
     params["DetectableTag_Py"] += [awkward.fromiter([0., 0.])]
@@ -241,10 +241,6 @@ def fake_detectable_comparisons(eventWise, name, jet_idx, append):
 def fake_empty(*args, **kwargs):
     pass
 
-# This test passes for me locally, and on the HPC cluster
-# however the mocking dosn't work in travis (or on github actions)
-# that isn't the point of the test though, so I am commenting it out in the master branch
-# so that travis dosn't spam me with email
 def test_append_scores():
     # set up as for filter jets
     params = {}

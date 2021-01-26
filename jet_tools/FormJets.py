@@ -1193,6 +1193,8 @@ class PseudoJet:
         """
         # for now just merge in pairs
         local_indices = sorted([self.idx_from_inpIdx(i) for i in input_indices])
+        if not local_indices:
+            return
         replace = local_indices[0]
         for remove in local_indices[:0:-1]:
             self._merge_pseudojets(replace, remove, 0)
@@ -1595,30 +1597,37 @@ class IterativeCone(PseudoJet):
 class Spectral(PseudoJet):
     """ Clustering algorithm that embeds the jet inputs into spectral space to cluster """
     # list the params with default values
-    default_params = {'DeltaR': .2, 'NumEigenvectors': np.inf,
+    default_params = {'DeltaR': .2,
+                      'NumEigenvectors': np.inf,
+                      'EigenvalueLimit': np.inf,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                      'AffinityType': 'exponent', 'AffinityCutoff': None,
-                      'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
-                      'EigNormFactor': 0.5,
+                      'AffinityType': 'exponent',
+                      'AffinityExp': 1.,
+                      'Sigma': 1.,
+                      'CutoffKNN': None,
+                      'CutoffDistance': None,
+                      'Laplacien': 'unnormalised',
+                      'EigNormFactor': 0.,
                       'CombineSize': 'recalculate',
                       'PhyDistance': 'angular', 'EigDistance': 'euclidien',
-                      'Sigma': 1.,
                       'StoppingCondition': 'standard'}
     permited_values = {'DeltaR': Constants.numeric_classes['pdn'],
                        'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
-                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect', 'symoverpt'],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
+                       'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
-                       'Eigenspace': ['unnormalised', 'normalised'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
                        'EigDistance': ['euclidien', 'spherical', 'abscos'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'Sigma': Constants.numeric_classes['rn'],
                        'StoppingCondition': ['standard', 'beamparticle', 'conductance', 'meandistance']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
@@ -1683,7 +1692,7 @@ class Spectral(PseudoJet):
     @property
     def eigenvectors(self):
         eigenvectors = self._eigenspace
-        if self.Eigenspace == 'normalised':
+        if self.EigNormFactor != 0:
             norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**self.EigNormFactor
             eigenvectors /= np.array(self.eigenvalues[-1])**0.5
         return eigenvectors
@@ -1698,23 +1707,6 @@ class Spectral(PseudoJet):
                                for row in indices),
                               dtype=float)
             return pts
-        if self.Laplacien == 'symoverpt':
-            pts = np.fromiter((self._floats[row][self._PT_col]
-                               for row in indices),
-                              dtype=float)
-            pts /= self.event_mass
-            try:
-                affinities = np.sum(self._affinity[:, indices], axis=0)
-                #affinities /= np.mean(self._affinity)
-                affinities /= 1000
-            except IndexError as e:
-                if len(self._affinity.flatten()) == 0:
-                    return np.zeros(1)
-                text = f"jet_params = {self.jet_parameters}, affinity = {self._affinity}, indices = {indices}"
-                print(text)
-                raise e
-            print(f"aff = {np.mean(affinities)}, pts = {np.mean(pts)}")
-            return affinities+pts
         if self.Laplacien == 'energy':
             es = np.fromiter((self._floats[row][self._Energy_col]
                               for row in indices),
@@ -1870,10 +1862,17 @@ class Spectral(PseudoJet):
         eigenvectors = np.delete(eigenvectors, to_remove, axis=1)
         eigenvalues = np.delete(eigenvalues, to_remove)
         # now the trivial eigenvector should eb removed
-        self.eigenvalues.append(eigenvalues.tolist())
+        # also remove any eigenvectors with eigenvalus over the limit
+        # assuming that leaves at least 1 iegenvector
+        under_limit = int(np.sum(eigenvalues < self.EigenvalueLimit)
+                          *np.log(self.currently_avalible))
+        under_limit = max(under_limit, 1)
+        eigenvalues = eigenvalues[:under_limit]
+        eigenvectors = eigenvectors[:, :under_limit]
+        self.eigenvalues.append(eigenvalues)
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = np.copy(eigenvectors)
-        if self.Eigenspace == 'normalised':
+        if self.EigNormFactor != 0:
             norm_factor = np.clip(self.eigenvalues[-1], 0.001, None)**self.EigNormFactor
             self._eigenspace /= norm_factor
         # now treating the rows of this matrix as the new points get euclidien distances
@@ -1890,262 +1889,76 @@ class Spectral(PseudoJet):
     def _define_calculate_affinity(self):
         """ Define functions to caluclate affinity from real distance """
         sigma = self.Sigma
-        if self.AffinityCutoff is not None:
-            cutoff_type = self.AffinityCutoff[0]
-            cutoff_param = self.AffinityCutoff[1]
-            if cutoff_type == 'knn':
-                # add one to the number of neighbours to account for the 
-                # diagonal
-                cutoff_param += 1
-                if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+        knn_cutoff = self.CutoffKNN if self.CutoffKNN is not None else np.inf
+        distance2_cutoff = self.CutoffDistance**2 if self.CutoffDistance is not None else np.inf
+        if self.AffinityType == 'exponent':
+            exponent = self.AffinityExp*0.5
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = np.exp(-(distances2**0.5/sigma))
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        return affinity
-                elif self.AffinityType == 'exponent2':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+                """
+                affinity = np.exp(-(distances2**exponent/sigma))
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                return affinity
+        elif self.AffinityType == 'linear':  # this actually makes for relative distances
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = np.exp(-distances2/sigma)
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        return affinity
-                elif self.AffinityType == 'linear':  # this actually makes for relative distances
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
+                """
+                affinity = -distances2**0.5
+                # if you don't shift first then if there is only
+                # one non zero connection everything ends up as zero
+                affinity -= np.min(affinity)
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                return affinity
+        elif self.AffinityType == 'inverse':
+            def calculate_affinity(distances2):
+                """
+                Given physical distance squared, find an affinity.
 
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
+                Parameters
+                ----------
+                distances2 : array like of floats
+                    the distances squared
 
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
+                Returns
+                -------
+                affinity : array like of floats
+                    the affinities
 
-                        """
-                        affinity = -distances2**0.5
-                        # if you don't shift first then if there is only
-                        # one non zero connection everything ends up as zero
-                        affinity -= np.min(affinity)
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        return affinity
-                elif self.AffinityType == 'inverse':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = distances2**-0.5
-                        affinity[~knn(distances2, cutoff_param)] = 0
-                        mask = np.isinf(affinity)
-                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
-                        return affinity
-                else:
-                    raise ValueError(f"affinity type {self.AffinityType} unknown")
-            elif cutoff_type == 'distance':
-                cutoff_param2 = cutoff_param**2
-                if self.AffinityType == 'exponent':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = np.exp(-(distances2**0.5)/sigma)
-                        affinity[distances2 > cutoff_param2] = 0
-                        return affinity
-                elif self.AffinityType == 'exponent2':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = np.exp(-distances2/sigma)
-                        affinity[distances2 > cutoff_param2] = 0
-                        return affinity
-                elif self.AffinityType == 'linear':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = -distances2**0.5
-                        # if you don't shift first then is there is only one
-                        # unsevered connection everythign ends up as zero
-                        affinity -= np.min(affinity)
-                        affinity[distances2 > cutoff_param2] = 0
-                        return affinity
-                elif self.AffinityType == 'inverse':
-                    def calculate_affinity(distances2):
-                        """
-                        Given physical distance squared, find an affinity.
-
-                        Parameters
-                        ----------
-                        distances2 : array like of floats
-                            the distances squared
-
-                        Returns
-                        -------
-                        affinity : array like of floats
-                            the affinities
-
-                        """
-                        affinity = distances2**-0.5
-                        affinity[distances2 > cutoff_param2] = 0
-                        mask = np.isinf(affinity)
-                        affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
-                        return affinity
-                else:
-                    raise ValueError(f"affinity type {self.AffinityType} unknown")
-            else:
-                raise ValueError(f"cut off {cutoff_type} unknown")
+                """
+                affinity = distances2**-0.5
+                affinity[~knn(distances2, knn_cutoff)] = 0
+                affinity[distances2 > distance2_cutoff] = 0
+                mask = np.isinf(affinity)
+                affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
+                return affinity
         else:
-            if self.AffinityType == 'exponent':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = np.exp(-(distances2**0.5)/sigma)
-                    return affinity
-            elif self.AffinityType == 'exponent2':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = np.exp(-distances2/sigma)
-                    return affinity
-            elif self.AffinityType == 'linear':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = -distances2**0.5
-                    affinity -= np.min(affinity)
-                    return affinity
-            elif self.AffinityType == 'inverse':
-                def calculate_affinity(distances2):
-                    """
-                    Given physical distance squared, find an affinity.
-
-                    Parameters
-                    ----------
-                    distances2 : array like of floats
-                        the distances squared
-
-                    Returns
-                    -------
-                    affinity : array like of floats
-                        the affinities
-
-                    """
-                    affinity = distances2**-0.5
-                    # this is prone to infinities from various sources
-                    mask = np.isinf(affinity)
-                    affinity[mask] = np.nan_to_num(affinity[mask])/(2*len(affinity[mask]))
-                    return affinity
-            else:
-                raise ValueError(f"affinity type {self.AffinityType} unknown")
+            raise ValueError(f"affinity type {self.AffinityType} unknown")
         # this is make into a class fuction becuase it will b needed elsewhere
         self.calculate_affinity = calculate_affinity
 
@@ -2511,7 +2324,7 @@ class Spectral(PseudoJet):
         all_distance = self._distances2[triangle]
         distances_ax.hist([all_distance[crossings], all_distance[~crossings]],
                           histtype='step',
-                          label=[ "Crossing jets", "Inside jets"], normed=True)
+                          label=[ "Crossing jets", "Inside jets"], density=True)
         distances_ax.set_xlabel("Distance in embedding space")
         distances_ax.set_title("Distances at start, not updated")
         distances_ax.legend()
@@ -2601,8 +2414,9 @@ class Spectral(PseudoJet):
                     real_ax.set_xlabel(r"Rapidity")
                 real_ax.set_title("Real space")
                 # check the mean distance
-                mean_distance = np.nanmean(np.sqrt(
-                    self._distances2[np.tril_indices_from(self._distances2, -1)]))
+                if len(self._distances2) > 1:
+                    mean_distance = np.nanmean(np.sqrt(
+                        self._distances2[np.tril_indices_from(self._distances2, -1)]))
                 # delete items in the eigenspace axis
                 identities = self.InputIdx[:self.currently_avalible]
                 embedding_space = np.array(self._eigenspace)
@@ -2655,25 +2469,31 @@ class Indicator(Spectral):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
+                       'EigenvalueLimit': np.inf, 
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                  'AffinityType': 'exponent', 'AffinityCutoff': None,
+                  'AffinityType': 'exponent',
+                  'AffinityExp': 1.,
+                  'CutoffKNN': None,
+                  'CutoffDistance': None,
                   'Laplacien': 'unnormalised',
                   'CombineSize': 'recalculate',
                   'Sigma': 1.,
                   'PhyDistance': 'angular',
                   'BaseJump': 0.2, 'JumpEigenFactor': 10}
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
-                                           ('distance', Constants.numeric_classes['pdn'])],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'Sigma': Constants.numeric_classes['rn'],
                        'BaseJump': Constants.numeric_classes['pdn'],
                        'JumpEigenFactor': Constants.numeric_classes['rn']}
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
@@ -2809,7 +2629,7 @@ class Indicator(Spectral):
             to_remove = np.argmin(eigenvalues)
         eigenvectors = np.delete(eigenvectors, to_remove, axis=1)
         eigenvalues = np.delete(eigenvalues, to_remove)
-        self.eigenvalues.append(eigenvalues.tolist())
+        self.eigenvalues.append(eigenvalues)
         # at the start the eigenspace positions are the eigenvectors
         self._eigenspace = eigenvectors
 
@@ -2985,23 +2805,29 @@ class Splitting(Indicator):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
+                       'EigenvalueLimit': np.inf, 
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                  'AffinityType': 'exponent', 'AffinityCutoff': None,
-                  'Laplacien': 'unnormalised',
+                  'AffinityType': 'exponent',
+                  'AffinityExp': 1.,
                   'Sigma': 1.,
+                  'CutoffKNN': None,
+                  'CutoffDistance': None,
+                  'Laplacien': 'unnormalised',
                   'CombineSize': 'recalculate',
                   'PhyDistance': 'angular',
                   'MaxCutScore': 0.2}
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']),
-                                           ('distance', Constants.numeric_classes['pdn'])],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
-                       'Sigma': Constants.numeric_classes['rn'],
                        'CombineSize': ['sum', 'recalculate'],
                        'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
                        'MaxCutScore': Constants.numeric_classes['pdn']}
@@ -3342,24 +3168,30 @@ class SpectralFull(Spectral):
 class SpectralKMeans(Spectral):
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
+                      'EigenvalueLimit': np.inf,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
-                      'AffinityType': 'exponent', 'AffinityCutoff': None,
-                      'Laplacien': 'unnormalised', 'Eigenspace': 'unnormalised',
+                      'AffinityType': 'exponent',
+                      'AffinityExp': 1.,
+                      'CutoffKNN': None,
+                      'CutoffDistance': None,
+                      'Laplacien': 'unnormalised',
                       'EigNormFactor': 0.5,
                       'PhyDistance': 'angular',
                       'Sigma': 1., }
     permited_values = {'NumEigenvectors': [Constants.numeric_classes['nn'], np.inf],
+                       'EigenvalueLimit': Constants.numeric_classes['pdn'],
                        'ExpofPTFormat': ['min', 'Luclus'],
                        'ExpofPTPosition': ['input', 'eigenspace'],
                        'ExpofPTMultiplier': Constants.numeric_classes['rn'],
-                       'AffinityType': ['linear', 'exponent', 'exponent2', 'inverse'],
-                       'AffinityCutoff': [None, ('knn', Constants.numeric_classes['nn']), ('distance', Constants.numeric_classes['pdn'])],
+                       'AffinityType': ['linear', 'exponent', 'inverse'],
+                       'AffinityExp': Constants.numeric_classes['rn'],
+                       'Sigma': Constants.numeric_classes['pdn'],
+                       'CutoffKNN': [None, Constants.numeric_classes['nn']],
+                       'CutoffDistance': [None, Constants.numeric_classes['pdn']],
                        'Laplacien': ['unnormalised', 'symmetric', 'energy', 'pt', 'perfect'],
-                       'Eigenspace': ['unnormalised', 'normalised'],
                        'EigNormFactor': Constants.numeric_classes['rn'],
-                       'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab'],
-                       'Sigma': Constants.numeric_classes['rn']}
+                       'PhyDistance': ['angular', 'normed', 'invarient', 'taxicab']}
    
     def __init__(self, eventWise=None, dict_jet_params=None, **kwargs):
         """
@@ -3403,7 +3235,10 @@ class SpectralKMeans(Spectral):
         """
         Take a single step to join pseudojets
         """
-        num_jets = len(self.eventWise.SolJet_Energy)
+        num_particles = self.currently_avalible
+        #num_jets = np.sum(self.eigenvalues[-1] < self.EigenvalueLimit)*np.log(num_particles)
+        num_jets = self._eigenspace.shape[1]   # currently set as equal to the above
+        #old_num_jets = len(self.eventWise.SolJet_Energy)
         kmeans = Custom_KMeans(self.eigenspace_distance2)
         score, allocations, centeroids = kmeans.fit(num_jets, self._eigenspace)
         self._jets = [self.InputIdx[allocations==i] for i in range(num_jets)]
@@ -3427,7 +3262,6 @@ class SpectralKMeans(Spectral):
         truth_ax = ax_arr[0, 1]
         distances_ax = ax_arr[0, 2]
 
-        eig_ax = [(ax, 2*i, (2*i+1)%num_eigdims) for i, ax in enumerate(ax_arr[1])]
 
         # plot the truth
         solution = self.eventWise.Solution
@@ -3482,7 +3316,13 @@ class SpectralKMeans(Spectral):
         # check the mean distance
         mean_distance = np.nanmean(np.sqrt(all_distance))
         ax_limits = []
+
+        num_eigdims = self._eigenspace.shape[1]
+        eig_ax = [(ax, (2*i)%num_eigdims, (2*i+1)%num_eigdims)
+                  for i, ax in enumerate(ax_arr[1])]
         for ax, dim1, dim2 in eig_ax:
+            dim1 = dim1 % self._eigenspace.shape[1]
+            dim2 = dim2 % self._eigenspace.shape[1]
             ax.scatter(self._eigenspace[:, dim1], self._eigenspace[:, dim2],
                        self.Size*size_multipler,
                        c=colours_now)
@@ -3496,11 +3336,15 @@ class SpectralKMeans(Spectral):
             limits[3] = max(limits[3], 1)
             ax_limits.append(limits)
         ax.set_title(f"Num eigenvectors = {self.NumEigenvectors}")
-        eig_ax[0][0].set_title(f"mean distance = {mean_distance:.2f}")
+        #num_jets = np.sum(self.eigenvalues[-1] < self.EigenvalueLimit)*np.log(num_particles)
+        num_jets = self._eigenspace.shape[1]   # currently set as equal to the above
+        print(num_jets)
+        print(self.eigenvalues[-1][self.eigenvalues[-1]<self.EigenvalueLimit])
+        num_jets = max(num_jets, 1)
+        eig_ax[0][0].set_title(f"num jets = {num_jets}")
         print(f"mean distance = {mean_distance:.2f}")
         plt.pause(1.)
         # Do the computation
-        num_jets = len(self.eventWise.SolJet_Energy)
         kmeans = Custom_KMeans(self.eigenspace_distance2)
         score, allocations, centeroids = kmeans.fit(num_jets, self._eigenspace)
         eig_ax[1][0].set_title(f"Score = {score}")
@@ -3855,14 +3699,20 @@ def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
     else:
         return checkpoints
     # now check affinity cutoff
-    desired = jet_params['AffinityCutoff']
+    desired = jet_params['CutoffKNN']
     if desired is None:
         possible = [name for name in possible
-                    if checkpoint_hyper[name + '_AffinityCutoff'] is None]
+                    if checkpoint_hyper[name + '_CutoffKNN'] is None]
     else:
         possible = [name for name in possible
-                    if checkpoint_hyper[name + '_AffinityCutoff'][0] == desired[0]
-                    and np.isclose(checkpoint_hyper[name + '_AffinityCutoff'][1], desired[1])]
+                    if np.isclose(checkpoint_hyper[name + '_CutoffKNN'], desired)]
+    desired = jet_params['CutoffDistance']
+    if desired is None:
+        possible = [name for name in possible
+                    if checkpoint_hyper[name + '_CutoffDistance'] is None]
+    else:
+        possible = [name for name in possible
+                    if np.isclose(checkpoint_hyper[name + '_CutoffDistance'], desired)]
     # chech if the stopping ondition matches, becuase beam particle adds a row
     desired = jet_params['StoppingCondition']
     possible = [name for name in possible
@@ -3871,6 +3721,12 @@ def identify_matching_checkpoints(checkpoint_content, checkpoint_hyper,
     desired = jet_params['AffinityType']
     possible = [name for name in possible
                 if checkpoint_hyper[name+'_AffinityType'] == desired]
+    desired = jet_params['AffinityExp']
+    possible = [name for name in possible
+                if np.isclose(checkpoint_hyper[name+'_AffinityExp'],desired)]
+    desired = jet_params['Sigma']
+    possible = [name for name in possible
+                if np.isclose(checkpoint_hyper[name+'_Sigma'],desired)]
     if possible:
         checkpoint_name = 'affinity'
         this_name = next(name for name in checkpoint_content
@@ -3999,9 +3855,15 @@ def cluster_multiapply(eventWise, cluster_algorithm, dict_jet_params={},
         if checkpoints is not None:
             check_here = {k:v[event_n] for k, v in checkpoints.items()
                           if len(v) > event_n and v[event_n] is not None}
-        jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
-                                 checkpoints=check_here,
-                                 **additional_parameters)
+        try:
+            jets = cluster_algorithm(eventWise, dict_jet_params=dict_jet_params,
+                                     checkpoints=check_here,
+                                     **additional_parameters)
+        except np.linalg.LinAlgError:  # we can just ignore this event
+            eigenvalues.append([])
+            if not silent:
+                print(f"LinAlgError in event {event_n}")
+            continue
         new_checkpoints += update_checkpoint_dict(checkpoint_content, checkpoint_hyper,
                                                   jets, check_here)
         if has_eigenvalues:
@@ -4065,19 +3927,6 @@ def check_hyperparameters(cluster_class, params):
                 continue  # no problem
         except (ValueError, TypeError):
             pass
-        if name == 'AffinityCutoff':
-            if value in opts:  # ture for None
-                continue
-            else:
-                # done this way to prevent any alteration to the original opts
-                opts = [opt for opt in opts if opt is not None]
-            primary, secondary = value
-            try:
-                secondary_options = next(s for p, s in opts if p == primary)
-            except StopIteration:
-                raise ValueError(error_str.format(value, name, opts))
-            if Constants.is_numeric_class(secondary, secondary_options):
-                continue  # no problem
         if isinstance(opts, list):
             found_correct = False
             for opt in opts:
@@ -4626,12 +4475,13 @@ if __name__ == '__main__':
                                    #MaxCutScore=0.2, 
                                    Laplacien='symmetric',
                                    #DeltaR=3.2,
-                                   Eigenspace='normalised',
-                                   AffinityType='exponent2',
+                                   AffinityType='exponent',
+                                   AffinityExp=1.,
                                    Sigma=.6,
                                    #CombineSize='sum',
                                    EigDistance='abscos',
-                                   AffinityCutoff=None,
+                                   CutoffKNN=None,
+                                   CutoffDistance=None,
                                    PhyDistance='angular')
         checkpoint_hyper = {}
         checkpoint_content = {}
