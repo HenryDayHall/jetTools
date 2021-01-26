@@ -1128,7 +1128,7 @@ def cluster_from_journal(eventWise, journal,
 
 def plot_journal(journal, parameters=None):
     if isinstance(journal, str):
-        journal = abcpy.output.Journal(journal)
+        journal = abcpy.output.Journal.fromFile(journal)
     if parameters is None:
         parameters = sorted(journal.get_parameters().keys())
     max_param_in_plot = 3
@@ -1140,7 +1140,8 @@ def plot_journal(journal, parameters=None):
             here = parameters[i*max_param_in_plot:
                               (i+1)*max_param_in_plot]
             plot_journal(journal, here)
-    fig, ax_arr = plt.subplots(1, n_param+1, sharex=True)
+        return
+    fig, ax_arr = plt.subplots( n_param+1, 1, sharex=True)
     scores = np.array(journal.distances)
     n_steps = scores.shape[0]
     points_in_step = scores.shape[1]
