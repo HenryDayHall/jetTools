@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import matplotlib
 import scipy.spatial
 from ipdb import set_trace as st
-from . import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
+from jet_tools import Constants, Components, FormShower, PlottingTools, TrueTag, FormJets, InputTools
 
 
 def order_tagged_jets(eventWise, jet_name, filtered_event_idxs, ranking_variable="PT"):
