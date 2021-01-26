@@ -1599,7 +1599,7 @@ class Spectral(PseudoJet):
     # list the params with default values
     default_params = {'DeltaR': .2,
                       'NumEigenvectors': np.inf,
-                      'EigenvalueLimit': 0.5,
+                      'EigenvalueLimit': np.inf,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent',
@@ -2469,7 +2469,7 @@ class Indicator(Spectral):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
-                       'EigenvalueLimit': 0.5, 
+                       'EigenvalueLimit': np.inf, 
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent',
@@ -2805,7 +2805,7 @@ class Splitting(Indicator):
     """ An extention of Spectral jets to cluster the jets in a divisive, simpler manner """
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
-                       'EigenvalueLimit': 0.5, 
+                       'EigenvalueLimit': np.inf, 
                   'ExpofPTFormat': 'min',
                   'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                   'AffinityType': 'exponent',
@@ -3168,7 +3168,7 @@ class SpectralFull(Spectral):
 class SpectralKMeans(Spectral):
     # list the params with default values
     default_params = {'NumEigenvectors': np.inf,
-                      'EigenvalueLimit': 0.5,
+                      'EigenvalueLimit': np.inf,
                       'ExpofPTFormat': 'min',
                       'ExpofPTPosition': 'input', 'ExpofPTMultiplier': 0,
                       'AffinityType': 'exponent',

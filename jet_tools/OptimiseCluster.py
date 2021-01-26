@@ -24,10 +24,10 @@ import abcpy.inferences
 import copy
 
 
-def event_loss(eventWise, jet_class, spectral_jet_params, other_hyperparams, generic_data):
+def event_loss(eventWise, jet_class, jet_params, other_hyperparams, generic_data):
     warnings.filterwarnings('ignore')
     assert eventWise.selected_index is not None
-    jets = jet_class(eventWise, dict_jet_params=spectral_jet_params,
+    jets = jet_class(eventWise, dict_jet_params=jet_params,
                      assign=True)
     jets = jets.split()
     # get the tags
@@ -120,7 +120,7 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
             unclusterable_counter += 1
             continue
         # we didn't manage a clustering
-    loss += 2**unclusterable_counter - 1
+    loss += 2**unclusterable_counter
     loss = min(loss/len(batch), 1e5)  # cap the value of loss
     #print(f"loss = {loss}, unclusterable = {unclusterable_counter}")
     if loss < 200:

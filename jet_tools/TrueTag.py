@@ -276,7 +276,7 @@ def add_tags(eventWise, jet_name, max_angle, batch_length=100, min_tracks=None, 
             break
         eventWise.selected_index = event_n
         # get the tags
-        tags = eventWise.BQuarkIdx.tolist()   # talk to Jacan before merging this
+        tags = eventWise.DetectableTag_Roots.flatten().tolist()
         #  Jacan need this to not be a BQuark!!!
         tag_phis = eventWise.Phi[tags]
         tag_raps = eventWise.Rapidity[tags]
