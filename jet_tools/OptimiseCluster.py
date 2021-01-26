@@ -1125,6 +1125,43 @@ def cluster_from_journal(eventWise, journal,
     print("Scoring")
     CompareClusters.append_scores(eventWise, dijet_mass=dijet_mass, overwrite=False)
 
+
+def plot_journal(journal, parameters=None):
+    if isinstance(journal, str):
+        journal = abcpy.output.Journal(journal)
+    if parameters is None:
+        parameters = sorted(journal.get_parameters().keys())
+    max_param_in_plot = 3
+    n_param = len(parameters)
+    if n_param > max_param_in_plot:
+        num_plots = int(n_param/max_param_in_plot)
+        for i in range(num_plots):
+            print(f"{i} for {num_plots}")
+            here = parameters[i*max_param_in_plot:
+                              (i+1)*max_param_in_plot]
+            plot_journal(journal, here)
+    fig, ax_arr = plt.subplots(1, n_param+1, sharex=True)
+    scores = np.array(journal.distances)
+    n_steps = scores.shape[0]
+    points_in_step = scores.shape[1]
+    scores = scores.flatten()
+    xs = np.array([[i]*points_in_step for i in range(n_steps)]).flatten()
+    # scores on first plot
+    alpha = 0.5
+    ax_arr[0].scatter(xs, scores, c=scores, alpha=alpha)
+    ax_arr[0].set_xticks([])
+    ax_arr[0].set_ylabel("Loss")
+    for name, ax in zip(parameters, ax_arr[1:]):
+        values = np.array([journal.get_parameters(i)[name] for i in range(n_steps)])
+        ax.scatter(xs, values.flatten(), c=scores, alpha=alpha)
+        ax.set_xticks([])
+        ax.set_ylabel(name)
+    ax.set_xticks(list(range(n_steps)))
+    ax.set_xlabel("Step")
+    fig.subplots_adjust(hspace=0)
+    plt.show()
+        
+
 ##################### logging ############################
 
 def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records):
