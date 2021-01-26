@@ -2,6 +2,7 @@ language: python
 branches:
     only:
     - master
+    - dev
 install:
   - pip3 install -r requirements.txt
   - pip3 install coverage
