@@ -1,4 +1,5 @@
 """ tests to test the OptimiseCluster module """
+from ipdb import set_trace as st
 from jet_tools import Components, FormJets, TrueTag, FormShower, OptimiseCluster
 import numpy as np
 import numpy.testing as tst
@@ -21,7 +22,7 @@ def test_event_batch_loss():
     # then get loss
     n_events = len(eventWise.JetInputs_SourceIdx)
     jet_class = FormJets.SpectralFull
-    jet_params = {}
+    jet_params = {'StoppingCondition': 'meandistance', 'DeltaR':1.2, 'EigenvalueLimit': 0.5}
     other_hyperparams = {'min_tracks': 2, 'max_angle2': 0.8, 'min_jetpt': 15}
     generic_data = {}
     # get the loss of the first 4 event
@@ -44,14 +45,14 @@ def test_event_batch_loss():
                                            jet_class, jet_params, other_hyperparams,
                                             generic_data) 
     tst.assert_allclose(generic_data["SuccessCount"], np.ones(num_losses))
-    tst.assert_allclose(batchloss, np.sum(losses)/num_losses)
+    tst.assert_allclose(batchloss, (np.sum(losses)+1)/num_losses)
     # now mock eventloss so it throws an error
     with unittest.mock.patch('jet_tools.OptimiseCluster.event_loss',
                              new=throws_LinAlgError):
         batchloss2 = OptimiseCluster.batch_loss(range(num_losses), eventWise,
                                                jet_class, jet_params, other_hyperparams,
                                                 generic_data) 
-        tst.assert_allclose(batchloss2, min(1e5, (2**num_losses-1)/num_losses))
+        tst.assert_allclose(batchloss2, min(1e5, (2**num_losses)/num_losses))
 
 def test_get_usable_events():
     # try when there is no counts yet

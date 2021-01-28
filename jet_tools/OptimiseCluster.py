@@ -120,7 +120,7 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
             unclusterable_counter += 1
             continue
         # we didn't manage a clustering
-    loss += 2**unclusterable_counter - 1
+    loss += 2**unclusterable_counter
     loss = min(loss/len(batch), 1e5)  # cap the value of loss
     #print(f"loss = {loss}, unclusterable = {unclusterable_counter}")
     if loss < 200:
@@ -529,6 +529,7 @@ def generate_pool(eventWise_name, max_workers=10,
 ################### ABCPY  ##############################
 
 
+# SMCABC
 # wont do sampling here as the vectoisation is hard to predict
 class TimedPMCABC(abcpy.inferences.PMCABC):
     def sample(self, observations, duration,
@@ -765,40 +766,54 @@ class ClusteringModel(abcpy.probabilisticmodels.ProbabilisticModel,
             to get the parameters back to clustring format
 	
         """
+        # can't do anything here that would prevent pickling
+        self.fully_loaded = False
         if not isinstance(parameters, list):
             raise TypeError("model takes parameters int he form of a list")
-        # start by getting the dataset
-        eventWise_path = kwargs.get("eventWise_path")
-        self.eventWise = Components.EventWise.from_file(eventWise_path)
-        n_events = len(self.eventWise.JetInputs_PT)
-        # make a sampler
-        batch_size = kwargs.get("batch_size", 100)
-        test_size = kwargs.get("test_size", 500)
-        usable = get_usable_events(self.eventWise)
-        self.test_set, sampler, _ = make_sampler(usable, batch_size, test_size=test_size,
-                                                 end_time=np.inf, total_calls=1e10)
-        self.sampler = iter(sampler)
+        # get path to dataset
+        self.eventWise_path = kwargs.get("eventWise_path")
+        # get stats for sampler creation
+        self.batch_size = kwargs.get("batch_size", 100)
+        self.test_size = kwargs.get("test_size", 500)
         # get the translator
         self.translator = kwargs.get("translator")
-        self.jet_class = self.translator.jet_class
         # check we got the right number of parameters
         if len(parameters) != len(self.translator.unfixed_order):
             raise RuntimeError(f"Model needs {len(self.translator.unfixed_order)} parameters, "
                                +f"\n({self.translator.unfixed_order})\n"
                                +f" but found {len(parameters)} parameters.")
-        # make other objects used
+        # make other objects used for the model
         self.other_hyperparams = {}
         self.other_hyperparams['min_tracks'] = Constants.min_ntracks
         self.other_hyperparams['min_jetpt'] = Constants.min_pt
         max_angle = Constants.max_tagangle
         self.other_hyperparams['max_angle2'] = max_angle**2
-        self.generic_data = dict(SuccessCount=np.zeros(n_events),
-                                 FailCount=np.zeros(n_events))
         #  must call the super scontructor
         input_connector = abcpy.probabilisticmodels.InputConnector.from_list(parameters)
         super().__init__(input_connector, name)
 
+    def __load_on_use(self):
+        """This object will no longer be picklable when it has finished loading.
+        This function is only called imediatly before use,
+        so that the object can be pickled before it has been used for the first time. """
+        self.eventWise = Components.EventWise.from_file(self.eventWise_path)
+        n_events = len(self.eventWise.JetInputs_PT)
+        # make objects that require this data
+        self.generic_data = dict(SuccessCount=np.zeros(n_events),
+                                 FailCount=np.zeros(n_events))
+        # make a sampler (requires the data has been loaded)
+        usable = get_usable_events(self.eventWise)
+        self.test_set, sampler, _ = make_sampler(usable, self.batch_size,
+                                                 test_size=self.test_size,
+                                                 end_time=np.inf, total_calls=1e10)
+        self.sampler = iter(sampler)
+        # get the jet class from the translator
+        self.jet_class = self.translator.jet_class
+        self.fully_loaded = True
+
+
     def _check_input(self, input_values):
+        # this can be done without fully loading
         # check we got the right number of parameters
         variable_order = self.translator.unfixed_order
         if len(input_values) != len(variable_order):
@@ -851,6 +866,10 @@ class ClusteringModel(abcpy.probabilisticmodels.ProbabilisticModel,
         scores : list of k numpy arrays
             each the score of one batch
         """
+        # this requires we have finished loading
+        if not self.fully_loaded:
+            self.__load_on_use()
+            # the object is no longer picklable
         results = []
         for batch_n in range(k):
             batch = next(self.sampler)
@@ -966,8 +985,7 @@ class ClippedNormal(abcpy.probabilisticmodels.ProbabilisticModel,
         return pdf
 
 
-def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
-                               total_calls=10000, silent=True, **kwargs):
+def run_optimisation_abcpy(eventWise_name, batch_size=100, **kwargs):
     # make the translator
     print("setting up optimisation", flush=True)
     jet_class = kwargs.get("jet_class", FormJets.SpectralFull)
@@ -982,7 +1000,8 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
                             PhyDistance='angular',
                             CombineSize='sum',
                             ExpofPTFormat='Luclus',
-                            #ExpofPTPosition='input',
+                            ExpofPTPosition='input',
+                            ExpofPTMultiplier=0.,
                             AffinityType='exponent')
     elif jet_class == FormJets.SpectralKMeans:
         fixed_params = dict(EigDistance='abscos',
@@ -998,14 +1017,12 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     statistics_calc = abcpy.statistics.Identity()
     distance_calc = abcpy.distances.Euclidean(statistics_calc)
     #distance_calc = abcpy.distances.LogReg(statistics_calc, seed=42)
-    backend = abcpy.backends.BackendDummy()
-    #backend = abcpy.backends.BackendMPI()
+    #backend = abcpy.backends.BackendDummy()
+    backend = abcpy.backends.BackendMPI()
     print("defining objective", flush=True)
     objective = [np.array(0)]
     # parameters for the optimiser
-    #eps_init = np.array([10000])
     eps_init = np.array([70])
-    #eps_init = np.array([0.75])
     #n_samples = 10000
     #n_samples = 40
     n_samples = 10
@@ -1024,7 +1041,6 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     print("creating sampler", flush=True)
     kernal = abcpy.perturbationkernel.DefaultKernel(varaible_list)
     sampler = TimedPMCABC([model], [distance_calc], backend, kernal, seed=1)
-    #sampler = abcpy_new_inferences.PMCABC([model], [distance_calc], backend, kernal, seed=1)
     print(f"Running for {duration/(60*60):.1f} hours aprox", flush=True)
     journal_name, journal = sampler.sample([objective], duration, eps_init,
                                            n_samples, n_samples_per_param,
@@ -1108,6 +1124,7 @@ def journal_to_best(journal, num_best=100, max_steps_back=None):
         best.append(translator.list_to_clustering(params))
     return jet_class, best
 
+
 def cluster_from_journal(eventWise, journal,
                          dijet_mass=40, num_best=100, max_steps_back=None):
     if isinstance(eventWise, str):
@@ -1128,7 +1145,7 @@ def cluster_from_journal(eventWise, journal,
 
 def plot_journal(journal, parameters=None):
     if isinstance(journal, str):
-        journal = abcpy.output.Journal(journal)
+        journal = abcpy.output.Journal.fromFile(journal)
     if parameters is None:
         parameters = sorted(journal.get_parameters().keys())
     max_param_in_plot = 3
@@ -1140,7 +1157,8 @@ def plot_journal(journal, parameters=None):
             here = parameters[i*max_param_in_plot:
                               (i+1)*max_param_in_plot]
             plot_journal(journal, here)
-    fig, ax_arr = plt.subplots(1, n_param+1, sharex=True)
+        return
+    fig, ax_arr = plt.subplots(n_param+1, 1, sharex=True)
     scores = np.array(journal.distances)
     n_steps = scores.shape[0]
     points_in_step = scores.shape[1]
@@ -1399,7 +1417,6 @@ def cluster_from_log(log_dirs, eventWise_path, jet_class="SpectralFull", dijet_m
 
 
 if __name__ == '__main__':
-    #run_optimisation_abcpy("megaIgnore/show.awkd")
     if InputTools.yesNo_question("Plot run? "):
         visulise_logs()
     elif InputTools.yesNo_question("Optimise with nevergrad? "):
