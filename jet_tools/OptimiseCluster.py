@@ -985,8 +985,7 @@ class ClippedNormal(abcpy.probabilisticmodels.ProbabilisticModel,
         return pdf
 
 
-def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
-                               total_calls=10000, silent=True, **kwargs):
+def run_optimisation_abcpy(eventWise_name, batch_size=100, **kwargs):
     # make the translator
     print("setting up optimisation", flush=True)
     jet_class = kwargs.get("jet_class", FormJets.SpectralFull)
@@ -1001,7 +1000,8 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
                             PhyDistance='angular',
                             CombineSize='sum',
                             ExpofPTFormat='Luclus',
-                            #ExpofPTPosition='input',
+                            ExpofPTPosition='input',
+                            ExpofPTMultiplier=0.,
                             AffinityType='exponent')
     elif jet_class == FormJets.SpectralKMeans:
         fixed_params = dict(EigDistance='abscos',
@@ -1017,8 +1017,8 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, end_time=None,
     statistics_calc = abcpy.statistics.Identity()
     distance_calc = abcpy.distances.Euclidean(statistics_calc)
     #distance_calc = abcpy.distances.LogReg(statistics_calc, seed=42)
-    backend = abcpy.backends.BackendDummy()
-    #backend = abcpy.backends.BackendMPI()
+    #backend = abcpy.backends.BackendDummy()
+    backend = abcpy.backends.BackendMPI()
     print("defining objective", flush=True)
     objective = [np.array(0)]
     # parameters for the optimiser
@@ -1417,7 +1417,6 @@ def cluster_from_log(log_dirs, eventWise_path, jet_class="SpectralFull", dijet_m
 
 
 if __name__ == '__main__':
-    #run_optimisation_abcpy("megaIgnore/show.awkd")
     if InputTools.yesNo_question("Plot run? "):
         visulise_logs()
     elif InputTools.yesNo_question("Optimise with nevergrad? "):
