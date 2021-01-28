@@ -1212,7 +1212,8 @@ def print_log(hyper_to_log, hyper_log,
               file_name=None):
     try:
         os.mkdir(log_dir)
-    except FileExistsError:
+    except (FileExistsError, FileNotFoundError):
+        # for some reason the error I get depends on which computer runs it....
         pass
     text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
