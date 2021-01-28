@@ -529,6 +529,7 @@ def generate_pool(eventWise_name, max_workers=10,
 ################### ABCPY  ##############################
 
 
+# SMCABC
 # wont do sampling here as the vectoisation is hard to predict
 class TimedPMCABC(abcpy.inferences.PMCABC):
     def sample(self, observations, duration,
@@ -1141,7 +1142,7 @@ def plot_journal(journal, parameters=None):
                               (i+1)*max_param_in_plot]
             plot_journal(journal, here)
         return
-    fig, ax_arr = plt.subplots( n_param+1, 1, sharex=True)
+    fig, ax_arr = plt.subplots(n_param+1, 1, sharex=True)
     scores = np.array(journal.distances)
     n_steps = scores.shape[0]
     points_in_step = scores.shape[1]
