@@ -1198,6 +1198,11 @@ def log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_param
 def reserve_name(name_form):
     assert "}" in name_form, "Need '{}' to be able to format name_form"
     i = 0
+    path = os.path.split(name_form)[0]
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass
     while True:
         try:
             open(name_form.format(i), 'x').close()
@@ -1212,8 +1217,7 @@ def print_log(hyper_to_log, hyper_log,
               file_name=None):
     try:
         os.mkdir(log_dir)
-    except (FileExistsError, FileNotFoundError):
-        # for some reason the error I get depends on which computer runs it....
+    except FileExistsError:
         pass
     text = log_text(hyper_to_log, hyper_log, params_to_log, param_log, full_final_params, other_records)
     log_name = os.path.join(log_dir, "log{:03d}.txt")
