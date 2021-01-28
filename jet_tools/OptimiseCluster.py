@@ -120,7 +120,7 @@ def batch_loss(batch, eventWise, jet_class, spectral_jet_params, other_hyperpara
             unclusterable_counter += 1
             continue
         # we didn't manage a clustering
-    loss += 2**unclusterable_counter - 1
+    loss += 2**unclusterable_counter
     loss = min(loss/len(batch), 1e5)  # cap the value of loss
     #print(f"loss = {loss}, unclusterable = {unclusterable_counter}")
     if loss < 200:
