@@ -4,7 +4,7 @@ setup(
     name='jet_tools',
     version='0.1.0',
     author='Henry Day Hall',
-    packages=['jet_tools', 'jet_tools.src'],
+    packages=['jet_tools'],
     url='https://github.com/HenryDayHall/jetTools',
     long_description=open('README.md').read(),
     install_requires=[
