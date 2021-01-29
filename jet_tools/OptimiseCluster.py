@@ -632,7 +632,7 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             # check distances
             distances = journal.distances[-1]
             # should be max or min?
-            epsilon_arr = np.maximum(epsilon_init, np.max(distances))
+            epsilon_arr = np.minimum(epsilon_init, np.max(distances))
         else:
             epsilon_arr = epsilon_init
         epsilon_arr = list(epsilon_arr)
