@@ -2,7 +2,7 @@
 import numpy as np
 from numpy import testing as tst
 import awkward
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 from scipy.cluster import hierarchy
 import scipy.spatial
 

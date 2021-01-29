@@ -2,7 +2,7 @@
 from jet_tools import FormVertices
 import numpy as np
 from numpy import testing as tst
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 
 def test_closest_approch():
     a1 = [0, 0, 0]

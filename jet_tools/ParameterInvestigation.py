@@ -2,10 +2,10 @@
 import itertools
 import warnings
 from collections import OrderedDict
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 import os
 import numpy as np
-from . import FormJets, FormShower, PlottingTools, Components, InputTools, TrueTag
+from jet_tools import FormJets, FormShower, PlottingTools, Components, InputTools, TrueTag
 import scipy.spatial
 import scipy.stats
 import sklearn.metrics

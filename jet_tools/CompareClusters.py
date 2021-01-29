@@ -9,8 +9,8 @@ import os
 import pickle
 import matplotlib
 import awkward
-from ipdb import set_trace as st
-from . import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, JetQuality, PlottingTools
+##from ipdb import set_trace as st
+from jet_tools import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, JetQuality, PlottingTools
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt

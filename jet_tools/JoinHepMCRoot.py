@@ -1,6 +1,6 @@
 """ Marry a HepMC and root eventwise object """
-#from ipdb import set_trace as st
-from . import Components, ReadHepmc
+###from ipdb import set_trace as st
+from jet_tools import Components, ReadHepmc
 import os
 import numpy as np
 import awkward

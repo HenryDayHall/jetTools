@@ -1,8 +1,8 @@
 """ Jet quality measures as discribed in https://arxiv.org/pdf/0810.1304.pdf"""
 import numpy as np
-from . import MassPeaks, Constants, TrueTag
+from jet_tools import MassPeaks, Constants, TrueTag
 import scipy.optimize
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 
 
 def sorted_masses(eventWise, jet_name, mass_function='correct allocation',

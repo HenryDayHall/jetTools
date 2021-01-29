@@ -1,4 +1,4 @@
-from . import FormJets, Components, InputTools, CompareClusters, CompareDatasets
+from jet_tools import FormJets, Components, InputTools, CompareClusters, CompareDatasets
 import time
 import csv
 import cProfile
@@ -6,7 +6,7 @@ import tabulate
 import os
 import numpy as np
 import multiprocessing
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 import itertools
 
 

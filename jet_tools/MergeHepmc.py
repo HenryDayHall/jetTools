@@ -1,6 +1,6 @@
-from . import ReadHepmc, Components
+from jet_tools import ReadHepmc, Components
 import awkward
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 import os
 import numpy as np
 
@@ -15,12 +15,9 @@ def create_particle_line(eventWise, particle_idx):
     particle_cols = ReadHepmc.Hepmc.particle_cols[:n_particle_cols]
     items = [getattr(eventWise, name)[particle_idx] for name in particle_cols]
     # the last three items are flow codes
-    try:
-        assert particle_cols[-3] == "N_flow_codes"
-        assert particle_cols[-2] == "Flow_codes"
-        assert particle_cols[-1] == "Antiflow_codes"
-    except:
-        st()
+    assert particle_cols[-3] == "N_flow_codes"
+    assert particle_cols[-2] == "Flow_codes"
+    assert particle_cols[-1] == "Antiflow_codes"
     num_flow_codes = items[-3]
     col_types = col_types[:-2] + [col_types[-2]]*num_flow_codes + [col_types[-1]]*num_flow_codes
     items = items[:-2] + [*items[-2], *items[-1]]
