@@ -357,6 +357,7 @@ def generate_pool(eventWise_path, jet_class, jet_params, jet_name, leave_one_fre
     print("All processes ended")
     return True
 
+
 # prevents stalled jets from causing issues
 def remove_partial(all_paths, expected_length=None):
     """
@@ -537,6 +538,48 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
         CompareDatasets.append_all(eventWise_path, end_time)
 
 
+def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
+    start_time = time.time()
+    eventWise = Components.EventWise.from_file(eventWise_path)
+    num_combinations = len(param_list)
+    if name_list is None:
+        name_list = [None]*num_combinations
+        existing_names = []
+    else:
+        existing_names = FormJets.get_jet_names(eventWise)
+    name_gen = name_generator(jet_class, existing_names)
+    if not isinstance(jet_class, list):
+        jet_class = [jet_class]*num_combinations
+    finished = 0
+    for i, name in enumerate(name_list):
+        # check if it's been done
+        parameters = param_list[i]
+        if name is not None:
+            if name in existing_names:
+                print(f"Already done {jet_class}, {parameters}\n")
+                continue
+        else:
+            # check for the params
+            if len(FormJets.check_for_jet(eventWise, parameters)):
+                print(f"Already done {jet_class}, {parameters}\n")
+                continue
+            jet_name = next(name_gen)
+        # getting here means it hasn't been done
+        print(f"{i/num_combinations:.1%} {jet_name}", flush=True)
+        generate_pool(eventWise_path, jet_class[i], parameters, jet_name, True)
+        finished += 1
+        if time.time() > end_time:
+            break
+    time_elapsed = time.time() - start_time
+    print(f"Done {finished} in {time_elapsed/60:.1f} minutes")
+    if i >= num_combinations - 1:
+        print(f"Finished {num_combinations} parameter combinations")
+    else:
+        per_combinations = time_elapsed/finished
+        remaining = num_combinations - i - 1
+        time_needed = (remaining*per_combinations)/60
+        print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
+
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
     Scan over all combinations of a range of options.
@@ -557,44 +600,33 @@ def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=No
         estimate for how long it would take to finish this scan.
     
     """
-    start_time = time.time()
-    # get the current jets
-    eventWise = Components.EventWise.from_file(eventWise_path)
-    existing_jets = [name for name in FormJets.get_jet_names(eventWise) if name.startswith(jet_class)]
-    name_gen = name_generator(jet_class, existing_jets)
+    scan_list = list_scan_parameters(scan_parameters, fix_parameters)
+    run_list(eventWise_path, end_time, jet_class, scan_list)
+
+
+def copy_jets(eventWise_path_to_cluster, eventWise_path_to_copy, end_time, jet_class=None):
+    eventWise_to_copy = Components.EventWise.from_file(eventWise_path_to_copy)
+    name_list = FormJets.get_jet_names(eventWise_to_copy)
+    param_list = [FormJets.get_jet_params(eventWise_to_copy, name) for name in name_list]
+    if jet_class is None:
+        jet_class = []
+        for name in name_list:
+            for c_name in FormJets.cluster_classes:
+                if c_name in name:
+                    jet_class.append(c_name)
+                    break
+    run_list(eventWise_path_to_cluster, end_time, jet_class, param_list, name_list)
+
+def list_scan_parameters(scan_parameters, fix_parameters=None):
     # put the things to be iterated over into a fixed order
     key_order = list(scan_parameters.keys())
     ordered_values = [scan_parameters[key] for key in key_order]
     num_combinations = np.product([len(vals) for vals in ordered_values])
     print(f"This scan contains {num_combinations} combinations to test.")
-    if existing_jets:
-        complete = num_combinations/len(existing_jets)
-        print(f"Assuming all existing jets are from this scan it is {complete:.1%} complete")
-    finished = 0
     if fix_parameters is None:
         fix_parameters = {}
-    for i, combination in enumerate(itertools.product(*ordered_values)):
-        print(f"{i/num_combinations:.1%}", end='\r', flush=True)
-        # check if it's been done
-        parameters = {**dict(zip(key_order, combination)), **fix_parameters}
-        if FormJets.check_for_jet(eventWise, parameters, pottentials=existing_jets):
-            print(f"Already done {jet_class}, {parameters}\n")
-        else:
-            jet_name = next(name_gen)
-            print(f"{i/num_combinations:.2%} {jet_name}", flush=True)
-            generate_pool(eventWise_path, jet_class, parameters, jet_name, True)
-            finished += 1
-        if time.time() > end_time:
-            break
-    time_elapsed = time.time() - start_time
-    print(f"Done {finished} in {time_elapsed/60:.1f} minutes")
-    if i >= num_combinations - 1:
-        print(f"Finished {num_combinations} parameter combinations")
-    else:
-        per_combinations = time_elapsed/finished
-        remaining = num_combinations - i - 1
-        time_needed = (remaining*per_combinations)/60
-        print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
+    scan_list = list(itertools.product(*ordered_values))
+    return scan_list
 
 
 def parameter_step(eventWise, jet_class, ignore_parameteres=None, current_best=None):
