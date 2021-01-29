@@ -17,6 +17,8 @@ try:
     jet_class = os.environ["jet_class"].strip()
     if jet_class:
         kwargs["jet_class"] = jet_class
+except KeyError:
+    pass
 OptimiseCluster.run_optimisation_abcpy("../megaIgnore/best_v3.awkd",
                                        duration=duration,
                                        log_dir=log_dir, **kwargs)
