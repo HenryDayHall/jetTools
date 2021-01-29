@@ -1005,6 +1005,7 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, **kwargs):
                             AffinityType='exponent')
     elif jet_class == FormJets.SpectralKMeans:
         fixed_params = dict(EigDistance='abscos',
+                            ExpofPTMultiplier=0.,
                             Laplacien='symmetric',
                             PhyDistance='angular',
                             ExpofPTFormat='Luclus',
