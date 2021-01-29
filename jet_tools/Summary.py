@@ -325,7 +325,7 @@ def plot_all(eventWise, prefix, jet_names=None):
     # now plot and save the summary name
     plot_Summary(jet_names, criteria_names, values)
     plt.savefig(prefix + "_Summary.png")
-    st()
+    #st()
     plot_Summary(jet_names, criteria_names, values)
     plt.show()
     input()
