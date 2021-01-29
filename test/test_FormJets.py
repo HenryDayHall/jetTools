@@ -2,7 +2,7 @@ from numpy import testing as tst
 import pytest
 import warnings
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import numpy as np
 from jet_tools import Components, FormJets
 from test.tools import TempTestDir

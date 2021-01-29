@@ -1,6 +1,6 @@
 """ A module to test the Parameter investigations module"""
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import awkward
 from test.tools import TempTestDir
 from jet_tools import Components, ParameterInvestigation
