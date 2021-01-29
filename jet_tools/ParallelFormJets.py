@@ -417,29 +417,13 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
-# cheating kmeans ----------------
-scan_cheat = dict(
-                 Sigma=[0.6, 0.8, 1., 1.2, 1.6],
-                 EigNormFactor=[0.1, 0.3, 0.5, 0.7, 0.9],
-                 )
-fix_cheat = dict(ExpofPTMultiplier=0,
-                 ExpofPTPosition='input',
-                 ExpofPTFormat='Luclus',
-                 NumEigenvectors=np.inf,
-                 Laplacien='symmetric',
-                 AffinityType='exponent',
-                 AffinityExp=1.,
-                 CutoffKNN=None,
-                 CutoffDistance=None,
-                 PhyDistance='angular')
-
-# hacky ------------------------
-scan_hacky = dict(
-                 DeltaR=[1.26, 1.28, 1.3],
+# spectral ------------------------
+scan_spectral = dict(
+                 DeltaR=[1.24, 1.26, 1.28, 1.3, 1.32],
                  Sigma=[0.1, 0.2, 0.3],
                  EigNormFactor=[1.2, 1.5, 1.8],
                  )
-fix_hacky = dict(ExpofPTMultiplier=0,
+fix_spectral = dict(ExpofPTMultiplier=0,
                  AffinityType='exponent',
                  AffinityExp=2.,
                  CutoffKNN=None,
@@ -480,13 +464,9 @@ fix_checkpoint_final = dict(ExpofPTPosition='eigenspace',
 # Traditional -----------------------------
 
 scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
-                        ExpofPTMultiplier=np.linspace(-1, 1, 5),
-                        PhyDistance=['taxicab', 'angular'])
-
-scan_Traditional1 = dict(DeltaR=np.linspace(0.2, 1.5, 10),
                         ExpofPTMultiplier=np.linspace(-1, 1, 5))
 
-fix_Traditional1 = dict(PhyDistance='taxicab')
+fix_Traditional = dict(PhyDistance='angular')
 
 def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None, dijet_mass=None, irc_prep=False):
     """
