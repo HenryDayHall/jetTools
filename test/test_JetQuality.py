@@ -1,7 +1,7 @@
 """ methods for testing JetQuality.py """
 import os
 import pytest
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import unittest.mock  # for mocker
 from test.tools import TempTestDir
 import numpy as np

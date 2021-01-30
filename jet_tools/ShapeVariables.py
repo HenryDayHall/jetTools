@@ -3,7 +3,7 @@ import warnings
 import scipy.optimize
 import scipy.linalg
 import numpy as np
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from jet_tools.stefano_shapes import shape as stefano
 from jet_tools import TrueTag, Constants, PlottingTools, Components
 import awkward
@@ -171,7 +171,8 @@ def python_shape(energies, pxs, pys, pzs, thrust_axis=None):
     if not (np.isclose(np.dot(perp1, thrust_axis), 0) and \
            np.isclose(np.dot(perp2, thrust_axis), 0) and \
            np.isclose(np.dot(perp1, perp2), 0)):
-        st()
+        print("?")
+        #st()
     def to_minimise_major(alpha):
         """
         
