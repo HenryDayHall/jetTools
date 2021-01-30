@@ -481,7 +481,7 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
     jet_class : str
     end_time : int
         time to stop scanning.
-    scan_parameters : dict
+    scan_parameters : dict or str
     fix_parameters : dict
     dijet_mass : float
         mass of the dijets for scoring
@@ -495,7 +495,12 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
         estimate for how long it would take to finish this scan.
     
     """
-    scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters)
+    if isinstance(scan_parameters, str):
+        # then the scan should be coppied from another eventWise
+        eventWise_to_copy = scan_parameters
+        copy_jets(eventWise_path, eventWise_to_copy, end_time, jet_class=jet_class)
+    else:
+        scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters)
     if time.time() > end_time:
         return
     fragment_path = eventWise_path.replace(".awkd", "_fragment")
@@ -503,7 +508,7 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
     average_columns = []
     if dijet_mass is not None:
         CompareClusters.multiprocess_append_scores(fragments, dijet_mass, end_time)
-        hyper_columns = EventWise.from_file(fragments[0]).hyperparameter_columns
+        hyper_columns = Components.EventWise.from_file(fragments[0]).hyperparameter_columns
         average_columns = [name for name in hyper_columns
                            if name.split('_', 1)[1] in CompareClusters.SCORE_COLS]
     if time.time() > end_time:
@@ -537,11 +542,12 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
     if not isinstance(jet_class, list):
         jet_class = [jet_class]*num_combinations
     finished = 0
-    for i, name in enumerate(name_list):
+    i = 0
+    for i, jet_name in enumerate(name_list):
         # check if it's been done
         parameters = param_list[i]
-        if name is not None:
-            if name in existing_names:
+        if jet_name is not None:
+            if jet_name in existing_names:
                 print(f"Already done {jet_class}, {parameters}\n")
                 continue
         else:
@@ -602,6 +608,9 @@ def copy_jets(eventWise_path_to_cluster, eventWise_path_to_copy, end_time, jet_c
                 if c_name in name:
                     jet_class.append(c_name)
                     break
+            else:
+                raise RuntimeError(f"Can't tell what jet class {name} is")
+    print(f"Found {len(name_list)} jets to copy")
     run_list(eventWise_path_to_cluster, end_time, jet_class, param_list, name_list)
 
 

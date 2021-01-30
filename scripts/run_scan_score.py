@@ -11,7 +11,7 @@ else:
 
 # copy the eventWise
 order = 'lo'
-source = f"../megaIgnore/IRCchecks_noPTcut1/iridis_pp_to_jjj_{order}.awkd"
+source = f"../megaIgnore/IRCchecks_noPTcut1/iridis_pp_to_jjj_{order}1.awkd"
 eventWise_path = f"../megaIgnore/IRCchecks_noPTcut1/iridis{order}_Scan_{jet_class_name}.awkd"
 shutil.copyfile(source, eventWise_path)
 end_time = time.time() + int(sys.argv[2])
