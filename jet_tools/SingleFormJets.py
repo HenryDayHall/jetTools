@@ -1,5 +1,5 @@
 """ Do a single run of forming the jets, with specified parameters"""
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from jet_tools import InputTools, Components, JoinHepMCRoot, ReadHepmc, FormJets, TrueTag, ShapeVariables, MassPeaks
 import os
 import shutil
@@ -130,7 +130,8 @@ def pick_class_params():
             pass
         if not InputTools.yesNo_question(f"Understood {selection}, is this correct? "):
             print("fix it manually")
-            st()
+            raise Exception
+            #st()
             pass
         chosen_parameters[name] = selection
     return cluster_name, cluster_function, chosen_parameters
@@ -237,7 +238,8 @@ def plot_results(eventWise, jet_name, pretag_jet_pt_cut, img_base):
             plt.show()
     # mass peaks
     if not hasattr(eventWise, jet_name + "_Tags"):
-        st()
+        raise Exception
+        #st()
     MassPeaks.plot_PT_pairs(eventWise, jet_name, jet_pt_cut=jet_pt_cut, show=not img_base)
     if img_base:
         plt.tight_layout()

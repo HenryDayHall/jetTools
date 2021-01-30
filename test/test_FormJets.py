@@ -2,7 +2,7 @@ from numpy import testing as tst
 import pytest
 import warnings
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import numpy as np
 from jet_tools import Components, FormJets
 from test.tools import TempTestDir
@@ -368,7 +368,7 @@ def clustering_algorithm(empty_ew, make_pseudojets, compare_distance=False, comp
                                                        compare_size=False,
                                                        compare_distance=False)
             else:
-                st()
+                #st()
                 fails += 1
                 print("Failed to join/incorrectly joined")
                 if fails > n_acceptable_fails:
@@ -610,12 +610,8 @@ def internal_combine(jets, param_dict):
     combined_ints = [max(jets.InputIdx) + 1, -1, i0, i1, max(jets.Rank) + 1]
 
     found_ints, found_floats = jets._combine(i0, i1, distance2)
-    try:
-        SimpleClusterSamples.match_ints_floats([combined_ints], [combined_floats],
-                                               [found_ints], [found_floats], compare_size=False)
-    except:
-        st()
-        pass
+    SimpleClusterSamples.match_ints_floats([combined_ints], [combined_floats],
+                                           [found_ints], [found_floats], compare_size=False)
 internal_combine.valid_one = False
 internal_combine.valid_zero = False
 
@@ -1584,13 +1580,8 @@ def test_cluster_edge_cases():
         jet_class = combination[0]
         jet_params = {name: value for name, value in zip(param_order, combination[1:])}
         # the degenrate pair
-        try:
-            jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
-                                   jet_params, jet_class=jet_class, assign=True)
-        except:
-            st()
-            jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
-                                   jet_params, jet_class=jet_class, assign=True)
+        jet = make_simple_jets(SimpleClusterSamples.two_degenerate['floats'],
+                               jet_params, jet_class=jet_class, assign=True)
 
 
 def test_filter_obs():

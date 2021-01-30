@@ -1,6 +1,6 @@
 """ tests to evaluate the FormShower module """
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 from jet_tools import FormShower, DrawTrees, Components, PDGNames
 import numpy.testing as tst
 import numpy as np

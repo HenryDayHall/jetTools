@@ -10,7 +10,7 @@ import sklearn.cluster
 import awkward
 from matplotlib import pyplot as plt
 import matplotlib
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 import numpy as np
 from jet_tools import Components, TrueTag, InputTools, Constants, FormShower, PlottingTools
 
@@ -53,7 +53,8 @@ class Custom_KMeans:
             try:
                 score, aloc, cen = self._attempt(n_clusters)
             except:
-                st()
+                print("?")
+                #st()
                 score, aloc, cen = self._attempt(n_clusters)
             if np.isclose(score, min_score):
                 allocations.append(aloc)

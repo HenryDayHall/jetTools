@@ -367,7 +367,7 @@ def whole_event(nodisplay=False):
         fast_walker = TreeWalker(eventWise, "FastJet", eventWise.selected_index, i, root)
         motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
         if len(motion) == 0:
-            st()
+            #st()
             motion, size, color = tree_motion(fast_walker.leaf[1:3], fast_walker, steps_between)
         motions.append(motion); sizes.append(size); colours.append(color)
     if nodisplay:
