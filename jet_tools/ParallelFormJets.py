@@ -1,4 +1,5 @@
 from jet_tools import FormJets, Components, InputTools, CompareClusters, CompareDatasets
+import jet_tools
 import time
 import csv
 import cProfile
@@ -174,7 +175,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         #print("This awkd has already been split into fragments")
         eventWise_path = eventWise_path[:-5]+"_fragment"
     if not eventWise_path.endswith('.awkd'):  # this is probably a dir name
-        if '.' in eventWise_path:
+        if not os.path.isdir(eventWise_path):
             raise FileNotFoundError(f"eventWise_path {eventWise_path} is neither a directory name not the path to an eventWise")
         # remove a joined component if it exists
         in_eventWise_path = os.listdir(eventWise_path)
@@ -528,7 +529,11 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
         existing_names = []
     else:
         existing_names = FormJets.get_jet_names(eventWise)
-    name_gen = name_generator(jet_class, existing_names)
+    if isinstance(jet_class, str):
+        jet_class_name = jet_class + "Jet"
+    else:
+        jet_class_name = jet_class.__name__ + "Jet"
+    name_gen = name_generator(jet_class_name, existing_names)
     if not isinstance(jet_class, list):
         jet_class = [jet_class]*num_combinations
     finished = 0
@@ -560,6 +565,7 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
         remaining = num_combinations - i - 1
         time_needed = (remaining*per_combinations)/60
         print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
+
 
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
@@ -598,6 +604,7 @@ def copy_jets(eventWise_path_to_cluster, eventWise_path_to_copy, end_time, jet_c
                     break
     run_list(eventWise_path_to_cluster, end_time, jet_class, param_list, name_list)
 
+
 def list_scan_parameters(scan_parameters, fix_parameters=None):
     # put the things to be iterated over into a fixed order
     key_order = list(scan_parameters.keys())
@@ -606,7 +613,8 @@ def list_scan_parameters(scan_parameters, fix_parameters=None):
     print(f"This scan contains {num_combinations} combinations to test.")
     if fix_parameters is None:
         fix_parameters = {}
-    scan_list = list(itertools.product(*ordered_values))
+    scan_list = [{pname: pval for pname, pval in zip(key_order, values)}
+                 for values in itertools.product(*ordered_values)]
     return scan_list
 
 
