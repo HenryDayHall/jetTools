@@ -11,6 +11,7 @@ import matplotlib
 import awkward
 ##from ipdb import set_trace as st
 from jet_tools import Components, TrueTag, InputTools, FormJets, Constants, RescaleJets, JetQuality, PlottingTools
+import jet_tools
 import sklearn.metrics
 import sklearn.preprocessing
 from matplotlib import pyplot as plt
@@ -546,11 +547,13 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             mask = content_here[mask_name]
         except KeyError:
             mask = getattr(eventWise, mask_name)
-        flat_mask = mask.flatten()
+        flat_mask = np.array(mask.flatten(), dtype=int)
         # get averages for all other generated content
         new_averages = {}
         # we are only intrested in finite results
         for key, values in content_here.items():
+            if "SeperateMask" in key:
+                continue
             flattened = values.flatten()
             finite = np.isfinite(flattened)
             if np.any(finite):
