@@ -2,7 +2,7 @@
 mostly intrested in autocompletion """
 from __future__ import print_function
 import shutil
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 import numpy as np
 import os
 import readline
@@ -89,7 +89,8 @@ class PreSelections:
             print(f"AUTO: {message} -> {response}")
             self.question_reached += 1
         else:
-            st()
+            print("?")
+            #st()
         return response
 
     def append(self, message, response, consistant_length=-1):

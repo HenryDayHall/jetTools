@@ -1,6 +1,6 @@
 """ tests for the CompareClusters module """
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import awkward
 import pytest
 import numpy as np

@@ -1,4 +1,5 @@
 from jet_tools import FormJets, Components, InputTools, CompareClusters, CompareDatasets
+import jet_tools
 import time
 import csv
 import cProfile
@@ -6,7 +7,7 @@ import tabulate
 import os
 import numpy as np
 import multiprocessing
-from ipdb import set_trace as st
+##from ipdb import set_trace as st
 import itertools
 
 
@@ -174,7 +175,7 @@ def make_n_working_fragments(eventWise_path, n_fragments, jet_name):
         #print("This awkd has already been split into fragments")
         eventWise_path = eventWise_path[:-5]+"_fragment"
     if not eventWise_path.endswith('.awkd'):  # this is probably a dir name
-        if '.' in eventWise_path:
+        if not os.path.isdir(eventWise_path):
             raise FileNotFoundError(f"eventWise_path {eventWise_path} is neither a directory name not the path to an eventWise")
         # remove a joined component if it exists
         in_eventWise_path = os.listdir(eventWise_path)
@@ -421,16 +422,17 @@ def recombine_eventWise(eventWise_path):
 scan_spectral = dict(
                  DeltaR=[1.24, 1.26, 1.28, 1.3, 1.32],
                  Sigma=[0.1, 0.2, 0.3],
-                 EigNormFactor=[1.2, 1.5, 1.8],
+                 AffinityExp=[0.5, 1., 1.5],
+                 EigNormFactor=[1.8, 2.],
+                 CutoffKNN=[3, None],
                  )
 fix_spectral = dict(ExpofPTMultiplier=0,
+                 EigenvalueLimit=0.5,
                  AffinityType='exponent',
-                 AffinityExp=2.,
-                 CutoffKNN=None,
                  CutoffDistance=None,
                  ExpofPTPosition='input',
                  ExpofPTFormat='Luclus',
-                 NumEigenvectors=np.inf,
+                 NumEigenvectors=6,
                  StoppingCondition='meandistance',
                  Laplacien='symmetric',
                  CombineSize='sum',
@@ -479,7 +481,7 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
     jet_class : str
     end_time : int
         time to stop scanning.
-    scan_parameters : dict
+    scan_parameters : dict or str
     fix_parameters : dict
     dijet_mass : float
         mass of the dijets for scoring
@@ -493,7 +495,12 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
         estimate for how long it would take to finish this scan.
     
     """
-    scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters)
+    if isinstance(scan_parameters, str):
+        # then the scan should be coppied from another eventWise
+        eventWise_to_copy = scan_parameters
+        copy_jets(eventWise_path, eventWise_to_copy, end_time, jet_class=jet_class)
+    else:
+        scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters)
     if time.time() > end_time:
         return
     fragment_path = eventWise_path.replace(".awkd", "_fragment")
@@ -501,7 +508,7 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
     average_columns = []
     if dijet_mass is not None:
         CompareClusters.multiprocess_append_scores(fragments, dijet_mass, end_time)
-        hyper_columns = EventWise.from_file(fragments[0]).hyperparameter_columns
+        hyper_columns = Components.EventWise.from_file(fragments[0]).hyperparameter_columns
         average_columns = [name for name in hyper_columns
                            if name.split('_', 1)[1] in CompareClusters.SCORE_COLS]
     if time.time() > end_time:
@@ -522,20 +529,25 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
     start_time = time.time()
     eventWise = Components.EventWise.from_file(eventWise_path)
     num_combinations = len(param_list)
+    existing_names = FormJets.get_jet_names(eventWise)
     if name_list is None:
         name_list = [None]*num_combinations
-        existing_names = []
-    else:
-        existing_names = FormJets.get_jet_names(eventWise)
-    name_gen = name_generator(jet_class, existing_names)
+        if isinstance(jet_class, str):
+            jet_class_name = jet_class
+        else:
+            jet_class_name = jet_class.__name__
+        if not jet_class_name.endswith("Jet"):
+            jet_class_name += "Jet"
+        name_gen = name_generator(jet_class_name, existing_names)
     if not isinstance(jet_class, list):
         jet_class = [jet_class]*num_combinations
     finished = 0
-    for i, name in enumerate(name_list):
+    i = 0
+    for i, jet_name in enumerate(name_list):
         # check if it's been done
         parameters = param_list[i]
-        if name is not None:
-            if name in existing_names:
+        if jet_name is not None:
+            if jet_name in existing_names:
                 print(f"Already done {jet_class}, {parameters}\n")
                 continue
         else:
@@ -559,6 +571,7 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
         remaining = num_combinations - i - 1
         time_needed = (remaining*per_combinations)/60
         print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
+
 
 def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
     """
@@ -595,7 +608,11 @@ def copy_jets(eventWise_path_to_cluster, eventWise_path_to_copy, end_time, jet_c
                 if c_name in name:
                     jet_class.append(c_name)
                     break
+            else:
+                raise RuntimeError(f"Can't tell what jet class {name} is")
+    print(f"Found {len(name_list)} jets to copy")
     run_list(eventWise_path_to_cluster, end_time, jet_class, param_list, name_list)
+
 
 def list_scan_parameters(scan_parameters, fix_parameters=None):
     # put the things to be iterated over into a fixed order
@@ -605,89 +622,9 @@ def list_scan_parameters(scan_parameters, fix_parameters=None):
     print(f"This scan contains {num_combinations} combinations to test.")
     if fix_parameters is None:
         fix_parameters = {}
-    scan_list = list(itertools.product(*ordered_values))
+    scan_list = [{pname: pval for pname, pval in zip(key_order, values)}
+                 for values in itertools.product(*ordered_values)]
     return scan_list
-
-
-def parameter_step(eventWise, jet_class, ignore_parameteres=None, current_best=None):
-    """
-    Select a varient of the best jet in class that has not yet been tried
-
-    Parameters
-    ----------
-    records :
-        param jet_class:
-    ignore_parameteres :
-        Default value = None)
-    jet_class :
-        
-
-    Returns
-    -------
-
-    
-    """
-    # get the best jet of this class
-    if current_best is None:
-        current_best = CompareClusters.get_best(eventWise, jet_class)
-    if ignore_parameteres is None:
-        ignore_parameteres = []
-    # use the name of the best and get its parameters
-    best_parameters = FormJets.get_jet_params(eventWise, current_best, True)
-    new_parameters = {k: v for k, v in best_parameters.items()}
-    tries = 0
-    stopping_point = 100
-    while True:
-        tries += 1
-        # pick one at random and change it
-        to_change = np.random.choice(best_parameters)
-        new_parameters[to_change] = random_parameters(jet_class, [to_change])
-        possibles = FormJets.check_for_jet(eventWise, new_parameters, jet_class)
-        if not possibles:
-            yield new_parameters
-        # reset that variable
-        new_parameters[to_change] = best_parameters[to_change]
-        if tries > stopping_point:
-            raise StopIteration
-
-#def iterate(eventWise_path, jet_class):
-#    """
-#    
-#
-#    Parameters
-#    ----------
-#    eventWise_path :
-#        param jet_class:
-#    jet_class :
-#        
-#
-#    Returns
-#    -------
-#
-#    
-#    """
-#    eventWise = Components.EventWise.from_file(eventWise_path)
-#    record_path = "records.csv"
-#    records = CompareClusters.Records(record_path)
-#    print("Delete the continue file when you want to stop")
-#    if not os.path.exists('continue'):
-#        open('continue', 'a').close()
-#    count = 0
-#    while os.path.exists('continue'):
-#        if count % 10 == 0:
-#            print("Rescoring")
-#            combined = recombine_eventWise(eventWise_path)
-#            records.score(combined)
-#        next_best = CompareClusters.parameter_step(records, jet_class)
-#        if next_best is None:
-#            print("Couldn't find new target, exiting")
-#            return
-#        print(f"Next best is {next_best}")
-#        jet_id = records.append(jet_class, next_best)
-#        jet_name = make_jet_name(jet_class, jet_id)
-#        generate_pool(eventWise_path, jet_class, next_best, jet_name, True)
-#        records.write()
-#        count += 1
 
 
 def random_parameters(jet_class=None, desired_parameters=None, omit_parameters=None):

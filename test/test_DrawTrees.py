@@ -3,7 +3,7 @@ from networkx.drawing.nx_pydot import read_dot
 from test.tools import TempTestDir
 import os
 from jet_tools import DrawTrees, FormShower
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 
 
 def test_DotGraph():

@@ -3,7 +3,7 @@ from numpy import testing as tst
 from jet_tools import Components, JoinHepMCRoot, ReadHepmc
 from test.tools import TempTestDir, generic_equality_comp, data_dir
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 
 def test_marry():
     # get a root file

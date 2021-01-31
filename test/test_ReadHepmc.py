@@ -2,7 +2,7 @@ from numpy import testing as tst
 import numpy as np
 from jet_tools import ReadHepmc, PDGNames
 from test.tools import generic_equality_comp, TempTestDir, data_dir
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 import os
 # overall momentum is conserved, but internal to the particle shower it isn't conserved
 

@@ -116,7 +116,7 @@ def energy_poly(eventWise, jet_name, n_degrees=2, overwrite=False, append=True):
         try:
             jet_pts.append(np.mean(eventWise.match_indices(pt_name, root_name, inputidx_name).flatten()))
         except Exception as e:
-            st()
+            #st()
             eventWise
         tag_rapidities.append(np.mean(eventWise.Rapidity[eventWise.TagIndex]))
         jet_rapidities.append(np.mean(eventWise.match_indices(rapidity_name, root_name, inputidx_name).flatten()))

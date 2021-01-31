@@ -15,7 +15,7 @@ pyTorchTree/
 # swap files
 *.swp
 *.swo
-.converage
+.coverage
 # files created while making c executables
 *.cpython-36m-x86_64-linux-gnu.so
 

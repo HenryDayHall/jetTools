@@ -3,7 +3,7 @@ f77 shape2.f shape3.f shape4.f -o shape """
 import numpy as np
 import subprocess
 import os
-from ipdb import set_trace as st
+#from ipdb import set_trace as st
 
 def shape(energies, pxs, pys, pzs, my_dir='./'):
     """
