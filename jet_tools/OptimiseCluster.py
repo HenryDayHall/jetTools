@@ -1152,7 +1152,7 @@ def plot_journal(journal, parameters=None):
     max_param_in_plot = 3
     n_param = len(parameters)
     if n_param > max_param_in_plot:
-        num_plots = int(n_param/max_param_in_plot)
+        num_plots = int(np.ceil(n_param/max_param_in_plot))
         for i in range(num_plots):
             print(f"{i} for {num_plots}")
             here = parameters[i*max_param_in_plot:
