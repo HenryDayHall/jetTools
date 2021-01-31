@@ -547,7 +547,7 @@ def append_scores(eventWise, dijet_mass=None, end_time=None, duration=np.inf, ov
             mask = content_here[mask_name]
         except KeyError:
             mask = getattr(eventWise, mask_name)
-        flat_mask = np.array(mask.flatten(), dtype=int)
+        flat_mask = mask.flatten()
         # get averages for all other generated content
         new_averages = {}
         # we are only intrested in finite results
@@ -773,7 +773,7 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_tradition
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
     if cluster_comparison and zoom:
         #mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
-        mask = (signal_gap < 50.)*(background_gap < 50.)
+        mask = (signal_gap < 5.)*(background_gap < 5.)
         if sum(mask)>4:
             signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
             jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
