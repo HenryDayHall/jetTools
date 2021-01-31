@@ -529,16 +529,16 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
     start_time = time.time()
     eventWise = Components.EventWise.from_file(eventWise_path)
     num_combinations = len(param_list)
+    existing_names = FormJets.get_jet_names(eventWise)
     if name_list is None:
         name_list = [None]*num_combinations
-        existing_names = []
-    else:
-        existing_names = FormJets.get_jet_names(eventWise)
-    if isinstance(jet_class, str):
-        jet_class_name = jet_class + "Jet"
-    else:
-        jet_class_name = jet_class.__name__ + "Jet"
-    name_gen = name_generator(jet_class_name, existing_names)
+        if isinstance(jet_class, str):
+            jet_class_name = jet_class
+        else:
+            jet_class_name = jet_class.__name__
+        if not jet_class_name.endswith("Jet"):
+            jet_class_name += "Jet"
+        name_gen = name_generator(jet_class_name, existing_names)
     if not isinstance(jet_class, list):
         jet_class = [jet_class]*num_combinations
     finished = 0
@@ -625,87 +625,6 @@ def list_scan_parameters(scan_parameters, fix_parameters=None):
     scan_list = [{pname: pval for pname, pval in zip(key_order, values)}
                  for values in itertools.product(*ordered_values)]
     return scan_list
-
-
-def parameter_step(eventWise, jet_class, ignore_parameteres=None, current_best=None):
-    """
-    Select a varient of the best jet in class that has not yet been tried
-
-    Parameters
-    ----------
-    records :
-        param jet_class:
-    ignore_parameteres :
-        Default value = None)
-    jet_class :
-        
-
-    Returns
-    -------
-
-    
-    """
-    # get the best jet of this class
-    if current_best is None:
-        current_best = CompareClusters.get_best(eventWise, jet_class)
-    if ignore_parameteres is None:
-        ignore_parameteres = []
-    # use the name of the best and get its parameters
-    best_parameters = FormJets.get_jet_params(eventWise, current_best, True)
-    new_parameters = {k: v for k, v in best_parameters.items()}
-    tries = 0
-    stopping_point = 100
-    while True:
-        tries += 1
-        # pick one at random and change it
-        to_change = np.random.choice(best_parameters)
-        new_parameters[to_change] = random_parameters(jet_class, [to_change])
-        possibles = FormJets.check_for_jet(eventWise, new_parameters, jet_class)
-        if not possibles:
-            yield new_parameters
-        # reset that variable
-        new_parameters[to_change] = best_parameters[to_change]
-        if tries > stopping_point:
-            raise StopIteration
-
-#def iterate(eventWise_path, jet_class):
-#    """
-#    
-#
-#    Parameters
-#    ----------
-#    eventWise_path :
-#        param jet_class:
-#    jet_class :
-#        
-#
-#    Returns
-#    -------
-#
-#    
-#    """
-#    eventWise = Components.EventWise.from_file(eventWise_path)
-#    record_path = "records.csv"
-#    records = CompareClusters.Records(record_path)
-#    print("Delete the continue file when you want to stop")
-#    if not os.path.exists('continue'):
-#        open('continue', 'a').close()
-#    count = 0
-#    while os.path.exists('continue'):
-#        if count % 10 == 0:
-#            print("Rescoring")
-#            combined = recombine_eventWise(eventWise_path)
-#            records.score(combined)
-#        next_best = CompareClusters.parameter_step(records, jet_class)
-#        if next_best is None:
-#            print("Couldn't find new target, exiting")
-#            return
-#        print(f"Next best is {next_best}")
-#        jet_id = records.append(jet_class, next_best)
-#        jet_name = make_jet_name(jet_class, jet_id)
-#        generate_pool(eventWise_path, jet_class, next_best, jet_name, True)
-#        records.write()
-#        count += 1
 
 
 def random_parameters(jet_class=None, desired_parameters=None, omit_parameters=None):
