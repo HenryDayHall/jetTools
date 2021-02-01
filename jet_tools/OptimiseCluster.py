@@ -1,4 +1,5 @@
 """ Module for optimising the clustering process without gradient decent """
+import jet_tools
 import warnings
 import scipy
 import matplotlib
@@ -536,6 +537,7 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
                epsilon_init, n_samples, n_samples_per_param=1,
                epsilon_percentile=10,
                covFactor=2, full_output=0, journal_file=None,
+               additional_journal_info=None,
                log_dir="./logs"):
         """Samples from the posterior distribution of the model parameter given the observed
         data observations.
@@ -565,6 +567,8 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
         journal_file: str, optional
             Filename of a journal file to read an already saved journal file, from which the first iteration will start.
             The default value is None.
+        additional_journal_info: dict
+            other stuff fo the journal config
 
         Returns
         -------
@@ -593,6 +597,9 @@ class TimedPMCABC(abcpy.inferences.PMCABC):
             journal.configuration["epsilon_percentile"] = epsilon_percentile
         else:
             journal = abcpy.output.Journal.fromFile(journal_file)
+
+        for key in additional_journal_info:
+            journal.configuration[key] = additional_journal_info[key]
 
         journal_name, _ = reserve_name(os.path.join(log_dir, "Journal{:03d}.jnl"))
         journal_list.append(journal_name)
@@ -1043,12 +1050,13 @@ def run_optimisation_abcpy(eventWise_name, batch_size=100, **kwargs):
     kernal = abcpy.perturbationkernel.DefaultKernel(varaible_list)
     sampler = TimedPMCABC([model], [distance_calc], backend, kernal, seed=1)
     print(f"Running for {duration/(60*60):.1f} hours aprox", flush=True)
+    additional_journal_info["fixed_parameters"] = translator.fixed_parameters
     journal_name, journal = sampler.sample([objective], duration, eps_init,
                                            n_samples, n_samples_per_param,
                                            epsilon_percentile, full_output=True,
                                            journal_file=journal_name_list,
+                                           additional_journal_info=additional_journal_info,
                                            log_dir=log_dir)
-    journal.configuration["fixed_parameters"] = translator.fixed_parameters
     if not isinstance(jet_class, str):
         jet_class = jet_class.__name__
     journal.configuration["jet_class"] = jet_class
@@ -1108,7 +1116,8 @@ def journal_to_best(journal, num_best=100, max_steps_back=None):
                             PhyDistance='angular',
                             CombineSize='sum',
                             ExpofPTFormat='Luclus',
-                            #ExpofPTPosition='input',
+                            ExpofPTPosition='input',
+                            ExpofPTMultiplier=0.,
                             AffinityType='exponent')
     translator = ParameterTranslator(jet_class, fixed_params)
     jet_class = translator.jet_class  # converts out of str
