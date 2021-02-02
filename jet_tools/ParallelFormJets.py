@@ -419,7 +419,6 @@ def recombine_eventWise(eventWise_path):
     return new_eventWise
 
 
-
 # include MeanStopSigp6ENorp8DR1p28Jet ----
 
 scan_include = dict(
@@ -595,8 +594,11 @@ def list_scan_parameters(scan_parameters, fix_parameters=None):
     print(f"This scan contains {num_combinations} combinations to test.")
     if fix_parameters is None:
         fix_parameters = {}
-    scan_list = [{pname: pval for pname, pval in zip(key_order, values)}
-                 for values in itertools.product(*ordered_values)]
+    scan_list = []
+    for values in itertools.product(*ordered_values):
+        scan = dict(*zip(key_order, values))
+        scan.update(fix_parameters)
+        scan_list.append(scan)
     return scan_list
 
 
