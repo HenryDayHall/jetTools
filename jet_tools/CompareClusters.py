@@ -741,7 +741,7 @@ def filter_matching(all_cols, table, exact=None, approx=None):
 
 
 
-def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_traditional, zoom=False):
+def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_traditional, zoom=False, labels=True):
     ax = plt.gca()
     cluster_comparison = isinstance(eventWise_paths, list)
     if cluster_comparison:
@@ -771,13 +771,14 @@ def plot_mass_gaps(eventWise_paths, jet_name=None, highlight_fn=filter_tradition
                                  dtype=float)
         percent_found = getattr(eventWise, jet_name + "_PercentFound")
         seperate_jets = getattr(eventWise, jet_name + "_SeperateJets")
+    mask = np.logical_and(np.isfinite(signal_gap), np.isfinite(background_gap))
     if cluster_comparison and zoom:
-        #mask = (signal_gap < 36)*(background_gap < 20)*(seperate_jets > 0.8)
-        mask = (signal_gap < 5.)*(background_gap < 5.)
-        if sum(mask)>4:
-            signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
-            jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
-            PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
+        mask *= (signal_gap < 5.)*(background_gap < 5.)
+    signal_gap, background_gap, seperate_jets, percent_found, highlight = signal_gap[mask], background_gap[mask], seperate_jets[mask], percent_found[mask], highlight[mask]
+    if labels:
+        jet_names = [row[all_cols.index("jet_name")]+'_'+row[all_cols.index("eventWise_name")].replace('.awkd', '').replace('iridis_', '') for row in table[mask]]
+        PlottingTools.label_scatter(signal_gap, background_gap, jet_names, ax=ax)
+
     max_colour = max(1.5, np.max(seperate_jets))
     points = ax.scatter(signal_gap, background_gap, c=seperate_jets, s=10*np.sqrt(percent_found), vmin=0., vmax=max_colour)
     ax.scatter(signal_gap[highlight], background_gap[highlight], c=(0,0,0,0),

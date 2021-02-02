@@ -418,6 +418,30 @@ def recombine_eventWise(eventWise_path):
     new_eventWise = Components.EventWise.combine(split_dir, base_name)
     return new_eventWise
 
+
+
+# include MeanStopSigp6ENorp8DR1p28Jet ----
+
+scan_include = dict(
+                 DeltaR=[1.20, 1.22, 1.24, 1.26, 1.28, 1.3],
+                 EigenvalueLimit=[0.2, 0.4, 0.5, 0.6, 1., np.inf],
+                 )
+fix_include = {'CombineSize': 'sum',
+               'DeltaR': 1.28,
+               'EigDistance': 'abscos',
+               'EigNormFactor': 1.5000000000000004,
+               'ExpofPTFormat': 'Luclus',
+               'ExpofPTMultiplier': 0,
+               'ExpofPTPosition': 'input',
+               'Laplacien': 'symmetric',
+               'NumEigenvectors': np.inf,
+               'PhyDistance': 'angular',
+               'Sigma': 0.2,
+               'StoppingCondition': 'meandistance',
+               'AffinityExp': 2.0,
+               'AffinityType': 'exponent'}
+
+
 # spectral ------------------------
 scan_spectral = dict(
                  DeltaR=[1.24, 1.26, 1.28, 1.3, 1.32],
@@ -470,7 +494,7 @@ scan_Traditional = dict(DeltaR=np.linspace(0.2, 1.5, 10),
 
 fix_Traditional = dict(PhyDistance='angular')
 
-def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None, dijet_mass=None, irc_prep=False):
+def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None, dijet_mass=None, irc_prep=False, add_benchmarks=True):
     """
     Scan over all combinations of a range of options. then score the result
 
@@ -498,9 +522,17 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
     if isinstance(scan_parameters, str):
         # then the scan should be coppied from another eventWise
         eventWise_to_copy = scan_parameters
-        copy_jets(eventWise_path, eventWise_to_copy, end_time, jet_class=jet_class)
+        name_list, class_list, param_list = copy_inputs(eventWise_path, eventWise_to_copy, end_time, jet_class=jet_class)
     else:
-        scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters)
+        name_list, class_list, param_list = scan_inputs(jet_class, scan_parameters, fix_parameters)
+    if add_benchmarks:
+        b_name, b_class, b_param = benchmark_inputs()
+        name_list += b_name
+        class_list += b_class
+        param_list += b_param
+    assert len(name_list) == len(param_list)
+    assert len(class_list) == len(param_list)
+    run_list(eventWise_path, end_time, class_list, param_list, name_list)
     if time.time() > end_time:
         return
     fragment_path = eventWise_path.replace(".awkd", "_fragment")
@@ -525,40 +557,22 @@ def scan_score(eventWise_path, jet_class, end_time, scan_parameters, fix_paramet
         CompareDatasets.append_all(eventWise_path, end_time)
 
 
-def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
+def run_list(eventWise_path, end_time, class_list, param_list, name_list):
     start_time = time.time()
     eventWise = Components.EventWise.from_file(eventWise_path)
     num_combinations = len(param_list)
     existing_names = FormJets.get_jet_names(eventWise)
-    if name_list is None:
-        name_list = [None]*num_combinations
-        if isinstance(jet_class, str):
-            jet_class_name = jet_class
-        else:
-            jet_class_name = jet_class.__name__
-        if not jet_class_name.endswith("Jet"):
-            jet_class_name += "Jet"
-        name_gen = name_generator(jet_class_name, existing_names)
-    if not isinstance(jet_class, list):
-        jet_class = [jet_class]*num_combinations
     finished = 0
     i = 0
     for i, jet_name in enumerate(name_list):
         # check if it's been done
         parameters = param_list[i]
-        if jet_name is not None:
-            if jet_name in existing_names:
-                print(f"Already done {jet_class}, {parameters}\n")
-                continue
-        else:
-            # check for the params
-            if len(FormJets.check_for_jet(eventWise, parameters)):
-                print(f"Already done {jet_class}, {parameters}\n")
-                continue
-            jet_name = next(name_gen)
+        if jet_name in existing_names:
+            print(f"Already done {jet_class}, {parameters}\n")
+            continue
         # getting here means it hasn't been done
         print(f"{i/num_combinations:.1%} {jet_name}", flush=True)
-        generate_pool(eventWise_path, jet_class[i], parameters, jet_name, True)
+        generate_pool(eventWise_path, class_list[i], parameters, jet_name, True)
         finished += 1
         if time.time() > end_time:
             break
@@ -573,47 +587,6 @@ def run_list(eventWise_path, end_time, jet_class, param_list, name_list=None):
         print(f"Estimate {time_needed:.1f} additional minutes needed to complete")
 
 
-def scan(eventWise_path, jet_class, end_time, scan_parameters, fix_parameters=None):
-    """
-    Scan over all combinations of a range of options.
-
-    Parameters
-    ----------
-    eventWise_path : str
-        Path to the dataset used for input and writing outputs.
-    jet_class : str
-    end_time : int
-        time to stop scanning.
-    scan_parameters : dict
-    fix_parameters : dict
-
-    Returns
-    -------
-    time_remaining : float
-        estimate for how long it would take to finish this scan.
-    
-    """
-    scan_list = list_scan_parameters(scan_parameters, fix_parameters)
-    run_list(eventWise_path, end_time, jet_class, scan_list)
-
-
-def copy_jets(eventWise_path_to_cluster, eventWise_path_to_copy, end_time, jet_class=None):
-    eventWise_to_copy = Components.EventWise.from_file(eventWise_path_to_copy)
-    name_list = FormJets.get_jet_names(eventWise_to_copy)
-    param_list = [FormJets.get_jet_params(eventWise_to_copy, name) for name in name_list]
-    if jet_class is None:
-        jet_class = []
-        for name in name_list:
-            for c_name in FormJets.cluster_classes:
-                if c_name in name:
-                    jet_class.append(c_name)
-                    break
-            else:
-                raise RuntimeError(f"Can't tell what jet class {name} is")
-    print(f"Found {len(name_list)} jets to copy")
-    run_list(eventWise_path_to_cluster, end_time, jet_class, param_list, name_list)
-
-
 def list_scan_parameters(scan_parameters, fix_parameters=None):
     # put the things to be iterated over into a fixed order
     key_order = list(scan_parameters.keys())
@@ -625,6 +598,92 @@ def list_scan_parameters(scan_parameters, fix_parameters=None):
     scan_list = [{pname: pval for pname, pval in zip(key_order, values)}
                  for values in itertools.product(*ordered_values)]
     return scan_list
+
+
+def scan_inputs(jet_class, scan_parameters, fix_parameters=None):
+    param_list = list_scan_parameters(scan_parameters, fix_parameters)
+    num_combinations = len(param_list)
+    # make a list of names
+    if isinstance(jet_class, str):
+        jet_class_name = jet_class
+    else:
+        jet_class_name = jet_class.__name__
+    if not jet_class_name.endswith("Jet"):
+        jet_class_name += "Jet"
+    name_gen = name_generator(jet_class_name, existing_names=[])
+    name_list = [next(name_gen) for _ in range(num_combinations)]
+    class_list = [jet_class]*num_combinations
+    return name_list, class_list, param_list
+
+
+def benchmark_inputs():
+    name_list = []
+    param_list = []
+    class_list = []
+    # antikt jets
+    name_list.append("AntiKTp4Jet")
+    params = {"DeltaR": .4, "ExpofPTMultiplier": -1, 
+              "ExpofPTFormat": "min", "PhyDistance": "angular"}
+    param_list.append(params)
+    class_list.append(FormJets.Traditional)
+    name_list.append("AntiKTp8Jet")
+    params = {"DeltaR": .8, "ExpofPTMultiplier": -1, 
+              "ExpofPTFormat": "min", "PhyDistance": "angular"}
+    param_list.append(params)
+    class_list.append(FormJets.Traditional)
+    # show spectral
+    params = {'CombineSize': 'sum',
+              'DeltaR': 1.28,
+              'EigDistance': 'abscos',
+              'EigNormFactor': 1.5000000000000004,
+              'ExpofPTFormat': 'Luclus',
+              'ExpofPTMultiplier': 0,
+              'ExpofPTPosition': 'input',
+              'Laplacien': 'symmetric',
+              'NumEigenvectors': np.inf,
+              'PhyDistance': 'angular',
+              'Sigma': 0.2,
+              'StoppingCondition': 'meandistance',
+              'AffinityExp': 2.0,
+              'AffinityType': 'exponent',
+              'EigenvalueLimit': np.inf}
+    name_list.append("ShowSpectralJet")
+    param_list.append(param_list)
+    class_list.append(FormJets.SpectralFull)
+    return name_list, class_list, param_list
+
+
+def copy_inputs(eventWise_path_to_cluster, eventWise_path_to_copy, end_time, jet_class=None):
+    eventWise_to_copy = Components.EventWise.from_file(eventWise_path_to_copy)
+    unprocessed_name_list = FormJets.get_jet_names(eventWise_to_copy)
+    name_keys = {name:name for name in FormJets.cluster_classes}
+    if jet_class is None:
+        class_list = []
+        name_list = []
+        while unprocessed_name_list:
+            name = unprocessed_name_list.pop()
+            for key in name_keys:
+                if key in name:
+                    class_list.append(name_keys[key])
+                    break
+            else:
+                print(f"Can't tell what jet class {name} is")
+                c_name = InputTools.list_complete("Name the jet class (blank to skip); ",
+                                                  FormJets.cluster_classes).strip()
+                if not c_name:
+                    continue
+                class_list.append(c_name)
+                # assume everything up to the word "Jet" could be a key
+                name_keys[name.split("Jet", 1)[0]] = c_name
+            name_list.append(name)
+    else:
+        name_list = unprocessed_name_list
+        class_list = [jet_class]*len(name_list)
+    print(f"Found {len(name_list)} jets to copy")
+    param_list = [FormJets.get_jet_params(eventWise_to_copy, name) for name in name_list]
+    assert len(param_list) == len(name_list)
+    assert len(class_list) == len(name_list)
+    return name_list, class_list, param_list
 
 
 def random_parameters(jet_class=None, desired_parameters=None, omit_parameters=None):
